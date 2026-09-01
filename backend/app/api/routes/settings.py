@@ -154,8 +154,19 @@ def create_router(
 
         tested_at = datetime.now(timezone.utc)
         stored = SettingsRepository(database_session).record_connection_test(
-            service, succeeded=succeeded, tested_at=tested_at
+            service,
+            expected=encrypted,
+            succeeded=succeeded,
+            tested_at=tested_at,
         )
+        if stored is None:
+            database_session.rollback()
+            raise APIError(
+                status_code=409,
+                code="connection_changed",
+                message="The connection changed while it was being tested.",
+                retryable=True,
+            )
         database_session.commit()
         return _connection_status(stored)
 

@@ -7,6 +7,41 @@ from sqlalchemy.orm import Session
 from app.db.models.settings import ServiceSecret
 
 
+@pytest.mark.parametrize(
+    ("method", "path", "payload"),
+    [
+        ("get", "/api/v1/settings/reanalysis", None),
+        (
+            "patch",
+            "/api/v1/settings/reanalysis",
+            {"creator_interval_days": 14, "game_interval_days": 30},
+        ),
+        ("get", "/api/v1/settings/connections/youtube", None),
+        (
+            "put",
+            "/api/v1/settings/connections/youtube",
+            {"secret": "never-accepted-without-auth"},
+        ),
+        ("post", "/api/v1/settings/connections/youtube", None),
+    ],
+)
+def test_settings_routes_require_workspace_authentication(
+    client, method: str, path: str, payload: dict[str, object] | None
+) -> None:
+    request = getattr(client, method)
+    response = request(path, **({"json": payload} if payload is not None else {}))
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "error": {
+            "code": "workspace_key_invalid",
+            "message": "A valid Workspace Access Key is required.",
+            "retryable": False,
+            "correlation_id": response.headers["x-correlation-id"],
+        }
+    }
+
+
 def test_reanalysis_defaults_and_updates_persist(auth_client) -> None:
     initial = auth_client.get("/api/v1/settings/reanalysis")
     updated = auth_client.patch(

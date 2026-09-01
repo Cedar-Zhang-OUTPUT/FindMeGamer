@@ -1,8 +1,8 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy import cast, func, select, update
+from sqlalchemy.dialects.postgresql import JSONB, insert
 from sqlalchemy.orm import Session
 
 from app.core.crypto import EncryptedValue
@@ -71,19 +71,32 @@ class SettingsRepository:
         self,
         service: str,
         *,
+        expected: EncryptedValue,
         succeeded: bool,
         tested_at: datetime,
-    ) -> ServiceSecret:
-        stored = self.get_connection(service)
-        if stored is None:
-            raise RuntimeError("service secret is missing")
-        stored.last_test_succeeded = succeeded
-        stored.last_test_at = tested_at
+    ) -> ServiceSecret | None:
+        updated_id = self._session.scalar(
+            update(ServiceSecret)
+            .where(
+                ServiceSecret.service == service,
+                ServiceSecret.ciphertext == expected.ciphertext,
+                ServiceSecret.nonce == expected.nonce,
+            )
+            .values(
+                last_test_succeeded=succeeded,
+                last_test_at=tested_at,
+                updated_at=func.now(),
+            )
+            .returning(ServiceSecret.id)
+            .execution_options(synchronize_session=False)
+        )
+        if updated_id is None:
+            return None
         self._update_connection_metadata(
             service, last_test_succeeded=succeeded, last_test_at=tested_at
         )
         self._session.flush()
-        return stored
+        return self._session.get(ServiceSecret, updated_id, populate_existing=True)
 
     def _update_connection_metadata(
         self,
@@ -92,11 +105,24 @@ class SettingsRepository:
         last_test_succeeded: bool | None,
         last_test_at: datetime | None,
     ) -> None:
-        settings = self.get_reanalysis()
-        state = dict(settings.service_connection_state)
-        state[service] = {
-            "configured": True,
-            "last_test_succeeded": last_test_succeeded,
-            "last_test_at": last_test_at.isoformat() if last_test_at else None,
+        metadata_patch = {
+            service: {
+                "configured": True,
+                "last_test_succeeded": last_test_succeeded,
+                "last_test_at": last_test_at.isoformat() if last_test_at else None,
+            }
         }
-        settings.service_connection_state = state
+        updated_id = self._session.scalar(
+            update(SharedSettings)
+            .where(SharedSettings.id == SHARED_SETTINGS_ID)
+            .values(
+                service_connection_state=SharedSettings.service_connection_state.op(
+                    "||"
+                )(cast(metadata_patch, JSONB)),
+                updated_at=func.now(),
+            )
+            .returning(SharedSettings.id)
+            .execution_options(synchronize_session=False)
+        )
+        if updated_id is None:
+            raise RuntimeError("shared settings row is missing")
