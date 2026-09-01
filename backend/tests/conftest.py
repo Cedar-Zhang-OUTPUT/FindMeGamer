@@ -11,14 +11,20 @@ from sqlalchemy import Engine, create_engine, inspect
 from sqlalchemy.engine import Inspector
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_workspace_key
+
+
+WORKSPACE_ACCESS_KEY = "test-workspace-access-key"
+os.environ.setdefault(
+    "WORKSPACE_ACCESS_KEY_HASH", hash_workspace_key(WORKSPACE_ACCESS_KEY)
+)
+
 from app.core.database import get_session
 from app.core.rate_limit import FixedWindowRateLimiter
-from app.core.security import hash_workspace_key
 from app.main import create_app
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE_ACCESS_KEY = "test-workspace-access-key"
 
 
 class FakeRateLimitCounter:
@@ -118,10 +124,16 @@ def client(
 
 
 @pytest.fixture
-def captured_logs(caplog: pytest.LogCaptureFixture) -> pytest.LogCaptureFixture:
-    logging.getLogger("app.requests").disabled = False
-    caplog.set_level("INFO", logger="app.requests")
-    return caplog
+def captured_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> Iterator[pytest.LogCaptureFixture]:
+    logger = logging.getLogger("app.requests")
+    caplog.handler.setLevel(logging.INFO)
+    logger.addHandler(caplog.handler)
+    try:
+        yield caplog
+    finally:
+        logger.removeHandler(caplog.handler)
 
 
 @pytest.fixture

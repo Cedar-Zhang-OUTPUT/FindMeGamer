@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from time import monotonic
 
 from fastapi import FastAPI, Request
@@ -8,6 +10,7 @@ from app.api.dependencies import create_workspace_authenticator
 from app.api.routes import health
 from app.api.routes.health import ReadinessProbe
 from app.api.routes import session
+from app.core.client_address import ClientAddressResolver
 from app.core.config import get_settings
 from app.core.errors import (
     APIError,
@@ -15,12 +18,13 @@ from app.core.errors import (
     error_response,
     install_error_handlers,
 )
-from app.core.logging import log_request
+from app.core.logging import configure_request_logging, log_request
 from app.core.rate_limit import (
     FixedWindowRateLimiter,
     RateLimiter,
     RedisRateLimitCounter,
 )
+from app.core.security import validate_workspace_key_hash
 
 
 def create_app(
@@ -28,24 +32,50 @@ def create_app(
     readiness_probe: ReadinessProbe | None = None,
     workspace_key_hash: str | None = None,
     rate_limiter: RateLimiter | None = None,
+    trusted_proxy_cidrs: tuple[str, ...] | None = None,
 ) -> FastAPI:
+    configure_request_logging()
     settings = get_settings()
+    effective_workspace_key_hash = validate_workspace_key_hash(
+        (
+            workspace_key_hash
+            if workspace_key_hash is not None
+            else settings.workspace_access_key_hash
+        )
+    )
+    effective_trusted_proxy_cidrs = (
+        trusted_proxy_cidrs
+        if trusted_proxy_cidrs is not None
+        else settings.trusted_proxy_cidrs
+    )
+    client_address_resolver = ClientAddressResolver(effective_trusted_proxy_cidrs)
+    owned_redis_client: Redis | None = None
     if rate_limiter is None:
-        redis_client = Redis.from_url(settings.redis_url)
+        owned_redis_client = Redis.from_url(
+            settings.redis_url,
+            socket_connect_timeout=settings.redis_connect_timeout_seconds,
+            socket_timeout=settings.redis_read_timeout_seconds,
+        )
         rate_limiter = FixedWindowRateLimiter(
-            counter=RedisRateLimitCounter(redis_client),
+            counter=RedisRateLimitCounter(owned_redis_client),
             limit=settings.workspace_rate_limit,
             window_seconds=settings.workspace_rate_limit_window_seconds,
         )
     authenticate_workspace = create_workspace_authenticator(
-        workspace_key_hash=(
-            workspace_key_hash
-            if workspace_key_hash is not None
-            else settings.workspace_access_key_hash
-        ),
+        workspace_key_hash=effective_workspace_key_hash,
         rate_limiter=rate_limiter,
+        resolve_client_address=client_address_resolver.resolve,
     )
-    app = FastAPI(title="Find Me Gamer API", version="1.0.0")
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        configure_request_logging()
+        try:
+            yield
+        finally:
+            if owned_redis_client is not None:
+                owned_redis_client.close()
+
+    app = FastAPI(title="Find Me Gamer API", version="1.0.0", lifespan=lifespan)
     install_error_handlers(app)
 
     @app.middleware("http")

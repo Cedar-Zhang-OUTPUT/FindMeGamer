@@ -18,17 +18,33 @@ class AuthenticatedWorkspace:
 
 
 def create_workspace_authenticator(
-    *, workspace_key_hash: str, rate_limiter: RateLimiter
+    *,
+    workspace_key_hash: str,
+    rate_limiter: RateLimiter,
+    resolve_client_address: Callable[[str | None, str | None], str],
 ) -> Callable[..., AuthenticatedWorkspace]:
+    workspace_identity = workspace_key_digest(workspace_key_hash)
+
     def authenticate_workspace(
         request: Request,
         credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
     ) -> AuthenticatedWorkspace:
         raw_key = credentials.credentials if credentials is not None else ""
-        key_digest = workspace_key_digest(raw_key)
-        client_address = request.client.host if request.client is not None else "unknown"
+        peer_address = request.client.host if request.client is not None else None
+        client_address = resolve_client_address(
+            peer_address, request.headers.get("X-Forwarded-For")
+        )
 
-        if not rate_limiter.allow(key_digest, client_address):
+        try:
+            allowed = rate_limiter.allow(workspace_identity, client_address)
+        except Exception:
+            raise APIError(
+                status_code=503,
+                code="authentication_unavailable",
+                message="Authentication is temporarily unavailable.",
+                retryable=True,
+            ) from None
+        if not allowed:
             raise APIError(
                 status_code=429,
                 code="rate_limit_exceeded",
@@ -41,6 +57,6 @@ def create_workspace_authenticator(
                 code="workspace_key_invalid",
                 message="A valid Workspace Access Key is required.",
             )
-        return AuthenticatedWorkspace(key_digest=key_digest)
+        return AuthenticatedWorkspace(key_digest=workspace_identity)
 
     return authenticate_workspace

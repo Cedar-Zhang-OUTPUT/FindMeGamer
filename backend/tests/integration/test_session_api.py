@@ -166,6 +166,112 @@ def test_workspace_rate_limit_is_enforced_without_exposing_key(
     assert workspace_access_key not in repr(rate_limit_counter.keys)
 
 
+def test_rotating_invalid_bearers_share_pre_authentication_bucket(
+    monkeypatch, session: Session, rate_limit_counter, workspace_access_key: str
+) -> None:
+    verification_attempts: list[str] = []
+
+    def record_verification(raw_key: str, encoded_hash: str) -> bool:
+        verification_attempts.append(raw_key)
+        return False
+
+    monkeypatch.setattr(
+        "app.api.dependencies.verify_workspace_key", record_verification
+    )
+    app = create_app(
+        workspace_key_hash=hash_workspace_key(workspace_access_key),
+        rate_limiter=FixedWindowRateLimiter(
+            counter=rate_limit_counter,
+            limit=2,
+            window_seconds=60,
+            clock=lambda: 0.0,
+        ),
+    )
+
+    def override_get_session() -> Iterator[Session]:
+        yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    with TestClient(app) as limited_client:
+        responses = [
+            limited_client.get(
+                "/api/v1/session",
+                headers={"Authorization": f"Bearer invalid-key-{index}"},
+            )
+            for index in range(3)
+        ]
+
+    assert [response.status_code for response in responses] == [401, 401, 429]
+    assert verification_attempts == ["invalid-key-0", "invalid-key-1"]
+    assert len(set(rate_limit_counter.keys)) == 1
+    assert all("invalid-key" not in key for key in rate_limit_counter.keys)
+
+
+def test_rate_limit_backend_failure_returns_safe_retryable_error(
+    session: Session, workspace_access_key: str
+) -> None:
+    class FailingRateLimiter:
+        def allow(self, workspace_digest: str, client_address: str) -> bool:
+            raise TimeoutError("redis-password=never-return-this")
+
+    app = create_app(
+        workspace_key_hash=hash_workspace_key(workspace_access_key),
+        rate_limiter=FailingRateLimiter(),
+    )
+
+    def override_get_session() -> Iterator[Session]:
+        yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    with TestClient(app) as unavailable_client:
+        response = unavailable_client.get(
+            "/api/v1/session",
+            headers={"Authorization": f"Bearer {workspace_access_key}"},
+        )
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "authentication_unavailable"
+    assert response.json()["error"]["retryable"] is True
+    assert response.json()["error"]["correlation_id"] == response.headers[
+        "x-correlation-id"
+    ]
+    assert "never-return-this" not in response.text
+
+
+def test_rate_limit_uses_origin_resolved_through_trusted_proxy(
+    session: Session, rate_limit_counter, workspace_access_key: str
+) -> None:
+    app = create_app(
+        workspace_key_hash=hash_workspace_key(workspace_access_key),
+        rate_limiter=FixedWindowRateLimiter(
+            counter=rate_limit_counter,
+            limit=1,
+            window_seconds=60,
+            clock=lambda: 0.0,
+        ),
+        trusted_proxy_cidrs=("172.16.0.0/12",),
+    )
+
+    def override_get_session() -> Iterator[Session]:
+        yield session
+
+    app.dependency_overrides[get_session] = override_get_session
+    auth = {"Authorization": f"Bearer {workspace_access_key}"}
+    with TestClient(app, client=("172.18.0.2", 50000)) as proxy_client:
+        first = proxy_client.get(
+            "/api/v1/session",
+            headers={**auth, "X-Forwarded-For": "192.0.2.10, 198.51.100.44"},
+        )
+        second = proxy_client.get(
+            "/api/v1/session",
+            headers={**auth, "X-Forwarded-For": "203.0.113.20, 198.51.100.44"},
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert len(set(rate_limit_counter.keys)) == 1
+
+
 def test_request_log_redacts_authorization(client, captured_logs) -> None:
     client.get(
         "/api/v1/session",
