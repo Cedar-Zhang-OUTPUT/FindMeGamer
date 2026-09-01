@@ -9,6 +9,7 @@ from redis import Redis
 from app.api.dependencies import create_workspace_authenticator
 from app.api.routes import health
 from app.api.routes.health import ReadinessProbe
+from app.api.routes import profiles as profile_routes
 from app.api.routes import session, settings as settings_routes
 from app.core.client_address import ClientAddressResolver
 from app.core.config import get_settings
@@ -130,6 +131,7 @@ def create_app(
             connection_probe=effective_connection_probe,
         )
     )
+    app.include_router(profile_routes.create_router(authenticate_workspace))
     return app
 
 
