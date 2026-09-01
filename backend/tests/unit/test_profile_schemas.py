@@ -1,3 +1,4 @@
+import json
 from math import inf, nan
 from uuid import uuid4
 
@@ -5,11 +6,25 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.profiles import GameProfileDetail
+from tests.profile_policy_cases import (
+    CONTEXT_METRIC_KEYS,
+    RESTRICTED_ANCESTOR_FORMS,
+    RESTRICTED_COMPACT_METRIC_FORMS,
+    SECURITY_KEY_FORMS,
+)
 
 
 class SecretBearingObject:
     def __repr__(self) -> str:
         return "SecretBearingObject(api_secret='never-stringify-secret')"
+
+
+ERROR_REPR_CANARY = "SECRET-REPR-CANARY"
+
+
+class ErrorCanaryObject:
+    def __repr__(self) -> str:
+        return f"ErrorCanaryObject(api_secret='{ERROR_REPR_CANARY}')"
 
 
 def test_profile_response_schema_sanitizes_json_without_route_helpers() -> None:
@@ -74,6 +89,38 @@ def test_profile_response_filters_security_semantics_across_key_styles() -> None
     }
 
 
+def test_profile_response_filters_generated_security_key_matrix() -> None:
+    sensitive = {
+        key: f"secret-for-{index}"
+        for index, key in enumerate(sorted(SECURITY_KEY_FORMS))
+    }
+    detail = _game_detail(
+        current_facts={
+            "public": "keep",
+            "key": "public lookup key",
+            **sensitive,
+            "outer": [
+                {
+                    "public_nested": True,
+                    "key": "nested public lookup key",
+                    **sensitive,
+                }
+            ],
+        }
+    )
+
+    assert detail.current_facts == {
+        "public": "keep",
+        "key": "public lookup key",
+        "outer": [
+            {
+                "public_nested": True,
+                "key": "nested public lookup key",
+            }
+        ],
+    }
+
+
 def test_profile_response_preserves_public_metrics_and_filters_contextual_metrics(
 ) -> None:
     detail = _game_detail(
@@ -117,6 +164,48 @@ def test_profile_response_preserves_public_metrics_and_filters_contextual_metric
     }
 
 
+def test_profile_response_filters_generated_contextual_metric_matrix() -> None:
+    restricted_contexts = {
+        ancestor: {
+            **{metric: 1 for metric in CONTEXT_METRIC_KEYS},
+            "scorecard_label": "Public scorecard",
+            "ordered_features": ["Public feature"],
+            "summary": "Public summary",
+        }
+        for ancestor in RESTRICTED_ANCESTOR_FORMS
+    }
+    compact_metrics = {
+        key: 1 for key in RESTRICTED_COMPACT_METRIC_FORMS
+    }
+    detail = _game_detail(
+        current_facts={
+            "score": 87,
+            "rank": "Gold tier",
+            "review_score": 91,
+            "scorecard_label": "Public scorecard",
+            "ordered_features": ["Public feature"],
+            **restricted_contexts,
+            **compact_metrics,
+        }
+    )
+
+    assert detail.current_facts == {
+        "score": 87,
+        "rank": "Gold tier",
+        "review_score": 91,
+        "scorecard_label": "Public scorecard",
+        "ordered_features": ["Public feature"],
+        **{
+            ancestor: {
+                "scorecard_label": "Public scorecard",
+                "ordered_features": ["Public feature"],
+                "summary": "Public summary",
+            }
+            for ancestor in RESTRICTED_ANCESTOR_FORMS
+        },
+    }
+
+
 @pytest.mark.parametrize(
     "unsupported",
     [
@@ -143,6 +232,17 @@ def test_profile_response_rejects_non_json_values_without_stringifying(
 ) -> None:
     with pytest.raises(ValidationError):
         _game_detail(current_facts={"nested": [unsupported]})
+
+
+def test_profile_validation_error_never_includes_unsupported_value_repr() -> None:
+    with pytest.raises(ValidationError) as captured:
+        _game_detail(current_facts={"nested": [ErrorCanaryObject()]})
+
+    assert ERROR_REPR_CANARY not in str(captured.value)
+    assert ERROR_REPR_CANARY not in captured.value.json()
+    assert ERROR_REPR_CANARY not in json.dumps(
+        captured.value.errors(), default=repr
+    )
 
 
 def _game_detail(*, current_facts: object) -> GameProfileDetail:

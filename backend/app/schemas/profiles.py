@@ -6,11 +6,12 @@ from uuid import UUID
 
 from pydantic import (
     BaseModel,
+    ConfigDict,
     EmailStr,
     Field,
     StrictBool,
     StrictStr,
-    field_validator,
+    model_validator,
 )
 
 
@@ -26,99 +27,58 @@ type PublicJSONValue = (
 type PublicJSONObject = dict[str, PublicJSONValue]
 
 
-_camel_acronym_boundary = re.compile(r"([A-Z]+)([A-Z][a-z])")
-_camel_word_boundary = re.compile(r"([a-z0-9])([A-Z])")
-_key_separator = re.compile(r"[^A-Za-z0-9]+")
-_security_segments = frozenset(
-    {
-        "authorization",
-        "authentication",
-        "jwt",
-        "passwd",
-        "password",
-        "pwd",
-        "bearer",
-        "cookie",
-        "cookies",
-        "secret",
-        "secrets",
-        "credential",
-        "credentials",
-    }
+_non_alphanumeric = re.compile(r"[^a-z0-9]+")
+_security_stem = re.compile(
+    r"authorization|jwt|passw(?:or)?d|pwd|bearer|cookie|"
+    r"secret|credential|token"
 )
-_key_security_qualifiers = frozenset(
-    {"api", "access", "private", "signing", "encryption", "auth"}
+_auth_header_stem = re.compile(
+    r"auth(?:entication|orization)?[a-z0-9]*headers?"
 )
-_session_credential_segments = frozenset(
-    {"id", "key", "token", "cookie", "credential", "secret", "data", "value"}
+_qualified_key_stem = re.compile(
+    r"(?:api|access|private|signing|encryption|auth(?:entication)?|session)"
+    r"[a-z0-9]*keys?"
 )
-_compact_security_keys = frozenset(
-    {
-        "apikey",
-        "accesskey",
-        "privatekey",
-        "signingkey",
-        "encryptionkey",
-        "authkey",
-        "authheader",
-        "authheaders",
-        "authorizationheader",
-        "authorizationheaders",
-        "sessionid",
-        "sessionkey",
-        "sessioncookie",
-        "sessioncredential",
-        "sessiondata",
-        "sessionvalue",
-        "tokenpayload",
-        "tokendata",
-        "tokenvalue",
-        "tokenhash",
-        "accesstoken",
-        "refreshtoken",
-        "authtoken",
-        "bearertoken",
-        "sessiontoken",
-        "apitoken",
-        "secrettoken",
-        "passwordhash",
-        "passwdhash",
-        "pwdhash",
-    }
+_session_credential_stem = re.compile(
+    r"session[a-z0-9]*(?:ids?|data|values?|headers?)"
 )
-_metric_context_segments = frozenset(
-    {
-        "match",
-        "matches",
-        "matching",
-        "hidden",
-        "private",
-        "internal",
-        "backend",
-        "numeric",
-    }
+_restricted_context_stems = (
+    "match",
+    "private",
+    "internal",
+    "hidden",
+    "backend",
+    "numeric",
 )
-_metric_segments = frozenset(
-    {
-        "score",
-        "scores",
-        "scoring",
-        "rank",
-        "ranks",
-        "ranking",
-        "order",
-        "orders",
-        "ordering",
-    }
+_contextual_metric_suffix = re.compile(
+    r"(?:scores?|scoring|ranks?|ranking|orders?|ordering)$"
 )
+_public_json_fields = (
+    "current_facts",
+    "brief",
+    "source_status",
+    "analysis",
+    "model_metadata",
+    "prompt_metadata",
+)
+
+
+class _InvalidPublicJSON:
+    def __repr__(self) -> str:
+        return "<invalid public JSON>"
+
+
+_invalid_public_json = _InvalidPublicJSON()
 
 
 def public_json_object(value: object) -> PublicJSONObject:
     """Validate and project one public JSON object.
 
     Only actual JSON values are accepted. Security-bearing keys are removed
-    recursively. Score/rank/order fields are removed only when their key or an
-    ancestor identifies a match, hidden, internal, backend, or numeric context.
+    recursively after case-folding and removal of non-alphanumeric separators.
+    Security semantic stems are conservative and work for compact/plural forms.
+    Score/rank/order suffixes are removed only when their key or an ancestor
+    contains a match, private, hidden, internal, backend, or numeric stem.
     """
     if not isinstance(value, dict):
         raise ValueError("public profile JSON fields must be objects")
@@ -129,7 +89,7 @@ def public_json_object(value: object) -> PublicJSONObject:
 
 
 def _public_json_value(
-    value: object, *, path: tuple[tuple[str, ...], ...]
+    value: object, *, path: tuple[str, ...]
 ) -> PublicJSONValue:
     if value is None or isinstance(value, str | bool | int):
         return value
@@ -144,56 +104,40 @@ def _public_json_value(
         for raw_key, item in value.items():
             if not isinstance(raw_key, str):
                 raise ValueError("public profile JSON object keys must be strings")
-            key_segments = _public_key_segments(raw_key)
-            if _is_sensitive_public_key(key_segments, path=path):
+            normalized_key = _normalized_public_key(raw_key)
+            if _is_sensitive_public_key(normalized_key, path=path):
                 continue
             projected[raw_key] = _public_json_value(
-                item, path=(*path, key_segments)
+                item, path=(*path, normalized_key)
             )
         return projected
     raise ValueError("public profile JSON contains an unsupported value")
 
 
-def _public_key_segments(key: str) -> tuple[str, ...]:
-    split_acronyms = _camel_acronym_boundary.sub(r"\1 \2", key)
-    split_words = _camel_word_boundary.sub(r"\1 \2", split_acronyms)
-    return tuple(
-        segment.casefold()
-        for segment in _key_separator.split(split_words)
-        if segment
-    )
+def _normalized_public_key(key: str) -> str:
+    return _non_alphanumeric.sub("", key.casefold())
 
 
 def _is_sensitive_public_key(
-    key_segments: tuple[str, ...],
+    normalized_key: str,
     *,
-    path: tuple[tuple[str, ...], ...],
+    path: tuple[str, ...],
 ) -> bool:
-    segments = frozenset(key_segments)
-    compact_key = "".join(key_segments)
-    if compact_key in _compact_security_keys:
-        return True
-    if segments & _security_segments:
-        return True
-    if "token" in segments:
-        return True
-    if "key" in segments and segments & _key_security_qualifiers:
-        return True
-    if segments & {"header", "headers"} and segments & {
-        "auth",
-        "authorization",
-    }:
-        return True
-    if "session" in segments and segments & _session_credential_segments:
+    if (
+        _security_stem.search(normalized_key)
+        or _auth_header_stem.search(normalized_key)
+        or _qualified_key_stem.search(normalized_key)
+        or _session_credential_stem.search(normalized_key)
+    ):
         return True
 
-    metric_key = bool(segments & _metric_segments)
-    if not metric_key:
+    if not _contextual_metric_suffix.search(normalized_key):
         return False
-    context_segments = segments.union(
-        *(frozenset(ancestor) for ancestor in path)
+    return any(
+        stem in context_key
+        for context_key in (*path, normalized_key)
+        for stem in _restricted_context_stems
     )
-    return bool(context_segments & _metric_context_segments)
 
 
 class FavoriteUpdate(BaseModel):
@@ -213,19 +157,22 @@ class CreatorContactResponse(BaseModel):
 
 
 class PublicProfileResponse(BaseModel):
-    @field_validator(
-        "current_facts",
-        "brief",
-        "source_status",
-        "analysis",
-        "model_metadata",
-        "prompt_metadata",
-        mode="before",
-        check_fields=False,
-    )
+    model_config = ConfigDict(hide_input_in_errors=True)
+
+    @model_validator(mode="before")
     @classmethod
-    def remove_sensitive_json_keys(cls, value: object) -> PublicJSONObject:
-        return public_json_object(value)
+    def project_and_redact_public_json(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        projected = dict(value)
+        for field_name in _public_json_fields:
+            if field_name not in projected:
+                continue
+            try:
+                projected[field_name] = public_json_object(projected[field_name])
+            except ValueError:
+                projected[field_name] = _invalid_public_json
+        return projected
 
 
 class GameProfileCard(PublicProfileResponse):

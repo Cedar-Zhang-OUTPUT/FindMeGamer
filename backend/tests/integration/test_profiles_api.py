@@ -9,10 +9,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
+from tests.profile_policy_cases import (
+    CONTEXT_METRIC_KEYS,
+    RESTRICTED_ANCESTOR_FORMS,
+    RESTRICTED_COMPACT_METRIC_FORMS,
+    SECURITY_KEY_FORMS,
+)
 
 
 ANALYZED_AT = datetime(2026, 8, 30, 4, 5, tzinfo=timezone.utc)
 NEXT_ANALYSIS_AT = datetime(2026, 9, 13, 4, 5, tzinfo=timezone.utc)
+ROUTE_ERROR_CANARY = "ROUTE-SECRET-REPR-CANARY"
+
+
+class RouteErrorCanaryObject:
+    def __repr__(self) -> str:
+        return f"RouteErrorCanaryObject(api_secret='{ROUTE_ERROR_CANARY}')"
 
 
 def add_creator(
@@ -366,6 +378,74 @@ def test_profile_route_filters_security_keys_and_preserves_public_rank(
         "nested": {"public": "keep"},
         "match": {"reason": "Public"},
     }
+
+
+def test_profile_route_applies_generated_security_and_metric_policy_matrix(
+    auth_client, session: Session
+) -> None:
+    sensitive = {key: "never-return" for key in SECURITY_KEY_FORMS}
+    game = add_game(
+        session,
+        app_id="generated-policy-matrix",
+        name="Generated Policy Matrix",
+        current_facts={
+            "rank": "Gold tier",
+            "review_score": 91,
+            "key": "public lookup key",
+            **sensitive,
+            "nested": {"public": "keep", **sensitive},
+            **{
+                ancestor: {
+                    **{metric: 1 for metric in CONTEXT_METRIC_KEYS},
+                    "scorecard_label": "Public scorecard",
+                    "ordered_features": ["Public feature"],
+                }
+                for ancestor in RESTRICTED_ANCESTOR_FORMS
+            },
+            **{key: 1 for key in RESTRICTED_COMPACT_METRIC_FORMS},
+        },
+    )
+
+    response = auth_client.get(f"/api/v1/profiles/games/{game.id}")
+
+    assert response.status_code == 200
+    assert response.json()["current_facts"] == {
+        "rank": "Gold tier",
+        "review_score": 91,
+        "key": "public lookup key",
+        "nested": {"public": "keep"},
+        **{
+            ancestor: {
+                "scorecard_label": "Public scorecard",
+                "ordered_features": ["Public feature"],
+            }
+            for ancestor in RESTRICTED_ANCESTOR_FORMS
+        },
+    }
+
+
+def test_profile_route_invalid_public_json_uses_safe_error_without_input_repr(
+    auth_client, session: Session
+) -> None:
+    game = add_game(
+        session,
+        app_id="invalid-public-json",
+        name="Invalid Public JSON",
+    )
+    game.current_facts = {"nested": [RouteErrorCanaryObject()]}
+
+    response = auth_client.get(f"/api/v1/profiles/games/{game.id}")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "error": {
+            "code": "internal_error",
+            "message": "The request could not be completed.",
+            "retryable": True,
+            "correlation_id": response.headers["x-correlation-id"],
+        }
+    }
+    assert ROUTE_ERROR_CANARY not in response.text
 
 
 def test_duplicate_and_case_variant_names_page_without_skips_or_duplicates(
