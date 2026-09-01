@@ -10,10 +10,13 @@ from app.api.dependencies import create_workspace_authenticator
 from app.api.routes import health
 from app.api.routes.health import ReadinessProbe
 from app.api.routes import profiles as profile_routes
+from app.api.routes import jobs as job_routes
 from app.api.routes import session, settings as settings_routes
+from app.analysis.targets import ChannelResolver
 from app.core.client_address import ClientAddressResolver
 from app.core.config import get_settings
 from app.core.crypto import SecretCipher
+from app.core.database import session_scope
 from app.core.errors import (
     APIError,
     correlation_id_for,
@@ -37,6 +40,8 @@ def create_app(
     trusted_proxy_cidrs: tuple[str, ...] | None = None,
     secret_cipher: SecretCipher | None = None,
     connection_probe: settings_routes.ConnectionProbe | None = None,
+    channel_resolver: ChannelResolver | None = None,
+    job_session_factory: job_routes.SessionFactory = session_scope,
 ) -> FastAPI:
     configure_request_logging()
     settings = get_settings()
@@ -135,6 +140,13 @@ def create_app(
         profile_routes.create_router(
             authenticate_workspace,
             cursor_signing_secret=effective_workspace_key_hash,
+        )
+    )
+    app.include_router(
+        job_routes.create_router(
+            authenticate_workspace,
+            session_factory=job_session_factory,
+            channel_resolver=channel_resolver,
         )
     )
     return app

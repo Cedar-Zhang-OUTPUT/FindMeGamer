@@ -4,6 +4,7 @@ import logging
 import os
 import tempfile
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -134,6 +135,10 @@ def client(
     workspace_access_key: str,
     connection_probe: FakeConnectionProbe,
 ) -> Iterator[TestClient]:
+    @contextmanager
+    def job_session_factory() -> Iterator[Session]:
+        yield session
+
     test_app = create_app(
         workspace_key_hash=hash_workspace_key(workspace_access_key),
         rate_limiter=FixedWindowRateLimiter(
@@ -144,6 +149,7 @@ def client(
         ),
         secret_cipher=SecretCipher(bytes(range(32))),
         connection_probe=connection_probe,
+        job_session_factory=job_session_factory,
     )
 
     def override_get_session() -> Iterator[Session]:
