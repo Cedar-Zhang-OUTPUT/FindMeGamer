@@ -1,14 +1,23 @@
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
-from threading import Barrier, BrokenBarrierError, Lock
+from queue import Queue
+from threading import (
+    Barrier,
+    BrokenBarrierError,
+    Event,
+    Lock,
+    Thread,
+    enumerate as threads,
+)
+from time import monotonic, sleep
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
 from psycopg.errors import UniqueViolation
-from sqlalchemy import Engine, delete, event, func, select, text
+from sqlalchemy import Engine, delete, func, select, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.analysis.targets import (
@@ -48,23 +57,68 @@ class FakeChannelResolver:
         return self.channel_id
 
 
-class SQLCollisionProbe:
-    """Synchronize two real SQL statements and observe DB unique failures."""
+class SessionCollisionCoordinator:
+    """Coordinate only the two Sessions created for one concurrency test."""
 
     def __init__(
         self,
-        database_engine: Engine,
         *,
-        statement_fragment: str,
-        parameter_marker: str,
+        target_id: str | None = None,
+        idempotency_key: str | None = None,
+        expected_constraint: str | None = None,
     ) -> None:
-        self._engine = database_engine
-        self._statement_fragment = statement_fragment
-        self._parameter_marker = parameter_marker
+        if (target_id is None) == (idempotency_key is None):
+            raise ValueError("coordinate exactly one ORM operation")
+        self._target_id = target_id
+        self._idempotency_key = idempotency_key
+        self._expected_constraint = expected_constraint
         self._barrier = Barrier(2)
         self._lock = Lock()
+        self._lock_acquired = Event()
+        self._second_backend_ready = Event()
+        self._second_lock_attempt = Event()
         self._arrivals = 0
         self._unique_errors = 0
+        self._unexpected_unique_constraints: list[str | None] = []
+        self._guarded_flush_sessions: set[int] = set()
+        self._guarded_lock_sessions: dict[int, int] = {}
+        self._second_backend_pid: int | None = None
+        self._observed_lock_waits = 0
+
+        coordinator = self
+
+        class CoordinatedSession(Session):
+            def flush(self, objects=None) -> None:
+                coordinator._before_flush(self)
+                try:
+                    return super().flush(objects)
+                except IntegrityError as error:
+                    coordinator._record_unique_error(error)
+                    raise
+
+            def scalar(
+                self,
+                statement,
+                params=None,
+                *,
+                execution_options=None,
+                bind_arguments=None,
+                **kwargs,
+            ):
+                parent_scalar = super().scalar
+
+                def issue_scalar():
+                    return parent_scalar(
+                        statement,
+                        params=params,
+                        execution_options=execution_options,
+                        bind_arguments=bind_arguments,
+                        **kwargs,
+                    )
+
+                return coordinator._guard_scalar(self, statement, issue_scalar)
+
+        self.session_class = CoordinatedSession
 
     @property
     def arrivals(self) -> int:
@@ -76,47 +130,45 @@ class SQLCollisionProbe:
         with self._lock:
             return self._unique_errors
 
-    def __enter__(self) -> "SQLCollisionProbe":
-        event.listen(
-            self._engine,
-            "before_cursor_execute",
-            self._before_cursor_execute,
-        )
-        event.listen(self._engine, "handle_error", self._handle_error)
+    @property
+    def unexpected_unique_constraints(self) -> list[str | None]:
+        with self._lock:
+            return list(self._unexpected_unique_constraints)
+
+    @property
+    def observed_lock_waits(self) -> int:
+        with self._lock:
+            return self._observed_lock_waits
+
+    def __enter__(self) -> "SessionCollisionCoordinator":
         return self
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         self.abort()
-        event.remove(
-            self._engine,
-            "before_cursor_execute",
-            self._before_cursor_execute,
-        )
-        event.remove(self._engine, "handle_error", self._handle_error)
 
     def abort(self) -> None:
         try:
             self._barrier.abort()
         except BrokenBarrierError:
             pass
+        self._lock_acquired.set()
+        self._second_backend_ready.set()
+        self._second_lock_attempt.set()
 
-    def _before_cursor_execute(
-        self,
-        connection,
-        cursor,
-        statement: str,
-        parameters,
-        context,
-        executemany: bool,
-    ) -> None:
-        if (
-            self._statement_fragment not in statement
-            or self._parameter_marker not in repr(parameters)
+    def _before_flush(self, session: Session) -> None:
+        if self._target_id is None:
+            return
+        if not any(
+            isinstance(model, AnalysisJob)
+            and model.canonical_target_id == self._target_id
+            for model in session.new
         ):
             return
         with self._lock:
-            if self._arrivals >= 2:
+            session_identity = id(session)
+            if session_identity in self._guarded_flush_sessions:
                 return
+            self._guarded_flush_sessions.add(session_identity)
             self._arrivals += 1
         try:
             self._barrier.wait(timeout=5)
@@ -125,10 +177,80 @@ class SQLCollisionProbe:
                 "concurrent requests did not reach the guarded SQL point"
             ) from error
 
-    def _handle_error(self, exception_context) -> None:
-        if isinstance(exception_context.original_exception, UniqueViolation):
+    def _guard_scalar(self, session: Session, statement, issue_scalar):
+        if not self._is_target_idempotency_lock(statement):
+            return issue_scalar()
+        with self._lock:
+            session_identity = id(session)
+            if session_identity in self._guarded_lock_sessions:
+                return issue_scalar()
+            role = len(self._guarded_lock_sessions)
+            if role >= 2:
+                return issue_scalar()
+            self._guarded_lock_sessions[session_identity] = role
+            self._arrivals += 1
+        if role == 0:
+            result = issue_scalar()
+            self._lock_acquired.set()
+            if not self._second_backend_ready.wait(timeout=5):
+                raise AssertionError("second request did not expose its DB backend")
+            if not self._second_lock_attempt.wait(timeout=5):
+                raise AssertionError(
+                    "second request did not attempt the guarded row lock"
+                )
+            self._wait_for_second_row_lock(session)
+            return result
+        backend_pid = session.scalar(text("SELECT pg_backend_pid()"))
+        with self._lock:
+            self._second_backend_pid = backend_pid
+        self._second_backend_ready.set()
+        if not self._lock_acquired.wait(timeout=5):
+            raise AssertionError("first request did not acquire the guarded row lock")
+        self._second_lock_attempt.set()
+        return issue_scalar()
+
+    def _wait_for_second_row_lock(self, session: Session) -> None:
+        deadline = monotonic() + 5
+        while monotonic() < deadline:
             with self._lock:
+                backend_pid = self._second_backend_pid
+            wait_event_type = session.scalar(
+                text(
+                    "SELECT wait_event_type FROM pg_stat_activity "
+                    "WHERE pid = :backend_pid"
+                ),
+                {"backend_pid": backend_pid},
+            )
+            if wait_event_type == "Lock":
+                with self._lock:
+                    self._observed_lock_waits += 1
+                return
+            sleep(0.01)
+        raise AssertionError("second request never waited on the guarded row lock")
+
+    def _is_target_idempotency_lock(self, statement) -> bool:
+        if self._idempotency_key is None:
+            return False
+        if getattr(statement, "_for_update_arg", None) is None:
+            return False
+        descriptions = getattr(statement, "column_descriptions", ())
+        if not any(
+            description.get("entity") is IdempotencyRecord
+            for description in descriptions
+        ):
+            return False
+        return self._idempotency_key in statement.compile().params.values()
+
+    def _record_unique_error(self, error: IntegrityError) -> None:
+        original = error.orig
+        if not isinstance(original, UniqueViolation):
+            return
+        constraint = original.diag.constraint_name
+        with self._lock:
+            if constraint == self._expected_constraint:
                 self._unique_errors += 1
+            else:
+                self._unexpected_unique_constraints.append(constraint)
 
 
 def _profile_fields(canonical_url: str, name: str) -> dict:
@@ -210,10 +332,16 @@ def _independent_client(
     workspace_access_key: str,
     *,
     idempotency_clock=None,
+    collision_coordinator: SessionCollisionCoordinator | None = None,
 ) -> Iterator[TestClient]:
     @contextmanager
     def job_session_factory() -> Iterator[Session]:
-        with Session(database_engine, expire_on_commit=False) as session:
+        session_class = (
+            collision_coordinator.session_class
+            if collision_coordinator is not None
+            else Session
+        )
+        with session_class(database_engine, expire_on_commit=False) as session:
             try:
                 session.execute(text("SET LOCAL lock_timeout = '8s'"))
                 session.execute(text("SET LOCAL statement_timeout = '12s'"))
@@ -241,16 +369,77 @@ def _run_two_requests(
     callables,
     *,
     abort,
+    cleanup=lambda: None,
+    timeout: float = 15,
+    teardown_timeout: float = 1,
+    thread_name_prefix: str = "analysis-job-concurrency",
 ):
-    executor = ThreadPoolExecutor(max_workers=2)
-    futures = [executor.submit(callable_) for callable_ in callables]
-    try:
-        return [future.result(timeout=15) for future in futures]
-    finally:
+    outcomes: Queue[tuple[int, object | None, BaseException | None]] = Queue()
+
+    def run(index: int, callable_) -> None:
+        try:
+            outcomes.put((index, callable_(), None))
+        except BaseException as error:
+            outcomes.put((index, None, error))
+            abort()
+
+    worker_threads = [
+        Thread(
+            target=run,
+            args=(index, callable_),
+            name=f"{thread_name_prefix}-{index}",
+            daemon=True,
+        )
+        for index, callable_ in enumerate(callables)
+    ]
+    for worker_thread in worker_threads:
+        worker_thread.start()
+    deadline = monotonic() + timeout
+    for worker_thread in worker_threads:
+        worker_thread.join(timeout=max(0, deadline - monotonic()))
+    alive_threads = [thread for thread in worker_threads if thread.is_alive()]
+    if alive_threads:
         abort()
-        for future in futures:
-            future.cancel()
-        executor.shutdown(wait=True, cancel_futures=True)
+        teardown_deadline = monotonic() + teardown_timeout
+        for worker_thread in alive_threads:
+            worker_thread.join(timeout=max(0, teardown_deadline - monotonic()))
+        cleanup_errors: Queue[BaseException] = Queue()
+
+        def run_cleanup() -> None:
+            try:
+                cleanup()
+            except BaseException as error:
+                cleanup_errors.put(error)
+
+        cleanup_thread = Thread(
+            target=run_cleanup,
+            name=f"{thread_name_prefix}-cleanup",
+            daemon=True,
+        )
+        cleanup_thread.start()
+        cleanup_thread.join(timeout=teardown_timeout)
+        still_alive = [thread.name for thread in worker_threads if thread.is_alive()]
+        if cleanup_thread.is_alive():
+            still_alive.append(cleanup_thread.name)
+        if still_alive:
+            raise AssertionError(
+                f"concurrent teardown failed to stop: {', '.join(still_alive)}"
+            )
+        if not cleanup_errors.empty():
+            raise cleanup_errors.get_nowait()
+        raise AssertionError("concurrent workers exceeded their bounded timeout")
+    abort()
+    ordered: list[object | None] = [None] * len(worker_threads)
+    errors: list[tuple[int, BaseException]] = []
+    while not outcomes.empty():
+        index, value, error = outcomes.get_nowait()
+        ordered[index] = value
+        if error is not None:
+            errors.append((index, error))
+    if errors:
+        errors.sort(key=lambda item: item[0])
+        raise errors[0][1]
+    return ordered
 
 
 def _cleanup_concurrency_rows(
@@ -260,6 +449,8 @@ def _cleanup_concurrency_rows(
     idempotency_keys: set[str],
 ) -> None:
     with Session(database_engine) as cleanup_session:
+        cleanup_session.execute(text("SET LOCAL lock_timeout = '8s'"))
+        cleanup_session.execute(text("SET LOCAL statement_timeout = '12s'"))
         cleanup_session.execute(
             delete(IdempotencyRecord).where(
                 IdempotencyRecord.key.in_(idempotency_keys)
@@ -282,6 +473,53 @@ def _cleanup_concurrency_rows(
                 AnalysisJob.canonical_target_id.in_(target_ids)
             )
         ) == 0
+
+
+def test_session_collision_coordinator_does_not_install_engine_wide_listeners(
+    database_engine: Engine,
+) -> None:
+    before_cursor_execute = len(database_engine.dispatch.before_cursor_execute)
+    handle_error = len(database_engine.dialect.dispatch.handle_error)
+    probe = SessionCollisionCoordinator(
+        target_id="1234567890",
+    )
+
+    with probe:
+        assert (
+            len(database_engine.dispatch.before_cursor_execute)
+            == before_cursor_execute
+        )
+        assert len(database_engine.dialect.dispatch.handle_error) == handle_error
+
+
+def test_concurrent_runner_aborts_and_cleans_up_within_its_timeout() -> None:
+    release_worker = Event()
+    abort_called = Event()
+    cleanup_called = Event()
+    thread_prefix = f"bounded-concurrency-{uuid4().hex}"
+
+    def blocked_worker() -> None:
+        release_worker.wait(timeout=5)
+
+    def abort() -> None:
+        abort_called.set()
+        release_worker.set()
+
+    started_at = monotonic()
+    with pytest.raises(AssertionError, match="concurrent workers exceeded"):
+        _run_two_requests(
+            [blocked_worker, lambda: None],
+            abort=abort,
+            cleanup=cleanup_called.set,
+            timeout=0.05,
+            teardown_timeout=0.5,
+            thread_name_prefix=thread_prefix,
+        )
+
+    assert monotonic() - started_at < 1
+    assert abort_called.is_set()
+    assert cleanup_called.is_set()
+    assert not [thread for thread in threads() if thread.name.startswith(thread_prefix)]
 
 
 def test_duplicate_active_job_is_returned(auth_client: TestClient) -> None:
@@ -1160,14 +1398,15 @@ def test_concurrent_same_key_creates_one_job_and_one_record(
         "target_type": "game",
         "url": f"https://store.steampowered.com/app/{app_id}",
     }
-    probe = SQLCollisionProbe(
-        database_engine,
-        statement_fragment="INSERT INTO analysis_jobs",
-        parameter_marker=app_id,
+    probe = SessionCollisionCoordinator(
+        target_id=app_id,
+        expected_constraint="uq_analysis_jobs_active_target",
     )
     try:
         with probe, _independent_client(
-            database_engine, workspace_access_key
+            database_engine,
+            workspace_access_key,
+            collision_coordinator=probe,
         ) as client:
             responses = _run_two_requests(
                 [
@@ -1179,9 +1418,15 @@ def test_concurrent_same_key_creates_one_job_and_one_record(
                     for _index in range(2)
                 ],
                 abort=probe.abort,
+                cleanup=lambda: _cleanup_concurrency_rows(
+                    database_engine,
+                    target_ids={app_id},
+                    idempotency_keys={key},
+                ),
             )
         assert probe.arrivals == 2
-        assert probe.unique_errors >= 1
+        assert probe.unique_errors == 1
+        assert probe.unexpected_unique_constraints == []
         assert {response.status_code for response in responses} == {201}
         assert len({response.json()["id"] for response in responses}) == 1
         with Session(database_engine) as verification_session:
@@ -1215,14 +1460,15 @@ def test_concurrent_different_keys_create_one_active_target_job(
         "target_type": "game",
         "url": f"https://store.steampowered.com/app/{app_id}",
     }
-    probe = SQLCollisionProbe(
-        database_engine,
-        statement_fragment="INSERT INTO analysis_jobs",
-        parameter_marker=app_id,
+    probe = SessionCollisionCoordinator(
+        target_id=app_id,
+        expected_constraint="uq_analysis_jobs_active_target",
     )
     try:
         with probe, _independent_client(
-            database_engine, workspace_access_key
+            database_engine,
+            workspace_access_key,
+            collision_coordinator=probe,
         ) as client:
             responses = _run_two_requests(
                 [
@@ -1234,9 +1480,15 @@ def test_concurrent_different_keys_create_one_active_target_job(
                     for key in keys
                 ],
                 abort=probe.abort,
+                cleanup=lambda: _cleanup_concurrency_rows(
+                    database_engine,
+                    target_ids={app_id},
+                    idempotency_keys=set(keys),
+                ),
             )
         assert probe.arrivals == 2
-        assert probe.unique_errors >= 1
+        assert probe.unique_errors == 1
+        assert probe.unexpected_unique_constraints == []
         assert {response.status_code for response in responses} == {200, 201}
         assert len({response.json()["id"] for response in responses}) == 1
         with Session(database_engine) as verification_session:
@@ -1274,14 +1526,15 @@ def test_concurrent_retry_is_idempotent_and_target_deduplicated(
     first_key = f"retry-race-{uuid4().hex}"
     keys = [first_key, first_key if same_key else f"retry-race-{uuid4().hex}"]
 
-    probe = SQLCollisionProbe(
-        database_engine,
-        statement_fragment="INSERT INTO analysis_jobs",
-        parameter_marker=app_id,
+    probe = SessionCollisionCoordinator(
+        target_id=app_id,
+        expected_constraint="uq_analysis_jobs_active_target",
     )
     try:
         with probe, _independent_client(
-            database_engine, workspace_access_key
+            database_engine,
+            workspace_access_key,
+            collision_coordinator=probe,
         ) as client:
             responses = _run_two_requests(
                 [
@@ -1293,10 +1546,16 @@ def test_concurrent_retry_is_idempotent_and_target_deduplicated(
                     for key in keys
                 ],
                 abort=probe.abort,
+                cleanup=lambda: _cleanup_concurrency_rows(
+                    database_engine,
+                    target_ids={app_id},
+                    idempotency_keys=set(keys),
+                ),
             )
         expected_statuses = {201} if same_key else {200, 201}
         assert probe.arrivals == 2
-        assert probe.unique_errors >= 1
+        assert probe.unique_errors == 1
+        assert probe.unexpected_unique_constraints == []
         assert {
             response.status_code for response in responses
         } == expected_statuses
@@ -1369,16 +1628,16 @@ def test_concurrent_expired_key_reuse_is_serialized_and_atomic(
         }
         for app_id in (first_app_id, second_app_id)
     ]
-    probe = SQLCollisionProbe(
-        database_engine,
-        statement_fragment="FROM idempotency_records",
-        parameter_marker=key,
+    probe = SessionCollisionCoordinator(
+        idempotency_key=key,
+        expected_constraint="idempotency_records_key_key",
     )
     try:
         with probe, _independent_client(
             database_engine,
             workspace_access_key,
             idempotency_clock=lambda: now,
+            collision_coordinator=probe,
         ) as client:
             responses = _run_two_requests(
                 [
@@ -1390,9 +1649,16 @@ def test_concurrent_expired_key_reuse_is_serialized_and_atomic(
                     for payload in payloads
                 ],
                 abort=probe.abort,
+                cleanup=lambda: _cleanup_concurrency_rows(
+                    database_engine,
+                    target_ids=target_ids,
+                    idempotency_keys={key},
+                ),
             )
         assert probe.arrivals == 2
-        assert probe.unique_errors >= 1
+        assert probe.observed_lock_waits == 1
+        assert probe.unique_errors == 1
+        assert probe.unexpected_unique_constraints == []
         expected_statuses = {201, 409} if different_request else {201}
         assert {
             response.status_code for response in responses
@@ -1424,6 +1690,18 @@ def test_concurrent_expired_key_reuse_is_serialized_and_atomic(
             target_ids=target_ids,
             idempotency_keys={key},
         )
+
+
+def test_concurrency_harness_leaves_no_global_listeners_or_worker_threads(
+    database_engine: Engine,
+) -> None:
+    assert len(database_engine.dispatch.before_cursor_execute) == 0
+    assert len(database_engine.dialect.dispatch.handle_error) == 0
+    assert not [
+        thread
+        for thread in threads()
+        if thread.name.startswith("analysis-job-concurrency")
+    ]
 
 
 def test_openapi_exposes_required_headers_and_safe_outcome_schemas(
