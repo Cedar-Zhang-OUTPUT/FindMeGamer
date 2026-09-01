@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from threading import Barrier, Lock
+from threading import Barrier
 from uuid import UUID, uuid4
 
 import pytest
@@ -82,20 +82,16 @@ def test_concurrent_first_manual_updates_serialize_without_duplicate_or_lost_wri
 ) -> None:
     harness = independent_profiles_harness
     selects_ready = Barrier(2)
-    seen_connections: set[int] = set()
-    seen_lock = Lock()
 
     def synchronize_first_creator_reads(
         connection, cursor, statement, parameters, context, executemany
     ) -> None:
         normalized = " ".join(statement.lower().split())
-        if not normalized.startswith("select creator_profiles"):
+        if not (
+            normalized.startswith("select creator_profiles")
+            and normalized.endswith("for update")
+        ):
             return
-        connection_id = id(connection)
-        with seen_lock:
-            if connection_id in seen_connections:
-                return
-            seen_connections.add(connection_id)
         selects_ready.wait(timeout=5)
 
     event.listen(

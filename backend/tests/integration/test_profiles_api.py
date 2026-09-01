@@ -335,6 +335,39 @@ def test_profile_json_projections_recursively_remove_sensitive_internal_keys(
         assert secret not in json.dumps(detail)
 
 
+def test_profile_route_filters_security_keys_and_preserves_public_rank(
+    auth_client, session: Session
+) -> None:
+    game = add_game(
+        session,
+        app_id="adversarial-security-json",
+        name="Adversarial Projection",
+        current_facts={
+            "rank": "Gold tier",
+            "score": 87,
+            "authorization": "never-return-authorization",
+            "jwt": "never-return-jwt",
+            "passwd": "never-return-passwd",
+            "nested": {
+                "public": "keep",
+                "token_payload": "never-return-token-payload",
+                "Token Data": "never-return-token-data",
+            },
+            "match": {"rank": 1, "score": 0.99, "reason": "Public"},
+        },
+    )
+
+    response = auth_client.get(f"/api/v1/profiles/games/{game.id}")
+
+    assert response.status_code == 200
+    assert response.json()["current_facts"] == {
+        "rank": "Gold tier",
+        "score": 87,
+        "nested": {"public": "keep"},
+        "match": {"reason": "Public"},
+    }
+
+
 def test_duplicate_and_case_variant_names_page_without_skips_or_duplicates(
     auth_client, session: Session
 ) -> None:

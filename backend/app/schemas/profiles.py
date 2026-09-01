@@ -1,5 +1,6 @@
 import re
 from datetime import datetime
+from math import isfinite
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -25,44 +26,116 @@ type PublicJSONValue = (
 type PublicJSONObject = dict[str, PublicJSONValue]
 
 
-_key_separator = re.compile(r"[^a-z0-9]+")
-_sensitive_key_markers = (
-    "secret",
-    "password",
-    "credential",
-    "apikey",
-    "accesskey",
-    "privatekey",
-    "signingkey",
-    "encryptionkey",
+_camel_acronym_boundary = re.compile(r"([A-Z]+)([A-Z][a-z])")
+_camel_word_boundary = re.compile(r"([a-z0-9])([A-Z])")
+_key_separator = re.compile(r"[^A-Za-z0-9]+")
+_security_segments = frozenset(
+    {
+        "authorization",
+        "authentication",
+        "jwt",
+        "passwd",
+        "password",
+        "pwd",
+        "bearer",
+        "cookie",
+        "cookies",
+        "secret",
+        "secrets",
+        "credential",
+        "credentials",
+    }
 )
-_sensitive_token_markers = (
-    "accesstoken",
-    "refreshtoken",
-    "authtoken",
-    "bearertoken",
-    "sessiontoken",
-    "apitoken",
-    "secrettoken",
-    "tokenhash",
-    "tokenvalue",
+_key_security_qualifiers = frozenset(
+    {"api", "access", "private", "signing", "encryption", "auth"}
 )
-_match_numeric_keys = frozenset(
-    {"score", "rank", "totalscore", "numericscore", "backendorder"}
+_session_credential_segments = frozenset(
+    {"id", "key", "token", "cookie", "credential", "secret", "data", "value"}
+)
+_compact_security_keys = frozenset(
+    {
+        "apikey",
+        "accesskey",
+        "privatekey",
+        "signingkey",
+        "encryptionkey",
+        "authkey",
+        "authheader",
+        "authheaders",
+        "authorizationheader",
+        "authorizationheaders",
+        "sessionid",
+        "sessionkey",
+        "sessioncookie",
+        "sessioncredential",
+        "sessiondata",
+        "sessionvalue",
+        "tokenpayload",
+        "tokendata",
+        "tokenvalue",
+        "tokenhash",
+        "accesstoken",
+        "refreshtoken",
+        "authtoken",
+        "bearertoken",
+        "sessiontoken",
+        "apitoken",
+        "secrettoken",
+        "passwordhash",
+        "passwdhash",
+        "pwdhash",
+    }
+)
+_metric_context_segments = frozenset(
+    {
+        "match",
+        "matches",
+        "matching",
+        "hidden",
+        "private",
+        "internal",
+        "backend",
+        "numeric",
+    }
+)
+_metric_segments = frozenset(
+    {
+        "score",
+        "scores",
+        "scoring",
+        "rank",
+        "ranks",
+        "ranking",
+        "order",
+        "orders",
+        "ordering",
+    }
 )
 
 
 def public_json_object(value: object) -> PublicJSONObject:
+    """Validate and project one public JSON object.
+
+    Only actual JSON values are accepted. Security-bearing keys are removed
+    recursively. Score/rank/order fields are removed only when their key or an
+    ancestor identifies a match, hidden, internal, backend, or numeric context.
+    """
     if not isinstance(value, dict):
-        return {}
+        raise ValueError("public profile JSON fields must be objects")
     projected = _public_json_value(value, path=())
-    return projected if isinstance(projected, dict) else {}
+    if not isinstance(projected, dict):
+        raise ValueError("public profile JSON fields must be objects")
+    return projected
 
 
 def _public_json_value(
-    value: object, *, path: tuple[str, ...]
+    value: object, *, path: tuple[tuple[str, ...], ...]
 ) -> PublicJSONValue:
-    if value is None or isinstance(value, str | int | float | bool):
+    if value is None or isinstance(value, str | bool | int):
+        return value
+    if isinstance(value, float):
+        if not isfinite(value):
+            raise ValueError("public profile JSON numbers must be finite")
         return value
     if isinstance(value, list):
         return [_public_json_value(item, path=path) for item in value]
@@ -70,42 +143,57 @@ def _public_json_value(
         projected: PublicJSONObject = {}
         for raw_key, item in value.items():
             if not isinstance(raw_key, str):
-                continue
-            normalized_key = _normalize_public_key(raw_key)
-            if _is_sensitive_public_key(normalized_key, path=path):
+                raise ValueError("public profile JSON object keys must be strings")
+            key_segments = _public_key_segments(raw_key)
+            if _is_sensitive_public_key(key_segments, path=path):
                 continue
             projected[raw_key] = _public_json_value(
-                item, path=(*path, normalized_key)
+                item, path=(*path, key_segments)
             )
         return projected
-    return str(value)
+    raise ValueError("public profile JSON contains an unsupported value")
 
 
-def _normalize_public_key(key: str) -> str:
-    return _key_separator.sub("", key.casefold())
+def _public_key_segments(key: str) -> tuple[str, ...]:
+    split_acronyms = _camel_acronym_boundary.sub(r"\1 \2", key)
+    split_words = _camel_word_boundary.sub(r"\1 \2", split_acronyms)
+    return tuple(
+        segment.casefold()
+        for segment in _key_separator.split(split_words)
+        if segment
+    )
 
 
 def _is_sensitive_public_key(
-    normalized_key: str, *, path: tuple[str, ...]
+    key_segments: tuple[str, ...],
+    *,
+    path: tuple[tuple[str, ...], ...],
 ) -> bool:
-    if any(marker in normalized_key for marker in _sensitive_key_markers):
+    segments = frozenset(key_segments)
+    compact_key = "".join(key_segments)
+    if compact_key in _compact_security_keys:
         return True
-    if normalized_key.endswith("token") or any(
-        marker in normalized_key for marker in _sensitive_token_markers
-    ):
+    if segments & _security_segments:
         return True
-    numeric_marker = any(
-        marker in normalized_key for marker in ("scor", "rank", "order")
+    if "token" in segments:
+        return True
+    if "key" in segments and segments & _key_security_qualifiers:
+        return True
+    if segments & {"header", "headers"} and segments & {
+        "auth",
+        "authorization",
+    }:
+        return True
+    if "session" in segments and segments & _session_credential_segments:
+        return True
+
+    metric_key = bool(segments & _metric_segments)
+    if not metric_key:
+        return False
+    context_segments = segments.union(
+        *(frozenset(ancestor) for ancestor in path)
     )
-    if numeric_marker and any(
-        marker in normalized_key
-        for marker in ("hidden", "internal", "match", "backend", "numeric")
-    ):
-        return True
-    if normalized_key in _match_numeric_keys:
-        return True
-    inside_match_payload = any("match" in ancestor for ancestor in path)
-    return inside_match_payload and numeric_marker
+    return bool(context_segments & _metric_context_segments)
 
 
 class FavoriteUpdate(BaseModel):

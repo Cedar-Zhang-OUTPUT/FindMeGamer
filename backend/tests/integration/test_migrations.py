@@ -222,6 +222,112 @@ def test_only_one_active_manual_contact_exists_per_creator(session: Session) -> 
         savepoint.rollback()
 
 
+def test_active_manual_migration_deduplicates_legacy_rows_and_downgrades_cleanly(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    creator_id = uuid4()
+    older_contact_id = uuid4()
+    newest_contact_id = uuid4()
+    try:
+        command.downgrade(alembic_config, "20260902_0001")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO creator_profiles (
+                        id, youtube_channel_id, canonical_url, sort_name,
+                        current_facts, analysis, brief, source_status,
+                        model_metadata, prompt_metadata
+                    ) VALUES (
+                        :id, :channel_id, :canonical_url, :sort_name,
+                        '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                        '{}'::jsonb, '{}'::jsonb
+                    )
+                    """
+                ),
+                {
+                    "id": creator_id,
+                    "channel_id": f"legacy-manual-{creator_id}",
+                    "canonical_url": f"https://youtube.com/channel/{creator_id}",
+                    "sort_name": "Legacy Manual",
+                },
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO creator_contacts (
+                        id, creator_id, email, source_type, is_manual,
+                        is_active, created_at, updated_at
+                    ) VALUES
+                        (
+                            :older_id, :creator_id, 'older@example.com',
+                            'manual', true, true,
+                            '2026-01-01T00:00:00Z', '2026-01-02T00:00:00Z'
+                        ),
+                        (
+                            :newest_id, :creator_id, 'newest@example.com',
+                            'manual', true, true,
+                            '2026-02-01T00:00:00Z', '2026-02-02T00:00:00Z'
+                        )
+                    """
+                ),
+                {
+                    "older_id": older_contact_id,
+                    "newest_id": newest_contact_id,
+                    "creator_id": creator_id,
+                },
+            )
+
+        command.upgrade(alembic_config, "20260902_0002")
+        with database_engine.connect() as connection:
+            contacts = connection.execute(
+                text(
+                    """
+                    SELECT id, is_active
+                    FROM creator_contacts
+                    WHERE creator_id = :creator_id
+                    ORDER BY id
+                    """
+                ),
+                {"creator_id": creator_id},
+            ).all()
+        assert {row.id: row.is_active for row in contacts} == {
+            older_contact_id: False,
+            newest_contact_id: True,
+        }
+        indexes = {
+            index["name"]: index
+            for index in inspect(database_engine).get_indexes("creator_contacts")
+        }
+        assert indexes["uq_creator_contacts_active_manual"]["unique"] is True
+
+        command.downgrade(alembic_config, "20260902_0001")
+        index_names = {
+            index["name"]
+            for index in inspect(database_engine).get_indexes("creator_contacts")
+        }
+        assert "uq_creator_contacts_active_manual" not in index_names
+        with database_engine.connect() as connection:
+            preserved = connection.scalar(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM creator_contacts
+                    WHERE creator_id = :creator_id
+                    """
+                ),
+                {"creator_id": creator_id},
+            )
+        assert preserved == 2
+    finally:
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM creator_profiles WHERE id = :creator_id"),
+                {"creator_id": creator_id},
+            )
+
+
 def test_idempotency_keys_are_unique(session: Session) -> None:
     key = f"idempotency-{uuid4()}"
     session.add(_idempotency_record(key))
