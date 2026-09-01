@@ -27,24 +27,46 @@ def test_ready_health_requires_postgresql_and_redis() -> None:
 
 
 def test_ready_health_returns_service_unavailable_when_postgresql_fails() -> None:
+    calls: list[str] = []
+
+    def database_check() -> bool:
+        calls.append("postgresql")
+        return False
+
+    def redis_check() -> bool:
+        calls.append("redis")
+        return True
+
     readiness_probe = ReadinessProbe(
-        database_check=lambda: False,
-        redis_check=lambda: True,
+        database_check=database_check,
+        redis_check=redis_check,
     )
 
     response = TestClient(create_app(readiness_probe=readiness_probe)).get("/health/ready")
 
     assert response.status_code == 503
     assert response.json() == {"status": "unavailable"}
+    assert calls == ["postgresql", "redis"]
 
 
 def test_ready_health_returns_service_unavailable_when_redis_fails() -> None:
+    calls: list[str] = []
+
+    def database_check() -> bool:
+        calls.append("postgresql")
+        return True
+
+    def redis_check() -> bool:
+        calls.append("redis")
+        return False
+
     readiness_probe = ReadinessProbe(
-        database_check=lambda: True,
-        redis_check=lambda: False,
+        database_check=database_check,
+        redis_check=redis_check,
     )
 
     response = TestClient(create_app(readiness_probe=readiness_probe)).get("/health/ready")
 
     assert response.status_code == 503
     assert response.json() == {"status": "unavailable"}
+    assert calls == ["postgresql", "redis"]

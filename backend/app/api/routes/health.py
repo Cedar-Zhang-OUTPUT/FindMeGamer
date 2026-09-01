@@ -17,7 +17,9 @@ class ReadinessProbe:
         self._redis_check = redis_check
 
     def is_ready(self) -> bool:
-        return self._run(self._database_check) and self._run(self._redis_check)
+        database_ready = self._run(self._database_check)
+        redis_ready = self._run(self._redis_check)
+        return database_ready and redis_ready
 
     @staticmethod
     def _run(check: Callable[[], bool]) -> bool:
