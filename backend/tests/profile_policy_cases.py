@@ -43,6 +43,15 @@ CONTEXT_METRIC_KEYS = (
     "orders",
     "ordering",
 )
+NEAR_MISS_CONCEPTS = (
+    ("secretary", "name"),
+    ("tokenization", "method"),
+    ("cookiecutter", "template"),
+    ("accessibility", "keyboard", "layout"),
+    ("privateering", "rank"),
+    ("matchbox", "score"),
+    ("backendless", "order"),
+)
 
 
 def key_forms(words: Iterable[str]) -> set[str]:
@@ -65,6 +74,9 @@ def key_forms(words: Iterable[str]) -> set[str]:
 
 SECURITY_KEY_FORMS = frozenset(
     form for concept in SECURITY_CONCEPTS for form in key_forms(concept)
+)
+NEAR_MISS_KEY_FORMS = frozenset(
+    form for concept in NEAR_MISS_CONCEPTS for form in key_forms(concept)
 )
 RESTRICTED_ANCESTOR_FORMS = frozenset(
     form

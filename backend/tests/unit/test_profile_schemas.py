@@ -5,9 +5,11 @@ from uuid import uuid4
 import pytest
 from pydantic import ValidationError
 
+from app.schemas import profiles as profile_schemas
 from app.schemas.profiles import GameProfileDetail
 from tests.profile_policy_cases import (
     CONTEXT_METRIC_KEYS,
+    NEAR_MISS_KEY_FORMS,
     RESTRICTED_ANCESTOR_FORMS,
     RESTRICTED_COMPACT_METRIC_FORMS,
     SECURITY_KEY_FORMS,
@@ -94,15 +96,21 @@ def test_profile_response_filters_generated_security_key_matrix() -> None:
         key: f"secret-for-{index}"
         for index, key in enumerate(sorted(SECURITY_KEY_FORMS))
     }
+    near_misses = {
+        key: f"public-near-miss-{index}"
+        for index, key in enumerate(sorted(NEAR_MISS_KEY_FORMS))
+    }
     detail = _game_detail(
         current_facts={
             "public": "keep",
             "key": "public lookup key",
+            **near_misses,
             **sensitive,
             "outer": [
                 {
                     "public_nested": True,
                     "key": "nested public lookup key",
+                    **near_misses,
                     **sensitive,
                 }
             ],
@@ -112,10 +120,12 @@ def test_profile_response_filters_generated_security_key_matrix() -> None:
     assert detail.current_facts == {
         "public": "keep",
         "key": "public lookup key",
+        **near_misses,
         "outer": [
             {
                 "public_nested": True,
                 "key": "nested public lookup key",
+                **near_misses,
             }
         ],
     }
@@ -243,6 +253,92 @@ def test_profile_validation_error_never_includes_unsupported_value_repr() -> Non
     assert ERROR_REPR_CANARY not in json.dumps(
         captured.value.errors(), default=repr
     )
+
+
+@pytest.mark.parametrize(
+    ("filtered_key", "invalid"),
+    [
+        ("api_secret", ErrorCanaryObject()),
+        ("access_key", ({"x": 1},)),
+    ],
+)
+def test_profile_response_validates_values_beneath_filtered_keys(
+    filtered_key: str, invalid: object
+) -> None:
+    with pytest.raises(ValidationError) as captured:
+        _game_detail(current_facts={filtered_key: invalid})
+
+    assert ERROR_REPR_CANARY not in str(captured.value)
+    assert ERROR_REPR_CANARY not in captured.value.json()
+    assert ERROR_REPR_CANARY not in json.dumps(
+        captured.value.errors(), default=repr
+    )
+
+
+@pytest.mark.parametrize("key_length", [3_000, 6_000, 12_000])
+def test_profile_response_rejects_oversized_keys_before_classification(
+    key_length: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repeated_api_key = (
+        "api" * ((key_length - 1) // 3 + 1)
+    )[: key_length - 1] + "x"
+    classified_keys: list[str] = []
+
+    def record_classification(key: str) -> tuple[str, ...]:
+        classified_keys.append(key)
+        return ()
+
+    monkeypatch.setattr(profile_schemas, "_semantic_words", record_classification)
+
+    with pytest.raises(ValidationError):
+        _game_detail(current_facts={repeated_api_key: "value"})
+
+    assert repeated_api_key not in classified_keys
+
+
+def test_profile_response_accepts_key_at_documented_length_budget() -> None:
+    maximum_key = "k" * 512
+
+    detail = _game_detail(current_facts={maximum_key: "value"})
+
+    assert detail.current_facts == {maximum_key: "value"}
+
+
+def test_profile_response_rejects_key_above_documented_length_budget() -> None:
+    with pytest.raises(ValidationError):
+        _game_detail(current_facts={"k" * 513: "value"})
+
+
+def test_profile_response_rejects_excessive_nesting_depth() -> None:
+    nested: object = "leaf"
+    for _ in range(34):
+        nested = [nested]
+
+    with pytest.raises(ValidationError):
+        _game_detail(current_facts={"nested": nested})
+
+
+def test_profile_response_rejects_excessive_aggregate_nodes() -> None:
+    with pytest.raises(ValidationError):
+        _game_detail(current_facts={"nodes": [None] * 10_001})
+
+
+def test_profile_response_rejects_excessive_aggregate_keys() -> None:
+    too_many_keys = {f"public_field_{index}": index for index in range(2_001)}
+
+    with pytest.raises(ValidationError):
+        _game_detail(current_facts=too_many_keys)
+
+
+def test_profile_response_rejects_cycles_without_exposing_input() -> None:
+    cyclic: list[object] = []
+    cyclic.append(cyclic)
+
+    with pytest.raises(ValidationError) as captured:
+        _game_detail(current_facts={"cycle": cyclic})
+
+    assert "RecursionError" not in str(captured.value)
+    assert "RecursionError" not in captured.value.json()
 
 
 def _game_detail(*, current_facts: object) -> GameProfileDetail:

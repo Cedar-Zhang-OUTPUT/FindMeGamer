@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 from tests.profile_policy_cases import (
     CONTEXT_METRIC_KEYS,
+    NEAR_MISS_KEY_FORMS,
     RESTRICTED_ANCESTOR_FORMS,
     RESTRICTED_COMPACT_METRIC_FORMS,
     SECURITY_KEY_FORMS,
@@ -384,6 +385,7 @@ def test_profile_route_applies_generated_security_and_metric_policy_matrix(
     auth_client, session: Session
 ) -> None:
     sensitive = {key: "never-return" for key in SECURITY_KEY_FORMS}
+    near_misses = {key: "public-near-miss" for key in NEAR_MISS_KEY_FORMS}
     game = add_game(
         session,
         app_id="generated-policy-matrix",
@@ -392,8 +394,9 @@ def test_profile_route_applies_generated_security_and_metric_policy_matrix(
             "rank": "Gold tier",
             "review_score": 91,
             "key": "public lookup key",
+            **near_misses,
             **sensitive,
-            "nested": {"public": "keep", **sensitive},
+            "nested": {"public": "keep", **near_misses, **sensitive},
             **{
                 ancestor: {
                     **{metric: 1 for metric in CONTEXT_METRIC_KEYS},
@@ -413,7 +416,8 @@ def test_profile_route_applies_generated_security_and_metric_policy_matrix(
         "rank": "Gold tier",
         "review_score": 91,
         "key": "public lookup key",
-        "nested": {"public": "keep"},
+        **near_misses,
+        "nested": {"public": "keep", **near_misses},
         **{
             ancestor: {
                 "scorecard_label": "Public scorecard",
@@ -432,7 +436,9 @@ def test_profile_route_invalid_public_json_uses_safe_error_without_input_repr(
         app_id="invalid-public-json",
         name="Invalid Public JSON",
     )
-    game.current_facts = {"nested": [RouteErrorCanaryObject()]}
+    # The response boundary must validate the value even though this key will
+    # be removed from the public projection after validation succeeds.
+    game.current_facts = {"api_secret": RouteErrorCanaryObject()}
 
     response = auth_client.get(f"/api/v1/profiles/games/{game.id}")
 
