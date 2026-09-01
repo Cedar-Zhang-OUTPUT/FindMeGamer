@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 import re
 from typing import Any
 
@@ -10,6 +11,12 @@ from app.analysis.targets import CanonicalTarget
 from app.core.config import validate_external_base_url
 from app.db.models.enums import TargetType
 from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
+from app.integrations.http import (
+    InvalidContentLength,
+    ResponseTooLarge,
+    read_bounded_bytes,
+    streaming_response,
+)
 
 DEFAULT_YOUTUBE_API_BASE_URL = "https://www.googleapis.com/youtube/v3"
 MAX_YOUTUBE_RESPONSE_BYTES = 4_000_000
@@ -24,10 +31,10 @@ _video_id = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _page_token = re.compile(r"^[A-Za-z0-9_-]{1,512}$")
 # Durations use canonical, integer ISO 8601 components; time fields are normalized.
 _duration = re.compile(
-    r"^P(?:(?P<days>0|[1-9]\d{0,3})D)?"
-    r"(?:T(?:(?P<hours>0|[1-9]\d?)H)?"
-    r"(?:(?P<minutes>0|[1-9]\d?)M)?"
-    r"(?:(?P<seconds>0|[1-9]\d?)S)?)?$"
+    r"^P(?:(?P<days>0|[1-9][0-9]{0,3})D)?"
+    r"(?:T(?:(?P<hours>0|[1-9][0-9]?)H)?"
+    r"(?:(?P<minutes>0|[1-9][0-9]?)M)?"
+    r"(?:(?P<seconds>0|[1-9][0-9]?)S)?)?$"
 )
 _rfc3339_timestamp = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}" r"(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$"
@@ -218,29 +225,39 @@ class YouTubeGateway:
 
     def _request_json(self, endpoint: str, params: dict[str, str]) -> dict[str, Any]:
         try:
-            response = self._client.get(
+            with streaming_response(
+                self._client,
+                "GET",
                 f"{self._base_url}/{endpoint}",
                 params=params,
                 headers={"X-Goog-Api-Key": self._api_key},
                 auth=None,
                 timeout=HTTP_TIMEOUT,
                 follow_redirects=False,
-            )
+            ) as response:
+                if response.status_code == 403:
+                    error_body = read_bounded_bytes(
+                        response,
+                        max_bytes=MAX_YOUTUBE_RESPONSE_BYTES,
+                    )
+                    _raise_for_status(
+                        response.status_code,
+                        error_payload=_decode_json_or_none(error_body),
+                    )
+                _raise_for_status(response.status_code)
+                body = read_bounded_bytes(
+                    response,
+                    max_bytes=MAX_YOUTUBE_RESPONSE_BYTES,
+                )
+        except ResponseTooLarge:
+            raise PermanentIntegrationError("youtube_response_too_large") from None
+        except InvalidContentLength:
+            raise PermanentIntegrationError("youtube_response_invalid") from None
         except httpx.TransportError:
             raise TransientIntegrationError("youtube_unavailable") from None
-        _raise_for_status(response)
-        if len(response.content) > MAX_YOUTUBE_RESPONSE_BYTES:
-            raise PermanentIntegrationError("youtube_response_too_large")
-        content_length = response.headers.get("content-length")
-        if content_length is not None:
-            try:
-                if int(content_length) > MAX_YOUTUBE_RESPONSE_BYTES:
-                    raise PermanentIntegrationError("youtube_response_too_large")
-            except ValueError:
-                raise PermanentIntegrationError("youtube_response_invalid") from None
         try:
-            payload = response.json()
-        except ValueError:
+            payload = json.loads(body)
+        except (UnicodeDecodeError, ValueError):
             raise PermanentIntegrationError("youtube_response_invalid") from None
         if not isinstance(payload, dict):
             raise PermanentIntegrationError("youtube_response_invalid")
@@ -262,21 +279,22 @@ def _validate_channel_id(channel_id: str) -> None:
         raise PermanentIntegrationError("youtube_channel_id_invalid")
 
 
-def _raise_for_status(response: httpx.Response) -> None:
-    status = response.status_code
+def _raise_for_status(status: int, *, error_payload: object = None) -> None:
     if status == 403:
-        if len(response.content) <= MAX_YOUTUBE_RESPONSE_BYTES:
-            try:
-                payload = response.json()
-            except ValueError:
-                payload = None
-            if _has_transient_403_reason(payload):
-                raise TransientIntegrationError("youtube_quota_unavailable")
+        if _has_transient_403_reason(error_payload):
+            raise TransientIntegrationError("youtube_quota_unavailable")
         raise PermanentIntegrationError("youtube_request_rejected")
     if status == 429 or status >= 500:
         raise TransientIntegrationError("youtube_unavailable")
     if status >= 400:
         raise PermanentIntegrationError("youtube_request_rejected")
+
+
+def _decode_json_or_none(body: bytes) -> object:
+    try:
+        return json.loads(body)
+    except (UnicodeDecodeError, ValueError):
+        return None
 
 
 def _has_transient_403_reason(payload: object) -> bool:

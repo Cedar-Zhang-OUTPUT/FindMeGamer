@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+import json
 from typing import Any
 
 import httpx
@@ -7,6 +8,12 @@ from pydantic import ValidationError
 from app.analysis.contracts import SteamGameSource, SteamMovie, SteamScreenshot
 from app.core.config import validate_external_base_url
 from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
+from app.integrations.http import (
+    InvalidContentLength,
+    ResponseTooLarge,
+    read_bounded_bytes,
+    streaming_response,
+)
 
 DEFAULT_STEAM_STORE_BASE_URL = "https://store.steampowered.com/api"
 MAX_STEAM_RESPONSE_BYTES = 2_000_000
@@ -45,16 +52,26 @@ class SteamGateway:
     def fetch_game(self, app_id: str) -> SteamGameSource:
         _validate_app_id(app_id)
         try:
-            response = self._client.get(
+            with streaming_response(
+                self._client,
+                "GET",
                 f"{self._base_url}/appdetails",
                 params={"appids": app_id, "l": "english", "cc": "US"},
                 timeout=HTTP_TIMEOUT,
                 follow_redirects=False,
-            )
+            ) as response:
+                _raise_for_status(response)
+                body = read_bounded_bytes(
+                    response,
+                    max_bytes=MAX_STEAM_RESPONSE_BYTES,
+                )
+        except ResponseTooLarge:
+            raise PermanentIntegrationError("steam_response_too_large") from None
+        except InvalidContentLength:
+            raise PermanentIntegrationError("steam_response_invalid") from None
         except httpx.TransportError:
             raise TransientIntegrationError("steam_unavailable") from None
-        _raise_for_status(response)
-        payload = _bounded_json(response)
+        payload = _bounded_json(body)
         data = _extract_game(payload, app_id)
         try:
             return _map_game(data, app_id)
@@ -83,19 +100,10 @@ def _raise_for_status(response: httpx.Response) -> None:
         raise PermanentIntegrationError("steam_request_rejected")
 
 
-def _bounded_json(response: httpx.Response) -> object:
-    content_length = response.headers.get("content-length")
-    if content_length is not None:
-        try:
-            if int(content_length) > MAX_STEAM_RESPONSE_BYTES:
-                raise PermanentIntegrationError("steam_response_too_large")
-        except ValueError:
-            raise PermanentIntegrationError("steam_response_invalid") from None
-    if len(response.content) > MAX_STEAM_RESPONSE_BYTES:
-        raise PermanentIntegrationError("steam_response_too_large")
+def _bounded_json(body: bytes) -> object:
     try:
-        return response.json()
-    except ValueError:
+        return json.loads(body)
+    except (UnicodeDecodeError, ValueError):
         raise PermanentIntegrationError("steam_response_invalid") from None
 
 

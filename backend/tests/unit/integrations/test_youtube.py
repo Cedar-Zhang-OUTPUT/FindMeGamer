@@ -513,6 +513,10 @@ def test_youtube_rejects_present_offset_free_channel_timestamp() -> None:
         "P01D",
         "PT01H",
         "P3652DT12H1S",
+        "PT1٢S",
+        "P1٢D",
+        "PT1２S",
+        "P1२D",
     ],
 )
 def test_youtube_rejects_present_malformed_or_unbounded_duration(
@@ -949,6 +953,85 @@ def test_youtube_rejects_malformed_and_oversized_responses() -> None:
         YouTubeGateway(api_key="test-key", http_client=oversized).fetch_creator(
             "UC123456"
         )
+
+
+def test_youtube_stops_streaming_at_cap_and_closes_lying_length_response(
+    monkeypatch, gateway_byte_stream_factory, caplog
+) -> None:
+    monkeypatch.setattr("app.integrations.youtube.MAX_YOUTUBE_RESPONSE_BYTES", 5)
+    secret = "youtube-unread-stream-canary"
+    stream = gateway_byte_stream_factory([b"1234", b"56", secret.encode()])
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(
+            200,
+            headers={"Content-Length": "1"},
+            stream=stream,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    target = canonicalize_target(TargetType.CREATOR, "https://youtube.com/@example")
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(
+        PermanentIntegrationError, match="youtube_response_too_large"
+    ) as caught:
+        YouTubeGateway(api_key="test-key", http_client=client).resolve_channel(target)
+
+    assert requests == 1
+    assert stream.yielded == 2
+    assert stream.closed is True
+    assert secret not in f"{caught.value!s}{caught.value!r}{caplog.text}"
+
+
+def test_youtube_reads_bounded_403_body_for_quota_reason(
+    gateway_byte_stream_factory,
+) -> None:
+    stream = gateway_byte_stream_factory(
+        [b'{"error":{"errors":[', b'{"reason":"quotaExceeded"}]}}']
+    )
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(403, stream=stream)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(TransientIntegrationError, match="youtube_quota_unavailable"):
+        YouTubeGateway(api_key="test-key", http_client=client).fetch_creator("UC123456")
+
+    assert requests == 1
+    assert stream.yielded == 2
+    assert stream.closed is True
+
+
+def test_youtube_does_not_read_rate_limit_body(
+    gateway_byte_stream_factory, caplog
+) -> None:
+    secret = "youtube-rate-limit-body-canary"
+    stream = gateway_byte_stream_factory([secret.encode(), b"unused"])
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(429, stream=stream)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(
+        TransientIntegrationError, match="youtube_unavailable"
+    ) as caught:
+        YouTubeGateway(api_key="test-key", http_client=client).fetch_creator("UC123456")
+
+    assert requests == 1
+    assert stream.yielded == 0
+    assert stream.closed is True
+    assert secret not in f"{caught.value!s}{caught.value!r}{caplog.text}"
 
 
 def test_youtube_respects_caller_client_ownership() -> None:

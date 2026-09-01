@@ -16,6 +16,12 @@ from app.integrations.errors import (
     PermanentIntegrationError,
     TransientIntegrationError,
 )
+from app.integrations.http import (
+    InvalidContentLength,
+    ResponseTooLarge,
+    read_bounded_bytes,
+    streaming_response,
+)
 
 T = TypeVar("T", bound=BaseModel)
 DEFAULT_DEEPSEEK_API_BASE_URL = "https://api.deepseek.com"
@@ -30,6 +36,7 @@ HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=20.0, pool=5.0)
 _model_name = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
 _dns_label = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _hex_pair = re.compile(r"^[0-9A-Fa-f]{2}$")
+_numeric_host_label = re.compile(r"^(?:[0-9]+|0[xX][0-9A-Fa-f]+)$")
 
 
 class DeepSeekGateway:
@@ -141,31 +148,33 @@ class DeepSeekGateway:
             },
         }
         try:
-            response = self._client.post(
+            with streaming_response(
+                self._client,
+                "POST",
                 f"{self._base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self._api_key}"},
                 json=payload,
+                auth=None,
                 timeout=HTTP_TIMEOUT,
                 follow_redirects=False,
-            )
+            ) as response:
+                if response.status_code == 429 or response.status_code >= 500:
+                    raise TransientIntegrationError("deepseek_unavailable")
+                if response.status_code >= 400:
+                    raise PermanentIntegrationError("deepseek_request_rejected")
+                body = read_bounded_bytes(
+                    response,
+                    max_bytes=MAX_DEEPSEEK_RESPONSE_BYTES,
+                )
+        except ResponseTooLarge:
+            raise PermanentIntegrationError("deepseek_response_too_large") from None
+        except InvalidContentLength:
+            raise PermanentIntegrationError("deepseek_response_invalid") from None
         except httpx.TransportError:
             raise TransientIntegrationError("deepseek_unavailable") from None
-        if response.status_code == 429 or response.status_code >= 500:
-            raise TransientIntegrationError("deepseek_unavailable")
-        if response.status_code >= 400:
-            raise PermanentIntegrationError("deepseek_request_rejected")
-        if len(response.content) > MAX_DEEPSEEK_RESPONSE_BYTES:
-            raise PermanentIntegrationError("deepseek_response_too_large")
-        content_length = response.headers.get("content-length")
-        if content_length is not None:
-            try:
-                if int(content_length) > MAX_DEEPSEEK_RESPONSE_BYTES:
-                    raise PermanentIntegrationError("deepseek_response_too_large")
-            except ValueError:
-                raise PermanentIntegrationError("deepseek_response_invalid") from None
         try:
-            envelope = response.json()
-        except ValueError:
+            envelope = json.loads(body)
+        except (UnicodeDecodeError, ValueError):
             raise PermanentIntegrationError("deepseek_response_invalid") from None
         return _extract_content(envelope)
 
@@ -244,8 +253,6 @@ def _validate_dns_hostname(hostname: str) -> None:
         pass
     else:
         raise ValueError("IP literals are not accepted")
-    if all(character in "0123456789." for character in hostname):
-        raise ValueError("ambiguous numeric host")
     ascii_hostname = idna.encode(
         hostname,
         strict=True,
@@ -257,6 +264,7 @@ def _validate_dns_hostname(hostname: str) -> None:
         len(ascii_hostname) > 253
         or len(labels) < 2
         or any(not _dns_label.fullmatch(label) for label in labels)
+        or all(_numeric_host_label.fullmatch(label) for label in labels)
     ):
         raise ValueError("invalid DNS hostname")
 

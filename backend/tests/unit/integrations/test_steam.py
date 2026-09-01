@@ -180,6 +180,38 @@ def test_steam_rejects_oversized_response_without_leaking_body(caplog) -> None:
     assert secret not in rendered
 
 
+def test_steam_stops_streaming_at_cap_and_closes_lying_length_response(
+    monkeypatch, gateway_byte_stream_factory, caplog
+) -> None:
+    monkeypatch.setattr("app.integrations.steam.MAX_STEAM_RESPONSE_BYTES", 5)
+    secret = "steam-unread-stream-canary"
+    stream = gateway_byte_stream_factory(
+        [b"1234", b"56", secret.encode()],
+    )
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(
+            200,
+            headers={"Content-Length": "1"},
+            stream=stream,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(
+        PermanentIntegrationError, match="steam_response_too_large"
+    ) as caught:
+        SteamGateway(http_client=client).fetch_game("1245620")
+
+    assert requests == 1
+    assert stream.yielded == 2
+    assert stream.closed is True
+    assert secret not in f"{caught.value!s}{caught.value!r}{caplog.text}"
+
+
 def test_steam_rejects_unsafe_base_url() -> None:
     with pytest.raises(ValueError, match="HTTPS"):
         SteamGateway(base_url="http://store.steampowered.com/api")

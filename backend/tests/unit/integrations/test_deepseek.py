@@ -211,7 +211,18 @@ def test_deepseek_rejects_invalid_vision_inputs(prompt: str, images: list[str]) 
         "https://8.8.8.8/image.jpg",
         "https://[2606:4700:4700::1111]/image.jpg",
         "https://2130706433/image.jpg",
+        "https://017700000001/image.jpg",
+        "https://0x7f000001/image.jpg",
         "https://0177.0.0.1/image.jpg",
+        "https://0x7f.0x0.0x0.0x1/image.jpg",
+        "https://127.0.0.0x1/image.jpg",
+        "https://0177.0x0.0.1/image.jpg",
+        "https://0x7f.1/image.jpg",
+        "https://127.1/image.jpg",
+        "https://127.0.1/image.jpg",
+        "https://127.0.0.1./image.jpg",
+        "https://１２７.０.０.１/image.jpg",
+        "https://١٢٧.٠.٠.١/image.jpg",
         f"https://cdn.example/{'a' * 2_049}",
         f"https://cdn.example/{'中' * 680}",
     ],
@@ -247,6 +258,8 @@ def test_deepseek_rejects_adversarial_image_url_before_provider_call(
         "X-Amz-Signature=abc%2Fdef%2Bghi%3D",
         "https://例子.测试/image.jpg",
         "https://cdn.example/a%2Fb.jpg?q=%E4%B8%AD",
+        "https://127.0.0.1.images.example/image.jpg",
+        "https://0x7f.images.example/image.jpg",
     ],
 )
 def test_deepseek_accepts_strict_public_https_image_url(image_url: str) -> None:
@@ -371,6 +384,96 @@ def test_deepseek_oversized_output_does_not_trigger_repair() -> None:
         )
 
     assert calls == 1
+
+
+def test_deepseek_stops_streaming_at_cap_and_closes_lying_length_response(
+    monkeypatch, gateway_byte_stream_factory, caplog
+) -> None:
+    monkeypatch.setattr("app.integrations.deepseek.MAX_DEEPSEEK_RESPONSE_BYTES", 5)
+    secret = "deepseek-unread-stream-canary"
+    stream = gateway_byte_stream_factory([b"1234", b"56", secret.encode()])
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(
+            200,
+            headers={"Content-Length": "1"},
+            stream=stream,
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(
+        PermanentIntegrationError, match="deepseek_response_too_large"
+    ) as caught:
+        DeepSeekGateway(api_key="test-key", http_client=client).complete_structured(
+            "model", [], GameExtraction
+        )
+
+    assert requests == 1
+    assert stream.yielded == 2
+    assert stream.closed is True
+    assert secret not in f"{caught.value!s}{caught.value!r}{caplog.text}"
+
+
+def test_deepseek_streaming_read_timeout_is_transient_and_closes(
+    gateway_byte_stream_factory, caplog
+) -> None:
+    stream = gateway_byte_stream_factory(
+        [b'{"choices":', b"unused"],
+        error_after=1,
+    )
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(200, stream=stream)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(
+        TransientIntegrationError, match="deepseek_unavailable"
+    ) as caught:
+        DeepSeekGateway(api_key="test-key", http_client=client).complete_structured(
+            "model", [], GameExtraction
+        )
+
+    assert requests == 1
+    assert stream.yielded == 1
+    assert stream.closed is True
+    assert "gateway-stream-timeout-canary" not in (
+        f"{caught.value!s}{caught.value!r}{caplog.text}"
+    )
+
+
+def test_deepseek_does_not_read_server_error_body(
+    gateway_byte_stream_factory, caplog
+) -> None:
+    secret = "deepseek-server-body-canary"
+    stream = gateway_byte_stream_factory([secret.encode(), b"unused"])
+    requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal requests
+        requests += 1
+        return httpx.Response(503, stream=stream)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(
+        TransientIntegrationError, match="deepseek_unavailable"
+    ) as caught:
+        DeepSeekGateway(api_key="test-key", http_client=client).complete_structured(
+            "model", [], GameExtraction
+        )
+
+    assert requests == 1
+    assert stream.yielded == 0
+    assert stream.closed is True
+    assert secret not in f"{caught.value!s}{caught.value!r}{caplog.text}"
 
 
 def test_deepseek_respects_client_ownership_and_closes_owned_client() -> None:
