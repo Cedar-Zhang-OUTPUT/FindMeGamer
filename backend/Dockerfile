@@ -6,3 +6,5 @@ COPY pyproject.toml ./
 RUN pip install --no-cache-dir ".[dev]"
 
 COPY . .
+
+CMD ["python", "-m", "app.run"]

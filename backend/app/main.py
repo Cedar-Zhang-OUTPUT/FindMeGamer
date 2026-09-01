@@ -66,6 +66,7 @@ def create_app(
         rate_limiter=rate_limiter,
         resolve_client_address=client_address_resolver.resolve,
     )
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         configure_request_logging()
