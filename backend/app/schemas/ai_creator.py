@@ -248,12 +248,36 @@ def _canonical_host(hostname: str) -> str:
             )
         except idna.IDNAError:
             raise ValueError("invalid public URL") from None
+        ascii_hostname = (
+            ascii_hostname[:-1] if ascii_hostname.endswith(".") else ascii_hostname
+        )
+        if (
+            not ascii_hostname
+            or ascii_hostname == "localhost"
+            or ascii_hostname.endswith(".localhost")
+        ):
+            raise ValueError("invalid public URL")
+        try:
+            ip_address(ascii_hostname)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("invalid public URL") from None
         try:
             inet_aton(ascii_hostname)
         except OSError:
             return ascii_hostname
         raise ValueError("invalid public URL")
-    if not address.is_global:
+    if not address.is_global or any(
+        (
+            address.is_multicast,
+            address.is_loopback,
+            address.is_link_local,
+            address.is_private,
+            address.is_reserved,
+            address.is_unspecified,
+        )
+    ):
         raise ValueError("invalid public URL")
     return address.compressed.casefold()
 

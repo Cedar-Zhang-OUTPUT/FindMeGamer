@@ -119,13 +119,32 @@ def _validate_static_image_url(value: str) -> str:
     else:
         raise ValueError("invalid static image URL")
     try:
-        ascii_hostname = idna.encode(
-            hostname,
-            uts46=True,
-            std3_rules=True,
-        ).decode("ascii")
+        ascii_hostname = (
+            idna.encode(
+                hostname,
+                uts46=True,
+                std3_rules=True,
+            )
+            .decode("ascii")
+            .casefold()
+        )
         port = parsed.port
     except (idna.IDNAError, ValueError):
+        raise ValueError("invalid static image URL") from None
+    ascii_hostname = (
+        ascii_hostname[:-1] if ascii_hostname.endswith(".") else ascii_hostname
+    )
+    if (
+        not ascii_hostname
+        or ascii_hostname == "localhost"
+        or ascii_hostname.endswith(".localhost")
+    ):
+        raise ValueError("invalid static image URL")
+    try:
+        ip_address(ascii_hostname)
+    except ValueError:
+        pass
+    else:
         raise ValueError("invalid static image URL") from None
     try:
         inet_aton(ascii_hostname)

@@ -539,6 +539,11 @@ def test_contact_evidence_is_strict_frozen_bounded_and_validated() -> None:
         "https://sub.localhost/contact",
         "https://localhost./contact",
         "https://sub.localhost./contact",
+        "https://ｌｏｃａｌｈｏｓｔ/contact",
+        "https://ｓｕｂ．ｌｏｃａｌｈｏｓｔ/contact",
+        "https://sub。localhost/contact",
+        "https://sub.localhost。/contact",
+        "https://ⓛⓞⓒⓐⓛⓗⓞⓢⓣ/contact",
         "https://127.1/contact",
         "https://2130706433/contact",
         "https://0x7f000001/contact",
@@ -552,6 +557,12 @@ def test_contact_evidence_is_strict_frozen_bounded_and_validated() -> None:
         "https://example.com/%E2%80%AEhidden",
         "https://example.com/contact#fragment",
         "https://example.com/contact#",
+        "https://224.0.0.0/contact",
+        "https://224.0.0.1/contact",
+        "https://239.255.255.255/contact",
+        "https://[ff00::]/contact",
+        "https://[ff02::1]/contact",
+        "https://[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]/contact",
     ],
 )
 def test_contact_evidence_rejects_non_public_or_control_urls(
@@ -569,6 +580,8 @@ def test_contact_evidence_rejects_non_public_or_control_urls(
         "https://creator.example/contact?ref=channel",
         "http://social.example/creator",
         "https://[2606:4700:4700::1111]/contact",
+        "https://8.8.8.8/contact",
+        "https://[2001:4860:4860::8888]/contact",
     ],
 )
 def test_contact_evidence_accepts_public_http_urls(public_url: str) -> None:

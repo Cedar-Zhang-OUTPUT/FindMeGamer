@@ -845,6 +845,8 @@ def test_visual_bundles_reject_more_than_gateway_image_limit() -> None:
         "https://127.1/image.jpg",
         "https://１２７.０.０.１/image.jpg",
         "https://localhost/image.jpg",
+        "https://ｓｕｂ．ｌｏｃａｌｈｏｓｔ/image.jpg",
+        "https://sub。localhost/image.jpg",
         "https://cdn.example./image.jpg",
         "https://%65xample.com/image.jpg",
         "https://user@example.com/image.jpg",
