@@ -3,7 +3,15 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, Integer, LargeBinary, Numeric, String
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Integer,
+    LargeBinary,
+    Numeric,
+    String,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -12,6 +20,16 @@ from app.db.base import Base, TimestampMixin
 
 class SharedSettings(TimestampMixin, Base):
     __tablename__ = "shared_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "creator_interval_days BETWEEN 1 AND 30",
+            name="ck_shared_settings_creator_interval_days",
+        ),
+        CheckConstraint(
+            "game_interval_days BETWEEN 1 AND 90",
+            name="ck_shared_settings_game_interval_days",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     workspace_name: Mapped[str] = mapped_column(

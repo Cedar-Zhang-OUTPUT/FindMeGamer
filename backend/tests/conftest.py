@@ -10,7 +10,8 @@ from sqlalchemy import Engine, create_engine, inspect
 from sqlalchemy.engine import Inspector
 from sqlalchemy.orm import Session
 
-from app.main import app
+from app.core.database import get_session
+from app.main import create_app
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -50,7 +51,7 @@ def session(
 ) -> Iterator[Session]:
     connection = database_engine.connect()
     transaction = connection.begin()
-    session = Session(bind=connection)
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
     try:
         yield session
     finally:
@@ -65,11 +66,22 @@ def database_session(session: Session) -> Session:
 
 
 @pytest.fixture
-def client(migrated_database: None) -> Iterator[TestClient]:
-    with TestClient(app) as test_client:
-        yield test_client
+def client(session: Session) -> Iterator[TestClient]:
+    test_app = create_app()
+
+    def override_get_session() -> Iterator[Session]:
+        yield session
+
+    test_app.dependency_overrides[get_session] = override_get_session
+    try:
+        with TestClient(test_app) as test_client:
+            yield test_client
+    finally:
+        test_app.dependency_overrides.clear()
 
 
 @pytest.fixture
-def database_inspector(database_engine: Engine) -> Inspector:
+def database_inspector(
+    migrated_database: None, database_engine: Engine
+) -> Inspector:
     return inspect(database_engine)

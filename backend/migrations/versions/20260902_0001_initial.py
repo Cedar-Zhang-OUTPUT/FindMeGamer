@@ -199,6 +199,14 @@ def upgrade() -> None:
         sa.Column("smtp_rate_per_minute", sa.Integer(), nullable=False),
         sa.Column("service_connection_state", postgresql.JSONB(), nullable=False),
         *timestamps(),
+        sa.CheckConstraint(
+            "creator_interval_days BETWEEN 1 AND 30",
+            name="ck_shared_settings_creator_interval_days",
+        ),
+        sa.CheckConstraint(
+            "game_interval_days BETWEEN 1 AND 90",
+            name="ck_shared_settings_game_interval_days",
+        ),
         sa.PrimaryKeyConstraint("id"),
     )
 
