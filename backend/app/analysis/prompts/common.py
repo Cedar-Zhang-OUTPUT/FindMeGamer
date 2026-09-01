@@ -50,7 +50,7 @@ def compact_model_payload(model: BaseModel | None) -> Mapping[str, object] | str
     if model is None:
         return "not_provided"
     dumped = model.model_dump(mode="json")
-    return _compact_value(dumped, string_bytes=512, list_items=8)
+    return _compact_value(dumped, string_bytes=192, list_items=3)
 
 
 def build_messages(

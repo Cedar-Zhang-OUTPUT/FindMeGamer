@@ -7,7 +7,12 @@ from app.analysis.prompts.common import (
     clip_values,
     compact_model_payload,
 )
-from app.schemas.ai_game import GameExtraction, GameVisualAnalysis
+from app.schemas.ai_game import (
+    EvidenceCatalog,
+    EvidenceCatalogEntry,
+    GameExtraction,
+    GameVisualAnalysis,
+)
 
 GAME_EXTRACTION_PROMPT_VERSION = "game-extraction-v1"
 GAME_VISUAL_PROMPT_VERSION = "game-visual-v1"
@@ -20,6 +25,7 @@ Use only the curated Steam fields and referenced public media supplied below. Un
 
 def build_game_extraction_prompt(source: SteamGameSource) -> list[Message]:
     _require_game_source(source)
+    catalog = build_game_extraction_evidence_catalog(source)
     return build_messages(
         version=GAME_EXTRACTION_PROMPT_VERSION,
         stage_rules=(
@@ -27,12 +33,16 @@ def build_game_extraction_prompt(source: SteamGameSource) -> list[Message]:
             "properties from image URLs or trailer names."
         ),
         label="SOURCE_JSON_UNTRUSTED_EVIDENCE",
-        payload={"steam_source": _curated_game_source(source)},
+        payload={
+            "steam_source": _curated_game_source(source),
+            "evidence_catalog": catalog.model_dump(mode="json"),
+        },
     )
 
 
 def build_game_visual_prompt(source: SteamGameSource) -> list[Message]:
     _require_game_source(source)
+    catalog = build_game_visual_evidence_catalog(source)
     return build_messages(
         version=GAME_VISUAL_PROMPT_VERSION,
         stage_rules=(
@@ -42,7 +52,10 @@ def build_game_visual_prompt(source: SteamGameSource) -> list[Message]:
             "visual result."
         ),
         label="SOURCE_JSON_UNTRUSTED_EVIDENCE",
-        payload={"visual_assets": _curated_game_visual_assets(source)},
+        payload={
+            "visual_assets": _curated_game_visual_assets(source),
+            "evidence_catalog": catalog.model_dump(mode="json"),
+        },
     )
 
 
@@ -56,6 +69,7 @@ def build_game_synthesis_prompt(
         raise TypeError("extraction must be a validated GameExtraction")
     if visual is not None and not isinstance(visual, GameVisualAnalysis):
         raise TypeError("visual must be a validated GameVisualAnalysis")
+    catalog = build_game_synthesis_evidence_catalog(source, extraction, visual)
     return build_messages(
         version=GAME_SYNTHESIS_PROMPT_VERSION,
         stage_rules=(
@@ -69,13 +83,103 @@ def build_game_synthesis_prompt(
             "steam_source": _curated_game_source(source),
             "validated_extraction": compact_model_payload(extraction),
             "validated_visual_analysis": compact_model_payload(visual),
+            "evidence_catalog": catalog.model_dump(mode="json"),
         },
     )
+
+
+def build_game_extraction_evidence_catalog(
+    source: SteamGameSource,
+) -> EvidenceCatalog:
+    _require_game_source(source)
+    entries = [
+        EvidenceCatalogEntry(
+            reference=f"steam:{field_name}",
+            source_type="steam_field",
+            allowed_kinds=("source_fact", "ai_inference"),
+        )
+        for field_name in _GAME_SOURCE_FIELDS
+        if _has_value(getattr(source, field_name))
+    ]
+    return EvidenceCatalog(entries=tuple(entries))
+
+
+def build_game_visual_evidence_catalog(source: SteamGameSource) -> EvidenceCatalog:
+    _require_game_source(source)
+    assets = _curated_game_visual_assets(source)["assets"]
+    if not isinstance(assets, list):
+        raise TypeError("curated visual assets must be a list")
+    return EvidenceCatalog(
+        entries=tuple(
+            EvidenceCatalogEntry(
+                reference=asset["asset_ref"],
+                source_type="visual_asset",
+                allowed_kinds=("visual_observation", "ai_inference"),
+            )
+            for asset in assets
+            if isinstance(asset, dict) and isinstance(asset.get("asset_ref"), str)
+        )
+    )
+
+
+def build_game_synthesis_evidence_catalog(
+    source: SteamGameSource,
+    extraction: GameExtraction | None = None,
+    visual: GameVisualAnalysis | None = None,
+) -> EvidenceCatalog:
+    _require_game_source(source)
+    entries = list(build_game_extraction_evidence_catalog(source).entries)
+    entries.extend(build_game_visual_evidence_catalog(source).entries)
+    if extraction is not None:
+        entries.extend(_intermediate_entries("game_extraction", extraction))
+    if visual is not None:
+        entries.extend(_intermediate_entries("game_visual", visual))
+    return EvidenceCatalog(entries=tuple(entries))
 
 
 def _require_game_source(source: SteamGameSource) -> None:
     if not isinstance(source, SteamGameSource):
         raise TypeError("source must be a validated SteamGameSource")
+
+
+_GAME_SOURCE_FIELDS = (
+    "app_id",
+    "canonical_url",
+    "name",
+    "type",
+    "required_age",
+    "is_free",
+    "developers",
+    "publishers",
+    "release_date",
+    "coming_soon",
+    "short_description",
+    "detailed_description",
+    "about_the_game",
+    "genres",
+    "categories",
+    "platforms",
+    "supported_languages",
+    "review_summary",
+    "recommendation_count",
+)
+
+
+def _has_value(value: object) -> bool:
+    return value is not None and value != "" and value != ()
+
+
+def _intermediate_entries(prefix: str, model: object) -> list[EvidenceCatalogEntry]:
+    fields = type(model).model_fields
+    return [
+        EvidenceCatalogEntry(
+            reference=f"{prefix}:{field_name}",
+            source_type="intermediate_output",
+            allowed_kinds=("ai_inference",),
+        )
+        for field_name in fields
+        if field_name != "english_language_check"
+    ]
 
 
 def _curated_game_source(source: SteamGameSource) -> dict[str, object]:

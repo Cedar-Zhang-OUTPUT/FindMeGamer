@@ -14,25 +14,49 @@ from app.analysis.contracts import (
 )
 from app.analysis.prompts.common import MAX_PROMPT_BYTES, render_vision_prompt
 from app.analysis.prompts.creator import (
+    build_creator_metadata_evidence_catalog,
     CREATOR_METADATA_PROMPT_VERSION,
     CREATOR_SYNTHESIS_PROMPT_VERSION,
     CREATOR_VISUAL_PROMPT_VERSION,
     build_creator_metadata_prompt,
+    build_creator_synthesis_evidence_catalog,
     build_creator_synthesis_prompt,
+    build_creator_visual_evidence_catalog,
     build_creator_visual_prompt,
 )
 from app.analysis.prompts.game import (
+    build_game_extraction_evidence_catalog,
     GAME_EXTRACTION_PROMPT_VERSION,
     GAME_SYNTHESIS_PROMPT_VERSION,
     GAME_VISUAL_PROMPT_VERSION,
     build_game_extraction_prompt,
+    build_game_synthesis_evidence_catalog,
     build_game_synthesis_prompt,
     build_game_visual_prompt,
+    build_game_visual_evidence_catalog,
 )
-from app.schemas.ai_creator import CreatorMetadataAnalysis, CreatorVisualAnalysis
-from app.schemas.ai_game import GameExtraction, GameVisualAnalysis
+from app.schemas.ai_creator import (
+    CreatorContactEvidence,
+    CreatorMetadataAnalysis,
+    CreatorSynthesis,
+    CreatorVisualAnalysis,
+)
+from app.schemas.ai_game import (
+    GameExtraction,
+    GameSynthesis,
+    GameVisualAnalysis,
+    validate_stage_evidence,
+)
 
-from .test_ai_schemas import game_extraction_payload, unavailable
+from .test_ai_schemas import (
+    contact_evidence,
+    creator_list_claim,
+    creator_synthesis_payload,
+    evidence,
+    game_extraction_payload,
+    game_synthesis_payload,
+    unavailable,
+)
 
 
 def sample_game_source(*, canary: str = "raw-secret-canary") -> SteamGameSource:
@@ -136,6 +160,57 @@ def unavailable_creator_visual() -> CreatorVisualAnalysis:
             "branding": unavailable(),
         }
     )
+
+
+def available_game_visual() -> GameVisualAnalysis:
+    return GameVisualAnalysis.model_validate(
+        {
+            "english_language_check": True,
+            "status": "available",
+            "unavailable_reason": None,
+            "visual_style": {
+                "status": "available",
+                "value": "High-contrast fantasy imagery.",
+                "evidence": evidence(
+                    "visual_observation", "visual_asset", "screenshot:0"
+                ),
+                "confidence": "high",
+            },
+            "visual_motifs": unavailable(),
+            "readability": unavailable(),
+            "content_hook_observations": unavailable(),
+        }
+    )
+
+
+def available_creator_visual() -> CreatorVisualAnalysis:
+    return CreatorVisualAnalysis.model_validate(
+        {
+            "english_language_check": True,
+            "status": "available",
+            "unavailable_reason": None,
+            "visual_style": {
+                "status": "available",
+                "value": "Consistent high-contrast thumbnail layout.",
+                "evidence": evidence(
+                    "visual_observation",
+                    "visual_asset",
+                    "video:video-1:thumbnail:0",
+                ),
+                "confidence": "high",
+            },
+            "production_quality_signals": unavailable(),
+            "thumbnail_patterns": unavailable(),
+            "thumbnail_readability": unavailable(),
+            "branding": unavailable(),
+        }
+    )
+
+
+def available_creator_metadata() -> CreatorMetadataAnalysis:
+    payload = creator_metadata().model_dump(mode="json")
+    payload["primary_games"] = creator_list_claim("Game A")
+    return CreatorMetadataAnalysis.model_validate(payload)
 
 
 def creator_metadata() -> CreatorMetadataAnalysis:
@@ -256,6 +331,8 @@ def test_prompts_curate_source_without_raw_secrets_or_provider_envelopes() -> No
     assert '"id":"video-1"' in creator
     assert '"supported_languages":"English, 日本語"' in game
     assert '"caption_available"' not in creator
+    assert '"reference":"channel:thumbnail_urls"' not in creator
+    assert '"reference":"channel:banner_url"' not in creator
 
 
 def test_vision_prompts_include_asset_indices_and_have_rendering_path() -> None:
@@ -280,7 +357,10 @@ def test_synthesis_accepts_only_validated_intermediates_and_visual_unavailable()
     )
     creator_text = render_messages(
         build_creator_synthesis_prompt(
-            sample_creator_source(), creator_metadata(), unavailable_creator_visual()
+            sample_creator_source(),
+            creator_metadata(),
+            unavailable_creator_visual(),
+            contact_evidence(),
         )
     )
     assert '"status":"unavailable"' in game_text
@@ -289,6 +369,33 @@ def test_synthesis_accepts_only_validated_intermediates_and_visual_unavailable()
         build_game_synthesis_prompt(sample_game_source(), {"unvalidated": True})
     with pytest.raises(TypeError):
         build_creator_synthesis_prompt(sample_creator_source(), {"unvalidated": True})
+
+
+def test_creator_synthesis_serializes_only_validated_contact_candidates() -> None:
+    rendered = render_messages(
+        build_creator_synthesis_prompt(
+            sample_creator_source(),
+            creator_metadata(),
+            unavailable_creator_visual(),
+            contact_evidence(),
+        )
+    )
+    assert '"candidate_id":"contact.email.0"' in rendered
+    assert '"value":"press@example.com"' in rendered
+    assert '"source_url":"https://youtube.com/channel/UC123"' in rendered
+    assert '"validation_state":"validated"' in rendered
+    assert "raw_page" not in rendered
+
+    empty = render_messages(build_creator_synthesis_prompt(sample_creator_source()))
+    assert '"contact_evidence":{"candidates":[]}' in empty
+
+    with pytest.raises(TypeError):
+        build_creator_synthesis_prompt(
+            sample_creator_source(),
+            creator_metadata(),
+            unavailable_creator_visual(),
+            {"candidates": []},
+        )
 
 
 def test_prompt_size_is_bounded_with_explicit_truncation_marker() -> None:
@@ -302,6 +409,60 @@ def test_prompt_size_is_bounded_with_explicit_truncation_marker() -> None:
     rendered = render_messages(build_game_extraction_prompt(huge_game))
     assert len(rendered.encode("utf-8")) <= MAX_PROMPT_BYTES
     assert "[TRUNCATED]" in rendered
+
+
+def test_max_creator_synthesis_keeps_exact_catalog_and_contact_evidence() -> None:
+    prototype = sample_creator_source().videos[0]
+    videos = tuple(
+        prototype.model_copy(
+            update={
+                "id": f"video-{index}",
+                "title": "界" * 1_000,
+                "description": "界" * 5_000,
+                "tags": tuple(f"tag-{item}-{'界' * 100}" for item in range(20)),
+                "thumbnail_urls": (f"https://cdn.example/video-{index}.jpg",),
+            }
+        )
+        for index in range(50)
+    )
+    source = sample_creator_source().model_copy(
+        update={"description": "界" * 20_000, "videos": videos}
+    )
+    candidates = [
+        {
+            "candidate_id": "contact.email.0",
+            "kind": "email",
+            "value": "press@example.com",
+            "source_type": "channel_description",
+            "source_url": "https://youtube.com/channel/UC123",
+            "validation_state": "validated",
+        }
+    ]
+    candidates.extend(
+        {
+            "candidate_id": f"contact.social.{index}",
+            "kind": "social_link",
+            "value": f"https://social.example/{index}/{'x' * 450}",
+            "source_type": "linked_public_page",
+            "source_url": f"https://creator.example/{index}/{'y' * 449}",
+            "validation_state": "unvalidated",
+        }
+        for index in range(9)
+    )
+    contacts = CreatorContactEvidence.model_validate({"candidates": candidates})
+
+    messages = build_creator_synthesis_prompt(
+        source,
+        creator_metadata(),
+        unavailable_creator_visual(),
+        contacts,
+    )
+    rendered = render_messages(messages)
+    assert len(rendered.encode("utf-8")) <= MAX_PROMPT_BYTES
+    assert all(len(message.content) <= 131_072 for message in messages)
+    assert '"reference":"video:video-49"' in rendered
+    assert candidates[-1]["value"] in rendered
+    assert '"truncation_marker":"[TRUNCATED]"' not in rendered
 
 
 def test_visual_asset_caps_emit_explicit_truncation_markers() -> None:
@@ -333,6 +494,125 @@ def test_visual_asset_caps_emit_explicit_truncation_markers() -> None:
 
     assert "[TRUNCATED]" in render_messages(build_game_visual_prompt(game))
     assert "[TRUNCATED]" in render_messages(build_creator_visual_prompt(creator))
+
+
+def stage_evidence_cases():
+    game_source = sample_game_source()
+    creator_source = sample_creator_source()
+    return [
+        (
+            GameExtraction.model_validate(game_extraction_payload()),
+            build_game_extraction_evidence_catalog(game_source),
+        ),
+        (available_game_visual(), build_game_visual_evidence_catalog(game_source)),
+        (
+            GameSynthesis.model_validate(game_synthesis_payload()),
+            build_game_synthesis_evidence_catalog(game_source),
+        ),
+        (
+            available_creator_metadata(),
+            build_creator_metadata_evidence_catalog(creator_source),
+        ),
+        (
+            available_creator_visual(),
+            build_creator_visual_evidence_catalog(creator_source),
+        ),
+        (
+            CreatorSynthesis.model_validate(creator_synthesis_payload()),
+            build_creator_synthesis_evidence_catalog(creator_source),
+        ),
+    ]
+
+
+def _replace_first_evidence_reference(value, reference: str) -> bool:
+    if isinstance(value, dict):
+        if "reference" in value and "kind" in value and "source_type" in value:
+            value["reference"] = reference
+            return True
+        return any(
+            _replace_first_evidence_reference(item, reference)
+            for item in value.values()
+        )
+    if isinstance(value, list):
+        return any(_replace_first_evidence_reference(item, reference) for item in value)
+    return False
+
+
+def test_all_six_stage_outputs_bind_to_exact_dynamic_evidence_catalogs() -> None:
+    for output, catalog in stage_evidence_cases():
+        validate_stage_evidence(output, catalog)
+
+        fabricated = output.model_dump(mode="json")
+        assert _replace_first_evidence_reference(fabricated, "fabricated.reference")
+        parsed = type(output).model_validate(fabricated)
+        with pytest.raises(ValueError, match="evidence reference"):
+            validate_stage_evidence(parsed, catalog)
+
+
+def test_evidence_binding_rejects_kind_or_source_type_mismatch() -> None:
+    output, catalog = stage_evidence_cases()[-1]
+    payload = output.model_dump(mode="json")
+    payload["audience_inference"]["primary_language"]["evidence"][0][
+        "source_type"
+    ] = "channel_field"
+    parsed = CreatorSynthesis.model_validate(payload)
+    with pytest.raises(ValueError, match="evidence reference"):
+        validate_stage_evidence(parsed, catalog)
+
+
+def test_synthesis_catalogs_bind_validated_intermediate_references() -> None:
+    game_source = sample_game_source()
+    extraction = GameExtraction.model_validate(game_extraction_payload())
+    game_payload = game_synthesis_payload()
+    game_payload["short_summary"]["evidence"] = evidence(
+        "ai_inference",
+        "intermediate_output",
+        "game_extraction:short_summary",
+    )
+    game = GameSynthesis.model_validate(game_payload)
+    validate_stage_evidence(
+        game,
+        build_game_synthesis_evidence_catalog(
+            game_source,
+            extraction,
+            unavailable_game_visual(),
+        ),
+    )
+
+    creator_source = sample_creator_source()
+    metadata = available_creator_metadata()
+    creator_payload = creator_synthesis_payload()
+    creator_payload["content_summary"]["evidence"] = evidence(
+        "ai_inference",
+        "intermediate_output",
+        "creator_metadata:primary_games",
+    )
+    creator = CreatorSynthesis.model_validate(creator_payload)
+    validate_stage_evidence(
+        creator,
+        build_creator_synthesis_evidence_catalog(
+            creator_source,
+            metadata,
+            unavailable_creator_visual(),
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    "builder,source",
+    [
+        (build_game_extraction_prompt, sample_game_source()),
+        (build_game_visual_prompt, sample_game_source()),
+        (build_game_synthesis_prompt, sample_game_source()),
+        (build_creator_metadata_prompt, sample_creator_source()),
+        (build_creator_visual_prompt, sample_creator_source()),
+        (build_creator_synthesis_prompt, sample_creator_source()),
+    ],
+)
+def test_every_stage_prompt_contains_explicit_evidence_reference_catalog(
+    builder, source
+) -> None:
+    assert '"evidence_catalog"' in render_messages(builder(source))
 
 
 def test_builders_have_no_mutable_default_state() -> None:

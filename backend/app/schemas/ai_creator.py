@@ -3,8 +3,8 @@
 YouTube identity, exact public metrics, representative source records, manual
 contact/notes, favorite state, schedules, and model metadata remain owned by the
 Task 7 source contract and repository/pipeline layers.  These models contain
-only bounded AI analysis, cautious audience inference, copied discovered public
-contact values, and the compact Creator Brief.  Match Brief is intentionally
+only bounded AI analysis, cautious audience inference, pipeline-bound contact
+candidate selections, and the compact Creator Brief.  Match Brief is intentionally
 excluded because it belongs to a game-specific Match Task.
 """
 
@@ -15,20 +15,54 @@ from email_validator import EmailNotValidError, validate_email
 from pydantic import AfterValidator, Field, field_validator, model_validator
 
 from app.schemas.ai_game import (
-    AvailableListClaim,
-    AvailableTextClaim,
+    BriefEvidenceReference,
     Confidence,
     EvidenceList,
     EvidenceReferences,
     EvidenceText,
     LongText,
-    ShortText,
+    MAX_CREATOR_BRIEF_JSON_BYTES,
+    ReferenceText,
     StageOutput,
     StrictAIModel,
     TextValues,
-    UnavailableClaim,
     require_visual_evidence,
 )
+
+
+def _creator_brief_text(value: str) -> str:
+    if value != value.strip() or not value.strip():
+        raise ValueError("brief text must be nonblank without surrounding whitespace")
+    if any(ord(character) < 32 and character not in "\n\t" for character in value):
+        raise ValueError("brief text contains unsupported control characters")
+    return value
+
+
+def _unique_creator_brief_values(values: tuple[str, ...]) -> tuple[str, ...]:
+    if len(values) != len({value.casefold() for value in values}):
+        raise ValueError("brief values must be unique")
+    return values
+
+
+CreatorBriefText = Annotated[
+    str,
+    Field(min_length=1, max_length=144),
+    AfterValidator(_creator_brief_text),
+]
+CreatorBriefItem = Annotated[
+    str,
+    Field(min_length=1, max_length=48),
+    AfterValidator(_creator_brief_text),
+]
+CreatorBriefValues = Annotated[
+    tuple[CreatorBriefItem, ...],
+    Field(min_length=1, max_length=3),
+    AfterValidator(_unique_creator_brief_values),
+]
+CreatorBriefEvidence = Annotated[
+    tuple[BriefEvidenceReference, ...],
+    Field(min_length=1, max_length=1),
+]
 
 
 class CreatorMetadataAnalysis(StageOutput):
@@ -82,6 +116,8 @@ class CreatorVisualAnalysis(StageOutput):
             raise ValueError(
                 "available visual analysis cannot carry an unavailable reason"
             )
+        if not any(claim.status == "available" for claim in claims):
+            raise ValueError("available visual analysis requires an available claim")
         require_visual_evidence(claims)
         return self
 
@@ -169,26 +205,62 @@ EmailValue = Annotated[
 ]
 URLValue = Annotated[
     str,
-    Field(min_length=8, max_length=2_048),
+    Field(min_length=8, max_length=512),
     AfterValidator(_validate_url_exact),
 ]
 ContactValidationState = Literal["validated", "unvalidated"]
+ContactEvidenceSource = Literal["channel_description", "linked_public_page"]
 
 
-class AvailableEmailContact(StrictAIModel):
-    status: Literal["available"]
+class EmailContactCandidate(StrictAIModel):
+    candidate_id: ReferenceText
+    kind: Literal["email"]
     value: EmailValue
-    value_type: Literal["email"]
-    source_reference: ShortText
+    source_type: ContactEvidenceSource
+    source_url: URLValue
     validation_state: ContactValidationState
 
 
-class AvailableURLContact(StrictAIModel):
-    status: Literal["available"]
+class URLContactCandidate(StrictAIModel):
+    candidate_id: ReferenceText
+    kind: Literal["linked_site", "social_link"]
     value: URLValue
-    value_type: Literal["url"]
-    source_reference: ShortText
+    source_type: ContactEvidenceSource
+    source_url: URLValue
     validation_state: ContactValidationState
+
+
+ContactCandidate = Annotated[
+    EmailContactCandidate | URLContactCandidate,
+    Field(discriminator="kind"),
+]
+
+
+class CreatorContactEvidence(StrictAIModel):
+    """Pipeline-owned exact public contact discoveries supplied to synthesis."""
+
+    candidates: Annotated[tuple[ContactCandidate, ...], Field(max_length=10)]
+
+    @field_validator("candidates")
+    @classmethod
+    def _reject_duplicate_candidates(
+        cls, candidates: tuple[ContactCandidate, ...]
+    ) -> tuple[ContactCandidate, ...]:
+        identifiers = [candidate.candidate_id for candidate in candidates]
+        exact_values = [
+            (candidate.kind, candidate.value, candidate.source_url)
+            for candidate in candidates
+        ]
+        if len(identifiers) != len(set(identifiers)) or len(exact_values) != len(
+            set(exact_values)
+        ):
+            raise ValueError("contact candidates must be unique")
+        return candidates
+
+
+class AvailableContactSelection(StrictAIModel):
+    status: Literal["available"]
+    candidate_id: ReferenceText
 
 
 class UnavailableContact(StrictAIModel):
@@ -196,36 +268,89 @@ class UnavailableContact(StrictAIModel):
     reason: LongText
 
 
-EmailContact = Annotated[
-    AvailableEmailContact | UnavailableContact,
-    Field(discriminator="status"),
-]
-URLContact = Annotated[
-    AvailableURLContact | UnavailableContact,
+ContactSelection = Annotated[
+    AvailableContactSelection | UnavailableContact,
     Field(discriminator="status"),
 ]
 
 
-class AvailableSocialLinks(StrictAIModel):
+class AvailableSocialSelections(StrictAIModel):
     status: Literal["available"]
-    values: Annotated[
-        tuple[AvailableURLContact, ...],
-        Field(min_length=1, max_length=20),
+    candidate_ids: Annotated[
+        tuple[ReferenceText, ...], Field(min_length=1, max_length=20)
     ]
 
-    @field_validator("values")
+    @field_validator("candidate_ids")
     @classmethod
-    def _reject_duplicate_links(
-        cls, values: tuple[AvailableURLContact, ...]
-    ) -> tuple[AvailableURLContact, ...]:
-        links = [item.value for item in values]
-        if len(links) != len(set(links)):
-            raise ValueError("social links must be unique")
+    def _reject_duplicate_links(cls, values: tuple[str, ...]) -> tuple[str, ...]:
+        if len(values) != len(set(values)):
+            raise ValueError("social contact selections must be unique")
         return values
 
 
 SocialLinks = Annotated[
-    AvailableSocialLinks | UnavailableContact,
+    AvailableSocialSelections | UnavailableContact,
+    Field(discriminator="status"),
+]
+
+
+class BoundCreatorContacts(StrictAIModel):
+    public_email: EmailContactCandidate | None
+    linked_site: URLContactCandidate | None
+    social_links: tuple[URLContactCandidate, ...]
+
+
+class CreatorBriefUnavailableClaim(StrictAIModel):
+    status: Literal["unavailable"]
+    reason: CreatorBriefText
+
+
+class CreatorBriefAvailableTextClaim(StrictAIModel):
+    status: Literal["available"]
+    value: CreatorBriefText
+    evidence: CreatorBriefEvidence
+    confidence: Confidence
+
+
+class CreatorBriefAvailableListClaim(StrictAIModel):
+    status: Literal["available"]
+    values: CreatorBriefValues
+    evidence: CreatorBriefEvidence
+    confidence: Confidence
+
+
+CreatorBriefEvidenceText = Annotated[
+    CreatorBriefAvailableTextClaim | CreatorBriefUnavailableClaim,
+    Field(discriminator="status"),
+]
+CreatorBriefEvidenceList = Annotated[
+    CreatorBriefAvailableListClaim | CreatorBriefUnavailableClaim,
+    Field(discriminator="status"),
+]
+
+
+class CompactUnavailableInference(StrictAIModel):
+    status: Literal["unavailable"]
+    reason: CreatorBriefText
+    provenance: Literal["ai_inference"]
+
+
+class CompactAvailableInferenceText(StrictAIModel):
+    status: Literal["available"]
+    value: CreatorBriefText
+    provenance: Literal["ai_inference"]
+    evidence: CreatorBriefEvidence
+    confidence: Confidence
+
+    @model_validator(mode="after")
+    def _require_inference_evidence(self) -> "CompactAvailableInferenceText":
+        if any(item.kind != "ai_inference" for item in self.evidence):
+            raise ValueError("brief audience evidence must be labeled ai_inference")
+        return self
+
+
+CompactInferenceText = Annotated[
+    CompactAvailableInferenceText | CompactUnavailableInference,
     Field(discriminator="status"),
 ]
 
@@ -233,20 +358,26 @@ SocialLinks = Annotated[
 class CreatorBrief(StrictAIModel):
     """Compact, score-free input used by later matching stages."""
 
-    positioning: EvidenceText
-    content_focus: EvidenceList
-    formats: EvidenceList
-    style_and_pacing: EvidenceText
-    audience: EvidenceText
-    performance_context: EvidenceText
-    promotion_fit: EvidenceText
-    brand_safety: EvidenceText
-    suitable_game_types: EvidenceList
-    collaboration_risks: EvidenceList
+    positioning: CreatorBriefEvidenceText
+    content_focus: CreatorBriefEvidenceList
+    formats: CreatorBriefEvidenceList
+    style_and_pacing: CreatorBriefEvidenceText
+    audience: CompactInferenceText
+    performance_context: CreatorBriefEvidenceText
+    promotion_fit: CreatorBriefEvidenceText
+    brand_safety: CreatorBriefEvidenceText
+    suitable_game_types: CreatorBriefEvidenceList
+    collaboration_risks: CreatorBriefEvidenceList
+
+    @model_validator(mode="after")
+    def _enforce_serialized_budget(self) -> "CreatorBrief":
+        if len(self.model_dump_json().encode("utf-8")) > MAX_CREATOR_BRIEF_JSON_BYTES:
+            raise ValueError("CreatorBrief exceeds its screening serialization budget")
+        return self
 
 
 class CreatorSynthesis(StageOutput):
-    """All AI-owned Creator Profile fields plus copied discovered contacts."""
+    """AI-owned Creator fields plus pipeline-resolved contact selections."""
 
     content_summary: EvidenceText
     primary_games: EvidenceList
@@ -267,14 +398,64 @@ class CreatorSynthesis(StageOutput):
     suitable_game_types: EvidenceList
     collaboration_risks: EvidenceList
     audience_inference: AudienceInference
-    public_email: EmailContact
-    linked_site: URLContact
+    public_email: ContactSelection
+    linked_site: ContactSelection
     social_links: SocialLinks
     creator_brief: CreatorBrief
 
 
+def bind_creator_contacts(
+    synthesis: CreatorSynthesis,
+    evidence: CreatorContactEvidence,
+) -> BoundCreatorContacts:
+    """Resolve model selections against exact pipeline-owned contact evidence."""
+
+    if not isinstance(synthesis, CreatorSynthesis) or not isinstance(
+        evidence, CreatorContactEvidence
+    ):
+        raise TypeError("contact binding requires validated synthesis and evidence")
+    candidates = {
+        candidate.candidate_id: candidate for candidate in evidence.candidates
+    }
+
+    def selected(
+        selection: ContactSelection,
+        expected_kind: str,
+    ) -> ContactCandidate | None:
+        if selection.status == "unavailable":
+            return None
+        candidate = candidates.get(selection.candidate_id)
+        if candidate is None or candidate.kind != expected_kind:
+            raise ValueError("contact selection is not bound to supplied evidence")
+        return candidate
+
+    public_email = selected(synthesis.public_email, "email")
+    linked_site = selected(synthesis.linked_site, "linked_site")
+    social_links: list[URLContactCandidate] = []
+    if synthesis.social_links.status == "available":
+        for candidate_id in synthesis.social_links.candidate_ids:
+            candidate = candidates.get(candidate_id)
+            if (
+                not isinstance(candidate, URLContactCandidate)
+                or candidate.kind != "social_link"
+            ):
+                raise ValueError("contact selection is not bound to supplied evidence")
+            social_links.append(candidate)
+    if public_email is not None and not isinstance(public_email, EmailContactCandidate):
+        raise ValueError("contact selection is not bound to supplied evidence")
+    if linked_site is not None and not isinstance(linked_site, URLContactCandidate):
+        raise ValueError("contact selection is not bound to supplied evidence")
+    return BoundCreatorContacts(
+        public_email=public_email,
+        linked_site=linked_site,
+        social_links=tuple(social_links),
+    )
+
+
 __all__ = [
     "AudienceInference",
+    "bind_creator_contacts",
+    "CreatorContactEvidence",
     "CreatorMetadataAnalysis",
     "CreatorSynthesis",
     "CreatorVisualAnalysis",
