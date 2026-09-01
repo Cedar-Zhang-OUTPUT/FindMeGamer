@@ -17,6 +17,7 @@ from app.core.client_address import ClientAddressResolver
 from app.core.config import get_settings
 from app.core.crypto import SecretCipher
 from app.core.database import session_scope
+from app.core.idempotency import utc_now
 from app.core.errors import (
     APIError,
     correlation_id_for,
@@ -42,6 +43,7 @@ def create_app(
     connection_probe: settings_routes.ConnectionProbe | None = None,
     channel_resolver: ChannelResolver | None = None,
     job_session_factory: job_routes.SessionFactory = session_scope,
+    idempotency_clock: job_routes.IdempotencyClock = utc_now,
 ) -> FastAPI:
     configure_request_logging()
     settings = get_settings()
@@ -147,6 +149,7 @@ def create_app(
             authenticate_workspace,
             session_factory=job_session_factory,
             channel_resolver=channel_resolver,
+            idempotency_clock=idempotency_clock,
         )
     )
     return app

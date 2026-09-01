@@ -1,10 +1,19 @@
 import hashlib
 import json
 import re
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 
 _idempotency_key = re.compile(r"^[A-Za-z0-9._:-]{8,128}$")
+
+# A bounded replay window prevents a client-supplied key from reserving storage
+# forever while comfortably covering normal HTTP retry and offline-client delays.
+IDEMPOTENCY_RETENTION = timedelta(hours=24)
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 class InvalidIdempotencyKey(ValueError):

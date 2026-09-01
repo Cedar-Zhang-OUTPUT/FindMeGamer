@@ -1,12 +1,14 @@
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from threading import Barrier, BrokenBarrierError, Lock
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, func, select
+from psycopg.errors import UniqueViolation
+from sqlalchemy import Engine, delete, event, func, select, text
 from sqlalchemy.orm import Session
 
 from app.analysis.targets import (
@@ -14,6 +16,7 @@ from app.analysis.targets import (
     ChannelResolutionUnavailable,
 )
 from app.core.crypto import SecretCipher
+from app.core.idempotency import request_hash
 from app.core.security import hash_workspace_key
 from app.db.models.enums import JobMode, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
@@ -43,6 +46,89 @@ class FakeChannelResolver:
         if self.error is not None:
             raise self.error
         return self.channel_id
+
+
+class SQLCollisionProbe:
+    """Synchronize two real SQL statements and observe DB unique failures."""
+
+    def __init__(
+        self,
+        database_engine: Engine,
+        *,
+        statement_fragment: str,
+        parameter_marker: str,
+    ) -> None:
+        self._engine = database_engine
+        self._statement_fragment = statement_fragment
+        self._parameter_marker = parameter_marker
+        self._barrier = Barrier(2)
+        self._lock = Lock()
+        self._arrivals = 0
+        self._unique_errors = 0
+
+    @property
+    def arrivals(self) -> int:
+        with self._lock:
+            return self._arrivals
+
+    @property
+    def unique_errors(self) -> int:
+        with self._lock:
+            return self._unique_errors
+
+    def __enter__(self) -> "SQLCollisionProbe":
+        event.listen(
+            self._engine,
+            "before_cursor_execute",
+            self._before_cursor_execute,
+        )
+        event.listen(self._engine, "handle_error", self._handle_error)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        self.abort()
+        event.remove(
+            self._engine,
+            "before_cursor_execute",
+            self._before_cursor_execute,
+        )
+        event.remove(self._engine, "handle_error", self._handle_error)
+
+    def abort(self) -> None:
+        try:
+            self._barrier.abort()
+        except BrokenBarrierError:
+            pass
+
+    def _before_cursor_execute(
+        self,
+        connection,
+        cursor,
+        statement: str,
+        parameters,
+        context,
+        executemany: bool,
+    ) -> None:
+        if (
+            self._statement_fragment not in statement
+            or self._parameter_marker not in repr(parameters)
+        ):
+            return
+        with self._lock:
+            if self._arrivals >= 2:
+                return
+            self._arrivals += 1
+        try:
+            self._barrier.wait(timeout=5)
+        except BrokenBarrierError as error:
+            raise AssertionError(
+                "concurrent requests did not reach the guarded SQL point"
+            ) from error
+
+    def _handle_error(self, exception_context) -> None:
+        if isinstance(exception_context.original_exception, UniqueViolation):
+            with self._lock:
+                self._unique_errors += 1
 
 
 def _profile_fields(canonical_url: str, name: str) -> dict:
@@ -96,17 +182,22 @@ def _client_with_session(
     workspace_access_key: str,
     *,
     channel_resolver=None,
+    idempotency_clock=None,
 ) -> Iterator[TestClient]:
     @contextmanager
     def job_session_factory() -> Iterator[Session]:
         yield session
 
+    optional_dependencies = {}
+    if idempotency_clock is not None:
+        optional_dependencies["idempotency_clock"] = idempotency_clock
     app = create_app(
         workspace_key_hash=hash_workspace_key(workspace_access_key),
         rate_limiter=AllowAllRateLimiter(),
         secret_cipher=SecretCipher(bytes(range(32))),
         channel_resolver=channel_resolver,
         job_session_factory=job_session_factory,
+        **optional_dependencies,
     )
     with TestClient(app) as client:
         client.headers["Authorization"] = f"Bearer {workspace_access_key}"
@@ -115,26 +206,82 @@ def _client_with_session(
 
 @contextmanager
 def _independent_client(
-    database_engine: Engine, workspace_access_key: str
+    database_engine: Engine,
+    workspace_access_key: str,
+    *,
+    idempotency_clock=None,
 ) -> Iterator[TestClient]:
     @contextmanager
     def job_session_factory() -> Iterator[Session]:
         with Session(database_engine, expire_on_commit=False) as session:
             try:
+                session.execute(text("SET LOCAL lock_timeout = '8s'"))
+                session.execute(text("SET LOCAL statement_timeout = '12s'"))
                 yield session
             except Exception:
                 session.rollback()
                 raise
 
+    optional_dependencies = {}
+    if idempotency_clock is not None:
+        optional_dependencies["idempotency_clock"] = idempotency_clock
     app = create_app(
         workspace_key_hash=hash_workspace_key(workspace_access_key),
         rate_limiter=AllowAllRateLimiter(),
         secret_cipher=SecretCipher(bytes(range(32))),
         job_session_factory=job_session_factory,
+        **optional_dependencies,
     )
     with TestClient(app) as client:
         client.headers["Authorization"] = f"Bearer {workspace_access_key}"
         yield client
+
+
+def _run_two_requests(
+    callables,
+    *,
+    abort,
+):
+    executor = ThreadPoolExecutor(max_workers=2)
+    futures = [executor.submit(callable_) for callable_ in callables]
+    try:
+        return [future.result(timeout=15) for future in futures]
+    finally:
+        abort()
+        for future in futures:
+            future.cancel()
+        executor.shutdown(wait=True, cancel_futures=True)
+
+
+def _cleanup_concurrency_rows(
+    database_engine: Engine,
+    *,
+    target_ids: set[str],
+    idempotency_keys: set[str],
+) -> None:
+    with Session(database_engine) as cleanup_session:
+        cleanup_session.execute(
+            delete(IdempotencyRecord).where(
+                IdempotencyRecord.key.in_(idempotency_keys)
+            )
+        )
+        cleanup_session.execute(
+            delete(AnalysisJob).where(
+                AnalysisJob.canonical_target_id.in_(target_ids)
+            )
+        )
+        cleanup_session.commit()
+    with Session(database_engine) as verification_session:
+        assert verification_session.scalar(
+            select(func.count()).select_from(IdempotencyRecord).where(
+                IdempotencyRecord.key.in_(idempotency_keys)
+            )
+        ) == 0
+        assert verification_session.scalar(
+            select(func.count()).select_from(AnalysisJob).where(
+                AnalysisJob.canonical_target_id.in_(target_ids)
+            )
+        ) == 0
 
 
 def test_duplicate_active_job_is_returned(auth_client: TestClient) -> None:
@@ -284,6 +431,210 @@ def test_same_key_different_canonical_request_conflicts_without_new_job(
     ) == 1
 
 
+def test_new_idempotency_record_expires_exactly_twenty_four_hours_later(
+    session: Session, workspace_access_key: str
+) -> None:
+    fixed_now = datetime(2026, 9, 2, 4, 0, tzinfo=UTC)
+    key = "stored-expiry-key"
+    with _client_with_session(
+        session,
+        workspace_access_key,
+        idempotency_clock=lambda: fixed_now,
+    ) as client:
+        response = client.post(
+            "/api/v1/jobs/analysis",
+            headers={"Idempotency-Key": key},
+            json={
+                "target_type": "game",
+                "url": "https://store.steampowered.com/app/600",
+            },
+        )
+
+    record = session.scalar(
+        select(IdempotencyRecord).where(IdempotencyRecord.key == key)
+    )
+    assert response.status_code == 201
+    assert record is not None
+    assert record.expires_at == fixed_now + timedelta(hours=24)
+
+
+@pytest.mark.parametrize(
+    ("clock_offset", "should_replay"),
+    [
+        (timedelta(microseconds=-1), True),
+        (timedelta(0), False),
+    ],
+)
+def test_idempotency_expiry_boundary_is_exclusive(
+    session: Session,
+    workspace_access_key: str,
+    clock_offset: timedelta,
+    should_replay: bool,
+) -> None:
+    expires_at = datetime(2026, 9, 3, 4, 0, tzinfo=UTC)
+    now = expires_at + clock_offset
+    key = f"expiry-boundary-{'before' if should_replay else 'at'}"
+    digest = request_hash(
+        method="POST",
+        path="/api/v1/jobs/analysis",
+        canonical_request={
+            "target_type": "game",
+            "canonical_target_id": "601",
+            "mode": "create",
+        },
+    )
+    old_record = IdempotencyRecord(
+        key=key,
+        request_hash=digest,
+        method="POST",
+        path="/api/v1/jobs/analysis",
+        response_status=200,
+        response_body={"sentinel": "old-response"},
+        expires_at=expires_at,
+    )
+    session.add(old_record)
+    session.flush()
+
+    with _client_with_session(
+        session,
+        workspace_access_key,
+        idempotency_clock=lambda: now,
+    ) as client:
+        response = client.post(
+            "/api/v1/jobs/analysis",
+            headers={"Idempotency-Key": key},
+            json={
+                "target_type": "game",
+                "url": "https://store.steampowered.com/app/601",
+            },
+        )
+
+    if should_replay:
+        assert response.status_code == 200
+        assert response.json() == {"sentinel": "old-response"}
+        assert session.get(IdempotencyRecord, old_record.id) is not None
+    else:
+        assert response.status_code == 201
+        assert response.json()["canonical_target_id"] == "601"
+        replacement = session.scalar(
+            select(IdempotencyRecord).where(IdempotencyRecord.key == key)
+        )
+        assert replacement is not None
+        assert replacement.id != old_record.id
+        assert replacement.expires_at == now + timedelta(hours=24)
+
+
+@pytest.mark.parametrize("same_request", [True, False])
+def test_expired_key_can_be_reused_for_same_or_different_request(
+    session: Session,
+    workspace_access_key: str,
+    same_request: bool,
+) -> None:
+    now = datetime(2026, 9, 4, 4, 0, tzinfo=UTC)
+    old_target_id = "602"
+    new_target_id = old_target_id if same_request else "603"
+    key = f"expired-reuse-{'same' if same_request else 'different'}"
+    old_record = IdempotencyRecord(
+        key=key,
+        request_hash=request_hash(
+            method="POST",
+            path="/api/v1/jobs/analysis",
+            canonical_request={
+                "target_type": "game",
+                "canonical_target_id": old_target_id,
+                "mode": "create",
+            },
+        ),
+        method="POST",
+        path="/api/v1/jobs/analysis",
+        response_status=200,
+        response_body={"sentinel": "expired-response"},
+        expires_at=now - timedelta(seconds=1),
+    )
+    session.add(old_record)
+    session.flush()
+
+    with _client_with_session(
+        session,
+        workspace_access_key,
+        idempotency_clock=lambda: now,
+    ) as client:
+        response = client.post(
+            "/api/v1/jobs/analysis",
+            headers={"Idempotency-Key": key},
+            json={
+                "target_type": "game",
+                "url": (
+                    "https://store.steampowered.com/app/" + new_target_id
+                ),
+            },
+        )
+
+    assert response.status_code == 201
+    assert response.json()["canonical_target_id"] == new_target_id
+    replacement = session.scalar(
+        select(IdempotencyRecord).where(IdempotencyRecord.key == key)
+    )
+    assert replacement is not None
+    assert replacement.id != old_record.id
+    assert replacement.request_hash == request_hash(
+        method="POST",
+        path="/api/v1/jobs/analysis",
+        canonical_request={
+            "target_type": "game",
+            "canonical_target_id": new_target_id,
+            "mode": "create",
+        },
+    )
+    assert replacement.expires_at == now + timedelta(hours=24)
+
+
+def test_failed_reuse_keeps_expired_record_and_business_state_atomic(
+    session: Session, workspace_access_key: str
+) -> None:
+    now = datetime(2026, 9, 5, 4, 0, tzinfo=UTC)
+    missing_job_id = uuid4()
+    key = "expired-failed-reuse"
+    old_record = IdempotencyRecord(
+        key=key,
+        request_hash=request_hash(
+            method="POST",
+            path=f"/api/v1/jobs/analysis/{missing_job_id}/retry",
+            canonical_request={"source_job_id": str(missing_job_id)},
+        ),
+        method="POST",
+        path=f"/api/v1/jobs/analysis/{missing_job_id}/retry",
+        response_status=200,
+        response_body={"sentinel": "expired-response"},
+        expires_at=now - timedelta(seconds=1),
+    )
+    session.add(old_record)
+    session.flush()
+
+    with _client_with_session(
+        session,
+        workspace_access_key,
+        idempotency_clock=lambda: now,
+    ) as client:
+        response = client.post(
+            f"/api/v1/jobs/analysis/{missing_job_id}/retry",
+            headers={"Idempotency-Key": key},
+            json={},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "analysis_job_not_found"
+    session.expire_all()
+    preserved = session.get(IdempotencyRecord, old_record.id)
+    assert preserved is not None
+    assert preserved.response_body == {"sentinel": "expired-response"}
+    assert session.scalar(
+        select(func.count()).select_from(AnalysisJob).where(
+            AnalysisJob.id == missing_job_id
+        )
+    ) == 0
+
+
 def test_different_keys_and_url_variants_reuse_global_active_job(
     auth_client: TestClient,
 ) -> None:
@@ -366,6 +717,127 @@ def test_existing_profile_reanalyze_creates_job(
     assert response.status_code == 201
     assert response.json()["mode"] == "reanalyze"
     assert response.json()["profile_id"] is None
+
+
+@pytest.mark.parametrize("target_type", [TargetType.GAME, TargetType.CREATOR])
+@pytest.mark.parametrize("active_status", [JobStatus.QUEUED, JobStatus.RUNNING])
+def test_create_prefers_existing_profile_over_active_reanalysis(
+    auth_client: TestClient,
+    session: Session,
+    target_type: TargetType,
+    active_status: JobStatus,
+) -> None:
+    suffix = "1" if active_status is JobStatus.QUEUED else "2"
+    if target_type is TargetType.GAME:
+        canonical_id = f"31{suffix}"
+        canonical_url = f"https://store.steampowered.com/app/{canonical_id}"
+        profile = GameProfile(
+            steam_app_id=canonical_id,
+            **_profile_fields(canonical_url, "Existing Game"),
+        )
+    else:
+        canonical_id = f"UCexistingMatrix{suffix}"
+        canonical_url = f"https://www.youtube.com/channel/{canonical_id}"
+        profile = CreatorProfile(
+            youtube_channel_id=canonical_id,
+            **_profile_fields(canonical_url, "Existing Creator"),
+        )
+    active = AnalysisJob(
+        target_type=target_type,
+        canonical_target_id=canonical_id,
+        canonical_url=canonical_url,
+        mode=JobMode.REANALYZE,
+        status=active_status,
+        correlation_id="original-active-correlation",
+    )
+    session.add_all((profile, active))
+    session.flush()
+    key = f"profile-precedence-{target_type.value}-{active_status.value}"
+    payload = {
+        "target_type": target_type.value,
+        "url": canonical_url,
+        "mode": "create",
+    }
+
+    first = auth_client.post(
+        "/api/v1/jobs/analysis",
+        headers={"Idempotency-Key": key},
+        json=payload,
+    )
+    replay = auth_client.post(
+        "/api/v1/jobs/analysis",
+        headers={"Idempotency-Key": key},
+        json=payload,
+    )
+
+    expected = {
+        "outcome": "existing_profile",
+        "existing_profile_id": str(profile.id),
+        "target_type": target_type.value,
+        "canonical_target_id": canonical_id,
+        "canonical_url": canonical_url,
+    }
+    assert first.status_code == 200
+    assert first.json() == expected
+    assert replay.status_code == 200
+    assert replay.json() == expected
+    session.refresh(active)
+    assert active.status is active_status
+    assert active.mode is JobMode.REANALYZE
+    assert active.correlation_id == "original-active-correlation"
+    assert session.scalar(
+        select(func.count()).select_from(AnalysisJob).where(
+            AnalysisJob.target_type == target_type,
+            AnalysisJob.canonical_target_id == canonical_id,
+        )
+    ) == 1
+
+
+@pytest.mark.parametrize("target_type", [TargetType.GAME, TargetType.CREATOR])
+def test_reanalyze_with_existing_profile_still_returns_active_job(
+    auth_client: TestClient,
+    session: Session,
+    target_type: TargetType,
+) -> None:
+    if target_type is TargetType.GAME:
+        canonical_id = "319"
+        canonical_url = f"https://store.steampowered.com/app/{canonical_id}"
+        profile = GameProfile(
+            steam_app_id=canonical_id,
+            **_profile_fields(canonical_url, "Existing Game"),
+        )
+    else:
+        canonical_id = "UCexistingReanalyze9"
+        canonical_url = f"https://www.youtube.com/channel/{canonical_id}"
+        profile = CreatorProfile(
+            youtube_channel_id=canonical_id,
+            **_profile_fields(canonical_url, "Existing Creator"),
+        )
+    active = AnalysisJob(
+        target_type=target_type,
+        canonical_target_id=canonical_id,
+        canonical_url=canonical_url,
+        mode=JobMode.REANALYZE,
+        status=JobStatus.RUNNING,
+    )
+    session.add_all((profile, active))
+    session.flush()
+
+    response = auth_client.post(
+        "/api/v1/jobs/analysis",
+        headers={
+            "Idempotency-Key": f"reanalyze-precedence-{target_type.value}"
+        },
+        json={
+            "target_type": target_type.value,
+            "url": canonical_url,
+            "mode": "reanalyze",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["outcome"] == "job"
+    assert response.json()["id"] == str(active.id)
 
 
 def test_handle_resolves_before_session_and_dedupes_by_channel_id(
@@ -688,31 +1160,48 @@ def test_concurrent_same_key_creates_one_job_and_one_record(
         "target_type": "game",
         "url": f"https://store.steampowered.com/app/{app_id}",
     }
-    with _independent_client(database_engine, workspace_access_key) as client:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            responses = list(
-                executor.map(
-                    lambda _: client.post(
+    probe = SQLCollisionProbe(
+        database_engine,
+        statement_fragment="INSERT INTO analysis_jobs",
+        parameter_marker=app_id,
+    )
+    try:
+        with probe, _independent_client(
+            database_engine, workspace_access_key
+        ) as client:
+            responses = _run_two_requests(
+                [
+                    lambda: client.post(
                         "/api/v1/jobs/analysis",
                         headers={"Idempotency-Key": key},
                         json=payload,
-                    ),
-                    range(2),
+                    )
+                    for _index in range(2)
+                ],
+                abort=probe.abort,
+            )
+        assert probe.arrivals == 2
+        assert probe.unique_errors >= 1
+        assert {response.status_code for response in responses} == {201}
+        assert len({response.json()["id"] for response in responses}) == 1
+        with Session(database_engine) as verification_session:
+            assert verification_session.scalar(
+                select(func.count()).select_from(AnalysisJob).where(
+                    AnalysisJob.canonical_target_id == app_id
                 )
-            )
-    assert {response.status_code for response in responses} == {201}
-    assert len({response.json()["id"] for response in responses}) == 1
-    with Session(database_engine) as verification_session:
-        assert verification_session.scalar(
-            select(func.count()).select_from(AnalysisJob).where(
-                AnalysisJob.canonical_target_id == app_id
-            )
-        ) == 1
-        assert verification_session.scalar(
-            select(func.count()).select_from(IdempotencyRecord).where(
-                IdempotencyRecord.key == key
-            )
-        ) == 1
+            ) == 1
+            assert verification_session.scalar(
+                select(func.count()).select_from(IdempotencyRecord).where(
+                    IdempotencyRecord.key == key
+                )
+            ) == 1
+    finally:
+        probe.abort()
+        _cleanup_concurrency_rows(
+            database_engine,
+            target_ids={app_id},
+            idempotency_keys={key},
+        )
 
 
 def test_concurrent_different_keys_create_one_active_target_job(
@@ -726,31 +1215,48 @@ def test_concurrent_different_keys_create_one_active_target_job(
         "target_type": "game",
         "url": f"https://store.steampowered.com/app/{app_id}",
     }
-    with _independent_client(database_engine, workspace_access_key) as client:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            responses = list(
-                executor.map(
-                    lambda key: client.post(
+    probe = SQLCollisionProbe(
+        database_engine,
+        statement_fragment="INSERT INTO analysis_jobs",
+        parameter_marker=app_id,
+    )
+    try:
+        with probe, _independent_client(
+            database_engine, workspace_access_key
+        ) as client:
+            responses = _run_two_requests(
+                [
+                    lambda key=key: client.post(
                         "/api/v1/jobs/analysis",
                         headers={"Idempotency-Key": key},
                         json=payload,
-                    ),
-                    keys,
+                    )
+                    for key in keys
+                ],
+                abort=probe.abort,
+            )
+        assert probe.arrivals == 2
+        assert probe.unique_errors >= 1
+        assert {response.status_code for response in responses} == {200, 201}
+        assert len({response.json()["id"] for response in responses}) == 1
+        with Session(database_engine) as verification_session:
+            assert verification_session.scalar(
+                select(func.count()).select_from(AnalysisJob).where(
+                    AnalysisJob.canonical_target_id == app_id
                 )
-            )
-    assert {response.status_code for response in responses} == {200, 201}
-    assert len({response.json()["id"] for response in responses}) == 1
-    with Session(database_engine) as verification_session:
-        assert verification_session.scalar(
-            select(func.count()).select_from(AnalysisJob).where(
-                AnalysisJob.canonical_target_id == app_id
-            )
-        ) == 1
-        assert verification_session.scalar(
-            select(func.count()).select_from(IdempotencyRecord).where(
-                IdempotencyRecord.key.in_(keys)
-            )
-        ) == 2
+            ) == 1
+            assert verification_session.scalar(
+                select(func.count()).select_from(IdempotencyRecord).where(
+                    IdempotencyRecord.key.in_(keys)
+                )
+            ) == 2
+    finally:
+        probe.abort()
+        _cleanup_concurrency_rows(
+            database_engine,
+            target_ids={app_id},
+            idempotency_keys=set(keys),
+        )
 
 
 @pytest.mark.parametrize("same_key", [True, False])
@@ -768,36 +1274,156 @@ def test_concurrent_retry_is_idempotent_and_target_deduplicated(
     first_key = f"retry-race-{uuid4().hex}"
     keys = [first_key, first_key if same_key else f"retry-race-{uuid4().hex}"]
 
-    with _independent_client(database_engine, workspace_access_key) as client:
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            responses = list(
-                executor.map(
-                    lambda key: client.post(
+    probe = SQLCollisionProbe(
+        database_engine,
+        statement_fragment="INSERT INTO analysis_jobs",
+        parameter_marker=app_id,
+    )
+    try:
+        with probe, _independent_client(
+            database_engine, workspace_access_key
+        ) as client:
+            responses = _run_two_requests(
+                [
+                    lambda key=key: client.post(
                         f"/api/v1/jobs/analysis/{source_id}/retry",
                         headers={"Idempotency-Key": key},
                         json={},
-                    ),
-                    keys,
+                    )
+                    for key in keys
+                ],
+                abort=probe.abort,
+            )
+        expected_statuses = {201} if same_key else {200, 201}
+        assert probe.arrivals == 2
+        assert probe.unique_errors >= 1
+        assert {
+            response.status_code for response in responses
+        } == expected_statuses
+        assert len({response.json()["id"] for response in responses}) == 1
+        with Session(database_engine) as verification_session:
+            source = verification_session.get(AnalysisJob, source_id)
+            assert source is not None
+            assert source.status is JobStatus.FAILED
+            assert verification_session.scalar(
+                select(func.count()).select_from(AnalysisJob).where(
+                    AnalysisJob.canonical_target_id == app_id
                 )
-            )
+            ) == 2
+            assert verification_session.scalar(
+                select(func.count()).select_from(IdempotencyRecord).where(
+                    IdempotencyRecord.key.in_(set(keys))
+                )
+            ) == len(set(keys))
+    finally:
+        probe.abort()
+        _cleanup_concurrency_rows(
+            database_engine,
+            target_ids={app_id},
+            idempotency_keys=set(keys),
+        )
 
-    expected_statuses = {201} if same_key else {200, 201}
-    assert {response.status_code for response in responses} == expected_statuses
-    assert len({response.json()["id"] for response in responses}) == 1
-    with Session(database_engine) as verification_session:
-        source = verification_session.get(AnalysisJob, source_id)
-        assert source is not None
-        assert source.status is JobStatus.FAILED
-        assert verification_session.scalar(
-            select(func.count()).select_from(AnalysisJob).where(
-                AnalysisJob.canonical_target_id == app_id
+
+@pytest.mark.parametrize("different_request", [False, True])
+def test_concurrent_expired_key_reuse_is_serialized_and_atomic(
+    different_request: bool,
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+) -> None:
+    now = datetime(2026, 9, 6, 4, 0, tzinfo=UTC)
+    first_app_id = str(1_000_000_000 + (uuid4().int % 500_000_000))
+    second_app_id = (
+        str(1_500_000_000 + (uuid4().int % 500_000_000))
+        if different_request
+        else first_app_id
+    )
+    target_ids = {first_app_id, second_app_id}
+    key = f"expired-race-{uuid4().hex}"
+    digest = request_hash(
+        method="POST",
+        path="/api/v1/jobs/analysis",
+        canonical_request={
+            "target_type": "game",
+            "canonical_target_id": first_app_id,
+            "mode": "create",
+        },
+    )
+    with Session(database_engine, expire_on_commit=False) as seed_session:
+        old_record = IdempotencyRecord(
+            key=key,
+            request_hash=digest,
+            method="POST",
+            path="/api/v1/jobs/analysis",
+            response_status=200,
+            response_body={"sentinel": "expired"},
+            expires_at=now - timedelta(seconds=1),
+        )
+        seed_session.add(old_record)
+        seed_session.commit()
+        old_record_id = old_record.id
+    payloads = [
+        {
+            "target_type": "game",
+            "url": f"https://store.steampowered.com/app/{app_id}",
+        }
+        for app_id in (first_app_id, second_app_id)
+    ]
+    probe = SQLCollisionProbe(
+        database_engine,
+        statement_fragment="FROM idempotency_records",
+        parameter_marker=key,
+    )
+    try:
+        with probe, _independent_client(
+            database_engine,
+            workspace_access_key,
+            idempotency_clock=lambda: now,
+        ) as client:
+            responses = _run_two_requests(
+                [
+                    lambda payload=payload: client.post(
+                        "/api/v1/jobs/analysis",
+                        headers={"Idempotency-Key": key},
+                        json=payload,
+                    )
+                    for payload in payloads
+                ],
+                abort=probe.abort,
             )
-        ) == 2
-        assert verification_session.scalar(
-            select(func.count()).select_from(IdempotencyRecord).where(
-                IdempotencyRecord.key.in_(set(keys))
+        assert probe.arrivals == 2
+        assert probe.unique_errors >= 1
+        expected_statuses = {201, 409} if different_request else {201}
+        assert {
+            response.status_code for response in responses
+        } == expected_statuses
+        successful = [response for response in responses if response.status_code == 201]
+        assert successful
+        assert len({response.json()["id"] for response in successful}) == 1
+        with Session(database_engine) as verification_session:
+            replacement = verification_session.scalar(
+                select(IdempotencyRecord).where(IdempotencyRecord.key == key)
             )
-        ) == len(set(keys))
+            assert replacement is not None
+            assert replacement.id != old_record_id
+            assert replacement.expires_at == now + timedelta(hours=24)
+            assert verification_session.scalar(
+                select(func.count()).select_from(AnalysisJob).where(
+                    AnalysisJob.canonical_target_id.in_(target_ids)
+                )
+            ) == 1
+            assert verification_session.scalar(
+                select(func.count()).select_from(IdempotencyRecord).where(
+                    IdempotencyRecord.key == key
+                )
+            ) == 1
+    finally:
+        probe.abort()
+        _cleanup_concurrency_rows(
+            database_engine,
+            target_ids=target_ids,
+            idempotency_keys={key},
+        )
 
 
 def test_openapi_exposes_required_headers_and_safe_outcome_schemas(

@@ -1,4 +1,5 @@
 import re
+import unicodedata
 from dataclasses import dataclass, replace
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -44,6 +45,12 @@ class UnavailableChannelResolver:
 
 def _parsed_https_url(raw_url: str):
     if not isinstance(raw_url, str) or not raw_url or len(raw_url) > 2048:
+        raise InvalidTarget("The target URL is invalid.")
+    if any(
+        character.isspace()
+        or unicodedata.category(character).startswith("C")
+        for character in raw_url
+    ):
         raise InvalidTarget("The target URL is invalid.")
     try:
         parsed = urlsplit(raw_url)

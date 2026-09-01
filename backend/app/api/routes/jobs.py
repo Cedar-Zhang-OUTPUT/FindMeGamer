@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from datetime import datetime
 from typing import Annotated, Any, ContextManager
 from uuid import UUID
 
@@ -17,11 +18,13 @@ from app.analysis.targets import (
 )
 from app.core.errors import APIError
 from app.core.idempotency import (
+    IDEMPOTENCY_RETENTION,
     InvalidIdempotencyKey,
     request_hash,
     validate_idempotency_key,
 )
 from app.db.models.enums import JobStatus
+from app.db.models.idempotency import IdempotencyRecord
 from app.repositories.jobs import JobCreationResult, JobsRepository
 from app.schemas.jobs import (
     AnalysisJobCreate,
@@ -33,6 +36,7 @@ from app.schemas.jobs import (
 
 
 SessionFactory = Callable[[], ContextManager[Session]]
+IdempotencyClock = Callable[[], datetime]
 
 
 def _public_result(result: JobCreationResult, target) -> tuple[int, dict[str, Any]]:
@@ -56,15 +60,26 @@ def _idempotency_conflict() -> APIError:
     )
 
 
-def _stored_response(repository: JobsRepository, key: str, digest: str):
+def _stored_response(
+    repository: JobsRepository,
+    key: str,
+    digest: str,
+    *,
+    now: datetime,
+) -> tuple[JSONResponse | None, IdempotencyRecord | None]:
     record = repository.get_idempotency_record(key)
     if record is None:
-        return None
+        return None, None
+    if record.expires_at is None or record.expires_at <= now:
+        return None, record
     if record.request_hash != digest:
         raise _idempotency_conflict()
-    return JSONResponse(
-        status_code=record.response_status,
-        content=record.response_body,
+    return (
+        JSONResponse(
+            status_code=record.response_status,
+            content=record.response_body,
+        ),
+        None,
     )
 
 
@@ -87,16 +102,21 @@ def _execute_idempotent(
     method: str,
     path: str,
     build_result: Callable[[JobsRepository], tuple[JobCreationResult, Any]],
+    now: datetime,
 ) -> JSONResponse:
     with session_factory() as database_session:
         repository = JobsRepository(database_session)
         for _attempt in range(3):
-            stored = _stored_response(repository, key, digest)
+            stored, expired_record = _stored_response(
+                repository, key, digest, now=now
+            )
             if stored is not None:
                 return stored
             try:
                 result, target = build_result(repository)
                 status, body = _public_result(result, target)
+                if expired_record is not None:
+                    repository.delete_idempotency_record(expired_record)
                 repository.add_idempotency_record(
                     key=key,
                     request_hash=digest,
@@ -104,12 +124,15 @@ def _execute_idempotent(
                     path=path,
                     response_status=status,
                     response_body=body,
+                    expires_at=now + IDEMPOTENCY_RETENTION,
                 )
                 database_session.commit()
                 return JSONResponse(status_code=status, content=body)
             except IntegrityError:
                 database_session.rollback()
-        stored = _stored_response(repository, key, digest)
+        stored, _expired_record = _stored_response(
+            repository, key, digest, now=now
+        )
         if stored is not None:
             return stored
         raise APIError(
@@ -125,6 +148,7 @@ def create_router(
     *,
     session_factory: SessionFactory,
     channel_resolver: ChannelResolver | None = None,
+    idempotency_clock: IdempotencyClock,
 ) -> APIRouter:
     resolver = channel_resolver or UnavailableChannelResolver()
     router = APIRouter(
@@ -190,6 +214,7 @@ def create_router(
             method="POST",
             path=path,
             build_result=build_result,
+            now=idempotency_clock(),
         )
 
     @router.post(
@@ -255,6 +280,7 @@ def create_router(
             method="POST",
             path=path,
             build_result=build_result,
+            now=idempotency_clock(),
         )
 
     return router

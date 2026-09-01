@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -24,8 +25,14 @@ class JobsRepository:
 
     def get_idempotency_record(self, key: str) -> IdempotencyRecord | None:
         return self._session.scalar(
-            select(IdempotencyRecord).where(IdempotencyRecord.key == key)
+            select(IdempotencyRecord)
+            .where(IdempotencyRecord.key == key)
+            .with_for_update()
         )
+
+    def delete_idempotency_record(self, record: IdempotencyRecord) -> None:
+        self._session.delete(record)
+        self._session.flush()
 
     def add_idempotency_record(
         self,
@@ -36,6 +43,7 @@ class JobsRepository:
         path: str,
         response_status: int,
         response_body: dict,
+        expires_at: datetime,
     ) -> None:
         self._session.add(
             IdempotencyRecord(
@@ -45,6 +53,7 @@ class JobsRepository:
                 path=path,
                 response_status=response_status,
                 response_body=response_body,
+                expires_at=expires_at,
             )
         )
 
@@ -67,9 +76,6 @@ class JobsRepository:
         mode: JobMode,
         correlation_id: str | None,
     ) -> JobCreationResult:
-        active = self.active_job(target)
-        if active is not None:
-            return JobCreationResult(job=active)
         if mode is JobMode.CREATE:
             if target.target_type is TargetType.GAME:
                 profile_id = self._session.scalar(
@@ -85,6 +91,9 @@ class JobsRepository:
                 )
             if profile_id is not None:
                 return JobCreationResult(existing_profile_id=profile_id)
+        active = self.active_job(target)
+        if active is not None:
+            return JobCreationResult(job=active)
         job = AnalysisJob(
             target_type=target.target_type,
             canonical_target_id=target.canonical_id,
