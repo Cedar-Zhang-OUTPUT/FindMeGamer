@@ -1,6 +1,6 @@
 import os
 from concurrent.futures import ThreadPoolExecutor
-from time import monotonic
+from time import monotonic, sleep
 from uuid import uuid4
 
 import pytest
@@ -36,13 +36,15 @@ def test_real_redis_counter_atomically_increments_and_preserves_first_write_ttl(
                 executor.map(lambda _: counter.increment(key, 10), range(12))
             )
 
-        first_ttl = client.ttl(key)
+        first_remaining_ms = client.pttl(key)
+        sleep(0.2)
         next_value = counter.increment(key, 10)
-        second_ttl = client.ttl(key)
+        second_remaining_ms = client.pttl(key)
 
         assert sorted(values) == list(range(1, 13))
         assert next_value == 13
-        assert 1 <= second_ttl <= first_ttl <= 10
+        assert 0 < second_remaining_ms < first_remaining_ms <= 10_000
+        assert first_remaining_ms - second_remaining_ms >= 100
     finally:
         client.delete(key)
         client.close()
