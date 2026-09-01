@@ -20,6 +20,7 @@ dependencies = [
     "markdown-it-py>=3.0",
     "psycopg[binary]>=3.2",
     "pydantic-settings>=2.7",
+    "redis>=5.0",
     "sqlalchemy>=2.0",
     "uvicorn[standard]>=0.32",
 ]
