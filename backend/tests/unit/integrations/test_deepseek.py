@@ -151,8 +151,14 @@ def test_deepseek_rejects_unbounded_structured_inputs(
         ("prompt", []),
         ("prompt", ["https://cdn.example/a.jpg"] * 13),
         ("prompt", ["http://cdn.example/a.jpg"]),
+        ("prompt", ["http://localhost/a.jpg"]),
+        ("prompt", ["http://127.0.0.1/a.jpg"]),
+        ("prompt", ["http://[::1]/a.jpg"]),
         ("prompt", ["//cdn.example/a.jpg"]),
         ("prompt", ["https://user@cdn.example/a.jpg"]),
+        ("prompt", ["https://cdn.example/a.jpg#fragment"]),
+        ("prompt", ["https://cdn.example/a.jpg\x00"]),
+        ("prompt", ["ftp://cdn.example/a.jpg"]),
     ],
 )
 def test_deepseek_rejects_invalid_vision_inputs(prompt: str, images: list[str]) -> None:

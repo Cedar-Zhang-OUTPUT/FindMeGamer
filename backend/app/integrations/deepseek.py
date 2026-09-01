@@ -1,4 +1,3 @@
-from ipaddress import ip_address
 import json
 import re
 from typing import Any, TypeVar
@@ -208,19 +207,12 @@ def _validate_image_url(value: object) -> None:
     except ValueError:
         raise PermanentIntegrationError("deepseek_input_invalid") from None
     if (
-        parsed.scheme not in {"http", "https"}
+        parsed.scheme != "https"
         or not hostname
         or parsed.username is not None
         or parsed.password is not None
         or parsed.fragment
     ):
-        raise PermanentIntegrationError("deepseek_input_invalid")
-    is_loopback = hostname.casefold() == "localhost"
-    try:
-        is_loopback = is_loopback or ip_address(hostname).is_loopback
-    except ValueError:
-        pass
-    if parsed.scheme == "http" and not is_loopback:
         raise PermanentIntegrationError("deepseek_input_invalid")
 
 

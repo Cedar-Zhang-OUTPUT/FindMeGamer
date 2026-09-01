@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 from typing import Any
 
@@ -18,10 +18,16 @@ MAX_SCANNED_VIDEO_IDS = 250
 HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=20.0, write=10.0, pool=5.0)
 _channel_id = re.compile(r"^UC[A-Za-z0-9_-]{6,126}$")
 _handle = re.compile(r"^@[a-z0-9._-]{3,30}$")
+_playlist_id = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+_video_id = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _duration = re.compile(
-    r"^P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?"
-    r"(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?$"
+    r"^P(?:(?P<days>\d{1,6})D)?(?:T(?:(?P<hours>\d{1,6})H)?"
+    r"(?:(?P<minutes>\d{1,6})M)?(?:(?P<seconds>\d{1,6})S)?)?$"
 )
+_rfc3339_timestamp = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}" r"(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$"
+)
+MAX_VIDEO_DURATION_SECONDS = 315_576_000
 _TRANSIENT_403_REASONS = frozenset(
     {
         "quotaExceeded",
@@ -110,7 +116,9 @@ class YouTubeGateway:
             playlist_id = _uploads_playlist_id(channel)
             playlist_ids, raw_pages = self._scan_uploads(playlist_id)
             videos, raw_video_responses = self._fetch_videos(
-                playlist_ids, limit=video_limit
+                playlist_ids,
+                channel_id=channel_id,
+                limit=video_limit,
             )
             return _map_creator(
                 channel,
@@ -128,6 +136,7 @@ class YouTubeGateway:
     ) -> tuple[list[str], tuple[dict[str, Any], ...]]:
         video_ids: list[str] = []
         seen: set[str] = set()
+        seen_page_tokens: set[str] = set()
         raw_pages: list[dict[str, Any]] = []
         page_token: str | None = None
         for _ in range(MAX_PLAYLIST_PAGES):
@@ -145,12 +154,11 @@ class YouTubeGateway:
                 if not isinstance(content, dict):
                     continue
                 video_id = content.get("videoId")
-                if (
-                    not isinstance(video_id, str)
-                    or not video_id
-                    or len(video_id) > 128
-                    or video_id in seen
-                ):
+                if video_id is None:
+                    continue
+                if not isinstance(video_id, str) or not _video_id.fullmatch(video_id):
+                    raise PermanentIntegrationError("youtube_response_invalid")
+                if video_id in seen:
                     continue
                 seen.add(video_id)
                 video_ids.append(video_id)
@@ -165,11 +173,18 @@ class YouTubeGateway:
                 or len(next_token) > 512
             ):
                 raise ValueError("invalid next page token")
+            if next_token in seen_page_tokens:
+                raise PermanentIntegrationError("youtube_response_invalid")
+            seen_page_tokens.add(next_token)
             page_token = next_token
         return video_ids, tuple(raw_pages)
 
     def _fetch_videos(
-        self, video_ids: list[str], *, limit: int
+        self,
+        video_ids: list[str],
+        *,
+        channel_id: str,
+        limit: int,
     ) -> tuple[tuple[VideoSource, ...], tuple[dict[str, Any], ...]]:
         by_id: dict[str, VideoSource] = {}
         raw_responses: list[dict[str, Any]] = []
@@ -194,19 +209,18 @@ class YouTubeGateway:
                     or status.get("privacyStatus") != "public"
                 ):
                     continue
-                try:
-                    by_id[video_id] = _map_video(item)
-                except (TypeError, ValueError, ValidationError):
+                if video_id in by_id:
                     continue
+                by_id[video_id] = _map_video(item, expected_channel_id=channel_id)
         ordered = tuple(by_id[value] for value in video_ids if value in by_id)[:limit]
         return ordered, tuple(raw_responses)
 
     def _request_json(self, endpoint: str, params: dict[str, str]) -> dict[str, Any]:
-        request_params = {**params, "key": self._api_key}
         try:
             response = self._client.get(
                 f"{self._base_url}/{endpoint}",
-                params=request_params,
+                params=params,
+                headers={"X-Goog-Api-Key": self._api_key},
                 timeout=HTTP_TIMEOUT,
                 follow_redirects=False,
             )
@@ -295,7 +309,7 @@ def _uploads_playlist_id(channel: dict[str, Any]) -> str:
     if not isinstance(related, dict):
         raise ValueError("missing related playlists")
     playlist_id = related.get("uploads")
-    if not isinstance(playlist_id, str) or not playlist_id or len(playlist_id) > 128:
+    if not isinstance(playlist_id, str) or not _playlist_id.fullmatch(playlist_id):
         raise ValueError("invalid uploads playlist")
     return playlist_id
 
@@ -342,9 +356,12 @@ def _map_creator(
     )
 
 
-def _map_video(item: dict[str, Any]) -> VideoSource:
+def _map_video(item: dict[str, Any], *, expected_channel_id: str) -> VideoSource:
     video_id = _required_string(item.get("id"), max_length=128)
     snippet = _mapping(item.get("snippet"))
+    returned_channel_id = snippet.get("channelId")
+    if returned_channel_id != expected_channel_id:
+        raise PermanentIntegrationError("youtube_response_invalid")
     content = _mapping(item.get("contentDetails"))
     statistics = _mapping(item.get("statistics"))
     tags_value = snippet.get("tags")
@@ -360,7 +377,7 @@ def _map_video(item: dict[str, Any]) -> VideoSource:
         description=_optional_string(snippet.get("description"), max_length=500_000)
         or "",
         published_at=_optional_datetime(snippet.get("publishedAt")),
-        channel_id=_optional_string(snippet.get("channelId"), max_length=128),
+        channel_id=expected_channel_id,
         tags=tags,
         category_id=_optional_string(snippet.get("categoryId"), max_length=32),
         duration_seconds=_optional_duration(content.get("duration")),
@@ -424,12 +441,21 @@ def _optional_count(value: object) -> int | None:
 def _optional_datetime(value: object) -> datetime | None:
     if value is None:
         return None
-    if not isinstance(value, str) or len(value) > 64:
+    if (
+        not isinstance(value, str)
+        or len(value) > 64
+        or _rfc3339_timestamp.fullmatch(value) is None
+    ):
         raise ValueError("invalid date")
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(
+            f"{value[:-1]}+00:00" if value.endswith("Z") else value
+        )
     except ValueError:
-        return None
+        raise ValueError("invalid date") from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("invalid date")
+    return parsed.astimezone(timezone.utc)
 
 
 def _optional_duration(value: object) -> int | None:
@@ -438,15 +464,18 @@ def _optional_duration(value: object) -> int | None:
     if not isinstance(value, str) or len(value) > 64:
         raise ValueError("invalid duration")
     match = _duration.fullmatch(value)
-    if match is None:
-        return None
+    if match is None or all(part is None for part in match.groupdict().values()):
+        raise ValueError("invalid duration")
     parts = {name: int(number or 0) for name, number in match.groupdict().items()}
-    return (
+    seconds = (
         parts["days"] * 86_400
         + parts["hours"] * 3_600
         + parts["minutes"] * 60
         + parts["seconds"]
     )
+    if seconds > MAX_VIDEO_DURATION_SECONDS:
+        raise ValueError("invalid duration")
+    return seconds
 
 
 def _caption_bool(value: object) -> bool | None:
@@ -456,7 +485,7 @@ def _caption_bool(value: object) -> bool | None:
         return True
     if value == "false":
         return False
-    return None
+    raise ValueError("invalid caption flag")
 
 
 def _thumbnail_urls(value: object) -> tuple[str, ...]:

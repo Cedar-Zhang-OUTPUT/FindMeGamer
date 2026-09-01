@@ -1,4 +1,6 @@
 import logging
+from datetime import datetime, timezone
+
 import httpx
 import pytest
 
@@ -51,6 +53,7 @@ def test_youtube_fetches_only_fifty_recent_videos() -> None:
                             "snippet": {
                                 "title": video_id,
                                 "publishedAt": "2026-09-01T00:00:00Z",
+                                "channelId": "UC123456",
                             },
                             "contentDetails": {"duration": "PT1M"},
                             "statistics": {},
@@ -89,6 +92,66 @@ def test_youtube_resolves_handle_with_official_channels_endpoint() -> None:
     assert requests[0].url.path == "/youtube/v3/channels"
     assert requests[0].url.params["forHandle"] == "@examplecreator"
     assert requests[0].url.params["part"] == "id"
+
+
+def test_youtube_api_key_uses_header_and_never_completed_request_url_or_logs(
+    caplog,
+) -> None:
+    secret = "youtube-success-key-canary"
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"items": [{"id": "UCresolved123"}]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    target = canonicalize_target(TargetType.CREATOR, "https://youtube.com/@example")
+
+    caplog.set_level(logging.INFO, logger="httpx")
+    caplog.set_level(logging.INFO, logger="httpcore")
+    with caplog.at_level(logging.INFO):
+        resolved = YouTubeGateway(api_key=secret, http_client=client).resolve_channel(
+            target
+        )
+
+    assert resolved == "UCresolved123"
+    assert secret not in caplog.text
+    assert len(requests) == 1
+    assert requests[0].headers.get_list("x-goog-api-key") == [secret]
+    assert "key" not in requests[0].url.params
+    assert secret not in str(requests[0].url)
+
+
+@pytest.mark.parametrize(
+    ("status", "error_type", "code"),
+    [
+        (400, PermanentIntegrationError, "youtube_request_rejected"),
+        (429, TransientIntegrationError, "youtube_unavailable"),
+        (503, TransientIntegrationError, "youtube_unavailable"),
+    ],
+)
+def test_youtube_http_error_redaction_keeps_api_key_out_of_url_and_logs(
+    status: int,
+    error_type: type[Exception],
+    code: str,
+    caplog,
+) -> None:
+    secret = "youtube-http-error-key-canary"
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(status, text="provider body")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.INFO), pytest.raises(error_type, match=code) as caught:
+        YouTubeGateway(api_key=secret, http_client=client).fetch_creator("UC123456")
+
+    rendered = f"{caught.value!s}{caught.value!r}{caplog.text}{requests[0].url}"
+    assert secret not in rendered
+    assert requests[0].headers.get_list("x-goog-api-key") == [secret]
+    assert "key" not in requests[0].url.params
 
 
 def test_youtube_returns_valid_channel_id_without_network() -> None:
@@ -182,6 +245,43 @@ def test_youtube_paginates_deduplicates_filters_private_and_preserves_recent_ord
     )
 
 
+@pytest.mark.parametrize("returned_channel_id", ["UCother123", None])
+def test_youtube_rejects_public_video_from_missing_or_different_channel(
+    returned_channel_id: str | None, caplog
+) -> None:
+    secret_body_value = "cross-channel-provider-canary"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        if endpoint == "channels":
+            return httpx.Response(200, json=_channel_response())
+        if endpoint == "playlistItems":
+            return httpx.Response(
+                200,
+                json={"items": [{"contentDetails": {"videoId": "video-001"}}]},
+            )
+        if endpoint == "videos":
+            item = _video_item("video-001")
+            snippet = item["snippet"]
+            assert isinstance(snippet, dict)
+            if returned_channel_id is None:
+                snippet.pop("channelId")
+            else:
+                snippet["channelId"] = returned_channel_id
+            snippet["description"] = secret_body_value
+            return httpx.Response(200, json={"items": [item]})
+        raise AssertionError(f"unexpected endpoint {endpoint}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(
+        PermanentIntegrationError, match="youtube_response_invalid"
+    ) as caught:
+        YouTubeGateway(api_key="test-key", http_client=client).fetch_creator("UC123456")
+
+    assert secret_body_value not in f"{caught.value!s}{caught.value!r}{caplog.text}"
+
+
 def _channel_response(*, hidden: bool = False) -> dict[str, object]:
     statistics: dict[str, object] = {
         "hiddenSubscriberCount": hidden,
@@ -234,6 +334,316 @@ def _video_item(video_id: str, *, privacy: str = "public") -> dict[str, object]:
         "statistics": {"viewCount": "100", "likeCount": "5", "commentCount": "2"},
         "status": {"privacyStatus": privacy},
     }
+
+
+def _single_video_client(video: dict[str, object]) -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        if endpoint == "channels":
+            return httpx.Response(200, json=_channel_response())
+        if endpoint == "playlistItems":
+            return httpx.Response(
+                200,
+                json={"items": [{"contentDetails": {"videoId": "video-001"}}]},
+            )
+        if endpoint == "videos":
+            return httpx.Response(200, json={"items": [video]})
+        raise AssertionError(f"unexpected endpoint {endpoint}")
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_youtube_normalizes_offset_and_fractional_timestamps_to_aware_utc() -> None:
+    video = _video_item("video-001")
+    snippet = video["snippet"]
+    assert isinstance(snippet, dict)
+    snippet["publishedAt"] = "2026-09-01T08:30:15.123456+08:00"
+
+    source = YouTubeGateway(
+        api_key="test-key", http_client=_single_video_client(video)
+    ).fetch_creator("UC123456")
+
+    assert source.published_at == datetime(2020, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
+    assert source.videos[0].published_at == datetime(
+        2026, 9, 1, 0, 30, 15, 123456, tzinfo=timezone.utc
+    )
+    assert source.videos[0].published_at.tzinfo is timezone.utc
+
+
+@pytest.mark.parametrize(
+    "published_at",
+    [
+        "2026-09-01T00:00:00",
+        "2026-13-01T00:00:00Z",
+        "not-a-date",
+        123,
+        "2026-09-01 00:00:00Z",
+        "x" * 65,
+    ],
+)
+def test_youtube_rejects_present_malformed_video_timestamp(
+    published_at: object, caplog
+) -> None:
+    raw_canary = "malformed-video-time-canary"
+    video = _video_item("video-001")
+    snippet = video["snippet"]
+    assert isinstance(snippet, dict)
+    snippet["publishedAt"] = published_at
+    snippet["description"] = raw_canary
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(
+        PermanentIntegrationError, match="youtube_response_invalid"
+    ) as caught:
+        YouTubeGateway(
+            api_key="test-key", http_client=_single_video_client(video)
+        ).fetch_creator("UC123456")
+
+    assert raw_canary not in f"{caught.value!s}{caught.value!r}{caplog.text}"
+
+
+def test_youtube_rejects_present_offset_free_channel_timestamp() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        response = _channel_response()
+        channel = response["items"]
+        assert isinstance(channel, list)
+        snippet = channel[0]["snippet"]
+        assert isinstance(snippet, dict)
+        snippet["publishedAt"] = "2020-01-02T03:04:05"
+        return httpx.Response(200, json=response)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermanentIntegrationError, match="youtube_response_invalid"):
+        YouTubeGateway(api_key="test-key", http_client=client).fetch_creator("UC123456")
+
+
+@pytest.mark.parametrize(
+    "duration",
+    ["P", "PT", "not-a-duration", 123, "P999999999D", "PT999999999999S"],
+)
+def test_youtube_rejects_present_malformed_or_unbounded_duration(
+    duration: object,
+) -> None:
+    video = _video_item("video-001")
+    content = video["contentDetails"]
+    assert isinstance(content, dict)
+    content["duration"] = duration
+
+    with pytest.raises(PermanentIntegrationError, match="youtube_response_invalid"):
+        YouTubeGateway(
+            api_key="test-key", http_client=_single_video_client(video)
+        ).fetch_creator("UC123456")
+
+
+@pytest.mark.parametrize("caption", ["TRUE", "False", "", True, 1])
+def test_youtube_rejects_present_nonofficial_caption_flag(caption: object) -> None:
+    video = _video_item("video-001")
+    content = video["contentDetails"]
+    assert isinstance(content, dict)
+    content["caption"] = caption
+
+    with pytest.raises(PermanentIntegrationError, match="youtube_response_invalid"):
+        YouTubeGateway(
+            api_key="test-key", http_client=_single_video_client(video)
+        ).fetch_creator("UC123456")
+
+
+@pytest.mark.parametrize(
+    ("duration", "expected_seconds"),
+    [("PT0S", 0), ("P1DT2H3M4S", 93_784)],
+)
+def test_youtube_accepts_zero_and_bounded_iso_duration(
+    duration: str, expected_seconds: int
+) -> None:
+    video = _video_item("video-001")
+    content = video["contentDetails"]
+    assert isinstance(content, dict)
+    content["duration"] = duration
+
+    source = YouTubeGateway(
+        api_key="test-key", http_client=_single_video_client(video)
+    ).fetch_creator("UC123456")
+
+    assert source.videos[0].duration_seconds == expected_seconds
+
+
+def test_youtube_keeps_missing_optional_typed_video_fields_as_none() -> None:
+    video = _video_item("video-001")
+    snippet = video["snippet"]
+    content = video["contentDetails"]
+    assert isinstance(snippet, dict)
+    assert isinstance(content, dict)
+    snippet.pop("publishedAt")
+    content.pop("duration")
+    content.pop("caption")
+
+    source = YouTubeGateway(
+        api_key="test-key", http_client=_single_video_client(video)
+    ).fetch_creator("UC123456")
+
+    assert source.videos[0].published_at is None
+    assert source.videos[0].duration_seconds is None
+    assert source.videos[0].caption_available is None
+
+
+@pytest.mark.parametrize(
+    "tokens",
+    [
+        ["token-a", "token-a"],
+        ["token-a", "token-b", "token-a"],
+    ],
+)
+def test_youtube_rejects_pagination_token_cycle_before_redundant_request(
+    tokens: list[str], caplog
+) -> None:
+    playlist_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal playlist_requests
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        if endpoint == "channels":
+            return httpx.Response(200, json=_channel_response())
+        if endpoint == "playlistItems":
+            token = tokens[playlist_requests]
+            playlist_requests += 1
+            return httpx.Response(
+                200,
+                json={
+                    "items": [],
+                    "nextPageToken": token,
+                    "providerCanary": "pagination-cycle-secret",
+                },
+            )
+        raise AssertionError("cycle must fail before video fetch")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with caplog.at_level(logging.DEBUG), pytest.raises(
+        PermanentIntegrationError, match="youtube_response_invalid"
+    ) as caught:
+        YouTubeGateway(api_key="test-key", http_client=client).fetch_creator("UC123456")
+
+    assert playlist_requests == len(tokens)
+    assert (
+        "pagination-cycle-secret"
+        not in f"{caught.value!s}{caught.value!r}{caplog.text}"
+    )
+
+
+@pytest.mark.parametrize("next_token", [123, "x" * 513, ""])
+def test_youtube_rejects_malformed_page_token_after_one_page(
+    next_token: object,
+) -> None:
+    playlist_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal playlist_requests
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        if endpoint == "channels":
+            return httpx.Response(200, json=_channel_response())
+        if endpoint == "playlistItems":
+            playlist_requests += 1
+            return httpx.Response(200, json={"items": [], "nextPageToken": next_token})
+        raise AssertionError("malformed token must stop pagination")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermanentIntegrationError, match="youtube_response_invalid"):
+        YouTubeGateway(api_key="test-key", http_client=client).fetch_creator("UC123456")
+
+    assert playlist_requests == 1
+
+
+def test_youtube_duplicate_video_response_keeps_first_official_mapping() -> None:
+    first = _video_item("video-001")
+    second = _video_item("video-001")
+    first_snippet = first["snippet"]
+    second_snippet = second["snippet"]
+    assert isinstance(first_snippet, dict)
+    assert isinstance(second_snippet, dict)
+    first_snippet["title"] = "First mapping"
+    second_snippet["title"] = "Second mapping"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        if endpoint == "channels":
+            return httpx.Response(200, json=_channel_response())
+        if endpoint == "playlistItems":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {"contentDetails": {"videoId": "video-001"}},
+                        {"contentDetails": {"videoId": "video-001"}},
+                    ]
+                },
+            )
+        if endpoint == "videos":
+            return httpx.Response(200, json={"items": [first, second]})
+        raise AssertionError(f"unexpected endpoint {endpoint}")
+
+    source = YouTubeGateway(
+        api_key="test-key",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    ).fetch_creator("UC123456")
+
+    assert len(source.videos) == 1
+    assert source.videos[0].title == "First mapping"
+
+
+def test_youtube_rejects_playlist_video_id_with_query_delimiter() -> None:
+    video_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal video_requests
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        if endpoint == "channels":
+            return httpx.Response(200, json=_channel_response())
+        if endpoint == "playlistItems":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [{"contentDetails": {"videoId": "video-001,video-002"}}]
+                },
+            )
+        if endpoint == "videos":
+            video_requests += 1
+            return httpx.Response(200, json={"items": []})
+        raise AssertionError(f"unexpected endpoint {endpoint}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermanentIntegrationError, match="youtube_response_invalid"):
+        YouTubeGateway(api_key="test-key", http_client=client).fetch_creator("UC123456")
+
+    assert video_requests == 0
+
+
+def test_youtube_rejects_uploads_playlist_id_with_query_delimiter() -> None:
+    playlist_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal playlist_requests
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        if endpoint == "channels":
+            response = _channel_response()
+            items = response["items"]
+            assert isinstance(items, list)
+            content = items[0]["contentDetails"]
+            assert isinstance(content, dict)
+            content["relatedPlaylists"] = {"uploads": "UU123,other"}
+            return httpx.Response(200, json=response)
+        if endpoint == "playlistItems":
+            playlist_requests += 1
+            return httpx.Response(200, json={"items": []})
+        raise AssertionError(f"unexpected endpoint {endpoint}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermanentIntegrationError, match="youtube_response_invalid"):
+        YouTubeGateway(api_key="test-key", http_client=client).fetch_creator("UC123456")
+
+    assert playlist_requests == 0
 
 
 @pytest.mark.parametrize("video_limit", [0, 51, -1, True])
@@ -321,14 +731,24 @@ def test_youtube_timeout_and_secret_are_safely_redacted(caplog) -> None:
             f"Authorization={secret}; url={request.url}", request=request
         )
 
-    client = httpx.Client(transport=httpx.MockTransport(handler))
+    requests: list[httpx.Request] = []
+
+    def recording_handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return handler(request)
+
+    client = httpx.Client(transport=httpx.MockTransport(recording_handler))
 
     with caplog.at_level(logging.DEBUG), pytest.raises(
         TransientIntegrationError, match="youtube_unavailable"
     ) as caught:
         YouTubeGateway(api_key=secret, http_client=client).fetch_creator("UC123456")
 
-    assert secret not in f"{caught.value!s}{caught.value!r}{caplog.text}"
+    assert (
+        secret not in f"{caught.value!s}{caught.value!r}{caplog.text}{requests[0].url}"
+    )
+    assert requests[0].headers.get_list("x-goog-api-key") == [secret]
+    assert "key" not in requests[0].url.params
 
 
 def test_youtube_rejects_malformed_and_oversized_responses() -> None:
