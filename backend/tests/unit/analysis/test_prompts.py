@@ -1,5 +1,6 @@
 from copy import deepcopy
 from datetime import UTC, datetime
+import json
 from typing import get_type_hints
 
 import pytest
@@ -14,24 +15,30 @@ from app.analysis.contracts import (
 )
 from app.analysis.prompts.common import MAX_PROMPT_BYTES, render_vision_prompt
 from app.analysis.prompts.creator import (
+    build_creator_metadata_bundle,
     build_creator_metadata_evidence_catalog,
     CREATOR_METADATA_PROMPT_VERSION,
     CREATOR_SYNTHESIS_PROMPT_VERSION,
     CREATOR_VISUAL_PROMPT_VERSION,
     build_creator_metadata_prompt,
+    build_creator_synthesis_bundle,
     build_creator_synthesis_evidence_catalog,
     build_creator_synthesis_prompt,
+    build_creator_visual_bundle,
     build_creator_visual_evidence_catalog,
     build_creator_visual_prompt,
 )
 from app.analysis.prompts.game import (
+    build_game_extraction_bundle,
     build_game_extraction_evidence_catalog,
     GAME_EXTRACTION_PROMPT_VERSION,
     GAME_SYNTHESIS_PROMPT_VERSION,
     GAME_VISUAL_PROMPT_VERSION,
     build_game_extraction_prompt,
+    build_game_synthesis_bundle,
     build_game_synthesis_evidence_catalog,
     build_game_synthesis_prompt,
+    build_game_visual_bundle,
     build_game_visual_prompt,
     build_game_visual_evidence_catalog,
 )
@@ -83,6 +90,7 @@ def sample_game_source(*, canary: str = "raw-secret-canary") -> SteamGameSource:
             SteamMovie(
                 id=2,
                 name="Launch Trailer",
+                thumbnail_url="https://cdn.example/trailer.jpg",
                 mp4_urls=("https://cdn.example/trailer.mp4",),
             ),
         ),
@@ -131,6 +139,14 @@ def sample_creator_source(*, canary: str = "raw-secret-canary") -> CreatorSource
 
 def render_messages(messages) -> str:
     return "\n".join(message.content for message in messages)
+
+
+def prompt_payload(messages: list[Message] | tuple[Message, ...]) -> dict:
+    user = messages[-1].content
+    encoded = user.split("```json\n", 1)[1].rsplit("\n```", 1)[0]
+    parsed = json.loads(encoded)
+    assert isinstance(parsed, dict)
+    return parsed
 
 
 def unavailable_game_visual() -> GameVisualAnalysis:
@@ -620,3 +636,196 @@ def test_builders_have_no_mutable_default_state() -> None:
     first = build_game_synthesis_prompt(source)
     first.append(first[-1])
     assert len(build_game_synthesis_prompt(source)) == 2
+
+
+def test_all_stage_bundles_expose_the_exact_serialized_catalog() -> None:
+    game = sample_game_source()
+    creator = sample_creator_source()
+    bundles = (
+        build_game_extraction_bundle(game),
+        build_game_visual_bundle(game),
+        build_game_synthesis_bundle(game),
+        build_creator_metadata_bundle(creator),
+        build_creator_visual_bundle(creator),
+        build_creator_synthesis_bundle(creator),
+    )
+
+    for bundle in bundles:
+        serialized = prompt_payload(bundle.messages)["evidence_catalog"]
+        assert bundle.evidence_catalog.model_dump(mode="json") == serialized
+
+    assert build_game_extraction_prompt(game) == list(bundles[0].messages)
+    assert build_game_visual_prompt(game) == list(bundles[1].messages)
+    assert build_game_synthesis_prompt(game) == list(bundles[2].messages)
+    assert build_creator_metadata_prompt(creator) == list(bundles[3].messages)
+    assert build_creator_visual_prompt(creator) == list(bundles[4].messages)
+    assert build_creator_synthesis_prompt(creator) == list(bundles[5].messages)
+
+
+def test_synthesis_catalogs_publish_only_available_intermediate_claims() -> None:
+    game_catalog = build_game_synthesis_evidence_catalog(
+        sample_game_source(),
+        GameExtraction.model_validate(game_extraction_payload()),
+        unavailable_game_visual(),
+    )
+    game_refs = {entry.reference for entry in game_catalog.entries}
+    assert "game_extraction:short_summary" in game_refs
+    assert "game_extraction:comparable_games" not in game_refs
+    assert not any(reference.startswith("game_visual:") for reference in game_refs)
+    assert not any(
+        entry.source_type == "visual_asset" for entry in game_catalog.entries
+    )
+    assert "game_visual:status" not in game_refs
+    assert "game_visual:unavailable_reason" not in game_refs
+
+    creator_catalog = build_creator_synthesis_evidence_catalog(
+        sample_creator_source(),
+        available_creator_metadata(),
+        unavailable_creator_visual(),
+    )
+    creator_refs = {entry.reference for entry in creator_catalog.entries}
+    assert "creator_metadata:primary_games" in creator_refs
+    assert "creator_metadata:genres" not in creator_refs
+    assert not any(
+        reference.startswith("creator_visual:") for reference in creator_refs
+    )
+    assert not any(
+        entry.source_type == "visual_asset" for entry in creator_catalog.entries
+    )
+    assert "creator_visual:status" not in creator_refs
+    assert "creator_visual:unavailable_reason" not in creator_refs
+
+
+def test_partial_visual_synthesis_catalogs_publish_only_available_claims() -> None:
+    game_refs = {
+        entry.reference
+        for entry in build_game_synthesis_evidence_catalog(
+            sample_game_source(), None, available_game_visual()
+        ).entries
+    }
+    assert "game_visual:visual_style" in game_refs
+    assert "game_visual:visual_motifs" not in game_refs
+
+    creator_refs = {
+        entry.reference
+        for entry in build_creator_synthesis_evidence_catalog(
+            sample_creator_source(), None, available_creator_visual()
+        ).entries
+    }
+    assert "creator_visual:visual_style" in creator_refs
+    assert "creator_visual:production_quality_signals" not in creator_refs
+
+
+def test_synthesis_binder_rejects_raw_visual_asset_references() -> None:
+    game_payload = game_synthesis_payload()
+    game_payload["visual_style"]["evidence"] = evidence(
+        "visual_observation", "visual_asset", "screenshot:0"
+    )
+    with pytest.raises(ValueError, match="evidence reference"):
+        validate_stage_evidence(
+            GameSynthesis.model_validate(game_payload),
+            build_game_synthesis_evidence_catalog(sample_game_source()),
+        )
+
+    creator_payload = creator_synthesis_payload()
+    creator_payload["production_quality"]["evidence"] = evidence(
+        "visual_observation",
+        "visual_asset",
+        "video:video-1:thumbnail:0",
+    )
+    with pytest.raises(ValueError, match="evidence reference"):
+        validate_stage_evidence(
+            CreatorSynthesis.model_validate(creator_payload),
+            build_creator_synthesis_evidence_catalog(sample_creator_source()),
+        )
+
+
+def test_game_visual_bundle_binds_exact_gateway_image_subset() -> None:
+    screenshots = tuple(
+        SteamScreenshot(
+            id=index,
+            full_url=f"https://cdn.example/shot-{index}.jpg",
+        )
+        for index in range(12)
+    )
+    source = sample_game_source().model_copy(
+        update={
+            "screenshots": screenshots,
+            "movies": (
+                SteamMovie(
+                    id=9,
+                    name="Trailer",
+                    thumbnail_url="https://cdn.example/trailer.jpg",
+                    mp4_urls=("https://cdn.example/trailer.mp4",),
+                    webm_urls=("https://cdn.example/trailer.webm",),
+                ),
+            ),
+        }
+    )
+    bundle = build_game_visual_bundle(source)
+    refs = tuple(asset.asset_ref for asset in bundle.assets)
+    catalog_refs = tuple(entry.reference for entry in bundle.evidence_catalog.entries)
+
+    assert len(bundle.image_urls) == len(bundle.assets) == 12
+    assert bundle.image_urls == tuple(asset.image_url for asset in bundle.assets)
+    assert refs == catalog_refs
+    assert "screenshot:11" not in refs
+    assert "https://cdn.example/trailer.mp4" not in bundle.image_urls
+    assert "https://cdn.example/trailer.webm" not in bundle.image_urls
+    rendered = render_messages(list(bundle.messages))
+    assert "screenshot:11" not in rendered
+    assert "trailer.mp4" not in rendered
+    assert render_vision_prompt(bundle.messages) == render_vision_prompt(
+        list(bundle.messages)
+    )
+
+    omitted = available_game_visual().model_dump(mode="json")
+    omitted["visual_style"]["evidence"][0]["reference"] = "screenshot:11"
+    with pytest.raises(ValueError, match="evidence reference"):
+        validate_stage_evidence(
+            GameVisualAnalysis.model_validate(omitted), bundle.evidence_catalog
+        )
+
+    selected = build_game_visual_bundle(source, selected_asset_refs=("screenshot:11",))
+    assert selected.image_urls == ("https://cdn.example/shot-11.jpg",)
+    assert tuple(entry.reference for entry in selected.evidence_catalog.entries) == (
+        "screenshot:11",
+    )
+
+
+def test_creator_visual_bundle_uses_caller_selected_thumbnail_subset() -> None:
+    prototype = sample_creator_source().videos[0]
+    source = sample_creator_source().model_copy(
+        update={
+            "videos": tuple(
+                prototype.model_copy(
+                    update={
+                        "id": f"video-{index}",
+                        "thumbnail_urls": (f"https://cdn.example/video-{index}.jpg",),
+                    }
+                )
+                for index in range(13)
+            )
+        }
+    )
+    selected_ref = "video:video-12:thumbnail:0"
+    bundle = build_creator_visual_bundle(source, selected_asset_refs=(selected_ref,))
+    assert bundle.image_urls == ("https://cdn.example/video-12.jpg",)
+    assert tuple(asset.asset_ref for asset in bundle.assets) == (selected_ref,)
+    assert tuple(entry.reference for entry in bundle.evidence_catalog.entries) == (
+        selected_ref,
+    )
+    assert selected_ref in render_messages(list(bundle.messages))
+
+    with pytest.raises(ValueError, match="selected visual asset"):
+        build_creator_visual_bundle(
+            source, selected_asset_refs=("video:missing:thumbnail:0",)
+        )
+
+
+def test_visual_bundles_reject_more_than_gateway_image_limit() -> None:
+    with pytest.raises(ValueError, match="at most 12"):
+        build_game_visual_bundle(
+            sample_game_source(),
+            selected_asset_refs=tuple(f"screenshot:{index}" for index in range(13)),
+        )

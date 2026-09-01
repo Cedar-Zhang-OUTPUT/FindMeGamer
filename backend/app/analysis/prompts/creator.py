@@ -2,7 +2,10 @@
 
 from app.analysis.contracts import CreatorSource, Message, VideoSource
 from app.analysis.prompts.common import (
-    build_messages,
+    PromptBundle,
+    VisualAsset,
+    VisualPromptBundle,
+    build_prompt_bundle,
     clip_text,
     clip_values,
     compact_model_payload,
@@ -27,9 +30,13 @@ Select public contact or social candidates only by supplied candidate_id; never 
 
 
 def build_creator_metadata_prompt(source: CreatorSource) -> list[Message]:
+    return list(build_creator_metadata_bundle(source).messages)
+
+
+def build_creator_metadata_bundle(source: CreatorSource) -> PromptBundle:
     _require_creator_source(source)
     catalog = build_creator_metadata_evidence_catalog(source)
-    return build_messages(
+    return build_prompt_bundle(
         version=CREATOR_METADATA_PROMPT_VERSION,
         stage_rules=(
             f"{_CREATOR_RULES}\nAnalyze the official channel and at most 50 supplied "
@@ -41,13 +48,34 @@ def build_creator_metadata_prompt(source: CreatorSource) -> list[Message]:
             "youtube_source": _curated_creator_source(source),
             "evidence_catalog": catalog.model_dump(mode="json"),
         },
+        evidence_catalog=catalog,
     )
 
 
 def build_creator_visual_prompt(source: CreatorSource) -> list[Message]:
+    return list(build_creator_visual_bundle(source).messages)
+
+
+def build_creator_visual_bundle(
+    source: CreatorSource,
+    *,
+    selected_asset_refs: tuple[str, ...] | None = None,
+) -> VisualPromptBundle:
     _require_creator_source(source)
-    catalog = build_creator_visual_evidence_catalog(source)
-    return build_messages(
+    assets, available_count = _select_creator_visual_assets(source, selected_asset_refs)
+    catalog = _visual_catalog(assets)
+    payload = {
+        "thumbnail_assets": {
+            "channel_id": clip_text(source.channel_id, 128),
+            "channel_title": clip_text(source.title, 512),
+            "assets": [asset.model_dump(mode="json") for asset in assets],
+            "asset_truncation_marker": (
+                "not_truncated" if len(assets) == available_count else "[TRUNCATED]"
+            ),
+        },
+        "evidence_catalog": catalog.model_dump(mode="json"),
+    }
+    bundle = build_prompt_bundle(
         version=CREATOR_VISUAL_PROMPT_VERSION,
         stage_rules=(
             f"{_CREATOR_RULES}\nObserve only the supplied thumbnail assets. Cite each "
@@ -56,10 +84,14 @@ def build_creator_visual_prompt(source: CreatorSource) -> list[Message]:
             "exist, return the explicit unavailable visual result."
         ),
         label="SOURCE_JSON_UNTRUSTED_EVIDENCE",
-        payload={
-            "thumbnail_assets": _curated_creator_visual_assets(source),
-            "evidence_catalog": catalog.model_dump(mode="json"),
-        },
+        payload=payload,
+        evidence_catalog=catalog,
+    )
+    return VisualPromptBundle(
+        messages=bundle.messages,
+        evidence_catalog=catalog,
+        assets=assets,
+        image_urls=tuple(asset.image_url for asset in assets),
     )
 
 
@@ -69,6 +101,22 @@ def build_creator_synthesis_prompt(
     visual: CreatorVisualAnalysis | None = None,
     contact_evidence: CreatorContactEvidence = EMPTY_CREATOR_CONTACT_EVIDENCE,
 ) -> list[Message]:
+    return list(
+        build_creator_synthesis_bundle(
+            source,
+            metadata,
+            visual,
+            contact_evidence,
+        ).messages
+    )
+
+
+def build_creator_synthesis_bundle(
+    source: CreatorSource,
+    metadata: CreatorMetadataAnalysis | None = None,
+    visual: CreatorVisualAnalysis | None = None,
+    contact_evidence: CreatorContactEvidence = EMPTY_CREATOR_CONTACT_EVIDENCE,
+) -> PromptBundle:
     _require_creator_source(source)
     if metadata is not None and not isinstance(metadata, CreatorMetadataAnalysis):
         raise TypeError("metadata must be a validated CreatorMetadataAnalysis")
@@ -77,7 +125,7 @@ def build_creator_synthesis_prompt(
     if not isinstance(contact_evidence, CreatorContactEvidence):
         raise TypeError("contact_evidence must be validated CreatorContactEvidence")
     catalog = build_creator_synthesis_evidence_catalog(source, metadata, visual)
-    return build_messages(
+    return build_prompt_bundle(
         version=CREATOR_SYNTHESIS_PROMPT_VERSION,
         stage_rules=(
             f"{_CREATOR_RULES}\nSynthesize every AI-owned Creator Profile field and the "
@@ -95,6 +143,7 @@ def build_creator_synthesis_prompt(
             "contact_evidence": contact_evidence.model_dump(mode="json"),
             "evidence_catalog": catalog.model_dump(mode="json"),
         },
+        evidence_catalog=catalog,
     )
 
 
@@ -122,20 +171,8 @@ def build_creator_metadata_evidence_catalog(source: CreatorSource) -> EvidenceCa
 
 def build_creator_visual_evidence_catalog(source: CreatorSource) -> EvidenceCatalog:
     _require_creator_source(source)
-    assets = _curated_creator_visual_assets(source)["assets"]
-    if not isinstance(assets, list):
-        raise TypeError("curated thumbnail assets must be a list")
-    return EvidenceCatalog(
-        entries=tuple(
-            EvidenceCatalogEntry(
-                reference=asset["asset_ref"],
-                source_type="visual_asset",
-                allowed_kinds=("visual_observation", "ai_inference"),
-            )
-            for asset in assets
-            if isinstance(asset, dict) and isinstance(asset.get("asset_ref"), str)
-        )
-    )
+    assets, _ = _select_creator_visual_assets(source, None)
+    return _visual_catalog(assets)
 
 
 def build_creator_synthesis_evidence_catalog(
@@ -145,10 +182,9 @@ def build_creator_synthesis_evidence_catalog(
 ) -> EvidenceCatalog:
     _require_creator_source(source)
     entries = list(build_creator_metadata_evidence_catalog(source).entries)
-    entries.extend(build_creator_visual_evidence_catalog(source).entries)
     if metadata is not None:
         entries.extend(_intermediate_entries("creator_metadata", metadata))
-    if visual is not None:
+    if visual is not None and visual.status == "available":
         entries.extend(_intermediate_entries("creator_visual", visual))
     return EvidenceCatalog(entries=tuple(entries))
 
@@ -186,7 +222,7 @@ def _intermediate_entries(prefix: str, model: object) -> list[EvidenceCatalogEnt
             allowed_kinds=("ai_inference",),
         )
         for field_name in type(model).model_fields
-        if field_name != "english_language_check"
+        if getattr(getattr(model, field_name), "status", None) == "available"
     ]
 
 
@@ -230,26 +266,63 @@ def _curated_video(video: VideoSource) -> dict[str, object]:
     }
 
 
-def _curated_creator_visual_assets(source: CreatorSource) -> dict[str, object]:
-    assets: list[dict[str, object]] = []
+def _available_creator_visual_assets(
+    source: CreatorSource,
+) -> tuple[VisualAsset, ...]:
+    assets: list[VisualAsset] = []
     for video in source.videos:
-        for index, url in enumerate(video.thumbnail_urls[:1]):
+        for index, url in enumerate(video.thumbnail_urls):
             assets.append(
-                {
-                    "asset_ref": f"video:{video.id}:thumbnail:{index}",
-                    "video_id": clip_text(video.id, 128),
-                    "url": clip_text(url, 2_048),
-                }
+                VisualAsset(
+                    asset_ref=f"video:{video.id}:thumbnail:{index}",
+                    image_url=url,
+                )
             )
-        if len(assets) == 12:
+    return tuple(assets)
+
+
+def _default_creator_visual_assets(
+    source: CreatorSource,
+    available: tuple[VisualAsset, ...],
+) -> tuple[VisualAsset, ...]:
+    by_ref = {asset.asset_ref: asset for asset in available}
+    selected: list[VisualAsset] = []
+    for video in source.videos:
+        reference = f"video:{video.id}:thumbnail:0"
+        if reference in by_ref:
+            selected.append(by_ref[reference])
+        if len(selected) == 12:
             break
-    return {
-        "channel_id": clip_text(source.channel_id, 128),
-        "channel_title": clip_text(source.title, 512),
-        "assets": assets,
-        "asset_truncation_marker": (
-            "not_truncated"
-            if sum(bool(video.thumbnail_urls) for video in source.videos) <= 12
-            else "[TRUNCATED]"
-        ),
-    }
+    return tuple(selected)
+
+
+def _select_creator_visual_assets(
+    source: CreatorSource,
+    selected_asset_refs: tuple[str, ...] | None,
+) -> tuple[tuple[VisualAsset, ...], int]:
+    available = _available_creator_visual_assets(source)
+    if selected_asset_refs is None:
+        return _default_creator_visual_assets(source, available), len(available)
+    if len(selected_asset_refs) > 12:
+        raise ValueError("vision requests accept at most 12 selected visual assets")
+    if len(selected_asset_refs) != len(set(selected_asset_refs)):
+        raise ValueError("selected visual asset references must be unique")
+    by_ref = {asset.asset_ref: asset for asset in available}
+    try:
+        selected = tuple(by_ref[reference] for reference in selected_asset_refs)
+    except KeyError as error:
+        raise ValueError("selected visual asset is not present in source") from error
+    return selected, len(available)
+
+
+def _visual_catalog(assets: tuple[VisualAsset, ...]) -> EvidenceCatalog:
+    return EvidenceCatalog(
+        entries=tuple(
+            EvidenceCatalogEntry(
+                reference=asset.asset_ref,
+                source_type="visual_asset",
+                allowed_kinds=("visual_observation", "ai_inference"),
+            )
+            for asset in assets
+        )
+    )

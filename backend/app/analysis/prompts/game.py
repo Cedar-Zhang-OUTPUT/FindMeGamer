@@ -2,7 +2,10 @@
 
 from app.analysis.contracts import Message, SteamGameSource
 from app.analysis.prompts.common import (
-    build_messages,
+    PromptBundle,
+    VisualAsset,
+    VisualPromptBundle,
+    build_prompt_bundle,
     clip_text,
     clip_values,
     compact_model_payload,
@@ -24,9 +27,13 @@ Use only the curated Steam fields and referenced public media supplied below. Un
 
 
 def build_game_extraction_prompt(source: SteamGameSource) -> list[Message]:
+    return list(build_game_extraction_bundle(source).messages)
+
+
+def build_game_extraction_bundle(source: SteamGameSource) -> PromptBundle:
     _require_game_source(source)
     catalog = build_game_extraction_evidence_catalog(source)
-    return build_messages(
+    return build_prompt_bundle(
         version=GAME_EXTRACTION_PROMPT_VERSION,
         stage_rules=(
             f"{_GAME_RULES}\nExtract text-evidence analysis only. Do not infer visual "
@@ -37,13 +44,34 @@ def build_game_extraction_prompt(source: SteamGameSource) -> list[Message]:
             "steam_source": _curated_game_source(source),
             "evidence_catalog": catalog.model_dump(mode="json"),
         },
+        evidence_catalog=catalog,
     )
 
 
 def build_game_visual_prompt(source: SteamGameSource) -> list[Message]:
+    return list(build_game_visual_bundle(source).messages)
+
+
+def build_game_visual_bundle(
+    source: SteamGameSource,
+    *,
+    selected_asset_refs: tuple[str, ...] | None = None,
+) -> VisualPromptBundle:
     _require_game_source(source)
-    catalog = build_game_visual_evidence_catalog(source)
-    return build_messages(
+    assets, available_count = _select_game_visual_assets(source, selected_asset_refs)
+    catalog = _visual_catalog(assets)
+    payload = {
+        "visual_assets": {
+            "app_id": clip_text(source.app_id, 64),
+            "game_name": clip_text(source.name, 512),
+            "assets": [asset.model_dump(mode="json") for asset in assets],
+            "asset_truncation_marker": (
+                "not_truncated" if len(assets) == available_count else "[TRUNCATED]"
+            ),
+        },
+        "evidence_catalog": catalog.model_dump(mode="json"),
+    }
+    bundle = build_prompt_bundle(
         version=GAME_VISUAL_PROMPT_VERSION,
         stage_rules=(
             f"{_GAME_RULES}\nObserve only supplied cover, screenshot, and trailer-image "
@@ -52,10 +80,14 @@ def build_game_visual_prompt(source: SteamGameSource) -> list[Message]:
             "visual result."
         ),
         label="SOURCE_JSON_UNTRUSTED_EVIDENCE",
-        payload={
-            "visual_assets": _curated_game_visual_assets(source),
-            "evidence_catalog": catalog.model_dump(mode="json"),
-        },
+        payload=payload,
+        evidence_catalog=catalog,
+    )
+    return VisualPromptBundle(
+        messages=bundle.messages,
+        evidence_catalog=catalog,
+        assets=assets,
+        image_urls=tuple(asset.image_url for asset in assets),
     )
 
 
@@ -64,13 +96,21 @@ def build_game_synthesis_prompt(
     extraction: GameExtraction | None = None,
     visual: GameVisualAnalysis | None = None,
 ) -> list[Message]:
+    return list(build_game_synthesis_bundle(source, extraction, visual).messages)
+
+
+def build_game_synthesis_bundle(
+    source: SteamGameSource,
+    extraction: GameExtraction | None = None,
+    visual: GameVisualAnalysis | None = None,
+) -> PromptBundle:
     _require_game_source(source)
     if extraction is not None and not isinstance(extraction, GameExtraction):
         raise TypeError("extraction must be a validated GameExtraction")
     if visual is not None and not isinstance(visual, GameVisualAnalysis):
         raise TypeError("visual must be a validated GameVisualAnalysis")
     catalog = build_game_synthesis_evidence_catalog(source, extraction, visual)
-    return build_messages(
+    return build_prompt_bundle(
         version=GAME_SYNTHESIS_PROMPT_VERSION,
         stage_rules=(
             f"{_GAME_RULES}\nSynthesize every final AI-owned Game Profile field and the "
@@ -85,6 +125,7 @@ def build_game_synthesis_prompt(
             "validated_visual_analysis": compact_model_payload(visual),
             "evidence_catalog": catalog.model_dump(mode="json"),
         },
+        evidence_catalog=catalog,
     )
 
 
@@ -106,20 +147,8 @@ def build_game_extraction_evidence_catalog(
 
 def build_game_visual_evidence_catalog(source: SteamGameSource) -> EvidenceCatalog:
     _require_game_source(source)
-    assets = _curated_game_visual_assets(source)["assets"]
-    if not isinstance(assets, list):
-        raise TypeError("curated visual assets must be a list")
-    return EvidenceCatalog(
-        entries=tuple(
-            EvidenceCatalogEntry(
-                reference=asset["asset_ref"],
-                source_type="visual_asset",
-                allowed_kinds=("visual_observation", "ai_inference"),
-            )
-            for asset in assets
-            if isinstance(asset, dict) and isinstance(asset.get("asset_ref"), str)
-        )
-    )
+    assets, _ = _select_game_visual_assets(source, None)
+    return _visual_catalog(assets)
 
 
 def build_game_synthesis_evidence_catalog(
@@ -129,10 +158,9 @@ def build_game_synthesis_evidence_catalog(
 ) -> EvidenceCatalog:
     _require_game_source(source)
     entries = list(build_game_extraction_evidence_catalog(source).entries)
-    entries.extend(build_game_visual_evidence_catalog(source).entries)
     if extraction is not None:
         entries.extend(_intermediate_entries("game_extraction", extraction))
-    if visual is not None:
+    if visual is not None and visual.status == "available":
         entries.extend(_intermediate_entries("game_visual", visual))
     return EvidenceCatalog(entries=tuple(entries))
 
@@ -170,15 +198,14 @@ def _has_value(value: object) -> bool:
 
 
 def _intermediate_entries(prefix: str, model: object) -> list[EvidenceCatalogEntry]:
-    fields = type(model).model_fields
     return [
         EvidenceCatalogEntry(
             reference=f"{prefix}:{field_name}",
             source_type="intermediate_output",
             allowed_kinds=("ai_inference",),
         )
-        for field_name in fields
-        if field_name != "english_language_check"
+        for field_name in type(model).model_fields
+        if getattr(getattr(model, field_name), "status", None) == "available"
     ]
 
 
@@ -235,39 +262,55 @@ def _curated_game_source(source: SteamGameSource) -> dict[str, object]:
     }
 
 
-def _curated_game_visual_assets(source: SteamGameSource) -> dict[str, object]:
-    assets: list[dict[str, object]] = []
+def _available_game_visual_assets(source: SteamGameSource) -> tuple[VisualAsset, ...]:
+    assets: list[VisualAsset] = []
     if source.cover_image_url:
-        assets.append({"asset_ref": "cover:0", "url": source.cover_image_url})
+        assets.append(
+            VisualAsset(asset_ref="cover:0", image_url=source.cover_image_url)
+        )
     if source.header_image_url:
-        assets.append({"asset_ref": "header:0", "url": source.header_image_url})
+        assets.append(
+            VisualAsset(asset_ref="header:0", image_url=source.header_image_url)
+        )
     assets.extend(
-        {
-            "asset_ref": f"screenshot:{index}",
-            "url": screenshot.full_url,
-        }
-        for index, screenshot in enumerate(source.screenshots[:12])
+        VisualAsset(asset_ref=f"screenshot:{index}", image_url=screenshot.full_url)
+        for index, screenshot in enumerate(source.screenshots)
     )
     assets.extend(
-        {
-            "asset_ref": f"movie:{index}",
-            "name": clip_text(movie.name, 256),
-            "thumbnail_url": clip_text(movie.thumbnail_url, 2_048),
-            "trailer_urls": clip_values(
-                (*movie.mp4_urls, *movie.webm_urls), max_items=4, item_bytes=2_048
-            ),
-        }
-        for index, movie in enumerate(source.movies[:6])
+        VisualAsset(asset_ref=f"movie:{index}", image_url=movie.thumbnail_url)
+        for index, movie in enumerate(source.movies)
+        if movie.thumbnail_url
     )
-    return {
-        "app_id": clip_text(source.app_id, 64),
-        "game_name": clip_text(source.name, 512),
-        "assets": assets[:20],
-        "asset_truncation_marker": (
-            "not_truncated"
-            if len(source.screenshots) <= 12
-            and len(source.movies) <= 6
-            and len(assets) <= 20
-            else "[TRUNCATED]"
-        ),
-    }
+    return tuple(assets)
+
+
+def _select_game_visual_assets(
+    source: SteamGameSource,
+    selected_asset_refs: tuple[str, ...] | None,
+) -> tuple[tuple[VisualAsset, ...], int]:
+    available = _available_game_visual_assets(source)
+    if selected_asset_refs is None:
+        return available[:12], len(available)
+    if len(selected_asset_refs) > 12:
+        raise ValueError("vision requests accept at most 12 selected visual assets")
+    if len(selected_asset_refs) != len(set(selected_asset_refs)):
+        raise ValueError("selected visual asset references must be unique")
+    by_ref = {asset.asset_ref: asset for asset in available}
+    try:
+        selected = tuple(by_ref[reference] for reference in selected_asset_refs)
+    except KeyError as error:
+        raise ValueError("selected visual asset is not present in source") from error
+    return selected, len(available)
+
+
+def _visual_catalog(assets: tuple[VisualAsset, ...]) -> EvidenceCatalog:
+    return EvidenceCatalog(
+        entries=tuple(
+            EvidenceCatalogEntry(
+                reference=asset.asset_ref,
+                source_type="visual_asset",
+                allowed_kinds=("visual_observation", "ai_inference"),
+            )
+            for asset in assets
+        )
+    )

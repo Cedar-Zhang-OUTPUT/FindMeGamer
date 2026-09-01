@@ -530,6 +530,59 @@ def test_contact_evidence_is_strict_frozen_bounded_and_validated() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "invalid_url",
+    [
+        "https://127.0.0.1/contact",
+        "https://[::1]/contact",
+        "https://localhost/contact",
+        "https://sub.localhost/contact",
+        "https://example.com/%0a",
+        "https://example.com/%E2%80%AEhidden",
+        "https://example.com/contact#fragment",
+        "https://example.com/contact#",
+    ],
+)
+def test_contact_evidence_rejects_non_public_or_control_urls(
+    invalid_url: str,
+) -> None:
+    payload = contact_evidence().model_dump(mode="json")
+    payload["candidates"][1]["value"] = invalid_url
+    with pytest.raises(ValidationError):
+        CreatorContactEvidence.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "public_url",
+    [
+        "https://creator.example/contact?ref=channel",
+        "http://social.example/creator",
+        "https://[2606:4700:4700::1111]/contact",
+    ],
+)
+def test_contact_evidence_accepts_public_http_urls(public_url: str) -> None:
+    payload = contact_evidence().model_dump(mode="json")
+    payload["candidates"][1]["value"] = public_url
+    result = CreatorContactEvidence.model_validate(payload)
+    assert result.candidates[1].value == public_url
+
+
+def test_contact_evidence_rejects_duplicate_resolved_social_urls() -> None:
+    payload = contact_evidence().model_dump(mode="json")
+    payload["candidates"].append(
+        {
+            "candidate_id": "contact.social.1",
+            "kind": "social_link",
+            "value": "https://SOCIAL.example:443/creator",
+            "source_type": "linked_public_page",
+            "source_url": "https://creator.example/second-source",
+            "validation_state": "validated",
+        }
+    )
+    with pytest.raises(ValidationError, match="social URL"):
+        CreatorContactEvidence.model_validate(payload)
+
+
 def test_contact_binding_resolves_only_exact_pipeline_owned_candidates() -> None:
     synthesis = CreatorSynthesis.model_validate(creator_synthesis_payload())
     bound = bind_creator_contacts(synthesis, contact_evidence())

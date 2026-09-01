@@ -8,8 +8,10 @@ candidate selections, and the compact Creator Brief.  Match Brief is intentional
 excluded because it belongs to a game-specific Match Task.
 """
 
+from ipaddress import ip_address
 from typing import Annotated, Literal
-from urllib.parse import urlsplit
+import unicodedata
+from urllib.parse import unquote, urlsplit
 
 from email_validator import EmailNotValidError, validate_email
 from pydantic import AfterValidator, Field, field_validator, model_validator
@@ -182,20 +184,63 @@ def _validate_email_exact(value: str) -> str:
 
 def _validate_url_exact(value: str) -> str:
     parsed = urlsplit(value)
+    decoded = value
+    for _ in range(3):
+        next_decoded = unquote(decoded)
+        if next_decoded == decoded:
+            break
+        decoded = next_decoded
+    hostname = parsed.hostname.casefold() if parsed.hostname is not None else None
     if (
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc
-        or parsed.hostname is None
+        or hostname is None
         or parsed.username is not None
         or parsed.password is not None
-        or any(character.isspace() or ord(character) < 32 for character in value)
+        or "#" in value
+        or hostname == "localhost"
+        or hostname.endswith(".localhost")
+        or any(
+            character.isspace() or unicodedata.category(character) in {"Cc", "Cf"}
+            for character in decoded
+        )
     ):
         raise ValueError("invalid public URL")
     try:
         parsed.port
     except ValueError:
         raise ValueError("invalid public URL") from None
+    try:
+        address = ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        if not address.is_global:
+            raise ValueError("invalid public URL")
     return value
+
+
+def _canonical_public_url_key(value: str) -> tuple[str, str, int | None, str, str]:
+    """Return a comparison key without changing the exact pipeline-owned value.
+
+    URL fragments are rejected by ``_validate_url_exact``. Host and scheme case and
+    default HTTP(S) ports are insignificant for duplicate contact selection checks.
+    This performs no DNS lookup; Task 10 still owns fetch/redirect SSRF controls.
+    """
+
+    parsed = urlsplit(value)
+    port = parsed.port
+    if (parsed.scheme == "https" and port == 443) or (
+        parsed.scheme == "http" and port == 80
+    ):
+        port = None
+    return (
+        parsed.scheme.casefold(),
+        (parsed.hostname or "").casefold(),
+        port,
+        parsed.path,
+        parsed.query,
+    )
 
 
 EmailValue = Annotated[
@@ -255,6 +300,13 @@ class CreatorContactEvidence(StrictAIModel):
             set(exact_values)
         ):
             raise ValueError("contact candidates must be unique")
+        social_urls = [
+            _canonical_public_url_key(candidate.value)
+            for candidate in candidates
+            if candidate.kind == "social_link"
+        ]
+        if len(social_urls) != len(set(social_urls)):
+            raise ValueError("social URL candidates must resolve uniquely")
         return candidates
 
 
@@ -432,6 +484,7 @@ def bind_creator_contacts(
     public_email = selected(synthesis.public_email, "email")
     linked_site = selected(synthesis.linked_site, "linked_site")
     social_links: list[URLContactCandidate] = []
+    selected_social_urls: set[tuple[str, str, int | None, str, str]] = set()
     if synthesis.social_links.status == "available":
         for candidate_id in synthesis.social_links.candidate_ids:
             candidate = candidates.get(candidate_id)
@@ -440,6 +493,10 @@ def bind_creator_contacts(
                 or candidate.kind != "social_link"
             ):
                 raise ValueError("contact selection is not bound to supplied evidence")
+            canonical_url = _canonical_public_url_key(candidate.value)
+            if canonical_url in selected_social_urls:
+                raise ValueError("selected social URLs must resolve uniquely")
+            selected_social_urls.add(canonical_url)
             social_links.append(candidate)
     if public_email is not None and not isinstance(public_email, EmailContactCandidate):
         raise ValueError("contact selection is not bound to supplied evidence")
