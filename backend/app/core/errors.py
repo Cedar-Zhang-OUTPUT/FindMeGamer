@@ -11,7 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 _safe_correlation_id = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
-@dataclass(frozen=True)
+@dataclass
 class APIError(Exception):
     status_code: int
     code: str

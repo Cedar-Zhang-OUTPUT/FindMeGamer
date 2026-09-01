@@ -1,5 +1,8 @@
+import atexit
+import base64
 import logging
 import os
+import tempfile
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -11,6 +14,7 @@ from sqlalchemy import Engine, create_engine, inspect
 from sqlalchemy.engine import Inspector
 from sqlalchemy.orm import Session
 
+from app.core.crypto import SecretCipher
 from app.core.security import hash_workspace_key
 
 
@@ -18,6 +22,12 @@ WORKSPACE_ACCESS_KEY = "test-workspace-access-key"
 os.environ.setdefault(
     "WORKSPACE_ACCESS_KEY_HASH", hash_workspace_key(WORKSPACE_ACCESS_KEY)
 )
+_test_master_key = tempfile.NamedTemporaryFile(prefix="find-me-gamer-key-", delete=False)
+_test_master_key.write(base64.b64encode(bytes(range(32))))
+_test_master_key.close()
+os.chmod(_test_master_key.name, 0o600)
+os.environ.setdefault("MASTER_KEY_FILE", _test_master_key.name)
+atexit.register(lambda: Path(_test_master_key.name).unlink(missing_ok=True))
 
 from app.core.database import get_session
 from app.core.rate_limit import FixedWindowRateLimiter
@@ -36,6 +46,22 @@ class FakeRateLimitCounter:
         self.keys.append(key)
         self.counts[key] = self.counts.get(key, 0) + 1
         return self.counts[key]
+
+
+class FakeConnectionProbe:
+    def __init__(self) -> None:
+        self.result = True
+        self.error: Exception | None = None
+        self.expected: tuple[str, str] | None = None
+        self.before_test = lambda: None
+
+    def test_connection(self, service: str, secret: str) -> bool:
+        self.before_test()
+        if self.expected is not None and (service, secret) != self.expected:
+            raise AssertionError("probe received an unexpected service or secret")
+        if self.error is not None:
+            raise self.error
+        return self.result
 
 
 @pytest.fixture(scope="session")
@@ -97,10 +123,16 @@ def workspace_access_key() -> str:
 
 
 @pytest.fixture
+def connection_probe() -> FakeConnectionProbe:
+    return FakeConnectionProbe()
+
+
+@pytest.fixture
 def client(
     session: Session,
     rate_limit_counter: FakeRateLimitCounter,
     workspace_access_key: str,
+    connection_probe: FakeConnectionProbe,
 ) -> Iterator[TestClient]:
     test_app = create_app(
         workspace_key_hash=hash_workspace_key(workspace_access_key),
@@ -110,6 +142,8 @@ def client(
             window_seconds=60,
             clock=lambda: 0.0,
         ),
+        secret_cipher=SecretCipher(bytes(range(32))),
+        connection_probe=connection_probe,
     )
 
     def override_get_session() -> Iterator[Session]:
@@ -121,6 +155,12 @@ def client(
             yield test_client
     finally:
         test_app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def auth_client(client: TestClient, workspace_access_key: str) -> TestClient:
+    client.headers.update({"Authorization": f"Bearer {workspace_access_key}"})
+    return client
 
 
 @pytest.fixture

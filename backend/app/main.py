@@ -9,9 +9,10 @@ from redis import Redis
 from app.api.dependencies import create_workspace_authenticator
 from app.api.routes import health
 from app.api.routes.health import ReadinessProbe
-from app.api.routes import session
+from app.api.routes import session, settings as settings_routes
 from app.core.client_address import ClientAddressResolver
 from app.core.config import get_settings
+from app.core.crypto import SecretCipher
 from app.core.errors import (
     APIError,
     correlation_id_for,
@@ -33,6 +34,8 @@ def create_app(
     workspace_key_hash: str | None = None,
     rate_limiter: RateLimiter | None = None,
     trusted_proxy_cidrs: tuple[str, ...] | None = None,
+    secret_cipher: SecretCipher | None = None,
+    connection_probe: settings_routes.ConnectionProbe | None = None,
 ) -> FastAPI:
     configure_request_logging()
     settings = get_settings()
@@ -49,6 +52,14 @@ def create_app(
         else settings.trusted_proxy_cidrs
     )
     client_address_resolver = ClientAddressResolver(effective_trusted_proxy_cidrs)
+    effective_secret_cipher = (
+        secret_cipher
+        if secret_cipher is not None
+        else SecretCipher.from_file(settings.master_key_file)
+    )
+    effective_connection_probe = (
+        connection_probe or settings_routes.UnavailableConnectionProbe()
+    )
     owned_redis_client: Redis | None = None
     if rate_limiter is None:
         owned_redis_client = Redis.from_url(
@@ -112,6 +123,13 @@ def create_app(
 
     app.include_router(health.create_router(readiness_probe))
     app.include_router(session.create_router(authenticate_workspace))
+    app.include_router(
+        settings_routes.create_router(
+            authenticate_workspace,
+            secret_cipher=effective_secret_cipher,
+            connection_probe=effective_connection_probe,
+        )
+    )
     return app
 
 

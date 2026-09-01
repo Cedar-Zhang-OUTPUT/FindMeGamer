@@ -1,5 +1,6 @@
 from functools import lru_cache
 from ipaddress import ip_network
+from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,6 +17,7 @@ class Settings(BaseSettings):
     redis_connect_timeout_seconds: float = Field(default=1.0, gt=0, le=10.0)
     redis_read_timeout_seconds: float = Field(default=1.0, gt=0, le=10.0)
     trusted_proxy_cidrs: tuple[str, ...] = ()
+    master_key_file: Path = Path("/etc/find-me-gamer/master.key")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
