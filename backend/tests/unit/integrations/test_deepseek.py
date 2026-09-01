@@ -174,6 +174,101 @@ def test_deepseek_rejects_invalid_vision_inputs(prompt: str, images: list[str]) 
         )
 
 
+@pytest.mark.parametrize(
+    "image_url",
+    [
+        "https://%00.example/image.jpg",
+        "https://%65xample.com/image.jpg",
+        "https://exa\u202emple.com/image.jpg",
+        "https://xn--/image.jpg",
+        "https://_bad.example/image.jpg",
+        "https://-bad.example/image.jpg",
+        "https://bad-.example/image.jpg",
+        "https://bad..example/image.jpg",
+        f"https://{'a' * 64}.example/image.jpg",
+        "https://example.com/%00.jpg",
+        "https://example.com/%20.jpg",
+        "https://example.com/%7F.jpg",
+        "https://example.com/%C2%A0.jpg",
+        "https://example.com/%E2%80%AE.jpg",
+        "https://example.com/image.jpg?signature=%0Asecret",
+        "https://example.com/image.jpg?signature=%ZZ",
+        "https://example.com/\u200d.jpg",
+        "https://example.com/\ud800.jpg",
+        "https://example.com/image.jpg#",
+        "https://example.com:bad/image.jpg",
+        "https://example.com:0/image.jpg",
+        "https://example.com:65536/image.jpg",
+        "https:////example.com/image.jpg",
+        "https://example.com\\@evil.example/image.jpg",
+        "https://127.0.0.1/image.jpg",
+        "https://[::1]/image.jpg",
+        "https://169.254.169.254/image.jpg",
+        "https://10.0.0.1/image.jpg",
+        "https://224.0.0.1/image.jpg",
+        "https://240.0.0.1/image.jpg",
+        "https://0.0.0.0/image.jpg",
+        "https://8.8.8.8/image.jpg",
+        "https://[2606:4700:4700::1111]/image.jpg",
+        "https://2130706433/image.jpg",
+        "https://0177.0.0.1/image.jpg",
+        f"https://cdn.example/{'a' * 2_049}",
+        f"https://cdn.example/{'中' * 680}",
+    ],
+)
+def test_deepseek_rejects_adversarial_image_url_before_provider_call(
+    image_url: str,
+) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"title":"bad"}'}}]},
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermanentIntegrationError, match="deepseek_input_invalid"):
+        DeepSeekGateway(api_key="test-key", http_client=client).complete_vision(
+            "vision-model", "prompt", [image_url], GameExtraction
+        )
+
+    assert calls == 0
+
+
+@pytest.mark.parametrize(
+    "image_url",
+    [
+        "https://cdn.example/image.jpg",
+        "https://images.example.com:8443/path/image.jpg?"
+        "X-Amz-Signature=abc%2Fdef%2Bghi%3D",
+        "https://例子.测试/image.jpg",
+        "https://cdn.example/a%2Fb.jpg?q=%E4%B8%AD",
+    ],
+)
+def test_deepseek_accepts_strict_public_https_image_url(image_url: str) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"title":"valid"}'}}]},
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    result = DeepSeekGateway(api_key="test-key", http_client=client).complete_vision(
+        "vision-model", "prompt", [image_url], GameExtraction
+    )
+
+    assert result.title == "valid"
+    assert len(requests) == 1
+
+
 @pytest.mark.parametrize("status", [400, 401, 403, 404])
 def test_deepseek_classifies_ordinary_client_errors_as_permanent(status: int) -> None:
     client = httpx.Client(

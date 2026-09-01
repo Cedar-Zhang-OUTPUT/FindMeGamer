@@ -10,6 +10,25 @@ from app.integrations.errors import PermanentIntegrationError, TransientIntegrat
 from app.integrations.youtube import YouTubeGateway
 
 
+class _OverrideYouTubeKeyAuth(httpx.Auth):
+    def __init__(self, *, append: bool) -> None:
+        self.append = append
+        self.calls = 0
+
+    def auth_flow(self, request: httpx.Request):
+        self.calls += 1
+        if self.append:
+            request.headers = httpx.Headers(
+                [
+                    *request.headers.multi_items(),
+                    ("X-Goog-Api-Key", "auth-extra-key"),
+                ]
+            )
+        else:
+            request.headers["X-Goog-Api-Key"] = "auth-wrong-key"
+        yield request
+
+
 def test_youtube_fetches_only_fifty_recent_videos() -> None:
     requests_seen: list[httpx.Request] = []
 
@@ -120,6 +139,57 @@ def test_youtube_api_key_uses_header_and_never_completed_request_url_or_logs(
     assert requests[0].headers.get_list("x-goog-api-key") == [secret]
     assert "key" not in requests[0].url.params
     assert secret not in str(requests[0].url)
+
+
+@pytest.mark.parametrize("append", [False, True])
+def test_youtube_disables_injected_client_auth_for_api_key_header(
+    append: bool, caplog
+) -> None:
+    secret = "youtube-client-auth-canary"
+    auth = _OverrideYouTubeKeyAuth(append=append)
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"items": [{"id": "UCresolved123"}]})
+
+    client = httpx.Client(auth=auth, transport=httpx.MockTransport(handler))
+    target = canonicalize_target(TargetType.CREATOR, "https://youtube.com/@example")
+
+    with caplog.at_level(logging.DEBUG):
+        resolved = YouTubeGateway(api_key=secret, http_client=client).resolve_channel(
+            target
+        )
+
+    assert resolved == "UCresolved123"
+    assert auth.calls == 0
+    assert requests[0].headers.get_list("x-goog-api-key") == [secret]
+    assert "key" not in requests[0].url.params
+    assert secret not in f"{requests[0].url}{caplog.text}"
+    assert not client.is_closed
+
+
+def test_youtube_replaces_duplicate_injected_client_default_key_headers() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json={"items": [{"id": "UCresolved123"}]})
+
+    client = httpx.Client(
+        headers=[
+            ("X-Goog-Api-Key", "default-wrong-key"),
+            ("X-Goog-Api-Key", "default-extra-key"),
+        ],
+        transport=httpx.MockTransport(handler),
+    )
+    original_headers = client.headers.get_list("x-goog-api-key")
+    target = canonicalize_target(TargetType.CREATOR, "https://youtube.com/@example")
+
+    YouTubeGateway(api_key="correct-key", http_client=client).resolve_channel(target)
+
+    assert requests[0].headers.get_list("x-goog-api-key") == ["correct-key"]
+    assert client.headers.get_list("x-goog-api-key") == original_headers
 
 
 @pytest.mark.parametrize(
@@ -419,7 +489,31 @@ def test_youtube_rejects_present_offset_free_channel_timestamp() -> None:
 
 @pytest.mark.parametrize(
     "duration",
-    ["P", "PT", "not-a-duration", 123, "P999999999D", "PT999999999999S"],
+    [
+        "P",
+        "PT",
+        "P1DT",
+        "not-a-duration",
+        123,
+        "P999999999D",
+        "PT999999999999S",
+        "p1D",
+        "P1d",
+        "P1Dt1H",
+        "PT1.5S",
+        "PT1S1S",
+        "PT1M1H",
+        "P-1D",
+        "P+1D",
+        "PT-1S",
+        "PT+1S",
+        "PT24H",
+        "PT60M",
+        "PT60S",
+        "P01D",
+        "PT01H",
+        "P3652DT12H1S",
+    ],
 )
 def test_youtube_rejects_present_malformed_or_unbounded_duration(
     duration: object,
@@ -450,7 +544,14 @@ def test_youtube_rejects_present_nonofficial_caption_flag(caption: object) -> No
 
 @pytest.mark.parametrize(
     ("duration", "expected_seconds"),
-    [("PT0S", 0), ("P1DT2H3M4S", 93_784)],
+    [
+        ("PT0S", 0),
+        ("P0D", 0),
+        ("P0DT0S", 0),
+        ("P1D", 86_400),
+        ("P1DT2H3M4S", 93_784),
+        ("P3652DT12H", 315_576_000),
+    ],
 )
 def test_youtube_accepts_zero_and_bounded_iso_duration(
     duration: str, expected_seconds: int
@@ -552,6 +653,83 @@ def test_youtube_rejects_malformed_page_token_after_one_page(
         YouTubeGateway(api_key="test-key", http_client=client).fetch_creator("UC123456")
 
     assert playlist_requests == 1
+
+
+@pytest.mark.parametrize(
+    "next_token",
+    [
+        "token,other",
+        "token&other",
+        "token=other",
+        "token\nother",
+        "token other",
+        "token\tother",
+        "töken",
+        "token%20other",
+        "token/other",
+        "token\\other",
+        "token+other",
+        "token?other",
+        "token#other",
+    ],
+)
+def test_youtube_rejects_non_url_safe_page_token_before_second_request(
+    next_token: str,
+) -> None:
+    playlist_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal playlist_requests
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        if endpoint == "channels":
+            return httpx.Response(200, json=_channel_response())
+        if endpoint == "playlistItems":
+            playlist_requests += 1
+            return httpx.Response(
+                200,
+                json=(
+                    {"items": [], "nextPageToken": next_token}
+                    if playlist_requests == 1
+                    else {"items": []}
+                ),
+            )
+        raise AssertionError("invalid page token must stop pagination")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermanentIntegrationError, match="youtube_response_invalid"):
+        YouTubeGateway(api_key="test-key", http_client=client).fetch_creator("UC123456")
+
+    assert playlist_requests == 1
+
+
+@pytest.mark.parametrize("next_token", ["A", "abcDEF012-_", "x" * 512])
+def test_youtube_accepts_bounded_ascii_url_safe_page_token(next_token: str) -> None:
+    playlist_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal playlist_requests
+        endpoint = request.url.path.rsplit("/", 1)[-1]
+        if endpoint == "channels":
+            return httpx.Response(200, json=_channel_response())
+        if endpoint == "playlistItems":
+            playlist_requests += 1
+            if playlist_requests == 1:
+                return httpx.Response(
+                    200, json={"items": [], "nextPageToken": next_token}
+                )
+            assert request.url.params["pageToken"] == next_token
+            return httpx.Response(200, json={"items": []})
+        raise AssertionError(f"unexpected endpoint {endpoint}")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    source = YouTubeGateway(api_key="test-key", http_client=client).fetch_creator(
+        "UC123456"
+    )
+
+    assert source.videos == ()
+    assert playlist_requests == 2
 
 
 def test_youtube_duplicate_video_response_keeps_first_official_mapping() -> None:

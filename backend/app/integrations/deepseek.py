@@ -1,9 +1,12 @@
 import json
 import re
+import unicodedata
+from ipaddress import ip_address
 from typing import Any, TypeVar
-from urllib.parse import urlsplit
+from urllib.parse import unquote_to_bytes, urlsplit
 
 import httpx
+import idna
 from pydantic import BaseModel, ValidationError
 
 from app.analysis.contracts import Message
@@ -25,6 +28,8 @@ MAX_TOTAL_MESSAGE_CHARACTERS = 1_000_000
 MAX_VISION_IMAGES = 12
 HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=20.0, pool=5.0)
 _model_name = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
+_dns_label = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+_hex_pair = re.compile(r"^[0-9A-Fa-f]{2}$")
 
 
 class DeepSeekGateway:
@@ -196,24 +201,80 @@ def _validate_image_url(value: object) -> None:
         not isinstance(value, str)
         or not value
         or len(value) > 2_048
+        or len(value.encode("utf-8", errors="surrogatepass")) > 2_048
+        or not value.startswith("https://")
         or "\\" in value
-        or any(character.isspace() or ord(character) < 32 for character in value)
+        or "#" in value
+        or _has_unsafe_url_characters(value)
     ):
         raise PermanentIntegrationError("deepseek_input_invalid")
     try:
         parsed = urlsplit(value)
         hostname = parsed.hostname
-        parsed.port
-    except ValueError:
+        port = parsed.port
+        if (
+            parsed.scheme != "https"
+            or not parsed.netloc
+            or not hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+            or "%" in parsed.netloc
+            or (port is not None and port == 0)
+        ):
+            raise ValueError("invalid URL authority")
+        _validate_dns_hostname(hostname)
+        _validate_percent_encoded_component(parsed.path)
+        _validate_percent_encoded_component(parsed.query)
+    except (ValueError, UnicodeError, idna.IDNAError):
         raise PermanentIntegrationError("deepseek_input_invalid") from None
+
+
+def _has_unsafe_url_characters(value: str) -> bool:
+    return any(
+        character.isspace() or unicodedata.category(character).startswith("C")
+        for character in value
+    )
+
+
+def _validate_dns_hostname(hostname: str) -> None:
+    try:
+        ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("IP literals are not accepted")
+    if all(character in "0123456789." for character in hostname):
+        raise ValueError("ambiguous numeric host")
+    ascii_hostname = idna.encode(
+        hostname,
+        strict=True,
+        uts46=False,
+        std3_rules=True,
+    ).decode("ascii")
+    labels = ascii_hostname.split(".")
     if (
-        parsed.scheme != "https"
-        or not hostname
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.fragment
+        len(ascii_hostname) > 253
+        or len(labels) < 2
+        or any(not _dns_label.fullmatch(label) for label in labels)
     ):
-        raise PermanentIntegrationError("deepseek_input_invalid")
+        raise ValueError("invalid DNS hostname")
+
+
+def _validate_percent_encoded_component(component: str) -> None:
+    position = 0
+    while position < len(component):
+        if component[position] != "%":
+            position += 1
+            continue
+        if position + 2 >= len(component) or not _hex_pair.fullmatch(
+            component[position + 1 : position + 3]
+        ):
+            raise ValueError("invalid percent encoding")
+        position += 3
+    decoded = unquote_to_bytes(component).decode("utf-8")
+    if "\\" in decoded or _has_unsafe_url_characters(decoded):
+        raise ValueError("unsafe URL component")
 
 
 def _schema_payload(schema: type[T]) -> dict[str, Any]:

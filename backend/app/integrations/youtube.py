@@ -20,9 +20,14 @@ _channel_id = re.compile(r"^UC[A-Za-z0-9_-]{6,126}$")
 _handle = re.compile(r"^@[a-z0-9._-]{3,30}$")
 _playlist_id = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _video_id = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+# YouTube page tokens are opaque, bounded ASCII URL-safe identifiers.
+_page_token = re.compile(r"^[A-Za-z0-9_-]{1,512}$")
+# Durations use canonical, integer ISO 8601 components; time fields are normalized.
 _duration = re.compile(
-    r"^P(?:(?P<days>\d{1,6})D)?(?:T(?:(?P<hours>\d{1,6})H)?"
-    r"(?:(?P<minutes>\d{1,6})M)?(?:(?P<seconds>\d{1,6})S)?)?$"
+    r"^P(?:(?P<days>0|[1-9]\d{0,3})D)?"
+    r"(?:T(?:(?P<hours>0|[1-9]\d?)H)?"
+    r"(?:(?P<minutes>0|[1-9]\d?)M)?"
+    r"(?:(?P<seconds>0|[1-9]\d?)S)?)?$"
 )
 _rfc3339_timestamp = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}" r"(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$"
@@ -167,11 +172,7 @@ class YouTubeGateway:
             next_token = page.get("nextPageToken")
             if next_token is None:
                 break
-            if (
-                not isinstance(next_token, str)
-                or not next_token
-                or len(next_token) > 512
-            ):
+            if not isinstance(next_token, str) or not _page_token.fullmatch(next_token):
                 raise ValueError("invalid next page token")
             if next_token in seen_page_tokens:
                 raise PermanentIntegrationError("youtube_response_invalid")
@@ -221,6 +222,7 @@ class YouTubeGateway:
                 f"{self._base_url}/{endpoint}",
                 params=params,
                 headers={"X-Goog-Api-Key": self._api_key},
+                auth=None,
                 timeout=HTTP_TIMEOUT,
                 follow_redirects=False,
             )
@@ -464,9 +466,18 @@ def _optional_duration(value: object) -> int | None:
     if not isinstance(value, str) or len(value) > 64:
         raise ValueError("invalid duration")
     match = _duration.fullmatch(value)
-    if match is None or all(part is None for part in match.groupdict().values()):
+    if match is None:
         raise ValueError("invalid duration")
-    parts = {name: int(number or 0) for name, number in match.groupdict().items()}
+    groups = match.groupdict()
+    if all(part is None for part in groups.values()):
+        raise ValueError("invalid duration")
+    if "T" in value and all(
+        groups[name] is None for name in ("hours", "minutes", "seconds")
+    ):
+        raise ValueError("invalid duration")
+    parts = {name: int(number or 0) for name, number in groups.items()}
+    if parts["hours"] > 23 or parts["minutes"] > 59 or parts["seconds"] > 59:
+        raise ValueError("invalid duration")
     seconds = (
         parts["days"] * 86_400
         + parts["hours"] * 3_600
