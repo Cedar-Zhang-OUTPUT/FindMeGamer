@@ -21,6 +21,7 @@ CREATOR_METADATA_PROMPT_VERSION = "creator-metadata-v1"
 CREATOR_VISUAL_PROMPT_VERSION = "creator-visual-v1"
 CREATOR_SYNTHESIS_PROMPT_VERSION = "creator-synthesis-v1"
 EMPTY_CREATOR_CONTACT_EVIDENCE = CreatorContactEvidence(candidates=())
+MAX_PROMPT_VIDEO_ID_BYTES = 96
 
 _CREATOR_RULES = """Use only supplied official metadata and official thumbnails.
 Do not use or assume transcripts, captions, audio, frames, downloading, or video content not stated in official metadata.
@@ -192,6 +193,16 @@ def build_creator_synthesis_evidence_catalog(
 def _require_creator_source(source: CreatorSource) -> None:
     if not isinstance(source, CreatorSource):
         raise TypeError("source must be a validated CreatorSource")
+    video_ids = [video.id for video in source.videos]
+    if any(
+        not video_id
+        or len(video_id) > MAX_PROMPT_VIDEO_ID_BYTES
+        or len(video_id.encode("utf-8")) > MAX_PROMPT_VIDEO_ID_BYTES
+        for video_id in video_ids
+    ):
+        raise ValueError("video id exceeds the exact prompt reference budget")
+    if len(video_ids) != len(set(video_ids)):
+        raise ValueError("video ids must be unique exact prompt references")
 
 
 _CREATOR_CHANNEL_FIELDS = (

@@ -9,11 +9,14 @@ excluded because it belongs to a game-specific Match Task.
 """
 
 from ipaddress import ip_address
+import re
+from socket import inet_aton
 from typing import Annotated, Literal
 import unicodedata
-from urllib.parse import unquote, urlsplit
+from urllib.parse import SplitResult, unquote_to_bytes, urlsplit
 
 from email_validator import EmailNotValidError, validate_email
+import idna
 from pydantic import AfterValidator, Field, field_validator, model_validator
 
 from app.schemas.ai_game import (
@@ -182,53 +185,155 @@ def _validate_email_exact(value: str) -> str:
     return value
 
 
-def _validate_url_exact(value: str) -> str:
+_HEX_PAIR = re.compile(r"^[0-9A-Fa-f]{2}$")
+_UNRESERVED = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+)
+
+
+def _has_unsafe_url_characters(value: str) -> bool:
+    return any(
+        character.isspace() or unicodedata.category(character) in {"Cc", "Cf", "Cs"}
+        for character in value
+    )
+
+
+def _decode_url_component_until_stable(component: str) -> str:
+    current = component
+    for _ in range(len(component) + 1):
+        position = 0
+        while position < len(current):
+            if current[position] != "%":
+                position += 1
+                continue
+            if position + 2 >= len(current) or not _HEX_PAIR.fullmatch(
+                current[position + 1 : position + 3]
+            ):
+                raise ValueError("invalid public URL")
+            position += 3
+        try:
+            decoded = unquote_to_bytes(current).decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError("invalid public URL") from None
+        if _has_unsafe_url_characters(decoded) or "\\" in decoded:
+            raise ValueError("invalid public URL")
+        if decoded == current:
+            return decoded
+        current = decoded
+    raise ValueError("invalid public URL")
+
+
+def _canonical_host(hostname: str) -> str:
+    normalized = hostname[:-1] if hostname.endswith(".") else hostname
+    if not normalized or normalized == "localhost" or normalized.endswith(".localhost"):
+        raise ValueError("invalid public URL")
+    try:
+        address = ip_address(normalized)
+    except ValueError:
+        try:
+            inet_aton(normalized)
+        except OSError:
+            pass
+        else:
+            raise ValueError("invalid public URL") from None
+        try:
+            ascii_hostname = (
+                idna.encode(
+                    normalized,
+                    uts46=True,
+                    std3_rules=True,
+                )
+                .decode("ascii")
+                .casefold()
+            )
+        except idna.IDNAError:
+            raise ValueError("invalid public URL") from None
+        try:
+            inet_aton(ascii_hostname)
+        except OSError:
+            return ascii_hostname
+        raise ValueError("invalid public URL")
+    if not address.is_global:
+        raise ValueError("invalid public URL")
+    return address.compressed.casefold()
+
+
+def _parse_public_url(value: str) -> tuple[SplitResult, str]:
     parsed = urlsplit(value)
-    decoded = value
-    for _ in range(3):
-        next_decoded = unquote(decoded)
-        if next_decoded == decoded:
-            break
-        decoded = next_decoded
-    hostname = parsed.hostname.casefold() if parsed.hostname is not None else None
     if (
         parsed.scheme not in {"http", "https"}
         or not parsed.netloc
-        or hostname is None
+        or parsed.hostname is None
         or parsed.username is not None
         or parsed.password is not None
         or "#" in value
-        or hostname == "localhost"
-        or hostname.endswith(".localhost")
-        or any(
-            character.isspace() or unicodedata.category(character) in {"Cc", "Cf"}
-            for character in decoded
-        )
+        or "%" in parsed.netloc
+        or "\\" in value
+        or _has_unsafe_url_characters(value)
     ):
         raise ValueError("invalid public URL")
     try:
         parsed.port
     except ValueError:
         raise ValueError("invalid public URL") from None
-    try:
-        address = ip_address(hostname)
-    except ValueError:
-        pass
-    else:
-        if not address.is_global:
-            raise ValueError("invalid public URL")
+    canonical_host = _canonical_host(parsed.hostname.casefold())
+    _decode_url_component_until_stable(parsed.path)
+    _decode_url_component_until_stable(parsed.query)
+    return parsed, canonical_host
+
+
+def _validate_url_exact(value: str) -> str:
+    _parse_public_url(value)
     return value
 
 
-def _canonical_public_url_key(value: str) -> tuple[str, str, int | None, str, str]:
-    """Return a comparison key without changing the exact pipeline-owned value.
+def _normalize_unreserved_percent_escapes(component: str) -> str:
+    normalized: list[str] = []
+    position = 0
+    while position < len(component):
+        if component[position] != "%":
+            normalized.append(component[position])
+            position += 1
+            continue
+        encoded = component[position + 1 : position + 3]
+        character = chr(int(encoded, 16))
+        normalized.append(
+            character if character in _UNRESERVED else f"%{encoded.upper()}"
+        )
+        position += 3
+    return "".join(normalized)
 
-    URL fragments are rejected by ``_validate_url_exact``. Host and scheme case and
-    default HTTP(S) ports are insignificant for duplicate contact selection checks.
-    This performs no DNS lookup; Task 10 still owns fetch/redirect SSRF controls.
+
+def _remove_dot_segments(path: str) -> str:
+    if not path:
+        return "/"
+    output: list[str] = []
+    for segment in path.split("/"):
+        if segment == ".":
+            continue
+        if segment == "..":
+            if output and output[-1] != "":
+                output.pop()
+            continue
+        output.append(segment)
+    normalized = "/".join(output)
+    if path.startswith("/") and not normalized.startswith("/"):
+        normalized = f"/{normalized}"
+    if path.endswith(("/.", "/..")) and not normalized.endswith("/"):
+        normalized = f"{normalized}/"
+    return normalized or "/"
+
+
+def _canonical_public_url_key(value: str) -> tuple[str, str, int | None, str, str]:
+    """Compare public URLs without DNS or changing exact pipeline-owned values.
+
+    Fragments are forbidden. Hostnames are IDNA-normalized, default ports and an
+    empty root path are normalized, unreserved percent escapes are decoded, and
+    path dot segments are removed. Reserved escaped separators remain escaped.
+    Task 10 still owns SSRF-safe DNS, fetch, and redirect enforcement.
     """
 
-    parsed = urlsplit(value)
+    parsed, canonical_host = _parse_public_url(value)
     port = parsed.port
     if (parsed.scheme == "https" and port == 443) or (
         parsed.scheme == "http" and port == 80
@@ -236,10 +341,10 @@ def _canonical_public_url_key(value: str) -> tuple[str, str, int | None, str, st
         port = None
     return (
         parsed.scheme.casefold(),
-        (parsed.hostname or "").casefold(),
+        canonical_host,
         port,
-        parsed.path,
-        parsed.query,
+        _remove_dot_segments(_normalize_unreserved_percent_escapes(parsed.path)),
+        _normalize_unreserved_percent_escapes(parsed.query),
     )
 
 

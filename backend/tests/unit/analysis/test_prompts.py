@@ -4,6 +4,7 @@ import json
 from typing import get_type_hints
 
 import pytest
+from pydantic import ValidationError
 
 from app.analysis.contracts import (
     CreatorSource,
@@ -13,7 +14,11 @@ from app.analysis.contracts import (
     SteamScreenshot,
     VideoSource,
 )
-from app.analysis.prompts.common import MAX_PROMPT_BYTES, render_vision_prompt
+from app.analysis.prompts.common import (
+    MAX_PROMPT_BYTES,
+    VisualAsset,
+    render_vision_prompt,
+)
 from app.analysis.prompts.creator import (
     build_creator_metadata_bundle,
     build_creator_metadata_evidence_catalog,
@@ -829,3 +834,117 @@ def test_visual_bundles_reject_more_than_gateway_image_limit() -> None:
             sample_game_source(),
             selected_asset_refs=tuple(f"screenshot:{index}" for index in range(13)),
         )
+
+
+@pytest.mark.parametrize(
+    "image_url",
+    [
+        "not-a-url.jpg",
+        "http://cdn.example/image.jpg",
+        "https://127.0.0.1/image.jpg",
+        "https://127.1/image.jpg",
+        "https://１２７.０.０.１/image.jpg",
+        "https://localhost/image.jpg",
+        "https://cdn.example./image.jpg",
+        "https://%65xample.com/image.jpg",
+        "https://user@example.com/image.jpg",
+        "https://example.com\\@evil.example/image.jpg",
+        "https://cdn.example/image.jpg#fragment",
+        "https://cdn.example/%0a.jpg",
+        "https://cdn.example/video.mp4",
+        "https://cdn.example/video.webm",
+        "https://cdn.example/video.mp4?format=.jpg",
+        "https://cdn.example/video.mp4%3Ffake.jpg",
+        "https://cdn.example/download?file=image.jpg",
+    ],
+)
+def test_visual_asset_rejects_non_static_or_unsafe_image_urls(
+    image_url: str,
+) -> None:
+    with pytest.raises(ValidationError):
+        VisualAsset(asset_ref="image:0", image_url=image_url)
+
+
+@pytest.mark.parametrize(
+    "image_url",
+    [
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/1245620/header.jpg?t=1750000000",
+        "https://i.ytimg.com/vi/abc123/hqdefault.jpeg",
+        "https://cdn.example/image.png",
+        "https://cdn.example/image.webp?width=1280",
+    ],
+)
+def test_visual_asset_accepts_public_static_image_urls(image_url: str) -> None:
+    asset = VisualAsset(asset_ref="image:0", image_url=image_url)
+    assert asset.image_url == image_url
+
+
+def test_game_and_creator_visual_builders_enforce_static_image_urls() -> None:
+    game = sample_game_source().model_copy(
+        update={"cover_image_url": "https://cdn.example/trailer.mp4"}
+    )
+    creator_video = (
+        sample_creator_source()
+        .videos[0]
+        .model_copy(update={"thumbnail_urls": ("http://127.0.0.1/thumb.jpg",)})
+    )
+    creator = sample_creator_source().model_copy(update={"videos": (creator_video,)})
+
+    with pytest.raises(ValidationError):
+        build_game_visual_bundle(game)
+    with pytest.raises(ValidationError):
+        build_creator_visual_bundle(creator)
+
+
+def test_prompt_bundles_forbid_copy_updates_but_allow_plain_copy() -> None:
+    game = sample_game_source()
+    prompt = build_game_extraction_bundle(game)
+    visual = build_game_visual_bundle(game)
+    asset = visual.assets[0]
+
+    assert prompt.model_copy() == prompt
+    assert visual.model_copy() == visual
+    assert asset.model_copy() == asset
+    with pytest.raises(TypeError, match="updates"):
+        prompt.model_copy(update={"evidence_catalog": visual.evidence_catalog})
+    with pytest.raises(TypeError, match="updates"):
+        visual.model_copy(update={"image_urls": ("https://cdn.example/other.jpg",)})
+    with pytest.raises(TypeError, match="updates"):
+        asset.model_copy(update={"image_url": "https://cdn.example/video.mp4"})
+    with pytest.raises(ValidationError):
+        prompt.evidence_catalog = visual.evidence_catalog
+
+
+@pytest.mark.parametrize(
+    "video_id",
+    [
+        "v" * 200,
+        "界" * 40,
+    ],
+)
+def test_creator_bundles_reject_video_ids_that_cannot_be_exact_references(
+    video_id: str,
+) -> None:
+    video = sample_creator_source().videos[0].model_copy(update={"id": video_id})
+    source = sample_creator_source().model_copy(update={"videos": (video,)})
+
+    with pytest.raises(ValueError, match="video id"):
+        build_creator_metadata_bundle(source)
+    with pytest.raises(ValueError, match="video id"):
+        build_creator_visual_bundle(source)
+
+
+def test_creator_bundles_reject_long_video_id_collision_before_clipping() -> None:
+    prototype = sample_creator_source().videos[0]
+    common = "v" * 200
+    source = sample_creator_source().model_copy(
+        update={
+            "videos": (
+                prototype.model_copy(update={"id": f"{common}a"}),
+                prototype.model_copy(update={"id": f"{common}b"}),
+            )
+        }
+    )
+
+    with pytest.raises(ValueError, match="video id"):
+        build_creator_metadata_bundle(source)

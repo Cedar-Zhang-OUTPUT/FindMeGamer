@@ -2,9 +2,15 @@
 
 import json
 from collections.abc import Mapping, Sequence
-from typing import Annotated
+from ipaddress import ip_address
+import re
+from socket import inet_aton
+from typing import Annotated, Self
+import unicodedata
+from urllib.parse import unquote_to_bytes, urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+import idna
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from app.analysis.contracts import Message
 from app.schemas.ai_game import EvidenceCatalog
@@ -26,12 +32,143 @@ Stable public identity and public facts remain source/repository-owned. Generate
 class _StrictPromptModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
+    def model_copy(
+        self,
+        *,
+        update: Mapping[str, object] | None = None,
+        deep: bool = False,
+    ) -> Self:
+        """Copy immutable prompt objects only without validation-bypassing updates."""
+
+        if update is not None:
+            raise TypeError("prompt object copy updates are forbidden")
+        return super().model_copy(deep=deep)
+
+
+_STATIC_IMAGE_SUFFIXES = (".jpg", ".jpeg", ".png", ".webp")
+_URL_HEX_PAIR = re.compile(r"^[0-9A-Fa-f]{2}$")
+_DNS_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+
+
+def _decode_static_url_component(component: str) -> str:
+    current = component
+    for _ in range(len(component) + 1):
+        position = 0
+        while position < len(current):
+            if current[position] != "%":
+                position += 1
+                continue
+            if position + 2 >= len(current) or not _URL_HEX_PAIR.fullmatch(
+                current[position + 1 : position + 3]
+            ):
+                raise ValueError("invalid static image URL")
+            position += 3
+        try:
+            decoded = unquote_to_bytes(current).decode("utf-8")
+        except UnicodeDecodeError:
+            raise ValueError("invalid static image URL") from None
+        if (
+            any(
+                character.isspace() or unicodedata.category(character).startswith("C")
+                for character in decoded
+            )
+            or "\\" in decoded
+        ):
+            raise ValueError("invalid static image URL")
+        if decoded == current:
+            return decoded
+        current = decoded
+    raise ValueError("invalid static image URL")
+
+
+def _validate_static_image_url(value: str) -> str:
+    if len(value.encode("utf-8", errors="surrogatepass")) > 2_048:
+        raise ValueError("invalid static image URL")
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.hostname is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or "%" in parsed.netloc
+        or "\\" in value
+        or "#" in value
+        or any(
+            character.isspace() or unicodedata.category(character).startswith("C")
+            for character in value
+        )
+    ):
+        raise ValueError("invalid static image URL")
+    hostname = parsed.hostname
+    if (
+        hostname.endswith(".")
+        or hostname.casefold() == "localhost"
+        or hostname.casefold().endswith(".localhost")
+    ):
+        raise ValueError("invalid static image URL")
+    try:
+        ip_address(hostname)
+    except ValueError:
+        try:
+            inet_aton(hostname)
+        except OSError:
+            pass
+        else:
+            raise ValueError("invalid static image URL") from None
+    else:
+        raise ValueError("invalid static image URL")
+    try:
+        ascii_hostname = idna.encode(
+            hostname,
+            uts46=True,
+            std3_rules=True,
+        ).decode("ascii")
+        port = parsed.port
+    except (idna.IDNAError, ValueError):
+        raise ValueError("invalid static image URL") from None
+    try:
+        inet_aton(ascii_hostname)
+    except OSError:
+        pass
+    else:
+        raise ValueError("invalid static image URL") from None
+    labels = ascii_hostname.split(".")
+    if (
+        len(ascii_hostname) > 253
+        or len(labels) < 2
+        or any(not _DNS_LABEL.fullmatch(label) for label in labels)
+        or port == 0
+    ):
+        raise ValueError("invalid static image URL")
+    decoded_path = _decode_static_url_component(parsed.path)
+    _decode_static_url_component(parsed.query)
+    if (
+        "?" in decoded_path
+        or "#" in decoded_path
+        or not decoded_path.casefold().endswith(_STATIC_IMAGE_SUFFIXES)
+    ):
+        raise ValueError("static image URL must end in jpg, jpeg, png, or webp")
+    return value
+
+
+StaticImageURL = Annotated[
+    str,
+    Field(min_length=8, max_length=2_048),
+    AfterValidator(_validate_static_image_url),
+]
+
 
 class VisualAsset(_StrictPromptModel):
-    """One exact ordered image reference sent to a vision request."""
+    """One exact public HTTPS static-image reference sent to vision.
+
+    Supported static formats are JPEG, PNG, and WebP. Video containers and
+    extensionless query-driven endpoints are intentionally excluded. Validation
+    is local-only; the gateway/Task 9–10 retain redirect and SSRF responsibility.
+    """
 
     asset_ref: Annotated[str, Field(min_length=1, max_length=256)]
-    image_url: Annotated[str, Field(min_length=8, max_length=2_048)]
+    image_url: StaticImageURL
 
 
 class PromptBundle(_StrictPromptModel):

@@ -537,7 +537,18 @@ def test_contact_evidence_is_strict_frozen_bounded_and_validated() -> None:
         "https://[::1]/contact",
         "https://localhost/contact",
         "https://sub.localhost/contact",
+        "https://localhost./contact",
+        "https://sub.localhost./contact",
+        "https://127.1/contact",
+        "https://2130706433/contact",
+        "https://0x7f000001/contact",
+        "https://0177.0.0.1/contact",
+        "https://１２７.０.０.１/contact",
+        "https://%31%32%37.0.0.1/contact",
+        "https://%65xample.com/contact",
+        "https://example.com\\@evil.example/contact",
         "https://example.com/%0a",
+        "https://example.com/%2525250a",
         "https://example.com/%E2%80%AEhidden",
         "https://example.com/contact#fragment",
         "https://example.com/contact#",
@@ -574,6 +585,39 @@ def test_contact_evidence_rejects_duplicate_resolved_social_urls() -> None:
             "candidate_id": "contact.social.1",
             "kind": "social_link",
             "value": "https://SOCIAL.example:443/creator",
+            "source_type": "linked_public_page",
+            "source_url": "https://creator.example/second-source",
+            "validation_state": "validated",
+        }
+    )
+    with pytest.raises(ValidationError, match="social URL"):
+        CreatorContactEvidence.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "first,second",
+    [
+        ("https://social.example", "https://social.example/"),
+        ("https://social.example/%7Ecreator", "https://social.example/~creator"),
+        ("https://social.example/a/../creator", "https://social.example/creator"),
+        ("https://social.example./creator", "https://social.example/creator"),
+        (
+            "https://例子.测试/creator",
+            "https://xn--fsqu00a.xn--0zwm56d/creator",
+        ),
+    ],
+)
+def test_contact_evidence_rejects_canonically_duplicate_social_urls(
+    first: str,
+    second: str,
+) -> None:
+    payload = contact_evidence().model_dump(mode="json")
+    payload["candidates"][2]["value"] = first
+    payload["candidates"].append(
+        {
+            "candidate_id": "contact.social.1",
+            "kind": "social_link",
+            "value": second,
             "source_type": "linked_public_page",
             "source_url": "https://creator.example/second-source",
             "validation_state": "validated",
