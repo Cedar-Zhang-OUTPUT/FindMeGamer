@@ -88,6 +88,14 @@ class ProfilesRepository:
             .options(selectinload(CreatorProfile.contacts))
         )
 
+    def get_creator_for_update(self, profile_id: UUID) -> CreatorProfile | None:
+        return self._session.scalar(
+            select(CreatorProfile)
+            .where(CreatorProfile.id == profile_id)
+            .with_for_update()
+            .options(selectinload(CreatorProfile.contacts))
+        )
+
     def set_game_favorite(
         self, profile_id: UUID, *, favorite: bool
     ) -> GameProfile | None:
@@ -115,7 +123,7 @@ class ProfilesRepository:
         contact_email: str | None,
         notes: str | None,
     ) -> CreatorProfile | None:
-        creator = self.get_creator(profile_id)
+        creator = self.get_creator_for_update(profile_id)
         if creator is None:
             return None
 

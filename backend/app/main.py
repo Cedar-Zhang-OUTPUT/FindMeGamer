@@ -131,7 +131,12 @@ def create_app(
             connection_probe=effective_connection_probe,
         )
     )
-    app.include_router(profile_routes.create_router(authenticate_workspace))
+    app.include_router(
+        profile_routes.create_router(
+            authenticate_workspace,
+            cursor_signing_secret=effective_workspace_key_hash,
+        )
+    )
     return app
 
 

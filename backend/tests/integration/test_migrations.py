@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.models.enums import JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
-from app.db.models.profiles import CreatorProfile, GameProfile
+from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 from app.db.models.settings import SharedSettings
 
 
@@ -178,6 +178,46 @@ def test_profile_identifiers_are_unique(session: Session, first, duplicate) -> N
         session.add(duplicate)
         with pytest.raises(IntegrityError):
             session.flush()
+    finally:
+        savepoint.rollback()
+
+
+def test_only_one_active_manual_contact_exists_per_creator(session: Session) -> None:
+    creator = CreatorProfile(
+        youtube_channel_id=f"manual-constraint-{uuid4()}",
+        canonical_url="https://youtube.com/channel/manual-constraint",
+        sort_name="Manual Constraint",
+    )
+    session.add(creator)
+    session.flush()
+    session.add(
+        CreatorContact(
+            creator_id=creator.id,
+            email="first@example.com",
+            source_type="manual",
+            is_manual=True,
+            is_active=True,
+        )
+    )
+    session.flush()
+
+    savepoint = session.begin_nested()
+    try:
+        session.add(
+            CreatorContact(
+                creator_id=creator.id,
+                email="second@example.com",
+                source_type="manual",
+                is_manual=True,
+                is_active=True,
+            )
+        )
+        with pytest.raises(IntegrityError) as error:
+            session.flush()
+        assert (
+            error.value.orig.diag.constraint_name
+            == "uq_creator_contacts_active_manual"
+        )
     finally:
         savepoint.rollback()
 

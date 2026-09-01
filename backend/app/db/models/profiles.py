@@ -2,7 +2,16 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,6 +64,14 @@ class CreatorProfile(ProfileFieldsMixin, Base):
 
 class CreatorContact(TimestampMixin, Base):
     __tablename__ = "creator_contacts"
+    __table_args__ = (
+        Index(
+            "uq_creator_contacts_active_manual",
+            "creator_id",
+            unique=True,
+            postgresql_where=text("is_manual AND is_active"),
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
     creator_id: Mapped[UUID] = mapped_column(

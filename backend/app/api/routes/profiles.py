@@ -1,8 +1,10 @@
 import base64
 import binascii
+import hashlib
+import hmac
 import json
 from collections.abc import Callable, Sequence
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
@@ -21,6 +23,7 @@ from app.schemas.profiles import (
     FavoriteUpdate,
     GameProfileCard,
     GameProfileDetail,
+    public_json_object,
 )
 
 
@@ -57,14 +60,62 @@ def _invalid_cursor() -> APIError:
     )
 
 
-def _encode_cursor(sort_name: str, profile_id: UUID) -> str:
+def _cursor_scope(
+    profile_type: str, *, query: str, only_collection: bool
+) -> dict[str, str | bool]:
+    return {
+        "profile_type": profile_type,
+        "query": query.strip().casefold(),
+        "only_collection": only_collection,
+    }
+
+
+def _cursor_signature(
+    payload: dict[str, object], *, signing_key: bytes
+) -> str:
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hmac.new(signing_key, canonical, hashlib.sha256).hexdigest()
+
+
+def _encode_cursor(
+    sort_name: str,
+    profile_id: UUID,
+    *,
+    profile_type: str,
+    query: str,
+    only_collection: bool,
+    signing_key: bytes,
+) -> str:
+    signed_payload: dict[str, object] = {
+        "v": 1,
+        "key": [sort_name, str(profile_id)],
+        "scope": _cursor_scope(
+            profile_type, query=query, only_collection=only_collection
+        ),
+    }
+    payload = {
+        **signed_payload,
+        "signature": _cursor_signature(signed_payload, signing_key=signing_key),
+    }
     raw = json.dumps(
-        [sort_name, str(profile_id)], separators=(",", ":"), ensure_ascii=False
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
 
 
-def _decode_cursor(cursor: str | None) -> CursorValue | None:
+def _decode_cursor(
+    cursor: str | None,
+    *,
+    profile_type: str,
+    query: str,
+    only_collection: bool,
+    signing_key: bytes,
+) -> CursorValue | None:
     if cursor is None:
         return None
     if not cursor or len(cursor) > 2048:
@@ -74,30 +125,76 @@ def _decode_cursor(cursor: str | None) -> CursorValue | None:
         raw = base64.b64decode(padded, altchars=b"-_", validate=True)
         value = json.loads(raw.decode("utf-8"))
         if (
-            not isinstance(value, list)
-            or len(value) != 2
-            or not isinstance(value[0], str)
-            or not value[0]
-            or len(value[0]) > 255
-            or not isinstance(value[1], str)
+            not isinstance(value, dict)
+            or set(value) != {"v", "key", "scope", "signature"}
+            or type(value["v"]) is not int
+            or value["v"] != 1
+            or not isinstance(value["key"], list)
+            or len(value["key"]) != 2
+            or not isinstance(value["key"][0], str)
+            or not value["key"][0]
+            or len(value["key"][0]) > 255
+            or not isinstance(value["key"][1], str)
+            or not isinstance(value["scope"], dict)
+            or not isinstance(value["signature"], str)
         ):
             raise ValueError("invalid cursor shape")
-        profile_id = UUID(value[1])
-        if str(profile_id) != value[1]:
+        expected_scope = _cursor_scope(
+            profile_type, query=query, only_collection=only_collection
+        )
+        if value["scope"] != expected_scope:
+            raise ValueError("cursor scope mismatch")
+        signed_payload = {
+            "v": value["v"],
+            "key": value["key"],
+            "scope": value["scope"],
+        }
+        expected_signature = _cursor_signature(
+            signed_payload, signing_key=signing_key
+        )
+        if not hmac.compare_digest(value["signature"], expected_signature):
+            raise ValueError("cursor signature mismatch")
+        profile_id = UUID(value["key"][1])
+        if str(profile_id) != value["key"][1]:
             raise ValueError("non-canonical UUID")
     except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, ValueError):
         raise _invalid_cursor() from None
-    return value[0], profile_id
+    return value["key"][0], profile_id
 
 
-def _contains_stale_status(value: Any) -> bool:
+def _canonical_status_is_stale(value: object) -> bool:
     if isinstance(value, str):
         return value.casefold() == "stale"
     if isinstance(value, dict):
-        return any(_contains_stale_status(item) for item in value.values())
-    if isinstance(value, list):
-        return any(_contains_stale_status(item) for item in value)
+        return any(
+            _canonical_status_is_stale(value.get(key))
+            for key in ("status", "state", "freshness")
+            if key in value
+        )
     return False
+
+
+def _creator_youtube_is_stale(source_status: object) -> bool:
+    if not isinstance(source_status, dict):
+        return False
+    if any(
+        _canonical_status_is_stale(source_status.get(key))
+        for key in ("status", "state", "freshness")
+        if key in source_status
+    ):
+        return True
+    if _canonical_status_is_stale(source_status.get("youtube")):
+        return True
+    if any(
+        _canonical_status_is_stale(source_status.get(key))
+        for key in ("youtube_status", "youtube_state", "youtube_freshness")
+        if key in source_status
+    ):
+        return True
+    sources = source_status.get("sources")
+    return isinstance(sources, dict) and _canonical_status_is_stale(
+        sources.get("youtube")
+    )
 
 
 def _selected_contact(creator: CreatorProfile) -> CreatorContactResponse | None:
@@ -144,9 +241,9 @@ def _game_card(profile: GameProfile) -> GameProfileCard:
         steam_app_id=profile.steam_app_id,
         canonical_url=profile.canonical_url,
         favorite=profile.favorite,
-        current_facts=profile.current_facts,
-        brief=profile.brief,
-        source_status=profile.source_status,
+        current_facts=public_json_object(profile.current_facts),
+        brief=public_json_object(profile.brief),
+        source_status=public_json_object(profile.source_status),
         last_analyzed_at=profile.last_analyzed_at,
         next_analysis_at=profile.next_analysis_at,
     )
@@ -155,15 +252,17 @@ def _game_card(profile: GameProfile) -> GameProfileCard:
 def _game_detail(profile: GameProfile) -> GameProfileDetail:
     return GameProfileDetail(
         **_game_card(profile).model_dump(),
-        analysis=profile.analysis,
-        model_metadata=profile.model_metadata,
-        prompt_metadata=profile.prompt_metadata,
+        analysis=public_json_object(profile.analysis),
+        model_metadata=public_json_object(profile.model_metadata),
+        prompt_metadata=public_json_object(profile.prompt_metadata),
     )
 
 
 def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
     current_facts = (
-        {} if _contains_stale_status(profile.source_status) else profile.current_facts
+        {}
+        if _creator_youtube_is_stale(profile.source_status)
+        else profile.current_facts
     )
     return CreatorProfileCard(
         id=profile.id,
@@ -171,9 +270,9 @@ def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
         youtube_channel_id=profile.youtube_channel_id,
         canonical_url=profile.canonical_url,
         favorite=profile.favorite,
-        current_facts=current_facts,
-        brief=profile.brief,
-        source_status=profile.source_status,
+        current_facts=public_json_object(current_facts),
+        brief=public_json_object(profile.brief),
+        source_status=public_json_object(profile.source_status),
         last_analyzed_at=profile.last_analyzed_at,
         next_analysis_at=profile.next_analysis_at,
         contact=_selected_contact(profile),
@@ -183,20 +282,33 @@ def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
 def _creator_detail(profile: CreatorProfile) -> CreatorProfileDetail:
     return CreatorProfileDetail(
         **_creator_card(profile).model_dump(),
-        analysis=profile.analysis,
-        model_metadata=profile.model_metadata,
-        prompt_metadata=profile.prompt_metadata,
+        analysis=public_json_object(profile.analysis),
+        model_metadata=public_json_object(profile.model_metadata),
+        prompt_metadata=public_json_object(profile.prompt_metadata),
         manual_notes=profile.manual_notes,
     )
 
 
 def _next_cursor(
-    rows: Sequence[GameProfile] | Sequence[CreatorProfile], *, has_more: bool
+    rows: Sequence[GameProfile] | Sequence[CreatorProfile],
+    *,
+    has_more: bool,
+    profile_type: str,
+    query: str,
+    only_collection: bool,
+    signing_key: bytes,
 ) -> str | None:
     if not has_more or not rows:
         return None
     last = rows[-1]
-    return _encode_cursor(last.sort_name, last.id)
+    return _encode_cursor(
+        last.sort_name,
+        last.id,
+        profile_type=profile_type,
+        query=query,
+        only_collection=only_collection,
+        signing_key=signing_key,
+    )
 
 
 def _validated_cursor(
@@ -206,8 +318,15 @@ def _validated_cursor(
     *,
     query: str,
     only_collection: bool,
+    signing_key: bytes,
 ) -> CursorValue | None:
-    cursor = _decode_cursor(raw_cursor)
+    cursor = _decode_cursor(
+        raw_cursor,
+        profile_type=profile_type,
+        query=query,
+        only_collection=only_collection,
+        signing_key=signing_key,
+    )
     if cursor is not None and not repository.cursor_matches(
         profile_type,
         cursor,
@@ -218,7 +337,13 @@ def _validated_cursor(
     return cursor
 
 
-def create_router(authenticate_workspace: Callable) -> APIRouter:
+def create_router(
+    authenticate_workspace: Callable, *, cursor_signing_secret: str
+) -> APIRouter:
+    cursor_signing_key = hashlib.sha256(
+        b"find-me-gamer/profile-cursor/v1\0"
+        + cursor_signing_secret.encode("utf-8")
+    ).digest()
     router = APIRouter(
         prefix="/api/v1/profiles",
         tags=["profiles"],
@@ -240,6 +365,7 @@ def create_router(authenticate_workspace: Callable) -> APIRouter:
             cursor,
             query=query,
             only_collection=only_collection,
+            signing_key=cursor_signing_key,
         )
         rows, has_more = repository.list_games(
             query=query,
@@ -249,7 +375,14 @@ def create_router(authenticate_workspace: Callable) -> APIRouter:
         )
         return CursorPage(
             items=[_game_card(profile) for profile in rows],
-            next_cursor=_next_cursor(rows, has_more=has_more),
+            next_cursor=_next_cursor(
+                rows,
+                has_more=has_more,
+                profile_type="games",
+                query=query,
+                only_collection=only_collection,
+                signing_key=cursor_signing_key,
+            ),
         )
 
     @router.get("/creators", response_model=CursorPage[CreatorProfileCard])
@@ -267,6 +400,7 @@ def create_router(authenticate_workspace: Callable) -> APIRouter:
             cursor,
             query=query,
             only_collection=only_collection,
+            signing_key=cursor_signing_key,
         )
         rows, has_more = repository.list_creators(
             query=query,
@@ -276,7 +410,14 @@ def create_router(authenticate_workspace: Callable) -> APIRouter:
         )
         return CursorPage(
             items=[_creator_card(profile) for profile in rows],
-            next_cursor=_next_cursor(rows, has_more=has_more),
+            next_cursor=_next_cursor(
+                rows,
+                has_more=has_more,
+                profile_type="creators",
+                query=query,
+                only_collection=only_collection,
+                signing_key=cursor_signing_key,
+            ),
         )
 
     @router.patch(

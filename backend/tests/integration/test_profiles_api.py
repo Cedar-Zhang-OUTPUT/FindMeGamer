@@ -55,8 +55,10 @@ def add_game(
     favorite: bool = False,
     current_facts: dict[str, Any] | None = None,
     source_status: dict[str, Any] | None = None,
+    profile_id: UUID | None = None,
 ) -> GameProfile:
     game = GameProfile(
+        id=profile_id or uuid4(),
         steam_app_id=app_id,
         canonical_url=f"https://store.steampowered.com/app/{app_id}",
         sort_name=name,
@@ -252,6 +254,87 @@ def test_creator_card_and_detail_include_only_selected_contact(
     assert "inactive@example.com" not in json.dumps(detail)
 
 
+def test_profile_json_projections_recursively_remove_sensitive_internal_keys(
+    auth_client, session: Session
+) -> None:
+    game = add_game(
+        session,
+        app_id="sensitive-json",
+        name="Safe Projection",
+        current_facts={
+            "name": "Safe Projection",
+            "review_score": 91,
+            "nested": [
+                {
+                    "public": "keep",
+                    "hidden_total_score": 0.98,
+                    "API-Key": "never-return-api-key",
+                    "refreshToken": "never-return-token",
+                    "id_token": "never-return-id-token",
+                }
+            ],
+            "match_result": {
+                "score": 0.95,
+                "rank": 1,
+                "backend_order": 0,
+                "reasons": ["Strong fit"],
+            },
+        },
+    )
+    game.analysis = {
+        "public_analysis": {"theme": "Automation"},
+        "internal_match_scoring": {"numeric_score": 0.99},
+        "db_password": "never-return-password",
+    }
+    game.brief = {
+        "summary": "Public brief",
+        "Hidden-Rank": 2,
+        "backend_rank": 3,
+        "numeric_total_score": 0.97,
+        "service_credentials": {"username": "private"},
+    }
+    game.source_status = {
+        "steam": {"status": "current"},
+        "privateKey": "never-return-private-key",
+    }
+    game.model_metadata = {
+        "analysis_model": "test-model",
+        "api_secret": "never-return-secret",
+    }
+    game.prompt_metadata = {
+        "version": "game-v1",
+        "access_key": "never-return-access-key",
+    }
+    session.flush()
+
+    card = auth_client.get("/api/v1/profiles/games").json()["items"][0]
+    detail = auth_client.get(f"/api/v1/profiles/games/{game.id}").json()
+
+    assert card["current_facts"] == {
+        "name": "Safe Projection",
+        "review_score": 91,
+        "nested": [{"public": "keep"}],
+        "match_result": {"reasons": ["Strong fit"]},
+    }
+    assert card["brief"] == {"summary": "Public brief"}
+    assert card["source_status"] == {"steam": {"status": "current"}}
+    assert detail["analysis"] == {
+        "public_analysis": {"theme": "Automation"}
+    }
+    assert detail["model_metadata"] == {"analysis_model": "test-model"}
+    assert detail["prompt_metadata"] == {"version": "game-v1"}
+    for secret in (
+        "never-return-api-key",
+        "never-return-token",
+        "never-return-id-token",
+        "never-return-password",
+        "never-return-private-key",
+        "never-return-secret",
+        "never-return-access-key",
+    ):
+        assert secret not in json.dumps(detail)
+
+
 def test_duplicate_and_case_variant_names_page_without_skips_or_duplicates(
     auth_client, session: Session
 ) -> None:
@@ -290,7 +373,17 @@ def test_duplicate_and_case_variant_names_page_without_skips_or_duplicates(
     decoded = json.loads(
         base64.urlsafe_b64decode(cursors[0] + "=" * (-len(cursors[0]) % 4))
     )
-    assert decoded == ["Alpha", "00000000-0000-0000-0000-000000000004"]
+    assert decoded["v"] == 1
+    assert decoded["key"] == [
+        "Alpha",
+        "00000000-0000-0000-0000-000000000004",
+    ]
+    assert decoded["scope"] == {
+        "profile_type": "creators",
+        "query": "",
+        "only_collection": False,
+    }
+    assert len(decoded["signature"]) == 64
 
 
 @pytest.mark.parametrize(
@@ -326,6 +419,111 @@ def test_tampered_cursor_tuple_is_rejected(auth_client, session: Session) -> Non
 
     response = auth_client.get(
         "/api/v1/profiles/creators", params={"cursor": cursor}
+    )
+
+    assert_error(response, status=400, code="profile_cursor_invalid")
+
+
+def test_cursor_signature_rejects_a_different_existing_tuple(
+    auth_client, session: Session
+) -> None:
+    first_id = UUID("20000000-0000-0000-0000-000000000001")
+    second_id = UUID("20000000-0000-0000-0000-000000000002")
+    add_creator(
+        session,
+        profile_id=first_id,
+        channel_id="signed-cursor-first",
+        name="Signed Cursor",
+    )
+    add_creator(
+        session,
+        profile_id=second_id,
+        channel_id="signed-cursor-second",
+        name="Signed Cursor",
+    )
+    cursor = auth_client.get(
+        "/api/v1/profiles/creators", params={"limit": 1}
+    ).json()["next_cursor"]
+    payload = json.loads(
+        base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+    )
+    if isinstance(payload, list):
+        payload[1] = str(second_id)
+    else:
+        payload["key"][1] = str(second_id)
+    tampered = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode()
+    ).decode().rstrip("=")
+
+    response = auth_client.get(
+        "/api/v1/profiles/creators", params={"cursor": tampered}
+    )
+
+    assert_error(response, status=400, code="profile_cursor_invalid")
+
+
+def test_cursor_is_bound_to_resource_type(auth_client, session: Session) -> None:
+    shared_id = UUID("30000000-0000-0000-0000-000000000001")
+    add_creator(
+        session,
+        profile_id=shared_id,
+        channel_id="cross-resource-cursor",
+        name="Cross Resource",
+    )
+    add_creator(
+        session,
+        channel_id="cross-resource-next",
+        name="Cross Resource Next",
+    )
+    add_game(
+        session,
+        profile_id=shared_id,
+        app_id="cross-resource-cursor",
+        name="Cross Resource",
+    )
+    cursor = auth_client.get(
+        "/api/v1/profiles/creators", params={"limit": 1}
+    ).json()["next_cursor"]
+
+    response = auth_client.get(
+        "/api/v1/profiles/games", params={"cursor": cursor}
+    )
+
+    assert_error(response, status=400, code="profile_cursor_invalid")
+
+
+@pytest.mark.parametrize(
+    "first_params,reuse_params",
+    [
+        ({"limit": 1}, {"query": "alpha"}),
+        ({"limit": 1}, {"only_collection": True}),
+    ],
+)
+def test_cursor_is_bound_to_normalized_filter_scope(
+    auth_client,
+    session: Session,
+    first_params: dict[str, object],
+    reuse_params: dict[str, object],
+) -> None:
+    add_creator(
+        session,
+        channel_id="scope-alpha",
+        name="Alpha Scope",
+        favorite=True,
+    )
+    add_creator(
+        session,
+        channel_id="scope-bravo",
+        name="Bravo Scope",
+        favorite=True,
+    )
+    cursor = auth_client.get(
+        "/api/v1/profiles/creators", params=first_params
+    ).json()["next_cursor"]
+
+    response = auth_client.get(
+        "/api/v1/profiles/creators",
+        params={**reuse_params, "cursor": cursor},
     )
 
     assert_error(response, status=400, code="profile_cursor_invalid")
@@ -654,6 +852,36 @@ def test_stale_creator_hides_current_facts_but_retains_identity_and_manual_data(
     assert detail["current_facts"] == {}
     assert detail["analysis"] == {"content": {"primary_genres": ["strategy"]}}
     assert detail["manual_notes"] == "Keep this note"
+
+
+def test_unrelated_stale_substatus_does_not_hide_current_youtube_facts(
+    auth_client, session: Session
+) -> None:
+    creator = add_creator(
+        session,
+        channel_id="current-youtube-stale-visual",
+        name="Current YouTube Creator",
+        current_facts={
+            "channel_name": "Current YouTube Creator",
+            "subscriber_count": 42_000,
+        },
+        source_status={
+            "youtube": {"status": "current"},
+            "visual_analysis": {"status": "stale"},
+        },
+    )
+
+    card = auth_client.get(
+        "/api/v1/profiles/creators",
+        params={"query": "Current YouTube Creator"},
+    ).json()["items"][0]
+    detail = auth_client.get(f"/api/v1/profiles/creators/{creator.id}").json()
+
+    assert card["current_facts"] == {
+        "channel_name": "Current YouTube Creator",
+        "subscriber_count": 42_000,
+    }
+    assert detail["current_facts"] == card["current_facts"]
 
 
 def test_stale_status_does_not_hide_game_facts(auth_client, session: Session) -> None:
