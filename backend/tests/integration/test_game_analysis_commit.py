@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy import delete, event, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.analysis.game_pipeline import GameAnalysisPipeline
@@ -32,7 +33,7 @@ from tests.unit.analysis.test_ai_schemas import (
 from tests.unit.analysis.test_prompts import sample_game_source
 
 
-NOW = datetime(2026, 9, 2, 8, 30, tzinfo=UTC)
+NOW = datetime(2026, 9, 4, 8, 30, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -437,12 +438,12 @@ def test_succeeded_job_requires_matching_profile_and_is_idempotent(
 
     assert _pipeline(committed_factory, steam=steam).run(job_id) == profile_id
 
-    with committed_factory.begin() as session:
-        job = session.get(AnalysisJob, job_id)
-        assert job is not None
-        job.canonical_target_id = "999"
-    with pytest.raises(PermanentIntegrationError, match="analysis_job_result_invalid"):
-        _pipeline(committed_factory, steam=steam).run(job_id)
+    with pytest.raises(IntegrityError):
+        with committed_factory.begin() as session:
+            job = session.get(AnalysisJob, job_id)
+            assert job is not None
+            job.canonical_target_id = "999"
+    assert _pipeline(committed_factory, steam=steam).run(job_id) == profile_id
 
 
 def test_create_publishes_profile_and_job_atomically_with_current_interval(

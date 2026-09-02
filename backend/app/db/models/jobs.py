@@ -144,6 +144,11 @@ class AnalysisJob(TimestampMixin, Base):
             postgresql_where=text("status IN ('queued', 'running')"),
         ),
         Index("ix_analysis_jobs_updated_at_id", "updated_at", "id"),
+        Index(
+            "ix_analysis_jobs_succeeded_profile_id",
+            "profile_id",
+            postgresql_where=text("status = 'succeeded'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(

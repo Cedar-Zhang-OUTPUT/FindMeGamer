@@ -7,6 +7,7 @@ Create Date: 2026-09-02
 
 from collections.abc import Sequence
 
+import sqlalchemy as sa
 from alembic import op
 
 
@@ -134,7 +135,7 @@ OR (
     AND total_units > 0 AND completed_units = total_units
     AND error_code IS NULL AND error_message IS NULL AND NOT retryable
     AND profile_id IS NOT NULL
-    AND result_payload IS NOT NULL AND jsonb_typeof(result_payload) = 'object'
+    AND result_payload = jsonb_build_object('profile_id', profile_id::text)
     AND started_at IS NOT NULL AND started_at >= created_at
     AND completed_at IS NOT NULL AND completed_at >= started_at
 )
@@ -164,14 +165,66 @@ OR (
 
 
 def upgrade() -> None:
-    # The released 0003 writer locks a Job row before its mapper hook takes the
-    # advisory fence. Taking that fence here would create row -> advisory and
-    # advisory -> row edges during rolling deployment. A table lock alone waits
-    # for both old and current mutations without participating in that cycle.
-    # NOWAIT is an executable deployment gate: if an old/new writer or poller
-    # is active, abort this transactional migration before joining PostgreSQL's
-    # table-lock queue. The operator can retry after in-flight work drains.
-    op.execute("LOCK TABLE analysis_jobs IN ACCESS EXCLUSIVE MODE NOWAIT")
+    # The table gate catches the released row-first writer. The non-blocking
+    # advisory gate immediately after it catches a current writer or poller in
+    # its advisory-only window. Both must succeed before any repair is attempted.
+    op.execute(
+        "LOCK TABLE analysis_jobs, game_profiles, creator_profiles "
+        "IN ACCESS EXCLUSIVE MODE NOWAIT"
+    )
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT pg_try_advisory_xact_lock(4604199987260753489) THEN
+                RAISE lock_not_available
+                    USING MESSAGE = 'Analysis Job activity has not drained.';
+            END IF;
+        END
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE FUNCTION analysis_job_succeeded_profile_is_valid(
+            checked_target_type text,
+            checked_profile_id uuid,
+            checked_target_id text,
+            checked_canonical_url text
+        ) RETURNS boolean
+        LANGUAGE sql
+        STABLE
+        AS $$
+            SELECT CASE checked_target_type
+                WHEN 'game' THEN
+                    CASE
+                        WHEN checked_target_id ~ '^[1-9][0-9]{0,9}$'
+                            THEN checked_target_id::bigint <= 2147483647
+                        ELSE false
+                    END
+                    AND checked_canonical_url =
+                        'https://store.steampowered.com/app/' || checked_target_id
+                    AND EXISTS (
+                        SELECT 1 FROM game_profiles AS profile
+                        WHERE profile.id = checked_profile_id
+                          AND profile.steam_app_id = checked_target_id
+                          AND profile.canonical_url = checked_canonical_url
+                    )
+                WHEN 'creator' THEN
+                    checked_target_id ~ '^UC[A-Za-z0-9_-]{6,126}$'
+                    AND checked_canonical_url =
+                        'https://www.youtube.com/channel/' || checked_target_id
+                    AND EXISTS (
+                        SELECT 1 FROM creator_profiles AS profile
+                        WHERE profile.id = checked_profile_id
+                          AND profile.youtube_channel_id = checked_target_id
+                          AND profile.canonical_url = checked_canonical_url
+                    )
+                ELSE false
+            END
+        $$
+        """
+    )
     op.execute(
         """
         UPDATE analysis_jobs
@@ -190,7 +243,14 @@ def upgrade() -> None:
           AND (
               profile_id IS NULL
               OR result_payload IS NULL
-              OR jsonb_typeof(result_payload) <> 'object'
+              OR result_payload <>
+                    jsonb_build_object('profile_id', profile_id::text)
+              OR NOT analysis_job_succeeded_profile_is_valid(
+                    target_type,
+                    profile_id,
+                    canonical_target_id,
+                    canonical_url
+              )
           )
         """
     )
@@ -258,44 +318,53 @@ def upgrade() -> None:
     )
     op.execute(
         f"""
-        UPDATE analysis_jobs
+        WITH normalized AS (
+            SELECT id,
+                   CASE
+                       WHEN error_code IN ({_sql_list(_PERMANENT_CODES)})
+                         OR error_code IN ({_sql_list(_RETRYABLE_CODES)})
+                         OR error_code IN (
+                            'analysis_internal_error',
+                            'analysis_queue_unavailable'
+                         )
+                           THEN error_code
+                       ELSE 'analysis_internal_error'
+                   END AS error_code
+            FROM analysis_jobs
+            WHERE status = 'failed'
+        )
+        UPDATE analysis_jobs AS job
         SET stage = CASE
-                WHEN stage IS NULL THEN NULL
-                ELSE stage
+                WHEN job.stage IS NULL THEN NULL
+                ELSE job.stage
             END,
             completed_units = CASE
-                WHEN stage IS NULL THEN 0
-                WHEN total_units > 0
-                  AND completed_units >= 0
-                  AND completed_units < total_units
-                    THEN completed_units
-                ELSE LEAST(GREATEST(completed_units, 0), 4)
+                WHEN job.stage IS NULL THEN 0
+                WHEN job.total_units > 0
+                  AND job.completed_units >= 0
+                  AND job.completed_units < job.total_units
+                    THEN job.completed_units
+                ELSE LEAST(GREATEST(job.completed_units, 0), 4)
             END,
             total_units = CASE
-                WHEN stage IS NULL THEN 0
-                WHEN total_units > 0
-                  AND completed_units >= 0
-                  AND completed_units < total_units
-                    THEN total_units
+                WHEN job.stage IS NULL THEN 0
+                WHEN job.total_units > 0
+                  AND job.completed_units >= 0
+                  AND job.completed_units < job.total_units
+                    THEN job.total_units
                 ELSE 5
             END,
-            error_code = CASE
-                WHEN error_code IN ({_sql_list(_PERMANENT_CODES)})
-                  OR error_code IN ({_sql_list(_RETRYABLE_CODES)})
-                  OR error_code IN ('analysis_internal_error', 'analysis_queue_unavailable')
-                    THEN error_code
-                ELSE 'analysis_internal_error'
-            END,
+            error_code = normalized.error_code,
             error_message = CASE
-                WHEN error_code IN ({_sql_list(_PERMANENT_CODES)})
+                WHEN normalized.error_code IN ({_sql_list(_PERMANENT_CODES)})
                     THEN 'Analysis could not be completed for this target.'
-                WHEN error_code IN ({_sql_list(_RETRYABLE_CODES)})
+                WHEN normalized.error_code IN ({_sql_list(_RETRYABLE_CODES)})
                     THEN 'Analysis is temporarily unavailable. Please retry.'
-                WHEN error_code = 'analysis_queue_unavailable'
+                WHEN normalized.error_code = 'analysis_queue_unavailable'
                     THEN 'Analysis could not be queued. Please retry.'
                 ELSE 'Analysis failed unexpectedly. Please retry.'
             END,
-            retryable = error_code IN (
+            retryable = normalized.error_code IN (
                 {_sql_list(_RETRYABLE_CODES)},
                 'analysis_internal_error',
                 'analysis_queue_unavailable'
@@ -303,18 +372,25 @@ def upgrade() -> None:
             profile_id = NULL,
             result_payload = NULL,
             started_at = CASE
-                WHEN stage IS NULL THEN NULL
-                ELSE GREATEST(created_at, COALESCE(started_at, created_at))
+                WHEN job.stage IS NULL THEN NULL
+                ELSE GREATEST(
+                    job.created_at,
+                    COALESCE(job.started_at, job.created_at)
+                )
             END,
             completed_at = GREATEST(
-                created_at,
+                job.created_at,
                 CASE
-                    WHEN stage IS NULL THEN created_at
-                    ELSE GREATEST(created_at, COALESCE(started_at, created_at))
+                    WHEN job.stage IS NULL THEN job.created_at
+                    ELSE GREATEST(
+                        job.created_at,
+                        COALESCE(job.started_at, job.created_at)
+                    )
                 END,
-                COALESCE(completed_at, created_at)
+                COALESCE(job.completed_at, job.created_at)
             )
-        WHERE status = 'failed'
+        FROM normalized
+        WHERE job.id = normalized.id
         """
     )
     op.execute(
@@ -376,9 +452,132 @@ def upgrade() -> None:
         "analysis_jobs",
         ["updated_at", "id"],
     )
+    op.create_index(
+        "ix_analysis_jobs_succeeded_profile_id",
+        "analysis_jobs",
+        ["profile_id"],
+        postgresql_where=sa.text("status = 'succeeded'"),
+    )
+    op.execute(
+        """
+        CREATE FUNCTION acquire_analysis_job_contract_lock()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            PERFORM pg_advisory_xact_lock(4604199987260753489);
+            RETURN NULL;
+        END
+        $$
+        """
+    )
+    for table_name in ("analysis_jobs", "game_profiles", "creator_profiles"):
+        op.execute(
+            f"""
+            CREATE TRIGGER acquire_analysis_job_contract_lock
+            BEFORE INSERT OR UPDATE OR DELETE ON {table_name}
+            FOR EACH STATEMENT
+            EXECUTE FUNCTION acquire_analysis_job_contract_lock()
+            """
+        )
+    op.execute(
+        """
+        CREATE FUNCTION enforce_analysis_job_succeeded_profile()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        DECLARE
+            checked_profile_ids uuid[];
+        BEGIN
+            IF TG_TABLE_NAME = 'analysis_jobs' THEN
+                IF NEW.status = 'succeeded'
+                   AND NOT analysis_job_succeeded_profile_is_valid(
+                       NEW.target_type,
+                       NEW.profile_id,
+                       NEW.canonical_target_id,
+                       NEW.canonical_url
+                   ) THEN
+                    RAISE check_violation
+                        USING CONSTRAINT =
+                            'ck_analysis_jobs_succeeded_profile';
+                END IF;
+            ELSE
+                IF TG_OP = 'DELETE' THEN
+                    checked_profile_ids := ARRAY[OLD.id];
+                ELSE
+                    checked_profile_ids := ARRAY[OLD.id, NEW.id];
+                END IF;
+                IF EXISTS (
+                    SELECT 1
+                    FROM analysis_jobs AS job
+                    WHERE job.status = 'succeeded'
+                      AND job.profile_id = ANY(checked_profile_ids)
+                      AND NOT analysis_job_succeeded_profile_is_valid(
+                          job.target_type,
+                          job.profile_id,
+                          job.canonical_target_id,
+                          job.canonical_url
+                      )
+                ) THEN
+                    RAISE check_violation
+                        USING CONSTRAINT =
+                            'ck_analysis_jobs_succeeded_profile';
+                END IF;
+            END IF;
+            RETURN NULL;
+        END
+        $$
+        """
+    )
+    op.execute(
+        """
+        CREATE CONSTRAINT TRIGGER enforce_analysis_job_succeeded_profile
+        AFTER INSERT OR UPDATE ON analysis_jobs
+        DEFERRABLE INITIALLY DEFERRED
+        FOR EACH ROW
+        EXECUTE FUNCTION enforce_analysis_job_succeeded_profile()
+        """
+    )
+    for table_name in ("game_profiles", "creator_profiles"):
+        op.execute(
+            f"""
+            CREATE CONSTRAINT TRIGGER enforce_analysis_job_succeeded_profile
+            AFTER UPDATE OR DELETE ON {table_name}
+            DEFERRABLE INITIALLY DEFERRED
+            FOR EACH ROW
+            EXECUTE FUNCTION enforce_analysis_job_succeeded_profile()
+            """
+        )
 
 
 def downgrade() -> None:
+    op.execute(
+        "LOCK TABLE analysis_jobs, game_profiles, creator_profiles "
+        "IN ACCESS EXCLUSIVE MODE NOWAIT"
+    )
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            IF NOT pg_try_advisory_xact_lock(4604199987260753489) THEN
+                RAISE lock_not_available
+                    USING MESSAGE = 'analysis Job activity must be drained';
+            END IF;
+        END
+        $$
+        """
+    )
+    for table_name in ("analysis_jobs", "game_profiles", "creator_profiles"):
+        op.execute(
+            f"DROP TRIGGER enforce_analysis_job_succeeded_profile " f"ON {table_name}"
+        )
+        op.execute(f"DROP TRIGGER acquire_analysis_job_contract_lock ON {table_name}")
+    op.execute("DROP FUNCTION enforce_analysis_job_succeeded_profile()")
+    op.execute("DROP FUNCTION acquire_analysis_job_contract_lock()")
+    op.execute(
+        "DROP FUNCTION analysis_job_succeeded_profile_is_valid(text, uuid, text, text)"
+    )
+    op.drop_index("ix_analysis_jobs_succeeded_profile_id", table_name="analysis_jobs")
     op.drop_index("ix_analysis_jobs_updated_at_id", table_name="analysis_jobs")
     op.drop_constraint(
         "ck_analysis_jobs_status_shape",

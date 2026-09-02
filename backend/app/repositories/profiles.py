@@ -5,6 +5,7 @@ from uuid import UUID
 from sqlalchemy import Select, select, tuple_
 from sqlalchemy.orm import Session, selectinload
 
+from app.db.models.jobs import acquire_job_change_lock
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 
 
@@ -89,6 +90,7 @@ class ProfilesRepository:
         )
 
     def get_creator_for_update(self, profile_id: UUID) -> CreatorProfile | None:
+        acquire_job_change_lock(self._session)
         return self._session.scalar(
             select(CreatorProfile)
             .where(CreatorProfile.id == profile_id)

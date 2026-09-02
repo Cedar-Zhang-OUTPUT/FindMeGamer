@@ -83,19 +83,16 @@ def test_concurrent_first_manual_updates_serialize_without_duplicate_or_lost_wri
     harness = independent_profiles_harness
     selects_ready = Barrier(2)
 
-    def synchronize_first_creator_reads(
+    def synchronize_advisory_lock_attempts(
         connection, cursor, statement, parameters, context, executemany
     ) -> None:
         normalized = " ".join(statement.lower().split())
-        if not (
-            normalized.startswith("select creator_profiles")
-            and normalized.endswith("for update")
-        ):
+        if "pg_advisory_xact_lock" not in normalized:
             return
         selects_ready.wait(timeout=5)
 
     event.listen(
-        harness.engine, "before_cursor_execute", synchronize_first_creator_reads
+        harness.engine, "before_cursor_execute", synchronize_advisory_lock_attempts
     )
     try:
         requests = [
@@ -124,7 +121,7 @@ def test_concurrent_first_manual_updates_serialize_without_duplicate_or_lost_wri
                 response_bodies.append(response.json())
     finally:
         event.remove(
-            harness.engine, "before_cursor_execute", synchronize_first_creator_reads
+            harness.engine, "before_cursor_execute", synchronize_advisory_lock_attempts
         )
 
     with Session(harness.engine) as database_session:
@@ -137,9 +134,7 @@ def test_concurrent_first_manual_updates_serialize_without_duplicate_or_lost_wri
         ).all()
         creator = database_session.get(CreatorProfile, harness.creator_id)
 
-    final_detail = harness.first.get(
-        f"/api/v1/profiles/creators/{harness.creator_id}"
-    )
+    final_detail = harness.first.get(f"/api/v1/profiles/creators/{harness.creator_id}")
     expected_notes = {
         "first@example.com": "First write",
         "second@example.com": "Second write",

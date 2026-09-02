@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 import subprocess
 import sys
@@ -32,7 +32,7 @@ from app.workers.analysis_tasks import (
 from app.workers.celery_app import celery_app
 
 
-NOW = datetime(2026, 9, 2, 8, 30, tzinfo=UTC)
+NOW = datetime(2026, 9, 4, 8, 30, tzinfo=UTC)
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -272,7 +272,7 @@ def test_running_redelivery_preserves_progress_and_started_time(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     job = _job(session, status=JobStatus.RUNNING)
-    original_started = datetime(2026, 9, 2, 8, 0, tzinfo=UTC)
+    original_started = job.created_at + timedelta(seconds=1)
     job.started_at = original_started
     job.stage = AnalysisStage.ANALYZING
     job.completed_units = 3

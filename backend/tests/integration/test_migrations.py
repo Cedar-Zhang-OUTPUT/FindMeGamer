@@ -824,6 +824,281 @@ def test_public_state_migration_does_not_deadlock_frozen_old_writer_order(
             )
 
 
+@pytest.mark.parametrize("actor", ["current-writer", "current-poller"])
+def test_public_state_migration_rejects_advisory_only_inflight_activity(
+    migrated_database: None, alembic_config, database_engine, actor: str
+) -> None:
+    advisory_acquired = Event()
+    release_actor = Event()
+    actor_errors: list[BaseException] = []
+
+    def hold_advisory_only() -> None:
+        try:
+            with database_engine.connect() as connection:
+                transaction = connection.begin()
+                connection.execute(
+                    text("SELECT pg_advisory_xact_lock(:lock_id)"),
+                    {"lock_id": JOB_CHANGE_ADVISORY_LOCK_ID},
+                )
+                advisory_acquired.set()
+                release_actor.wait(timeout=10)
+                transaction.rollback()
+        except BaseException as error:  # pragma: no branch - asserted below
+            actor_errors.append(error)
+
+    try:
+        command.downgrade(alembic_config, "20260902_0003")
+        actor_thread = Thread(target=hold_advisory_only, name=actor, daemon=True)
+        actor_thread.start()
+        assert advisory_acquired.wait(timeout=5)
+
+        with pytest.raises(Exception) as error:
+            command.upgrade(alembic_config, "head")
+        original = getattr(error.value, "orig", error.value)
+        assert getattr(original, "sqlstate", None) == "55P03"
+        with database_engine.connect() as verification:
+            assert (
+                verification.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260902_0003"
+            )
+
+        release_actor.set()
+        actor_thread.join(timeout=10)
+        assert not actor_thread.is_alive()
+        assert actor_errors == []
+        command.upgrade(alembic_config, "head")
+    finally:
+        release_actor.set()
+        command.upgrade(alembic_config, "head")
+
+
+def test_public_state_migration_rejects_frozen_legacy_profile_mutation(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    profile_id, job_id = uuid4(), uuid4()
+    profile_updated = Event()
+    release_profile = Event()
+    profile_errors: list[BaseException] = []
+    migration_errors: list[BaseException] = []
+
+    def mutate_profile() -> None:
+        try:
+            with database_engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        UPDATE game_profiles
+                        SET canonical_url = 'https://evil.example/legacy-race'
+                        WHERE id = :id
+                        """
+                    ),
+                    {"id": profile_id},
+                )
+                profile_updated.set()
+                release_profile.wait(timeout=10)
+        except BaseException as error:  # pragma: no branch - asserted below
+            profile_errors.append(error)
+
+    def migrate() -> None:
+        try:
+            command.upgrade(alembic_config, "head")
+        except BaseException as error:  # pragma: no branch - asserted below
+            migration_errors.append(error)
+
+    try:
+        command.downgrade(alembic_config, "20260902_0003")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO game_profiles (
+                        id, steam_app_id, canonical_url, sort_name, current_facts,
+                        analysis, brief, source_status, model_metadata, prompt_metadata
+                    ) VALUES (
+                        :profile_id, '734',
+                        'https://store.steampowered.com/app/734', 'Legacy race',
+                        '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                        '{}'::jsonb, '{}'::jsonb
+                    );
+                    """
+                ),
+                {"profile_id": profile_id},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_jobs (
+                        id, target_type, canonical_target_id, canonical_url,
+                        mode, status, stage, completed_units, total_units,
+                        retryable, profile_id, result_payload,
+                        started_at, completed_at
+                    ) VALUES (
+                        :job_id, 'game', '734',
+                        'https://store.steampowered.com/app/734', 'create',
+                        'succeeded', 'finalizing', 5, 5, false, :profile_id,
+                        jsonb_build_object(
+                            'profile_id', CAST(:profile_id_text AS text)
+                        ), clock_timestamp(), clock_timestamp()
+                    )
+                    """
+                ),
+                {
+                    "job_id": job_id,
+                    "profile_id": profile_id,
+                    "profile_id_text": str(profile_id),
+                },
+            )
+
+        profile_thread = Thread(target=mutate_profile, daemon=True)
+        profile_thread.start()
+        assert profile_updated.wait(timeout=5)
+        migration_thread = Thread(target=migrate, daemon=True)
+        migration_thread.start()
+        migration_thread.join(timeout=2)
+        assert not migration_thread.is_alive()
+        assert len(migration_errors) == 1
+        original = getattr(migration_errors[0], "orig", migration_errors[0])
+        assert getattr(original, "sqlstate", None) == "55P03"
+        with database_engine.connect() as connection:
+            assert (
+                connection.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260902_0003"
+            )
+
+        release_profile.set()
+        profile_thread.join(timeout=10)
+        assert not profile_thread.is_alive()
+        assert profile_errors == []
+        command.upgrade(alembic_config, "head")
+        with database_engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    text("SELECT status FROM analysis_jobs WHERE id = :id"),
+                    {"id": job_id},
+                )
+                == "failed"
+            )
+    finally:
+        release_profile.set()
+        if "profile_thread" in locals():
+            profile_thread.join(timeout=10)
+        if "migration_thread" in locals():
+            migration_thread.join(timeout=10)
+        command.downgrade(alembic_config, "20260902_0003")
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = :id"), {"id": job_id}
+            )
+            connection.execute(
+                text("DELETE FROM game_profiles WHERE id = :id"),
+                {"id": profile_id},
+            )
+
+
+def test_public_state_downgrade_rejects_inflight_profile_mutation_and_retries(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    profile_id = uuid4()
+    profile_updated = Event()
+    release_profile = Event()
+    profile_errors: list[BaseException] = []
+    downgrade_errors: list[BaseException] = []
+
+    def mutate_profile() -> None:
+        try:
+            with database_engine.begin() as connection:
+                connection.execute(
+                    text(
+                        "UPDATE creator_profiles SET manual_notes = 'in flight' "
+                        "WHERE id = :id"
+                    ),
+                    {"id": profile_id},
+                )
+                profile_updated.set()
+                release_profile.wait(timeout=10)
+        except BaseException as error:  # pragma: no branch - asserted below
+            profile_errors.append(error)
+
+    def downgrade() -> None:
+        try:
+            command.downgrade(alembic_config, "20260902_0003")
+        except BaseException as error:  # pragma: no branch - asserted below
+            downgrade_errors.append(error)
+
+    with database_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO creator_profiles (
+                    id, youtube_channel_id, canonical_url, sort_name,
+                    current_facts, analysis, brief, source_status,
+                    model_metadata, prompt_metadata
+                ) VALUES (
+                    :id, 'UCdowngrade123',
+                    'https://www.youtube.com/channel/UCdowngrade123',
+                    'Downgrade gate', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                    '{}'::jsonb, '{}'::jsonb, '{}'::jsonb
+                )
+                """
+            ),
+            {"id": profile_id},
+        )
+
+    profile_thread = Thread(target=mutate_profile, daemon=True)
+    downgrade_thread = Thread(target=downgrade, daemon=True)
+    try:
+        profile_thread.start()
+        assert profile_updated.wait(timeout=5)
+        downgrade_thread.start()
+        downgrade_thread.join(timeout=2)
+        assert not downgrade_thread.is_alive()
+        assert len(downgrade_errors) == 1
+        original = getattr(downgrade_errors[0], "orig", downgrade_errors[0])
+        assert getattr(original, "sqlstate", None) == "55P03"
+        with database_engine.connect() as connection:
+            assert (
+                connection.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260902_0004"
+            )
+
+        release_profile.set()
+        profile_thread.join(timeout=10)
+        assert not profile_thread.is_alive()
+        assert profile_errors == []
+        command.downgrade(alembic_config, "20260902_0003")
+        command.upgrade(alembic_config, "head")
+    finally:
+        release_profile.set()
+        profile_thread.join(timeout=10)
+        downgrade_thread.join(timeout=10)
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM creator_profiles WHERE id = :id"),
+                {"id": profile_id},
+            )
+
+
+def test_succeeded_profile_contract_lookup_has_partial_index(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    command.downgrade(alembic_config, "20260902_0003")
+    try:
+        command.upgrade(alembic_config, "head")
+        indexes = {
+            index["name"]: index
+            for index in inspect(database_engine).get_indexes("analysis_jobs")
+        }
+        lookup_index = indexes["ix_analysis_jobs_succeeded_profile_id"]
+        assert lookup_index["column_names"] == ["profile_id"]
+        assert lookup_index["unique"] is False
+        predicate = str(lookup_index["dialect_options"]["postgresql_where"])
+        assert predicate == "((status)::text = 'succeeded'::text)"
+    finally:
+        command.upgrade(alembic_config, "head")
+
+
 def test_public_state_migration_busy_gate_prevents_three_party_lock_cycle(
     migrated_database: None, alembic_config, database_engine
 ) -> None:
@@ -1137,6 +1412,528 @@ def test_public_state_migration_repairs_every_legacy_status_shape(
             connection.execute(
                 text("DELETE FROM analysis_jobs WHERE id = ANY(:job_ids)"),
                 {"job_ids": list(job_ids.values())},
+            )
+
+
+def test_public_state_migration_normalizes_all_legacy_failed_errors(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    job_ids = [uuid4(), uuid4(), uuid4()]
+    try:
+        command.downgrade(alembic_config, "20260902_0003")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_jobs (
+                        id, target_type, canonical_target_id, canonical_url,
+                        mode, status, error_code, error_message, retryable
+                    ) VALUES
+                    (:unknown, 'game', '2147483581',
+                     'https://store.steampowered.com/app/2147483581',
+                     'create', 'failed', 'legacy_unknown', 'unsafe detail', false),
+                    (:missing, 'game', '2147483582',
+                     'https://store.steampowered.com/app/2147483582',
+                     'create', 'failed', NULL, NULL, false),
+                    (:known, 'game', '2147483583',
+                     'https://store.steampowered.com/app/2147483583',
+                     'create', 'failed', 'steam_unavailable',
+                     'wrong message', false)
+                    """
+                ),
+                {
+                    "unknown": job_ids[0],
+                    "missing": job_ids[1],
+                    "known": job_ids[2],
+                },
+            )
+
+        command.upgrade(alembic_config, "head")
+        with database_engine.connect() as connection:
+            rows = connection.execute(
+                text(
+                    """
+                    SELECT id, error_code, error_message, retryable
+                    FROM analysis_jobs WHERE id = ANY(:job_ids) ORDER BY id
+                    """
+                ),
+                {"job_ids": job_ids},
+            ).all()
+        by_id = {row.id: tuple(row[1:]) for row in rows}
+        assert by_id[job_ids[0]] == (
+            "analysis_internal_error",
+            "Analysis failed unexpectedly. Please retry.",
+            True,
+        )
+        assert by_id[job_ids[1]] == by_id[job_ids[0]]
+        assert by_id[job_ids[2]] == (
+            "steam_unavailable",
+            "Analysis is temporarily unavailable. Please retry.",
+            True,
+        )
+    finally:
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = ANY(:job_ids)"),
+                {"job_ids": job_ids},
+            )
+
+
+def test_public_state_migration_repairs_invalid_succeeded_profile_contracts(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    game_profile_id, creator_profile_id = uuid4(), uuid4()
+    job_ids = {
+        name: uuid4() for name in ("game", "creator", "payload", "missing", "identity")
+    }
+    try:
+        command.downgrade(alembic_config, "20260902_0003")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO game_profiles (
+                        id, steam_app_id, canonical_url, sort_name, current_facts,
+                        analysis, brief, source_status, model_metadata, prompt_metadata
+                    ) VALUES (
+                        :id, '730', 'https://store.steampowered.com/app/730',
+                        'Game', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                        '{}'::jsonb, '{}'::jsonb, '{}'::jsonb
+                    )
+                    """
+                ),
+                {"id": game_profile_id},
+            )
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO creator_profiles (
+                        id, youtube_channel_id, canonical_url, sort_name, current_facts,
+                        analysis, brief, source_status, model_metadata, prompt_metadata
+                    ) VALUES (
+                        :creator_id, 'UCabcdef',
+                        'https://www.youtube.com/channel/UCabcdef',
+                        'Creator', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                        '{}'::jsonb, '{}'::jsonb, '{}'::jsonb
+                    )
+                    """
+                ),
+                {"creator_id": creator_profile_id},
+            )
+            rows = [
+                (
+                    job_ids["game"],
+                    "game",
+                    "730",
+                    "https://store.steampowered.com/app/730",
+                    game_profile_id,
+                    game_profile_id,
+                ),
+                (
+                    job_ids["creator"],
+                    "creator",
+                    "UCabcdef",
+                    "https://www.youtube.com/channel/UCabcdef",
+                    creator_profile_id,
+                    creator_profile_id,
+                ),
+                (
+                    job_ids["payload"],
+                    "game",
+                    "730",
+                    "https://store.steampowered.com/app/730",
+                    game_profile_id,
+                    uuid4(),
+                ),
+                (
+                    job_ids["missing"],
+                    "game",
+                    "730",
+                    "https://store.steampowered.com/app/730",
+                    uuid4(),
+                    uuid4(),
+                ),
+                (
+                    job_ids["identity"],
+                    "game",
+                    "440",
+                    "https://store.steampowered.com/app/440",
+                    game_profile_id,
+                    game_profile_id,
+                ),
+            ]
+            for (
+                job_id,
+                target_type,
+                target_id,
+                target_url,
+                profile_id,
+                payload_id,
+            ) in rows:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO analysis_jobs (
+                            id, target_type, canonical_target_id, canonical_url,
+                            mode, status, stage, completed_units, total_units,
+                            retryable, profile_id, result_payload, started_at, completed_at
+                        ) VALUES (
+                            :id, :target_type, :target_id, :target_url,
+                            'create', 'succeeded', 'finalizing', 5, 5, false,
+                            :profile_id,
+                            jsonb_build_object('profile_id', CAST(:payload_id AS text)),
+                            clock_timestamp(), clock_timestamp()
+                        )
+                        """
+                    ),
+                    {
+                        "id": job_id,
+                        "target_type": target_type,
+                        "target_id": target_id,
+                        "target_url": target_url,
+                        "profile_id": profile_id,
+                        "payload_id": str(payload_id),
+                    },
+                )
+
+        command.upgrade(alembic_config, "head")
+        with database_engine.connect() as connection:
+            statuses = dict(
+                connection.execute(
+                    text("SELECT id, status FROM analysis_jobs WHERE id = ANY(:ids)"),
+                    {"ids": list(job_ids.values())},
+                ).all()
+            )
+        assert statuses[job_ids["game"]] == "succeeded"
+        assert statuses[job_ids["creator"]] == "succeeded"
+        assert statuses[job_ids["payload"]] == "failed"
+        assert statuses[job_ids["missing"]] == "failed"
+        assert statuses[job_ids["identity"]] == "failed"
+    finally:
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = ANY(:ids)"),
+                {"ids": list(job_ids.values())},
+            )
+            connection.execute(
+                text("DELETE FROM game_profiles WHERE id = :id"),
+                {"id": game_profile_id},
+            )
+            connection.execute(
+                text("DELETE FROM creator_profiles WHERE id = :id"),
+                {"id": creator_profile_id},
+            )
+
+
+def test_succeeded_result_payload_shape_is_enforced_by_postgresql(
+    session: Session,
+) -> None:
+    profile = GameProfile(
+        steam_app_id="731",
+        canonical_url="https://store.steampowered.com/app/731",
+        sort_name="Payload shape",
+    )
+    session.add(profile)
+    session.flush()
+    now = datetime.now(UTC)
+    job = AnalysisJob(
+        target_type=TargetType.GAME,
+        canonical_target_id="731",
+        canonical_url="https://store.steampowered.com/app/731",
+        status=JobStatus.SUCCEEDED,
+        stage=AnalysisStage.FINALIZING,
+        completed_units=5,
+        total_units=5,
+        profile_id=profile.id,
+        result_payload={"profile_id": str(profile.id)},
+        started_at=now,
+        completed_at=now,
+    )
+    session.add(job)
+    session.flush()
+
+    savepoint = session.begin_nested()
+    try:
+        with pytest.raises(IntegrityError) as error:
+            session.execute(
+                text(
+                    """
+                        UPDATE analysis_jobs
+                        SET result_payload = jsonb_build_object(
+                            'profile_id', CAST(:wrong_profile_id AS text)
+                        )
+                    WHERE id = :job_id
+                    """
+                ),
+                {"job_id": job.id, "wrong_profile_id": str(uuid4())},
+            )
+        assert error.value.orig.diag.constraint_name == "ck_analysis_jobs_status_shape"
+    finally:
+        savepoint.rollback()
+
+
+@pytest.mark.parametrize("mutation", ["update", "delete"])
+def test_succeeded_profile_identity_is_continuously_enforced_by_postgresql(
+    migrated_database: None, database_engine, mutation: str
+) -> None:
+    profile_id, job_id = uuid4(), uuid4()
+    with database_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO game_profiles (
+                    id, steam_app_id, canonical_url, sort_name, current_facts,
+                    analysis, brief, source_status, model_metadata, prompt_metadata
+                ) VALUES (
+                    :profile_id, '732', 'https://store.steampowered.com/app/732',
+                    'Continuous identity', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                    '{}'::jsonb, '{}'::jsonb, '{}'::jsonb
+                )
+                """
+            ),
+            {"profile_id": profile_id},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO analysis_jobs (
+                    id, target_type, canonical_target_id, canonical_url,
+                    mode, status, stage, completed_units, total_units,
+                    retryable, profile_id, result_payload, started_at, completed_at
+                ) VALUES (
+                    :job_id, 'game', '732',
+                    'https://store.steampowered.com/app/732', 'create',
+                    'succeeded', 'finalizing', 5, 5, false, :profile_id,
+                    jsonb_build_object(
+                        'profile_id', CAST(:profile_id_text AS text)
+                    ),
+                    clock_timestamp(), clock_timestamp()
+                )
+                """
+            ),
+            {
+                "profile_id": profile_id,
+                "profile_id_text": str(profile_id),
+                "job_id": job_id,
+            },
+        )
+
+    try:
+        with pytest.raises(IntegrityError):
+            with database_engine.begin() as connection:
+                if mutation == "update":
+                    connection.execute(
+                        text(
+                            "UPDATE game_profiles SET canonical_url = "
+                            "'https://evil.example/secret' WHERE id = :id"
+                        ),
+                        {"id": profile_id},
+                    )
+                else:
+                    connection.execute(
+                        text("DELETE FROM game_profiles WHERE id = :id"),
+                        {"id": profile_id},
+                    )
+                connection.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+    finally:
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = :id"), {"id": job_id}
+            )
+            connection.execute(
+                text("DELETE FROM game_profiles WHERE id = :id"), {"id": profile_id}
+            )
+
+
+def test_profile_delete_serializes_after_concurrent_legal_job_finalize(
+    migrated_database: None, database_engine
+) -> None:
+    profile_id, job_id = uuid4(), uuid4()
+    finalize_inserted = Event()
+    release_finalize = Event()
+    finalize_errors: list[BaseException] = []
+    delete_errors: list[BaseException] = []
+    delete_pid: list[int] = []
+    with database_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO game_profiles (
+                    id, steam_app_id, canonical_url, sort_name, current_facts,
+                    analysis, brief, source_status, model_metadata, prompt_metadata
+                ) VALUES (
+                    :id, '733', 'https://store.steampowered.com/app/733',
+                    'Concurrent identity', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                    '{}'::jsonb, '{}'::jsonb, '{}'::jsonb
+                )
+                """
+            ),
+            {"id": profile_id},
+        )
+
+    def finalize() -> None:
+        try:
+            with database_engine.begin() as connection:
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO analysis_jobs (
+                            id, target_type, canonical_target_id, canonical_url,
+                            mode, status, stage, completed_units, total_units,
+                            retryable, profile_id, result_payload,
+                            started_at, completed_at
+                        ) VALUES (
+                            :job_id, 'game', '733',
+                            'https://store.steampowered.com/app/733', 'create',
+                            'succeeded', 'finalizing', 5, 5, false, :profile_id,
+                            jsonb_build_object(
+                                'profile_id', CAST(:profile_id_text AS text)
+                            ), clock_timestamp(), clock_timestamp()
+                        )
+                        """
+                    ),
+                    {
+                        "job_id": job_id,
+                        "profile_id": profile_id,
+                        "profile_id_text": str(profile_id),
+                    },
+                )
+                finalize_inserted.set()
+                release_finalize.wait(timeout=10)
+        except BaseException as error:  # pragma: no branch - asserted below
+            finalize_errors.append(error)
+
+    def delete_profile() -> None:
+        try:
+            with database_engine.begin() as connection:
+                delete_pid.append(connection.scalar(text("SELECT pg_backend_pid()")))
+                connection.execute(
+                    text("DELETE FROM game_profiles WHERE id = :id"),
+                    {"id": profile_id},
+                )
+        except BaseException as error:  # pragma: no branch - asserted below
+            delete_errors.append(error)
+
+    try:
+        finalize_thread = Thread(target=finalize, daemon=True)
+        finalize_thread.start()
+        assert finalize_inserted.wait(timeout=5)
+        delete_thread = Thread(target=delete_profile, daemon=True)
+        delete_thread.start()
+        deadline = monotonic() + 5
+        delete_waiting = False
+        while monotonic() < deadline and not delete_waiting:
+            if delete_pid:
+                with database_engine.connect() as observation:
+                    delete_waiting = bool(
+                        observation.scalar(
+                            text(
+                                """
+                                SELECT EXISTS (
+                                    SELECT 1 FROM pg_locks
+                                    WHERE pid = :pid
+                                      AND locktype = 'advisory'
+                                      AND NOT granted
+                                )
+                                """
+                            ),
+                            {"pid": delete_pid[0]},
+                        )
+                    )
+            finalize_inserted.wait(timeout=0.01)
+        assert delete_waiting
+        release_finalize.set()
+        finalize_thread.join(timeout=10)
+        delete_thread.join(timeout=10)
+
+        assert not finalize_thread.is_alive()
+        assert not delete_thread.is_alive()
+        assert finalize_errors == []
+        assert len(delete_errors) == 1
+        original = getattr(delete_errors[0], "orig", delete_errors[0])
+        assert getattr(original, "sqlstate", None) == "23514"
+        with database_engine.connect() as connection:
+            assert (
+                connection.scalar(
+                    text("SELECT status FROM analysis_jobs WHERE id = :id"),
+                    {"id": job_id},
+                )
+                == "succeeded"
+            )
+    finally:
+        release_finalize.set()
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = :id"), {"id": job_id}
+            )
+            connection.execute(
+                text("DELETE FROM game_profiles WHERE id = :id"), {"id": profile_id}
+            )
+
+
+def test_succeeded_profile_primary_key_change_cannot_orphan_job(
+    migrated_database: None, database_engine
+) -> None:
+    profile_id, replacement_id, job_id = uuid4(), uuid4(), uuid4()
+    with database_engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO game_profiles (
+                    id, steam_app_id, canonical_url, sort_name, current_facts,
+                    analysis, brief, source_status, model_metadata, prompt_metadata
+                ) VALUES (
+                    :profile_id, '735',
+                    'https://store.steampowered.com/app/735', 'PK identity',
+                    '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+                    '{}'::jsonb, '{}'::jsonb
+                )
+                """
+            ),
+            {"profile_id": profile_id},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO analysis_jobs (
+                    id, target_type, canonical_target_id, canonical_url,
+                    mode, status, stage, completed_units, total_units,
+                    retryable, profile_id, result_payload,
+                    started_at, completed_at
+                ) VALUES (
+                    :job_id, 'game', '735',
+                    'https://store.steampowered.com/app/735', 'create',
+                    'succeeded', 'finalizing', 5, 5, false, :profile_id,
+                    jsonb_build_object(
+                        'profile_id', CAST(:profile_id_text AS text)
+                    ), clock_timestamp(), clock_timestamp()
+                )
+                """
+            ),
+            {
+                "job_id": job_id,
+                "profile_id": profile_id,
+                "profile_id_text": str(profile_id),
+            },
+        )
+    try:
+        with pytest.raises(IntegrityError):
+            with database_engine.begin() as connection:
+                connection.execute(
+                    text("UPDATE game_profiles SET id = :new_id WHERE id = :old_id"),
+                    {"old_id": profile_id, "new_id": replacement_id},
+                )
+                connection.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+    finally:
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = :id"), {"id": job_id}
+            )
+            connection.execute(
+                text("DELETE FROM game_profiles WHERE id IN (:old_id, :new_id)"),
+                {"old_id": profile_id, "new_id": replacement_id},
             )
 
 

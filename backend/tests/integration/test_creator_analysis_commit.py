@@ -4,21 +4,23 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta, tzinfo
-from threading import Event, Lock, Thread
+from threading import Event, Lock, Thread, current_thread
+from time import monotonic
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import delete, event, select
+from sqlalchemy import delete, event, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.analysis.creator_pipeline import CreatorAnalysisPipeline
 from app.analysis.service import CreatorAnalysisService
 from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
-from app.db.models.jobs import AnalysisJob
+from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
 from app.db.models.profiles import CreatorContact, CreatorProfile
 from app.db.models.settings import SharedSettings
 from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
+from app.repositories.profiles import ProfilesRepository
 from app.repositories.settings import SHARED_SETTINGS_ID
 from app.schemas.ai_creator import (
     CreatorMetadataAnalysis,
@@ -34,7 +36,7 @@ from tests.unit.analysis.test_ai_schemas import (
 from tests.unit.analysis.test_creator_pipeline import FakePages, Page, _source
 
 
-NOW = datetime(2026, 9, 2, 9, 15, tzinfo=UTC)
+NOW = datetime(2026, 9, 4, 9, 15, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -694,6 +696,134 @@ def test_succeeded_idempotency_and_concurrent_finalization_converge(
 
     with committed_factory() as session:
         assert session.query(CreatorProfile).count() == 1
+
+
+def test_manual_creator_update_serializes_before_job_finalization(
+    committed_factory,
+) -> None:
+    profile_id = _profile(committed_factory)
+    job_id = _job(committed_factory, status=JobStatus.RUNNING)
+    with committed_factory.begin() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        job.stage = AnalysisStage.FINALIZING
+        job.completed_units = 4
+
+    manual_profile_locked = Event()
+    release_manual = Event()
+    finalizer_pid_ready = Event()
+    finalizer_advisory_acquired = Event()
+    finalizer_profile_select_started = Event()
+    finalizer_pid: list[int] = []
+    errors: list[BaseException] = []
+
+    engine = committed_factory.kw["bind"]
+
+    def observe_profile_lock(
+        connection, cursor, statement, parameters, context, executemany
+    ) -> None:
+        normalized = " ".join(statement.lower().split())
+        if not (
+            normalized.startswith("select creator_profiles")
+            and normalized.endswith("for update")
+        ):
+            return
+        if current_thread().name == "manual-profile-update":
+            manual_profile_locked.set()
+            if not release_manual.wait(timeout=5):
+                raise AssertionError("manual update was not released")
+
+    def observe_profile_select_start(
+        connection, cursor, statement, parameters, context, executemany
+    ) -> None:
+        normalized = " ".join(statement.lower().split())
+        if (
+            current_thread().name == "job-finalizer"
+            and normalized.startswith("select creator_profiles")
+            and normalized.endswith("for update")
+        ):
+            finalizer_profile_select_started.set()
+
+    def manual_update() -> None:
+        try:
+            with committed_factory.begin() as session:
+                updated = ProfilesRepository(session).update_creator_manual(
+                    profile_id,
+                    contact_email="new-owner@example.com",
+                    notes="Serialized manual edit",
+                )
+                assert updated is not None
+        except BaseException as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    def finalize_job() -> None:
+        try:
+            with committed_factory.begin() as session:
+                finalizer_pid.append(session.scalar(text("SELECT pg_backend_pid()")))
+                finalizer_pid_ready.set()
+                acquire_job_change_lock(session)
+                finalizer_advisory_acquired.set()
+                job = session.scalar(
+                    select(AnalysisJob)
+                    .where(AnalysisJob.id == job_id)
+                    .with_for_update()
+                )
+                profile = session.scalar(
+                    select(CreatorProfile)
+                    .where(CreatorProfile.id == profile_id)
+                    .with_for_update()
+                )
+                assert job is not None and profile is not None
+                job.status = JobStatus.SUCCEEDED
+                job.profile_id = profile.id
+                job.result_payload = {"profile_id": str(profile.id)}
+                job.completed_units = job.total_units
+                job.completed_at = NOW
+        except BaseException as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    event.listen(engine, "after_cursor_execute", observe_profile_lock)
+    event.listen(engine, "before_cursor_execute", observe_profile_select_start)
+    manual_thread = Thread(target=manual_update, name="manual-profile-update")
+    finalizer_thread = Thread(target=finalize_job, name="job-finalizer")
+    try:
+        manual_thread.start()
+        assert manual_profile_locked.wait(timeout=5)
+        finalizer_thread.start()
+        assert finalizer_pid_ready.wait(timeout=5)
+
+        deadline = monotonic() + 5
+        while monotonic() < deadline:
+            if finalizer_profile_select_started.is_set():
+                break
+            with committed_factory() as observer:
+                waiting_for_advisory = observer.execute(
+                    text(
+                        "SELECT count(*) FROM pg_locks "
+                        "WHERE pid = :pid AND locktype = 'advisory' AND NOT granted"
+                    ),
+                    {"pid": finalizer_pid[0]},
+                ).scalar_one()
+            if waiting_for_advisory:
+                break
+        else:
+            raise AssertionError("finalizer did not reach a serialized lock wait")
+    finally:
+        release_manual.set()
+        manual_thread.join(timeout=5)
+        finalizer_thread.join(timeout=5)
+        event.remove(engine, "after_cursor_execute", observe_profile_lock)
+        event.remove(engine, "before_cursor_execute", observe_profile_select_start)
+
+    assert not manual_thread.is_alive()
+    assert not finalizer_thread.is_alive()
+    assert errors == []
+    with committed_factory() as session:
+        job = session.get(AnalysisJob, job_id)
+        profile = session.get(CreatorProfile, profile_id)
+        assert job is not None and profile is not None
+        assert job.status is JobStatus.SUCCEEDED
+        assert profile.manual_notes == "Serialized manual edit"
 
 
 def test_advance_is_forward_only_and_succeeded_is_a_noop(committed_factory) -> None:

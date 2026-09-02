@@ -179,7 +179,7 @@ OR (
     AND total_units > 0 AND completed_units = total_units
     AND error_code IS NULL AND error_message IS NULL AND NOT retryable
     AND profile_id IS NOT NULL
-    AND result_payload IS NOT NULL AND jsonb_typeof(result_payload) = 'object'
+    AND result_payload = jsonb_build_object('profile_id', profile_id::text)
     AND started_at IS NOT NULL AND started_at >= created_at
     AND completed_at IS NOT NULL AND completed_at >= started_at
 )

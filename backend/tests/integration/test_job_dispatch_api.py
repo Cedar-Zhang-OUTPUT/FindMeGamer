@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.crypto import SecretCipher
@@ -54,24 +55,25 @@ class ObservingDispatcher:
 class CorruptSuccessThenFailDispatcher(ObservingDispatcher):
     def dispatch(self, job_id: UUID) -> None:
         super().dispatch(job_id)
-        with Session(self.engine) as mutate, mutate.begin():
-            job = mutate.get(AnalysisJob, job_id)
-            assert job is not None
-            profile = GameProfile(
-                steam_app_id=job.canonical_target_id,
-                canonical_url=job.canonical_url,
-                sort_name="Concurrent corrupt success",
-            )
-            mutate.add(profile)
-            mutate.flush()
-            job.status = JobStatus.SUCCEEDED
-            job.stage = AnalysisStage.FINALIZING
-            job.completed_units = 5
-            job.total_units = 5
-            job.profile_id = profile.id
-            job.result_payload = {"profile_id": str(uuid4())}
-            job.started_at = NOW
-            job.completed_at = NOW
+        with pytest.raises(IntegrityError):
+            with Session(self.engine) as mutate, mutate.begin():
+                job = mutate.get(AnalysisJob, job_id)
+                assert job is not None
+                profile = GameProfile(
+                    steam_app_id=job.canonical_target_id,
+                    canonical_url=job.canonical_url,
+                    sort_name="Concurrent corrupt success",
+                )
+                mutate.add(profile)
+                mutate.flush()
+                job.status = JobStatus.SUCCEEDED
+                job.stage = AnalysisStage.FINALIZING
+                job.completed_units = 5
+                job.total_units = 5
+                job.profile_id = profile.id
+                job.result_payload = {"profile_id": str(uuid4())}
+                job.started_at = NOW
+                job.completed_at = NOW
         raise RuntimeError("redis://unsafe@broker")
 
 
@@ -80,26 +82,27 @@ class MalformedSuccessThenFailDispatcher(ObservingDispatcher):
         super().dispatch(job_id)
         malformed_id = "AKIASECRETEXAMPLE123"
         malformed_url = "https://evil.example/path?api_key=provider-secret"
-        with Session(self.engine) as mutate, mutate.begin():
-            job = mutate.get(AnalysisJob, job_id)
-            assert job is not None
-            profile = GameProfile(
-                steam_app_id=malformed_id,
-                canonical_url=malformed_url,
-                sort_name="Concurrent malformed success",
-            )
-            mutate.add(profile)
-            mutate.flush()
-            job.canonical_target_id = malformed_id
-            job.canonical_url = malformed_url
-            job.status = JobStatus.SUCCEEDED
-            job.stage = AnalysisStage.FINALIZING
-            job.completed_units = 5
-            job.total_units = 5
-            job.profile_id = profile.id
-            job.result_payload = {"profile_id": str(profile.id)}
-            job.started_at = NOW
-            job.completed_at = NOW
+        with pytest.raises(IntegrityError):
+            with Session(self.engine) as mutate, mutate.begin():
+                job = mutate.get(AnalysisJob, job_id)
+                assert job is not None
+                profile = GameProfile(
+                    steam_app_id=malformed_id,
+                    canonical_url=malformed_url,
+                    sort_name="Concurrent malformed success",
+                )
+                mutate.add(profile)
+                mutate.flush()
+                job.canonical_target_id = malformed_id
+                job.canonical_url = malformed_url
+                job.status = JobStatus.SUCCEEDED
+                job.stage = AnalysisStage.FINALIZING
+                job.completed_units = 5
+                job.total_units = 5
+                job.profile_id = profile.id
+                job.result_payload = {"profile_id": str(profile.id)}
+                job.started_at = NOW
+                job.completed_at = NOW
         raise RuntimeError("redis://unsafe@broker")
 
 
@@ -323,7 +326,7 @@ def test_replay_reconciliation_suppresses_unsafe_persisted_correlation(
         _cleanup(database_engine, app_ids={app_id}, keys={key})
 
 
-def test_stale_queued_replay_rejects_corrupt_succeeded_result(
+def test_stale_queued_replay_cannot_persist_corrupt_succeeded_result(
     migrated_database: None,
     database_engine: Engine,
     workspace_access_key: str,
@@ -342,24 +345,25 @@ def test_stale_queued_replay_rejects_corrupt_succeeded_result(
                 },
             )
             dispatcher.calls.clear()
-            with Session(database_engine) as mutate, mutate.begin():
-                job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
-                assert job is not None
-                profile = GameProfile(
-                    steam_app_id=job.canonical_target_id,
-                    canonical_url=job.canonical_url,
-                    sort_name="Corrupt replay",
-                )
-                mutate.add(profile)
-                mutate.flush()
-                job.status = JobStatus.SUCCEEDED
-                job.stage = AnalysisStage.FINALIZING
-                job.completed_units = 5
-                job.total_units = 5
-                job.profile_id = profile.id
-                job.result_payload = {"profile_id": str(uuid4())}
-                job.started_at = NOW
-                job.completed_at = NOW
+            with pytest.raises(IntegrityError):
+                with Session(database_engine) as mutate, mutate.begin():
+                    job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
+                    assert job is not None
+                    profile = GameProfile(
+                        steam_app_id=job.canonical_target_id,
+                        canonical_url=job.canonical_url,
+                        sort_name="Corrupt replay",
+                    )
+                    mutate.add(profile)
+                    mutate.flush()
+                    job.status = JobStatus.SUCCEEDED
+                    job.stage = AnalysisStage.FINALIZING
+                    job.completed_units = 5
+                    job.total_units = 5
+                    job.profile_id = profile.id
+                    job.result_payload = {"profile_id": str(uuid4())}
+                    job.started_at = NOW
+                    job.completed_at = NOW
             replay = client.post(
                 "/api/v1/jobs/analysis",
                 headers={"Idempotency-Key": key},
@@ -368,15 +372,15 @@ def test_stale_queued_replay_rejects_corrupt_succeeded_result(
                     "url": f"https://store.steampowered.com/app/{app_id}",
                 },
             )
-        assert replay.status_code == 500
-        assert replay.json()["error"]["code"] == "analysis_job_result_invalid"
-        assert dispatcher.calls == []
+        assert replay.status_code == 201
+        assert replay.json()["status"] == "queued"
+        assert dispatcher.calls == [UUID(created.json()["id"])]
     finally:
         _cleanup(database_engine, app_ids={app_id}, keys={key})
 
 
 @pytest.mark.parametrize("target_type", list(TargetType))
-def test_stale_replay_rejects_coordinated_malformed_success_identity(
+def test_stale_replay_cannot_persist_coordinated_malformed_success_identity(
     migrated_database: None,
     database_engine: Engine,
     workspace_access_key: str,
@@ -401,44 +405,45 @@ def test_stale_replay_rejects_coordinated_malformed_success_identity(
                 json={"target_type": target_type.value, "url": target_url},
             )
             dispatcher.calls.clear()
-            with Session(database_engine) as mutate, mutate.begin():
-                job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
-                assert job is not None
-                if target_type is TargetType.GAME:
-                    profile = GameProfile(
-                        steam_app_id=malformed_id,
-                        canonical_url=malformed_url,
-                        sort_name="Malformed replay game",
-                    )
-                else:
-                    profile = CreatorProfile(
-                        youtube_channel_id=malformed_id,
-                        canonical_url=malformed_url,
-                        sort_name="Malformed replay creator",
-                    )
-                mutate.add(profile)
-                mutate.flush()
-                job.canonical_target_id = malformed_id
-                job.canonical_url = malformed_url
-                job.status = JobStatus.SUCCEEDED
-                job.stage = AnalysisStage.FINALIZING
-                job.completed_units = 5
-                job.total_units = 5
-                job.profile_id = profile.id
-                job.result_payload = {"profile_id": str(profile.id)}
-                job.started_at = NOW
-                job.completed_at = NOW
+            with pytest.raises(IntegrityError):
+                with Session(database_engine) as mutate, mutate.begin():
+                    job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
+                    assert job is not None
+                    if target_type is TargetType.GAME:
+                        profile = GameProfile(
+                            steam_app_id=malformed_id,
+                            canonical_url=malformed_url,
+                            sort_name="Malformed replay game",
+                        )
+                    else:
+                        profile = CreatorProfile(
+                            youtube_channel_id=malformed_id,
+                            canonical_url=malformed_url,
+                            sort_name="Malformed replay creator",
+                        )
+                    mutate.add(profile)
+                    mutate.flush()
+                    job.canonical_target_id = malformed_id
+                    job.canonical_url = malformed_url
+                    job.status = JobStatus.SUCCEEDED
+                    job.stage = AnalysisStage.FINALIZING
+                    job.completed_units = 5
+                    job.total_units = 5
+                    job.profile_id = profile.id
+                    job.result_payload = {"profile_id": str(profile.id)}
+                    job.started_at = NOW
+                    job.completed_at = NOW
             replay = client.post(
                 "/api/v1/jobs/analysis",
                 headers={"Idempotency-Key": key},
                 json={"target_type": target_type.value, "url": target_url},
             )
 
-        assert replay.status_code == 500
-        assert replay.json()["error"]["code"] == "analysis_job_result_invalid"
+        assert replay.status_code == 201
+        assert replay.json()["status"] == "queued"
         assert malformed_id not in replay.text
         assert "provider-secret" not in replay.text
-        assert dispatcher.calls == []
+        assert dispatcher.calls == [UUID(created.json()["id"])]
     finally:
         _cleanup(
             database_engine,
@@ -493,10 +498,11 @@ def test_cached_succeeded_replay_revalidates_postgres_result_identity(
                 },
             )
             assert valid_replay.json().get("status") == "succeeded", valid_replay.json()
-            with Session(database_engine) as mutate, mutate.begin():
-                job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
-                assert job is not None
-                job.result_payload = {"profile_id": str(uuid4())}
+            with pytest.raises(IntegrityError):
+                with Session(database_engine) as mutate, mutate.begin():
+                    job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
+                    assert job is not None
+                    job.result_payload = {"profile_id": str(uuid4())}
             corrupt_replay = client.post(
                 "/api/v1/jobs/analysis",
                 headers={"Idempotency-Key": key},
@@ -505,8 +511,8 @@ def test_cached_succeeded_replay_revalidates_postgres_result_identity(
                     "url": f"https://store.steampowered.com/app/{app_id}",
                 },
             )
-        assert corrupt_replay.status_code == 500
-        assert corrupt_replay.json()["error"]["code"] == "analysis_job_result_invalid"
+        assert corrupt_replay.status_code == 201
+        assert corrupt_replay.json()["status"] == "succeeded"
         assert dispatcher.calls == []
     finally:
         _cleanup(database_engine, app_ids={app_id}, keys={key})
@@ -616,8 +622,9 @@ def test_broker_failure_preserves_concurrent_corrupt_success_error(
                     "url": f"https://store.steampowered.com/app/{app_id}",
                 },
             )
-        assert response.status_code == 500
-        assert response.json()["error"]["code"] == "analysis_job_result_invalid"
+        assert response.status_code == 201
+        assert response.json()["status"] == "failed"
+        assert response.json()["error"]["code"] == "analysis_queue_unavailable"
         assert "redis://" not in str(response.json())
     finally:
         _cleanup(database_engine, app_ids={app_id}, keys={key})
@@ -642,8 +649,9 @@ def test_broker_failure_rejects_concurrent_coordinated_malformed_success(
                     "url": f"https://store.steampowered.com/app/{app_id}",
                 },
             )
-        assert response.status_code == 500
-        assert response.json()["error"]["code"] == "analysis_job_result_invalid"
+        assert response.status_code == 201
+        assert response.json()["status"] == "failed"
+        assert response.json()["error"]["code"] == "analysis_queue_unavailable"
         assert malformed_id not in response.text
         assert "provider-secret" not in response.text
     finally:

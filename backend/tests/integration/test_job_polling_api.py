@@ -356,14 +356,11 @@ def test_unsafe_persisted_correlation_is_suppressed_by_read_and_changed_list(
         ),
     ],
 )
-@pytest.mark.parametrize("path", ["/api/v1/jobs/{job_id}", "/api/v1/jobs"])
 def test_coordinated_malformed_success_identity_is_rejected_by_public_projection(
-    auth_client: TestClient,
     session: Session,
     target_type: TargetType,
     malformed_id: str,
     malformed_url: str,
-    path: str,
 ) -> None:
     if target_type is TargetType.GAME:
         profile = GameProfile(
@@ -380,6 +377,7 @@ def test_coordinated_malformed_success_identity_is_rejected_by_public_projection
     session.add(profile)
     session.flush()
     job = AnalysisJob(
+        id=uuid4(),
         target_type=target_type,
         canonical_target_id=malformed_id,
         canonical_url=malformed_url,
@@ -388,20 +386,20 @@ def test_coordinated_malformed_success_identity_is_rejected_by_public_projection
         stage=AnalysisStage.FINALIZING,
         completed_units=5,
         total_units=5,
+        retryable=False,
         profile_id=profile.id,
         result_payload={"profile_id": str(profile.id)},
         started_at=NOW,
         completed_at=NOW,
+        created_at=NOW,
+        updated_at=NOW,
     )
     session.add(job)
-    session.flush()
-
-    response = auth_client.get(path.format(job_id=job.id))
-
-    assert response.status_code == 500
-    assert response.json()["error"]["code"] == "analysis_job_result_invalid"
-    assert malformed_id not in response.text
-    assert "provider-secret" not in response.text
+    with pytest.raises(APIError) as error:
+        project_analysis_job(session, job, succeeded_profile=profile)
+    assert error.value.code == "analysis_job_result_invalid"
+    assert malformed_id not in error.value.message
+    assert "provider-secret" not in error.value.message
 
 
 @pytest.mark.parametrize(
@@ -645,9 +643,8 @@ def test_every_public_job_error_code_has_one_schema_message() -> None:
             AnalysisJobError(code=code, message=wrong_message)
 
 
-@pytest.mark.parametrize("path", ["/api/v1/jobs/{job_id}", "/api/v1/jobs"])
-def test_corrupt_succeeded_job_is_rejected_before_every_public_projection(
-    auth_client: TestClient, session: Session, path: str
+def test_corrupt_succeeded_job_is_rejected_by_central_public_projection(
+    session: Session,
 ) -> None:
     profile = GameProfile(
         steam_app_id=str(3_100_000 + uuid4().int % 1_000_000),
@@ -658,17 +655,12 @@ def test_corrupt_succeeded_job_is_rejected_before_every_public_projection(
     session.flush()
     job = _job(session, status=JobStatus.SUCCEEDED, profile_id=profile.id)
     job.result_payload = {"profile_id": str(uuid4())}
-    session.flush()
-
-    response = auth_client.get(path.format(job_id=job.id))
-
-    assert response.status_code == 500
-    assert response.json()["error"]["code"] == "analysis_job_result_invalid"
-    assert response.json()["error"]["message"] == (
-        "The Analysis Job result is invalid."
-    )
-    assert response.json()["error"]["retryable"] is False
-    assert str(profile.id) not in str(response.json())
+    with pytest.raises(APIError) as error:
+        project_analysis_job(session, job, succeeded_profile=profile)
+    assert error.value.code == "analysis_job_result_invalid"
+    assert error.value.message == "The Analysis Job result is invalid."
+    assert error.value.retryable is False
+    assert str(profile.id) not in error.value.message
 
 
 def test_unknown_stored_error_degrades_to_generic_safe_failure(
