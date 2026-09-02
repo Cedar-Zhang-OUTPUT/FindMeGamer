@@ -11,10 +11,10 @@ import ssl
 from threading import Thread
 from time import monotonic
 from typing import Callable, Iterable, Protocol
-from urllib.parse import quote, urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
-from app.schemas.ai_creator import _parse_public_url
+from app.schemas.ai_creator import _canonical_url_component, _parse_public_url
 
 
 DEFAULT_MAX_REDIRECTS = 3
@@ -395,21 +395,11 @@ def _validated_url(url: str):
 
 def _ascii_request_target(path: str, query: str) -> str:
     try:
-        encoded_path = quote(
-            path or "/",
-            safe="/:@-._~!$&'()*+,;=%",
-            encoding="utf-8",
-            errors="strict",
-        )
+        encoded_path = _canonical_url_component(path or "/")
         if not query:
             return encoded_path
-        encoded_query = quote(
-            query,
-            safe="/?:@-._~!$&'()*+,;=%",
-            encoding="utf-8",
-            errors="strict",
-        )
-    except UnicodeError:
+        encoded_query = _canonical_url_component(query, query=True)
+    except (UnicodeError, ValueError):
         raise PermanentIntegrationError("public_page_url_invalid") from None
     return f"{encoded_path}?{encoded_query}"
 

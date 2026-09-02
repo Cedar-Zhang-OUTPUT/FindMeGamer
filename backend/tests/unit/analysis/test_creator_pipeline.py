@@ -352,6 +352,40 @@ def test_contact_urls_are_canonically_deduplicated_before_page_fetch() -> None:
     assert pages.calls == ["https://CREATOR.example:443/%7Eabout"]
 
 
+@pytest.mark.parametrize(
+    ("first", "wire_equivalent"),
+    [
+        (
+            "https://creator.example/currency€",
+            "https://creator.example/currency%E2%82%AC",
+        ),
+        (
+            "https://creator.example/rates?currency=€",
+            "https://creator.example/rates?currency=%E2%82%AC",
+        ),
+        (
+            "https://creator.example/currency%E2%82%AC",
+            "https://creator.example/currency€",
+        ),
+    ],
+)
+def test_raw_and_utf8_encoded_urls_share_one_first_seen_contact_candidate(
+    first: str, wire_equivalent: str
+) -> None:
+    source = _source().model_copy(update={"description": f"{first} {wire_equivalent}"})
+    pages = FakePages({first: Page(first, "No contact.")})
+
+    evidence = build_creator_contact_evidence(source, pages=pages)
+
+    sites = [
+        candidate.value
+        for candidate in evidence.candidates
+        if candidate.kind == "linked_site"
+    ]
+    assert sites == [first]
+    assert pages.calls == [first]
+
+
 def test_percent_encoded_linked_urls_are_preserved_and_fetched_end_to_end() -> None:
     urls = (
         "https://creator.example/team%20contact",

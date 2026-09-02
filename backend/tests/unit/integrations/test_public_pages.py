@@ -213,6 +213,38 @@ def test_invalid_public_url_is_rejected_without_dns_or_transport() -> None:
     assert transport.calls == []
 
 
+def test_zero_port_is_rejected_without_dns_or_transport() -> None:
+    resolver = Resolver({})
+    transport = Transport([])
+    gateway = PublicPageGateway(resolver=resolver, transport=transport)
+
+    with pytest.raises(PermanentIntegrationError, match="public_page_url_invalid"):
+        gateway.fetch_page("https://creator.example:0/contact")
+
+    assert resolver.calls == []
+    assert transport.calls == []
+
+
+def test_zero_port_redirect_is_rejected_before_second_dns_or_transport() -> None:
+    resolver = Resolver({"creator.example": ("93.184.216.34",)})
+    transport = Transport(
+        [
+            _response(
+                status=302,
+                body=b"",
+                location="https://creator.example:0/contact",
+            )
+        ]
+    )
+    gateway = PublicPageGateway(resolver=resolver, transport=transport)
+
+    with pytest.raises(PermanentIntegrationError, match="public_page_redirect_invalid"):
+        gateway.fetch_page("https://creator.example/about")
+
+    assert resolver.calls == [("creator.example", 443)]
+    assert len(transport.calls) == 1
+
+
 def test_unicode_host_uses_ascii_idna_for_policy_dns_host_and_sni() -> None:
     url = "https://例子.测试/contact"
     ascii_host = "xn--fsqu00a.xn--0zwm56d"

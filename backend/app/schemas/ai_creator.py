@@ -189,6 +189,8 @@ _HEX_PAIR = re.compile(r"^[0-9A-Fa-f]{2}$")
 _UNRESERVED = frozenset(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
 )
+_PATH_SAFE_ASCII = frozenset("/:@!$&'()*+,;=")
+_QUERY_SAFE_ASCII = _PATH_SAFE_ASCII | {"?"}
 
 
 def _has_unsafe_url_characters(value: str) -> bool:
@@ -324,9 +326,11 @@ def _parse_public_url(value: str) -> tuple[SplitResult, str]:
     ):
         raise ValueError("invalid public URL")
     try:
-        parsed.port
+        port = parsed.port
     except ValueError:
         raise ValueError("invalid public URL") from None
+    if port == 0:
+        raise ValueError("invalid public URL")
     canonical_host = _canonical_host(parsed.hostname)
     _decode_url_component_until_stable(parsed.path)
     _decode_url_component_until_stable(parsed.query)
@@ -338,12 +342,20 @@ def _validate_url_exact(value: str) -> str:
     return value
 
 
-def _normalize_unreserved_percent_escapes(component: str) -> str:
+def _canonical_url_component(component: str, *, query: bool = False) -> str:
+    _validate_percent_escape_syntax(component)
+    safe_ascii = _QUERY_SAFE_ASCII if query else _PATH_SAFE_ASCII
     normalized: list[str] = []
     position = 0
     while position < len(component):
-        if component[position] != "%":
-            normalized.append(component[position])
+        character = component[position]
+        if character != "%":
+            if character in _UNRESERVED or character in safe_ascii:
+                normalized.append(character)
+            else:
+                normalized.extend(
+                    f"%{octet:02X}" for octet in character.encode("utf-8")
+                )
             position += 1
             continue
         encoded = component[position + 1 : position + 3]
@@ -394,8 +406,8 @@ def _canonical_public_url_key(value: str) -> tuple[str, str, int | None, str, st
         parsed.scheme.casefold(),
         canonical_host,
         port,
-        _remove_dot_segments(_normalize_unreserved_percent_escapes(parsed.path)),
-        _normalize_unreserved_percent_escapes(parsed.query),
+        _remove_dot_segments(_canonical_url_component(parsed.path)),
+        _canonical_url_component(parsed.query, query=True),
     )
 
 
