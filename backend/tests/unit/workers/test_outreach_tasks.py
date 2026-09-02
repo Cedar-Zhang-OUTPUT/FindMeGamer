@@ -19,6 +19,7 @@ from app.schemas.outreach import (
 )
 from app.workers.outreach_tasks import (
     DeliveryExecutor,
+    DeliveryTaskStore,
     enqueue_send_batch,
     send_delivery,
 )
@@ -202,9 +203,34 @@ def test_transient_smtp_error_retries(
     session.expire_all()
     saved = session.get(Delivery, delivery.id)
     assert saved is not None
-    assert saved.send_state is DeliverySendState.SENDING
+    assert saved.send_state is DeliverySendState.QUEUED
+    assert saved.sending_at is None
     assert saved.smtp_error_code is None
     assert saved.smtp_error_message is None
+
+
+def test_duplicate_positive_retry_messages_share_one_fresh_claim(
+    auth_client, session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _batch, delivery = _queued_delivery(auth_client, session)
+    executor = _executor(
+        session,
+        RecordingGateway(SMTPTransientError("unsafe upstream detail")),
+    )
+    monkeypatch.setattr(
+        "app.workers.outreach_tasks.get_delivery_executor", lambda: executor
+    )
+    with pytest.raises(Retry):
+        send_delivery.apply(args=[str(delivery.id)], throw=True)
+
+    store = DeliveryTaskStore(
+        session_factory=_session_factory(session), clock=lambda: NOW
+    )
+    first_retry_claim = store.claim(delivery.id, retrying=True)
+    second_duplicate_retry_claim = store.claim(delivery.id, retrying=True)
+
+    assert first_retry_claim is not None
+    assert second_duplicate_retry_claim is None
 
 
 def test_limiter_outage_retries_without_calling_smtp(
@@ -226,7 +252,9 @@ def test_limiter_outage_retries_without_calling_smtp(
 
     assert gateway.calls == []
     session.expire_all()
-    assert session.get(Delivery, delivery.id).send_state is DeliverySendState.SENDING
+    saved = session.get(Delivery, delivery.id)
+    assert saved.send_state is DeliverySendState.QUEUED
+    assert saved.sending_at is None
 
 
 def test_missing_current_smtp_configuration_retries_without_calling_smtp(
@@ -246,7 +274,9 @@ def test_missing_current_smtp_configuration_retries_without_calling_smtp(
 
     assert gateway.calls == []
     session.expire_all()
-    assert session.get(Delivery, delivery.id).send_state is DeliverySendState.SENDING
+    saved = session.get(Delivery, delivery.id)
+    assert saved.send_state is DeliverySendState.QUEUED
+    assert saved.sending_at is None
 
 
 def test_transient_retry_exhaustion_becomes_terminal_failed(
@@ -258,11 +288,6 @@ def test_transient_retry_exhaustion_becomes_terminal_failed(
     monkeypatch.setattr(
         "app.workers.outreach_tasks.get_delivery_executor", lambda: executor
     )
-    delivery.send_state = DeliverySendState.SENDING
-    delivery.sending_at = NOW
-    batch.state = "sending"
-    session.commit()
-
     send_delivery.apply(args=[str(delivery.id)], retries=3, throw=True).get()
 
     session.expire_all()
@@ -341,7 +366,10 @@ def test_nonqueued_or_superseded_delivery_is_a_safe_noop(
     session.commit()
     gateway = RecordingGateway()
 
-    _executor(session, gateway).execute(delivery.id, retrying=False)
+    _executor(session, gateway).execute(
+        delivery.id,
+        retrying=send_state is DeliverySendState.SENDING,
+    )
 
     assert gateway.calls == []
 

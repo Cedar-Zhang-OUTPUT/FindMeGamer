@@ -168,17 +168,17 @@ class DeliveryTaskStore:
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def claim(self, delivery_id: UUID, *, retrying: bool) -> DeliverySnapshot | None:
+        del retrying
         with self._session_factory() as session:
             delivery = _lock_delivery_after_batch(session, delivery_id)
             if delivery is None or delivery.superseded_at is not None:
                 session.commit()
                 return None
-            if delivery.send_state is DeliverySendState.QUEUED:
-                delivery.send_state = DeliverySendState.SENDING
-                delivery.sending_at = _aware_utc(self._clock)
-            elif not (retrying and delivery.send_state is DeliverySendState.SENDING):
+            if delivery.send_state is not DeliverySendState.QUEUED:
                 session.commit()
                 return None
+            delivery.send_state = DeliverySendState.SENDING
+            delivery.sending_at = _aware_utc(self._clock)
             snapshot = DeliverySnapshot(
                 id=delivery.id,
                 recipient_email=delivery.recipient_email,
@@ -193,6 +193,27 @@ class DeliveryTaskStore:
             _recompute_batch(session, delivery.send_batch_id)
             session.commit()
             return snapshot
+
+    def release_for_retry(self, delivery_id: UUID) -> bool:
+        with self._session_factory() as session:
+            delivery = _lock_delivery_after_batch(session, delivery_id)
+            if (
+                delivery is None
+                or delivery.superseded_at is not None
+                or delivery.send_state is not DeliverySendState.SENDING
+            ):
+                session.commit()
+                return False
+            delivery.send_state = DeliverySendState.QUEUED
+            delivery.sending_at = None
+            delivery.sent_at = None
+            delivery.failed_at = None
+            delivery.smtp_error_code = None
+            delivery.smtp_error_message = None
+            delivery.smtp_retryable = False
+            _recompute_batch(session, delivery.send_batch_id)
+            session.commit()
+            return True
 
     def load_smtp_settings(self) -> SMTPRuntimeSettings:
         with self._session_factory() as session:
@@ -374,6 +395,9 @@ class DeliveryExecutor:
             retryable=True,
         )
 
+    def release_for_retry(self, delivery_id: UUID) -> bool:
+        return self._store.release_for_retry(delivery_id)
+
     def _message(self, snapshot: DeliverySnapshot) -> EmailMessage:
         raw_token = self._secret_cipher.derive_outreach_response_token(snapshot.id)
         if not hmac.compare_digest(
@@ -464,6 +488,8 @@ def send_delivery(self, delivery_id: str) -> None:
             if parsed is not None:
                 executor.fail_exhausted_retry(parsed)
             return
+        if parsed is not None:
+            executor.release_for_retry(parsed)
         raise self.retry(
             exc=SafeOutreachTaskError(),
             countdown=policy.countdown(
