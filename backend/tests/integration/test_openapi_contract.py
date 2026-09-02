@@ -97,6 +97,15 @@ EXPECTED_OPERATIONS = {
         "POST",
         "/api/v1/outreach/smtp/test-email",
     ): "sendOutreachSMTPTestEmail",
+    (
+        "POST",
+        "/api/v1/outreach/send-batches/preview",
+    ): "previewOutreachSendBatch",
+    ("POST", "/api/v1/outreach/send-batches"): "createOutreachSendBatch",
+    (
+        "POST",
+        "/api/v1/outreach/deliveries/{delivery_id}/resend",
+    ): "resendOutreachDelivery",
 }
 HTTP_METHODS = frozenset(
     {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
@@ -170,6 +179,8 @@ def test_openapi_retains_bearer_auth_and_required_idempotency_headers(client) ->
         ("POST", "/api/v1/jobs/analysis/{job_id}/retry"),
         ("POST", "/api/v1/matches"),
         ("POST", "/api/v1/matches/{match_task_id}/retry"),
+        ("POST", "/api/v1/outreach/send-batches"),
+        ("POST", "/api/v1/outreach/deliveries/{delivery_id}/resend"),
     ):
         parameters = _operation(schema, method, path)["parameters"]
         idempotency = [
@@ -187,6 +198,7 @@ def test_openapi_retains_bearer_auth_and_required_idempotency_headers(client) ->
         ("POST", "/api/v1/outreach/templates/{template_id}/duplicate"),
         ("POST", "/api/v1/outreach/templates/{template_id}/default"),
         ("POST", "/api/v1/outreach/templates/{template_id}/preview"),
+        ("POST", "/api/v1/outreach/send-batches/preview"),
     ):
         parameters = _operation(schema, method, path).get("parameters", [])
         assert all(value.get("name") != "Idempotency-Key" for value in parameters)
@@ -294,6 +306,64 @@ def test_openapi_smtp_password_is_write_only_and_never_a_response_property(
     assert components["SMTPSettingsResponse"]["additionalProperties"] is False
     assert "password" not in components["SMTPSettingsResponse"]["properties"]
     assert components["SMTPTestResult"]["additionalProperties"] is False
+
+
+def test_openapi_send_batch_requests_and_responses_are_closed_and_secret_free(
+    client,
+) -> None:
+    schema = client.app.openapi()
+    components = schema["components"]["schemas"]
+
+    assert set(components["OutreachSendBatchRequest"]["properties"]) == {
+        "match_task_id",
+        "creator_ids",
+        "template_id",
+        "subject_override",
+        "body_markdown_override",
+    }
+    assert components["OutreachSendBatchRequest"]["additionalProperties"] is False
+    assert (
+        components["OutreachSendBatchRequest"]["properties"]["subject_override"]["type"]
+        == "string"
+    )
+    assert (
+        components["OutreachSendBatchRequest"]["properties"]["body_markdown_override"][
+            "type"
+        ]
+        == "string"
+    )
+    assert set(components["OutreachSendBatchPreview"]["properties"]) == {
+        "match_task_id",
+        "template_id",
+        "template_name",
+        "template_version",
+        "items",
+    }
+    assert components["OutreachSendBatchPreview"]["additionalProperties"] is False
+    assert set(components["OutreachSendBatchResponse"]["properties"]) == {
+        "id",
+        "campaign_id",
+        "match_task_id",
+        "template_id",
+        "state",
+        "requested_creator_ids",
+        "requested_at",
+        "deliveries",
+    }
+    assert components["OutreachSendBatchResponse"]["additionalProperties"] is False
+    response_properties = {
+        property_name.casefold()
+        for component in ("OutreachSendBatchResponse", "OutreachDeliverySummary")
+        for property_name in components[component]["properties"]
+    }
+    assert response_properties.isdisjoint(
+        {
+            "response_token",
+            "response_token_digest",
+            "rendered_html",
+            "rendered_markdown",
+        }
+    )
 
 
 def _guarded_export_environment(tmp_path: Path, hash_seed: str) -> dict[str, str]:

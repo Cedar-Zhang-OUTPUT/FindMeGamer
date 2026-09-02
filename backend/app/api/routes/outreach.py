@@ -6,19 +6,34 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import formataddr
+import json
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Response
+from fastapi import APIRouter, Body, Depends, Header, Request, Response
 from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_session
 from app.core.crypto import EncryptedValue, SecretCipher
 from app.core.errors import APIError
+from app.core.idempotency import (
+    IDEMPOTENCY_RETENTION,
+    InvalidIdempotencyKey,
+    request_hash,
+    utc_now,
+    validate_idempotency_key,
+)
+from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.outreach import Template
 from app.db.models.settings import ServiceSecret
+from app.outreach.batches import (
+    create_send_batch,
+    preview_send_batch,
+    resend_delivery,
+)
 from app.outreach.rate_limit import SMTPRateLimitError, SMTPRateLimiter
 from app.outreach.smtp import SMTPConfig, SMTPError, SMTPGateway
 from app.outreach.templates import TemplateValidationError, render_delivery
@@ -40,6 +55,9 @@ from app.schemas.outreach import (
     OutreachTemplatePreviewDraft,
     OutreachTemplateResponse,
     OutreachTemplateUpdate,
+    OutreachSendBatchPreview,
+    OutreachSendBatchRequest,
+    OutreachSendBatchResponse,
     RenderedDelivery,
     ResponseURLs,
     SMTPSettingsResponse,
@@ -64,6 +82,90 @@ _PREVIEW_URLS = ResponseURLs(
     accepted_url="https://example.invalid/r/preview-accepted",
     declined_url="https://example.invalid/r/preview-declined",
 )
+
+
+def _idempotency_key(raw: str | None) -> str:
+    try:
+        return validate_idempotency_key(raw)
+    except InvalidIdempotencyKey:
+        raise APIError(
+            status_code=400,
+            code="idempotency_key_invalid",
+            message="A valid Idempotency-Key is required.",
+        ) from None
+
+
+def _idempotency_conflict() -> APIError:
+    return APIError(
+        status_code=409,
+        code="idempotency_key_conflict",
+        message="The Idempotency-Key was already used for another request.",
+    )
+
+
+def _lock_idempotency_key(session: Session, key: str) -> None:
+    session.execute(
+        select(func.pg_advisory_xact_lock(func.hashtextextended(key, 0x464D474F)))
+    )
+
+
+def _idempotent_replay(
+    session: Session, *, key: str, digest: str, now: datetime
+) -> dict[str, object] | None:
+    record = session.scalar(
+        select(IdempotencyRecord).where(IdempotencyRecord.key == key).with_for_update()
+    )
+    if record is None:
+        return None
+    if record.expires_at is not None and record.expires_at <= now:
+        session.delete(record)
+        session.flush()
+        return None
+    if record.request_hash != digest:
+        raise _idempotency_conflict()
+    try:
+        return OutreachSendBatchResponse.model_validate_json(
+            json.dumps(record.response_body)
+        ).model_dump(mode="json")
+    except ValidationError:
+        raise APIError(
+            status_code=500,
+            code="outreach_state_invalid",
+            message="The Outreach state is invalid.",
+        ) from None
+
+
+def _store_batch_idempotency(
+    session: Session,
+    *,
+    key: str,
+    digest: str,
+    path: str,
+    body: dict[str, object],
+    now: datetime,
+) -> None:
+    session.add(
+        IdempotencyRecord(
+            key=key,
+            request_hash=digest,
+            method="POST",
+            path=path,
+            response_status=201,
+            response_body=body,
+            expires_at=now + IDEMPOTENCY_RETENTION,
+        )
+    )
+    session.flush()
+
+
+def _stable_json_response(body: dict[str, object]) -> Response:
+    return Response(
+        content=json.dumps(
+            body, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ),
+        status_code=201,
+        media_type="application/json",
+    )
 
 
 def _not_found() -> APIError:
@@ -289,6 +391,141 @@ def create_router(
         tags=["outreach"],
         dependencies=[Depends(authenticate_workspace)],
     )
+
+    @router.post(
+        "/send-batches/preview",
+        response_model=OutreachSendBatchPreview,
+        operation_id="previewOutreachSendBatch",
+    )
+    def preview_batch(
+        payload: OutreachSendBatchRequest,
+        database_session: Session = Depends(get_session),
+    ) -> OutreachSendBatchPreview:
+        return preview_send_batch(database_session, payload)
+
+    @router.post(
+        "/send-batches",
+        response_model=OutreachSendBatchResponse,
+        status_code=201,
+        operation_id="createOutreachSendBatch",
+    )
+    def create_batch(
+        payload: OutreachSendBatchRequest,
+        request: Request,
+        idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+        database_session: Session = Depends(get_session),
+    ) -> Response:
+        key = _idempotency_key(idempotency_key)
+        path = "/api/v1/outreach/send-batches"
+        digest = request_hash(
+            method="POST",
+            path=path,
+            canonical_request=payload.model_dump(mode="json"),
+        )
+        now = utc_now()
+        try:
+            _lock_idempotency_key(database_session, key)
+            replay = _idempotent_replay(
+                database_session, key=key, digest=digest, now=now
+            )
+            if replay is not None:
+                database_session.commit()
+                return _stable_json_response(replay)
+            projection = create_send_batch(
+                database_session, payload, secret_cipher=secret_cipher
+            )
+            body = projection.model_dump(mode="json")
+            _store_batch_idempotency(
+                database_session,
+                key=key,
+                digest=digest,
+                path=path,
+                body=body,
+                now=now,
+            )
+            database_session.commit()
+            return _stable_json_response(body)
+        except APIError:
+            database_session.rollback()
+            raise
+        except IntegrityError:
+            database_session.rollback()
+            replay = _idempotent_replay(
+                database_session, key=key, digest=digest, now=now
+            )
+            if replay is not None:
+                database_session.commit()
+                return _stable_json_response(replay)
+            database_session.rollback()
+            raise APIError(
+                status_code=409,
+                code="outreach_creation_conflict",
+                message="The Outreach request could not be committed safely.",
+                retryable=True,
+            ) from None
+
+    @router.post(
+        "/deliveries/{delivery_id}/resend",
+        response_model=OutreachSendBatchResponse,
+        status_code=201,
+        operation_id="resendOutreachDelivery",
+    )
+    def resend(
+        delivery_id: UUID,
+        idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+        database_session: Session = Depends(get_session),
+    ) -> Response:
+        key = _idempotency_key(idempotency_key)
+        path = f"/api/v1/outreach/deliveries/{delivery_id}/resend"
+        digest = request_hash(
+            method="POST",
+            path=path,
+            canonical_request={"delivery_id": str(delivery_id)},
+        )
+        now = utc_now()
+        try:
+            _lock_idempotency_key(database_session, key)
+            replay = _idempotent_replay(
+                database_session, key=key, digest=digest, now=now
+            )
+            if replay is not None:
+                database_session.commit()
+                return _stable_json_response(replay)
+            projection = resend_delivery(
+                database_session,
+                delivery_id,
+                secret_cipher=secret_cipher,
+                now=now,
+            )
+            body = projection.model_dump(mode="json")
+            _store_batch_idempotency(
+                database_session,
+                key=key,
+                digest=digest,
+                path=path,
+                body=body,
+                now=now,
+            )
+            database_session.commit()
+            return _stable_json_response(body)
+        except APIError:
+            database_session.rollback()
+            raise
+        except IntegrityError:
+            database_session.rollback()
+            replay = _idempotent_replay(
+                database_session, key=key, digest=digest, now=now
+            )
+            if replay is not None:
+                database_session.commit()
+                return _stable_json_response(replay)
+            database_session.rollback()
+            raise APIError(
+                status_code=409,
+                code="delivery_resend_conflict",
+                message="The Delivery could not be resent safely.",
+                retryable=True,
+            ) from None
 
     @router.get(
         "/templates",

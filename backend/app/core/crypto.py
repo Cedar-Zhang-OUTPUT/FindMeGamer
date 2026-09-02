@@ -1,9 +1,12 @@
 import base64
 import binascii
+import hashlib
+import hmac
 import os
 import stat
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import UUID
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -19,6 +22,7 @@ class SecretCipher:
         if len(key) != 32:
             raise ValueError("The AES-256 master key must be exactly 32 bytes.")
         self._cipher = AESGCM(key)
+        self._key = bytes(key)
 
     @classmethod
     def from_file(cls, path: Path) -> "SecretCipher":
@@ -68,6 +72,18 @@ class SecretCipher:
     def decrypt(self, value: EncryptedValue) -> str:
         plaintext = self._cipher.decrypt(value.nonce, value.ciphertext, None)
         return plaintext.decode("utf-8")
+
+    def derive_outreach_response_token(self, delivery_id: UUID) -> str:
+        """Derive one re-creatable capability without exposing the master key."""
+
+        if type(delivery_id) is not UUID or delivery_id.version != 4:
+            raise ValueError("delivery_id must be a UUIDv4")
+        material = hmac.new(
+            self._key,
+            b"find-me-gamer:outreach-response:v1\0" + delivery_id.bytes,
+            hashlib.sha256,
+        ).digest()
+        return base64.urlsafe_b64encode(material).decode("ascii").rstrip("=")
 
 
 def _read_bounded(descriptor: int, *, limit: int) -> bytes:

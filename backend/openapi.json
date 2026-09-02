@@ -1998,6 +1998,254 @@
         "title": "MatchSummary",
         "type": "object"
       },
+      "OutreachDeliverySummary": {
+        "additionalProperties": false,
+        "properties": {
+          "creator_id": {
+            "format": "uuid",
+            "title": "Creator Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "recipient_email": {
+            "format": "email",
+            "title": "Recipient Email",
+            "type": "string"
+          },
+          "resends_delivery_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resends Delivery Id"
+          },
+          "response_state": {
+            "const": "no_response",
+            "title": "Response State",
+            "type": "string"
+          },
+          "send_state": {
+            "const": "queued",
+            "title": "Send State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "creator_id",
+          "recipient_email",
+          "send_state",
+          "response_state",
+          "resends_delivery_id"
+        ],
+        "title": "OutreachDeliverySummary",
+        "type": "object"
+      },
+      "OutreachSendBatchPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OutreachSendBatchPreviewItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "match_task_id": {
+            "format": "uuid",
+            "title": "Match Task Id",
+            "type": "string"
+          },
+          "template_id": {
+            "format": "uuid",
+            "title": "Template Id",
+            "type": "string"
+          },
+          "template_name": {
+            "title": "Template Name",
+            "type": "string"
+          },
+          "template_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Template Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "match_task_id",
+          "template_id",
+          "template_name",
+          "template_version",
+          "items"
+        ],
+        "title": "OutreachSendBatchPreview",
+        "type": "object"
+      },
+      "OutreachSendBatchPreviewItem": {
+        "additionalProperties": false,
+        "properties": {
+          "creator_id": {
+            "format": "uuid",
+            "title": "Creator Id",
+            "type": "string"
+          },
+          "creator_name": {
+            "title": "Creator Name",
+            "type": "string"
+          },
+          "html": {
+            "title": "Html",
+            "type": "string"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "recipient_email": {
+            "format": "email",
+            "title": "Recipient Email",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "creator_id",
+          "creator_name",
+          "recipient_email",
+          "subject",
+          "markdown",
+          "html"
+        ],
+        "title": "OutreachSendBatchPreviewItem",
+        "type": "object"
+      },
+      "OutreachSendBatchRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "body_markdown_override": {
+            "title": "Body Markdown Override",
+            "type": "string"
+          },
+          "creator_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 30,
+            "minItems": 1,
+            "title": "Creator Ids",
+            "type": "array"
+          },
+          "match_task_id": {
+            "format": "uuid",
+            "title": "Match Task Id",
+            "type": "string"
+          },
+          "subject_override": {
+            "title": "Subject Override",
+            "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "required": [
+          "match_task_id",
+          "creator_ids"
+        ],
+        "title": "OutreachSendBatchRequest",
+        "type": "object"
+      },
+      "OutreachSendBatchResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/OutreachDeliverySummary"
+            },
+            "title": "Deliveries",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "match_task_id": {
+            "format": "uuid",
+            "title": "Match Task Id",
+            "type": "string"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "requested_creator_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Requested Creator Ids",
+            "type": "array"
+          },
+          "state": {
+            "const": "queued",
+            "title": "State",
+            "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          }
+        },
+        "required": [
+          "id",
+          "campaign_id",
+          "match_task_id",
+          "template_id",
+          "state",
+          "requested_creator_ids",
+          "requested_at",
+          "deliveries"
+        ],
+        "title": "OutreachSendBatchResponse",
+        "type": "object"
+      },
       "OutreachTemplateCreate": {
         "additionalProperties": false,
         "properties": {
@@ -3196,6 +3444,166 @@
         "summary": "Retry Match",
         "tags": [
           "matches"
+        ]
+      }
+    },
+    "/api/v1/outreach/deliveries/{delivery_id}/resend": {
+      "post": {
+        "operationId": "resendOutreachDelivery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Delivery Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachSendBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resend",
+        "tags": [
+          "outreach"
+        ]
+      }
+    },
+    "/api/v1/outreach/send-batches": {
+      "post": {
+        "operationId": "createOutreachSendBatch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutreachSendBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachSendBatchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Batch",
+        "tags": [
+          "outreach"
+        ]
+      }
+    },
+    "/api/v1/outreach/send-batches/preview": {
+      "post": {
+        "operationId": "previewOutreachSendBatch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutreachSendBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachSendBatchPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Batch",
+        "tags": [
+          "outreach"
         ]
       }
     },

@@ -15,6 +15,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic.json_schema import SkipJsonSchema
 
 from app.outreach.smtp import normalize_smtp_host
 
@@ -321,6 +322,78 @@ class SMTPTestResult(OutreachValue):
     last_tested_at: datetime
 
 
+class OutreachSendBatchRequest(OutreachValue):
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        strict=False,
+        validate_default=True,
+        hide_input_in_errors=True,
+    )
+
+    match_task_id: UUID
+    creator_ids: list[UUID] = Field(min_length=1, max_length=30)
+    template_id: UUID | None = None
+    subject_override: str | SkipJsonSchema[None] = None
+    body_markdown_override: str | SkipJsonSchema[None] = None
+
+    @field_validator("creator_ids")
+    @classmethod
+    def require_unique_creators(cls, values: list[UUID]) -> list[UUID]:
+        if len(values) != len(set(values)):
+            raise ValueError("Creator IDs must be unique")
+        return values
+
+    @field_validator("subject_override", "body_markdown_override")
+    @classmethod
+    def validate_override(cls, value: str | None) -> str | None:
+        return _validate_template_text(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def reject_explicit_null_overrides(self) -> "OutreachSendBatchRequest":
+        for field in ("subject_override", "body_markdown_override"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError("Send overrides cannot be null")
+        return self
+
+
+class OutreachSendBatchPreviewItem(OutreachValue):
+    creator_id: UUID
+    creator_name: str
+    recipient_email: EmailStr
+    subject: str
+    markdown: str
+    html: str
+
+
+class OutreachSendBatchPreview(OutreachValue):
+    match_task_id: UUID
+    template_id: UUID
+    template_name: str
+    template_version: int = Field(gt=0)
+    items: list[OutreachSendBatchPreviewItem]
+
+
+class OutreachDeliverySummary(OutreachValue):
+    id: UUID
+    creator_id: UUID
+    recipient_email: EmailStr
+    send_state: Literal["queued"]
+    response_state: Literal["no_response"]
+    resends_delivery_id: UUID | None
+
+
+class OutreachSendBatchResponse(OutreachValue):
+    id: UUID
+    campaign_id: UUID
+    match_task_id: UUID
+    template_id: UUID | None
+    state: Literal["queued"]
+    requested_creator_ids: list[UUID]
+    requested_at: datetime
+    deliveries: list[OutreachDeliverySummary]
+
+
 __all__ = [
     "ACCEPTED_RESPONSE_URL_PLACEHOLDER",
     "DEFAULT_ACCEPTED_LABEL",
@@ -331,6 +404,11 @@ __all__ = [
     "OutreachTemplatePreviewDraft",
     "OutreachTemplateResponse",
     "OutreachTemplateUpdate",
+    "OutreachDeliverySummary",
+    "OutreachSendBatchPreview",
+    "OutreachSendBatchPreviewItem",
+    "OutreachSendBatchRequest",
+    "OutreachSendBatchResponse",
     "RESPONSE_URL_PLACEHOLDERS",
     "RenderedDelivery",
     "ResponseURLs",
