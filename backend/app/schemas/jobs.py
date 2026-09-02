@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
 
@@ -26,16 +26,26 @@ class AnalysisJobResponse(BaseModel):
     mode: JobMode
     status: JobStatus
     stage: AnalysisStage | None
-    completed_units: int
-    total_units: int
+    completed_units: int = Field(ge=0)
+    total_units: int = Field(ge=0)
     retryable: bool
     error: "AnalysisJobError | None" = None
-    correlation_id: str | None
+    correlation_id: str | None = Field(
+        pattern=r"^[A-Za-z0-9._-]{1,128}$",
+    )
     profile_id: UUID | None
     created_at: datetime
     updated_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
+
+    @model_validator(mode="after")
+    def require_safe_public_state(self) -> "AnalysisJobResponse":
+        if self.completed_units > self.total_units:
+            raise ValueError("completed_units must not exceed total_units")
+        if self.status is not JobStatus.FAILED and self.retryable:
+            raise ValueError("retryable is valid only for failed Jobs")
+        return self
 
 
 class AnalysisJobError(BaseModel):

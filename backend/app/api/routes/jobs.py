@@ -24,7 +24,7 @@ from app.analysis.targets import (
     UnavailableChannelResolver,
     resolve_target,
 )
-from app.core.errors import APIError
+from app.core.errors import APIError, safe_correlation_id
 from app.core.idempotency import (
     IDEMPOTENCY_RETENTION,
     InvalidIdempotencyKey,
@@ -192,9 +192,34 @@ def _invalid_job_result() -> APIError:
     )
 
 
+def _invalid_job_state() -> APIError:
+    return APIError(
+        status_code=500,
+        code="analysis_job_state_invalid",
+        message="The Analysis Job state is invalid.",
+    )
+
+
+def _require_safe_public_job_state(job: AnalysisJob) -> None:
+    completed_units = job.completed_units
+    total_units = job.total_units
+    if (
+        not isinstance(completed_units, int)
+        or isinstance(completed_units, bool)
+        or not isinstance(total_units, int)
+        or isinstance(total_units, bool)
+        or completed_units < 0
+        or total_units < 0
+        or completed_units > total_units
+        or (job.status is not JobStatus.FAILED and job.retryable)
+    ):
+        raise _invalid_job_state()
+
+
 def project_analysis_job(
     database_session: Session, job: AnalysisJob
 ) -> AnalysisJobResponse:
+    _require_safe_public_job_state(job)
     try:
         require_valid_succeeded_job_result(database_session, job)
     except PermanentIntegrationError as error:
@@ -213,7 +238,7 @@ def project_analysis_job(
         total_units=job.total_units,
         retryable=job.retryable,
         error=_safe_error(job),
-        correlation_id=job.correlation_id,
+        correlation_id=safe_correlation_id(job.correlation_id),
         profile_id=job.profile_id,
         created_at=job.created_at,
         updated_at=job.updated_at,

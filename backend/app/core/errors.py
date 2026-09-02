@@ -21,9 +21,15 @@ class APIError(Exception):
 
 def correlation_id_for(request: Request) -> str:
     supplied = request.headers.get("X-Correlation-ID", "")
-    if _safe_correlation_id.fullmatch(supplied):
+    if safe_correlation_id(supplied) is not None:
         return supplied
     return str(uuid4())
+
+
+def safe_correlation_id(value: object) -> str | None:
+    if isinstance(value, str) and _safe_correlation_id.fullmatch(value):
+        return value
+    return None
 
 
 def error_response(error: APIError, correlation_id: str) -> JSONResponse:

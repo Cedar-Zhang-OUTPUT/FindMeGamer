@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    Column,
     DateTime,
     Enum,
     Index,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     func,
     select,
     String,
+    Table,
     Text,
     text,
 )
@@ -24,6 +26,13 @@ from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
 
 
 JOB_CHANGE_ADVISORY_LOCK_ID = 4_604_199_987_260_753_489
+analysis_job_change_watermark = Table(
+    "analysis_job_change_watermark",
+    Base.metadata,
+    Column("singleton", Boolean, primary_key=True),
+    Column("last_changed_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("singleton", name="singleton_true"),
+)
 _NEXT_JOB_CHANGE_TIMESTAMP = text(
     """
     INSERT INTO analysis_job_change_watermark AS watermark (
@@ -95,6 +104,22 @@ class AnalysisJob(TimestampMixin, Base):
             "stage IS NULL OR stage IN ('fetching_data', 'analyzing', 'finalizing')",
             name="analysis_stage",
         ),
+        CheckConstraint(
+            "completed_units >= 0",
+            name="ck_analysis_jobs_completed_units_nonnegative",
+        ),
+        CheckConstraint(
+            "total_units >= 0",
+            name="ck_analysis_jobs_total_units_nonnegative",
+        ),
+        CheckConstraint(
+            "completed_units <= total_units",
+            name="ck_analysis_jobs_completed_not_above_total",
+        ),
+        CheckConstraint(
+            "status = 'failed' OR NOT retryable",
+            name="ck_analysis_jobs_retryable_only_failed",
+        ),
         Index(
             "uq_analysis_jobs_active_target",
             "target_type",
@@ -102,6 +127,7 @@ class AnalysisJob(TimestampMixin, Base):
             unique=True,
             postgresql_where=text("status IN ('queued', 'running')"),
         ),
+        Index("ix_analysis_jobs_updated_at_id", "updated_at", "id"),
     )
 
     id: Mapped[UUID] = mapped_column(

@@ -8,16 +8,20 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import update
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app.core.crypto import SecretCipher
+from app.core.errors import APIError
 from app.core.security import hash_workspace_key
 from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob
 from app.db.models.profiles import GameProfile
 from app.main import create_app
+from app.api.routes.jobs import project_analysis_job
+from app.schemas.jobs import AnalysisJobResponse
 
 
 NOW = datetime(2026, 9, 2, 9, 0, tzinfo=UTC)
@@ -306,6 +310,74 @@ def test_job_read_uses_one_safe_projection_and_never_reflects_internal_fields(
     assert "provider_text" not in serialized
     assert "result_payload" not in serialized
     assert "error_message" not in serialized
+
+
+def test_unsafe_persisted_correlation_is_suppressed_by_read_and_changed_list(
+    auth_client: TestClient, session: Session
+) -> None:
+    job = _job(session, status=JobStatus.RUNNING)
+    job.correlation_id = "api-key=secret-value"
+    session.flush()
+
+    read = auth_client.get(f"/api/v1/jobs/{job.id}")
+    changed = auth_client.get("/api/v1/jobs")
+
+    assert read.status_code == 200
+    assert read.json()["correlation_id"] is None
+    changed_job = next(
+        item for item in changed.json()["items"] if item["id"] == str(job.id)
+    )
+    assert changed_job["correlation_id"] is None
+    assert "secret-value" not in read.text
+    assert "secret-value" not in changed.text
+
+
+@pytest.mark.parametrize(
+    ("status", "completed_units", "total_units", "retryable"),
+    [
+        (JobStatus.RUNNING, -1, 5, False),
+        (JobStatus.RUNNING, 6, 5, False),
+        (JobStatus.RUNNING, 0, 5, True),
+    ],
+)
+def test_central_projection_rejects_invalid_persisted_job_state(
+    session: Session,
+    status: JobStatus,
+    completed_units: int,
+    total_units: int,
+    retryable: bool,
+) -> None:
+    job = _job(session, status=status)
+    job.completed_units = completed_units
+    job.total_units = total_units
+    job.retryable = retryable
+
+    with pytest.raises(APIError) as error:
+        project_analysis_job(session, job)
+
+    assert error.value.code == "analysis_job_state_invalid"
+    assert error.value.status_code == 500
+
+
+@pytest.mark.parametrize(
+    ("updates", "match"),
+    [
+        ({"completed_units": -1}, "completed_units"),
+        ({"total_units": -1}, "total_units"),
+        ({"completed_units": 6, "total_units": 5}, "completed_units"),
+        ({"status": "running", "retryable": True}, "retryable"),
+        ({"correlation_id": "api-key=secret-value"}, "correlation_id"),
+    ],
+)
+def test_public_job_schema_rejects_unsafe_state(
+    session: Session, updates: dict[str, object], match: str
+) -> None:
+    job = _job(session, status=JobStatus.RUNNING)
+    payload = project_analysis_job(session, job).model_dump(mode="json")
+    payload.update(updates)
+
+    with pytest.raises(ValidationError, match=match):
+        AnalysisJobResponse.model_validate(payload)
 
 
 @pytest.mark.parametrize("path", ["/api/v1/jobs/{job_id}", "/api/v1/jobs"])

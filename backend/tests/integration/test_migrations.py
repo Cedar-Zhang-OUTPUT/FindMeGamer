@@ -7,6 +7,7 @@ from sqlalchemy import func, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.db.base import Base
 from app.db.models.enums import JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
@@ -215,8 +216,7 @@ def test_only_one_active_manual_contact_exists_per_creator(session: Session) -> 
         with pytest.raises(IntegrityError) as error:
             session.flush()
         assert (
-            error.value.orig.diag.constraint_name
-            == "uq_creator_contacts_active_manual"
+            error.value.orig.diag.constraint_name == "uq_creator_contacts_active_manual"
         )
     finally:
         savepoint.rollback()
@@ -361,6 +361,236 @@ def test_initial_migration_downgrades_and_reupgrades(
     finally:
         command.upgrade(alembic_config, "head")
     assert CORE_TABLES <= set(inspect(database_engine).get_table_names())
+
+
+def test_analysis_job_watermark_is_owned_by_sqlalchemy_metadata() -> None:
+    table = Base.metadata.tables["analysis_job_change_watermark"]
+
+    assert set(table.columns.keys()) == {"singleton", "last_changed_at"}
+    assert table.c.singleton.primary_key is True
+    assert table.c.last_changed_at.nullable is False
+
+
+@pytest.mark.parametrize(
+    ("completed_units", "total_units", "status", "retryable"),
+    [
+        (-1, 0, "queued", False),
+        (0, -1, "queued", False),
+        (6, 5, "running", False),
+        (0, 5, "running", True),
+        (5, 5, "succeeded", True),
+    ],
+)
+def test_analysis_job_public_state_is_enforced_by_postgresql(
+    session: Session,
+    completed_units: int,
+    total_units: int,
+    status: str,
+    retryable: bool,
+) -> None:
+    job = _job(f"invalid-public-state-{uuid4()}", JobStatus.QUEUED)
+    session.add(job)
+    session.flush()
+    savepoint = session.begin_nested()
+    try:
+        with pytest.raises(IntegrityError):
+            session.execute(
+                text(
+                    """
+                    UPDATE analysis_jobs
+                    SET completed_units = :completed_units,
+                        total_units = :total_units,
+                        status = :status,
+                        retryable = :retryable
+                    WHERE id = :job_id
+                    """
+                ),
+                {
+                    "job_id": job.id,
+                    "completed_units": completed_units,
+                    "total_units": total_units,
+                    "status": status,
+                    "retryable": retryable,
+                },
+            )
+    finally:
+        savepoint.rollback()
+
+
+def test_analysis_job_schema_upgrade_repairs_legacy_rows_and_adds_query_index(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    job_id = uuid4()
+    try:
+        command.downgrade(alembic_config, "20260902_0002")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_jobs (
+                        id, target_type, canonical_target_id, canonical_url,
+                        mode, status, completed_units, total_units, retryable,
+                        correlation_id
+                    ) VALUES (
+                        :id, 'game', :target_id, :canonical_url,
+                        'create', 'running', -9, -1, true,
+                        'api-key=legacy-secret'
+                    )
+                    """
+                ),
+                {
+                    "id": job_id,
+                    "target_id": f"legacy-job-{job_id}",
+                    "canonical_url": f"https://store.steampowered.com/app/{job_id}",
+                },
+            )
+            legacy_updated_at = connection.scalar(
+                text("SELECT updated_at FROM analysis_jobs WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+
+        command.upgrade(alembic_config, "head")
+
+        with database_engine.connect() as connection:
+            repaired = connection.execute(
+                text(
+                    """
+                    SELECT completed_units, total_units, retryable, updated_at
+                    FROM analysis_jobs
+                    WHERE id = :job_id
+                    """
+                ),
+                {"job_id": job_id},
+            ).one()
+            watermark = connection.scalar(
+                text(
+                    "SELECT last_changed_at FROM analysis_job_change_watermark "
+                    "WHERE singleton"
+                )
+            )
+        assert tuple(repaired[:3]) == (0, 0, False)
+        assert repaired.updated_at > legacy_updated_at
+        assert watermark >= repaired.updated_at
+
+        inspector = inspect(database_engine)
+        constraint_names = {
+            constraint["name"]
+            for constraint in inspector.get_check_constraints("analysis_jobs")
+        }
+        assert {
+            "ck_analysis_jobs_completed_units_nonnegative",
+            "ck_analysis_jobs_total_units_nonnegative",
+            "ck_analysis_jobs_completed_not_above_total",
+            "ck_analysis_jobs_retryable_only_failed",
+        } <= constraint_names
+        indexes = {
+            index["name"]: index for index in inspector.get_indexes("analysis_jobs")
+        }
+        assert indexes["ix_analysis_jobs_updated_at_id"]["column_names"] == [
+            "updated_at",
+            "id",
+        ]
+        assert indexes["ix_analysis_jobs_updated_at_id"]["unique"] is False
+    finally:
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+
+
+def test_analysis_job_schema_upgrade_handles_empty_database_and_reupgrade(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    command.downgrade(alembic_config, "20260902_0002")
+    try:
+        with database_engine.begin() as connection:
+            connection.execute(text("DELETE FROM analysis_jobs"))
+
+        command.upgrade(alembic_config, "head")
+        command.upgrade(alembic_config, "head")
+
+        with database_engine.connect() as connection:
+            watermark_count = connection.scalar(
+                text("SELECT count(*) FROM analysis_job_change_watermark")
+            )
+        assert watermark_count == 1
+        indexes = {
+            index["name"]: index
+            for index in inspect(database_engine).get_indexes("analysis_jobs")
+        }
+        assert indexes["ix_analysis_jobs_updated_at_id"]["column_names"] == [
+            "updated_at",
+            "id",
+        ]
+    finally:
+        command.upgrade(alembic_config, "head")
+
+
+def test_public_state_repair_is_visible_after_a_preupgrade_cursor(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    job_id = uuid4()
+    try:
+        command.downgrade(alembic_config, "20260902_0003")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_jobs (
+                        id, target_type, canonical_target_id, canonical_url,
+                        mode, status, completed_units, total_units, retryable
+                    ) VALUES (
+                        :id, 'game', :target_id, :canonical_url,
+                        'create', 'running', 9, 1, true
+                    )
+                    """
+                ),
+                {
+                    "id": job_id,
+                    "target_id": f"cursor-visible-repair-{job_id}",
+                    "canonical_url": f"https://store.steampowered.com/app/{job_id}",
+                },
+            )
+            cursor_timestamp = connection.scalar(
+                text("SELECT updated_at FROM analysis_jobs WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+
+        command.upgrade(alembic_config, "head")
+
+        with database_engine.connect() as connection:
+            changed = connection.execute(
+                text(
+                    """
+                    SELECT id, completed_units, total_units, retryable
+                    FROM analysis_jobs
+                    WHERE (updated_at, id) > (:cursor_timestamp, :cursor_id)
+                      AND id = :job_id
+                    """
+                ),
+                {
+                    "cursor_timestamp": cursor_timestamp,
+                    "cursor_id": job_id,
+                    "job_id": job_id,
+                },
+            ).all()
+
+        assert [tuple(row) for row in changed] == [(job_id, 1, 1, False)]
+    finally:
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+
+
+def test_alembic_metadata_has_no_pending_schema_operations(
+    migrated_database: None, alembic_config
+) -> None:
+    command.check(alembic_config)
 
 
 def _job(target_id: str, status: JobStatus) -> AnalysisJob:

@@ -1300,7 +1300,7 @@ def test_job_response_does_not_leak_internal_fields(
         session,
         canonical_id="40",
         status=JobStatus.QUEUED,
-        retryable=True,
+        retryable=False,
     )
     active.error_message = "unsafe secret"
     active.result_payload = {"secret": "hidden"}
@@ -1325,9 +1325,9 @@ def test_job_response_does_not_leak_internal_fields(
 @pytest.mark.parametrize(
     ("status", "retryable", "expected_code"),
     [
-        (JobStatus.QUEUED, True, "analysis_job_not_failed"),
-        (JobStatus.RUNNING, True, "analysis_job_not_failed"),
-        (JobStatus.SUCCEEDED, True, "analysis_job_not_failed"),
+        (JobStatus.QUEUED, False, "analysis_job_not_failed"),
+        (JobStatus.RUNNING, False, "analysis_job_not_failed"),
+        (JobStatus.SUCCEEDED, False, "analysis_job_not_failed"),
         (JobStatus.FAILED, False, "analysis_job_not_retryable"),
     ],
 )

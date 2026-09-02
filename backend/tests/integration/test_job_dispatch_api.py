@@ -82,6 +82,16 @@ class ClaimThenFailDispatcher(ObservingDispatcher):
         raise RuntimeError("redis://unsafe@broker")
 
 
+class UnsafeCorrelationThenFailDispatcher(ObservingDispatcher):
+    def dispatch(self, job_id: UUID) -> None:
+        super().dispatch(job_id)
+        with Session(self.engine) as mutate, mutate.begin():
+            job = mutate.get(AnalysisJob, job_id)
+            assert job is not None
+            job.correlation_id = "api-key=secret-value"
+        raise RuntimeError("redis://unsafe@broker")
+
+
 @contextmanager
 def _client(
     engine: Engine,
@@ -225,6 +235,52 @@ def test_stale_queued_replay_reconciles_from_postgres_before_dispatch(
             )
             assert record is not None
             assert record.response_body == replay.json()
+    finally:
+        _cleanup(database_engine, app_ids={app_id}, keys={key})
+
+
+def test_replay_reconciliation_suppresses_unsafe_persisted_correlation(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+) -> None:
+    app_id = str(1_500_000_000 + uuid4().int % 100_000_000)
+    key = f"dispatch-safe-replay-{uuid4().hex}"
+    dispatcher = ObservingDispatcher(database_engine)
+    try:
+        with _client(database_engine, workspace_access_key, dispatcher) as client:
+            created = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+            dispatcher.calls.clear()
+            with Session(database_engine) as mutate, mutate.begin():
+                job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
+                assert job is not None
+                job.correlation_id = "api-key=secret-value"
+            replay = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+
+        assert replay.status_code == 201
+        assert replay.json()["correlation_id"] is None
+        assert "secret-value" not in replay.text
+        assert dispatcher.calls == [UUID(created.json()["id"])]
+        with Session(database_engine) as verification:
+            record = verification.scalar(
+                select(IdempotencyRecord).where(IdempotencyRecord.key == key)
+            )
+            assert record is not None
+            assert record.response_body["correlation_id"] is None
     finally:
         _cleanup(database_engine, app_ids={app_id}, keys={key})
 
@@ -387,6 +443,39 @@ def test_broker_failure_converges_job_and_stored_replay_to_safe_failed_resource(
             assert job.retryable is True
             assert job.completed_at == NOW
             assert record.response_body == first.json()
+    finally:
+        _cleanup(database_engine, app_ids={app_id}, keys={key})
+
+
+def test_dispatch_failure_reconciliation_suppresses_unsafe_correlation(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+) -> None:
+    app_id = str(1_500_000_000 + uuid4().int % 100_000_000)
+    key = f"dispatch-safe-failure-{uuid4().hex}"
+    dispatcher = UnsafeCorrelationThenFailDispatcher(database_engine)
+    try:
+        with _client(database_engine, workspace_access_key, dispatcher) as client:
+            response = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+
+        assert response.status_code == 201
+        assert response.json()["status"] == "failed"
+        assert response.json()["correlation_id"] is None
+        assert "secret-value" not in response.text
+        with Session(database_engine) as verification:
+            record = verification.scalar(
+                select(IdempotencyRecord).where(IdempotencyRecord.key == key)
+            )
+            assert record is not None
+            assert record.response_body["correlation_id"] is None
     finally:
         _cleanup(database_engine, app_ids={app_id}, keys={key})
 
