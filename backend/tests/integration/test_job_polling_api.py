@@ -18,10 +18,10 @@ from app.core.errors import APIError
 from app.core.security import hash_workspace_key
 from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob
-from app.db.models.profiles import GameProfile
+from app.db.models.profiles import CreatorProfile, GameProfile
 from app.main import create_app
 from app.api.routes.jobs import project_analysis_job
-from app.schemas.jobs import AnalysisJobResponse
+from app.schemas.jobs import AnalysisJobError, AnalysisJobResponse
 
 
 NOW = datetime(2026, 9, 2, 9, 0, tzinfo=UTC)
@@ -59,7 +59,7 @@ def _job(
         completed_units=5 if status is JobStatus.SUCCEEDED else 0,
         total_units=5,
         retryable=status is JobStatus.FAILED,
-        correlation_id=f"job-correlation-{uuid4()}",
+        correlation_id=str(uuid4()),
         profile_id=profile_id,
         started_at=NOW,
         completed_at=NOW if status in {JobStatus.SUCCEEDED, JobStatus.FAILED} else None,
@@ -316,7 +316,7 @@ def test_unsafe_persisted_correlation_is_suppressed_by_read_and_changed_list(
     auth_client: TestClient, session: Session
 ) -> None:
     job = _job(session, status=JobStatus.RUNNING)
-    job.correlation_id = "api-key=secret-value"
+    job.correlation_id = "test-workspace-access-key"
     session.flush()
 
     read = auth_client.get(f"/api/v1/jobs/{job.id}")
@@ -328,8 +328,70 @@ def test_unsafe_persisted_correlation_is_suppressed_by_read_and_changed_list(
         item for item in changed.json()["items"] if item["id"] == str(job.id)
     )
     assert changed_job["correlation_id"] is None
-    assert "secret-value" not in read.text
-    assert "secret-value" not in changed.text
+    assert "test-workspace-access-key" not in read.text
+    assert "test-workspace-access-key" not in changed.text
+
+
+@pytest.mark.parametrize(
+    ("target_type", "malformed_id", "malformed_url"),
+    [
+        (
+            TargetType.GAME,
+            "AKIASECRETEXAMPLE123",
+            "https://evil.example/path?api_key=provider-secret",
+        ),
+        (
+            TargetType.CREATOR,
+            "UC-invalid/channel-secret",
+            "https://evil.example/path?api_key=provider-secret",
+        ),
+    ],
+)
+@pytest.mark.parametrize("path", ["/api/v1/jobs/{job_id}", "/api/v1/jobs"])
+def test_coordinated_malformed_success_identity_is_rejected_by_public_projection(
+    auth_client: TestClient,
+    session: Session,
+    target_type: TargetType,
+    malformed_id: str,
+    malformed_url: str,
+    path: str,
+) -> None:
+    if target_type is TargetType.GAME:
+        profile = GameProfile(
+            steam_app_id=malformed_id,
+            canonical_url=malformed_url,
+            sort_name="Malformed game success",
+        )
+    else:
+        profile = CreatorProfile(
+            youtube_channel_id=malformed_id,
+            canonical_url=malformed_url,
+            sort_name="Malformed creator success",
+        )
+    session.add(profile)
+    session.flush()
+    job = AnalysisJob(
+        target_type=target_type,
+        canonical_target_id=malformed_id,
+        canonical_url=malformed_url,
+        mode=JobMode.CREATE,
+        status=JobStatus.SUCCEEDED,
+        stage=AnalysisStage.FINALIZING,
+        completed_units=5,
+        total_units=5,
+        profile_id=profile.id,
+        result_payload={"profile_id": str(profile.id)},
+        completed_at=NOW,
+    )
+    session.add(job)
+    session.flush()
+
+    response = auth_client.get(path.format(job_id=job.id))
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "analysis_job_result_invalid"
+    assert malformed_id not in response.text
+    assert "provider-secret" not in response.text
 
 
 @pytest.mark.parametrize(
@@ -378,6 +440,46 @@ def test_public_job_schema_rejects_unsafe_state(
 
     with pytest.raises(ValidationError, match=match):
         AnalysisJobResponse.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"code": "api_key_secret", "message": "Bearer-secret-value"},
+        {
+            "code": "analysis_internal_error",
+            "message": "Analysis is temporarily unavailable. Please retry.",
+        },
+    ],
+)
+def test_public_job_error_schema_accepts_only_fixed_safe_mappings(payload) -> None:
+    with pytest.raises(ValidationError):
+        AnalysisJobError.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "code": "analysis_internal_error",
+            "message": "Analysis failed unexpectedly. Please retry.",
+        },
+        {
+            "code": "analysis_queue_unavailable",
+            "message": "Analysis could not be queued. Please retry.",
+        },
+        {
+            "code": "steam_unavailable",
+            "message": "Analysis is temporarily unavailable. Please retry.",
+        },
+        {
+            "code": "steam_game_not_found",
+            "message": "Analysis could not be completed for this target.",
+        },
+    ],
+)
+def test_public_job_error_schema_accepts_existing_safe_mappings(payload) -> None:
+    assert AnalysisJobError.model_validate(payload).model_dump() == payload
 
 
 @pytest.mark.parametrize("path", ["/api/v1/jobs/{job_id}", "/api/v1/jobs"])
@@ -508,9 +610,10 @@ def test_status_cursor_is_scope_bound_and_later_transition_appears(
 def test_succeeded_items_return_stable_deduplicated_affected_profile_ids(
     auth_client: TestClient, session: Session
 ) -> None:
+    app_id = str(3_000_000 + uuid4().int % 1_000_000)
     profile = GameProfile(
-        steam_app_id=str(3_000_000 + uuid4().int % 1_000_000),
-        canonical_url="https://store.steampowered.com/app/3000000",
+        steam_app_id=app_id,
+        canonical_url=f"https://store.steampowered.com/app/{app_id}",
         sort_name="Affected",
     )
     session.add(profile)

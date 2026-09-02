@@ -1,14 +1,10 @@
-import re
 from dataclasses import dataclass
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-
-
-_safe_correlation_id = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
 
 
 @dataclass
@@ -19,17 +15,20 @@ class APIError(Exception):
     retryable: bool = False
 
 
-def correlation_id_for(request: Request) -> str:
-    supplied = request.headers.get("X-Correlation-ID", "")
-    if safe_correlation_id(supplied) is not None:
-        return supplied
+def correlation_id_for(_request: Request) -> str:
     return str(uuid4())
 
 
 def safe_correlation_id(value: object) -> str | None:
-    if isinstance(value, str) and _safe_correlation_id.fullmatch(value):
-        return value
-    return None
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = UUID(value)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if parsed.int == 0 or parsed.version != 4 or str(parsed) != value:
+        return None
+    return value
 
 
 def error_response(error: APIError, correlation_id: str) -> JSONResponse:

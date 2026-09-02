@@ -13,7 +13,7 @@ from app.core.security import hash_workspace_key
 from app.db.models.enums import JobMode, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
-from app.db.models.profiles import GameProfile
+from app.db.models.profiles import CreatorProfile, GameProfile
 from app.main import create_app
 from app.api.routes.jobs import CeleryJobDispatcher
 from app.workers.celery_app import create_celery_app
@@ -67,6 +67,30 @@ class CorruptSuccessThenFailDispatcher(ObservingDispatcher):
             job.status = JobStatus.SUCCEEDED
             job.profile_id = profile.id
             job.result_payload = {"profile_id": str(uuid4())}
+            job.completed_at = NOW
+        raise RuntimeError("redis://unsafe@broker")
+
+
+class MalformedSuccessThenFailDispatcher(ObservingDispatcher):
+    def dispatch(self, job_id: UUID) -> None:
+        super().dispatch(job_id)
+        malformed_id = "AKIASECRETEXAMPLE123"
+        malformed_url = "https://evil.example/path?api_key=provider-secret"
+        with Session(self.engine) as mutate, mutate.begin():
+            job = mutate.get(AnalysisJob, job_id)
+            assert job is not None
+            profile = GameProfile(
+                steam_app_id=malformed_id,
+                canonical_url=malformed_url,
+                sort_name="Concurrent malformed success",
+            )
+            mutate.add(profile)
+            mutate.flush()
+            job.canonical_target_id = malformed_id
+            job.canonical_url = malformed_url
+            job.status = JobStatus.SUCCEEDED
+            job.profile_id = profile.id
+            job.result_payload = {"profile_id": str(profile.id)}
             job.completed_at = NOW
         raise RuntimeError("redis://unsafe@broker")
 
@@ -130,6 +154,9 @@ def _cleanup(engine: Engine, *, app_ids: set[str], keys: set[str]) -> None:
         )
         session.execute(
             delete(GameProfile).where(GameProfile.steam_app_id.in_(app_ids))
+        )
+        session.execute(
+            delete(CreatorProfile).where(CreatorProfile.youtube_channel_id.in_(app_ids))
         )
 
 
@@ -333,6 +360,74 @@ def test_stale_queued_replay_rejects_corrupt_succeeded_result(
         _cleanup(database_engine, app_ids={app_id}, keys={key})
 
 
+@pytest.mark.parametrize("target_type", list(TargetType))
+def test_stale_replay_rejects_coordinated_malformed_success_identity(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+    target_type: TargetType,
+) -> None:
+    if target_type is TargetType.GAME:
+        target_id = str(1_500_000_000 + uuid4().int % 100_000_000)
+        target_url = f"https://store.steampowered.com/app/{target_id}"
+        malformed_id = "AKIASECRETEXAMPLE123"
+    else:
+        target_id = f"UC{uuid4().hex}"
+        target_url = f"https://www.youtube.com/channel/{target_id}"
+        malformed_id = "UC-invalid/channel-secret"
+    malformed_url = "https://evil.example/path?api_key=provider-secret"
+    key = f"dispatch-malformed-replay-{uuid4().hex}"
+    dispatcher = ObservingDispatcher(database_engine)
+    try:
+        with _client(database_engine, workspace_access_key, dispatcher) as client:
+            created = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={"target_type": target_type.value, "url": target_url},
+            )
+            dispatcher.calls.clear()
+            with Session(database_engine) as mutate, mutate.begin():
+                job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
+                assert job is not None
+                if target_type is TargetType.GAME:
+                    profile = GameProfile(
+                        steam_app_id=malformed_id,
+                        canonical_url=malformed_url,
+                        sort_name="Malformed replay game",
+                    )
+                else:
+                    profile = CreatorProfile(
+                        youtube_channel_id=malformed_id,
+                        canonical_url=malformed_url,
+                        sort_name="Malformed replay creator",
+                    )
+                mutate.add(profile)
+                mutate.flush()
+                job.canonical_target_id = malformed_id
+                job.canonical_url = malformed_url
+                job.status = JobStatus.SUCCEEDED
+                job.profile_id = profile.id
+                job.result_payload = {"profile_id": str(profile.id)}
+                job.completed_at = NOW
+            replay = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={"target_type": target_type.value, "url": target_url},
+            )
+
+        assert replay.status_code == 500
+        assert replay.json()["error"]["code"] == "analysis_job_result_invalid"
+        assert malformed_id not in replay.text
+        assert "provider-secret" not in replay.text
+        assert dispatcher.calls == []
+    finally:
+        _cleanup(
+            database_engine,
+            app_ids={target_id, malformed_id},
+            keys={key},
+        )
+
+
 def test_cached_succeeded_replay_revalidates_postgres_result_identity(
     migrated_database: None,
     database_engine: Engine,
@@ -503,6 +598,33 @@ def test_broker_failure_preserves_concurrent_corrupt_success_error(
         assert "redis://" not in str(response.json())
     finally:
         _cleanup(database_engine, app_ids={app_id}, keys={key})
+
+
+def test_broker_failure_rejects_concurrent_coordinated_malformed_success(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+) -> None:
+    app_id = str(1_500_000_000 + uuid4().int % 100_000_000)
+    malformed_id = "AKIASECRETEXAMPLE123"
+    key = f"dispatch-malformed-race-{uuid4().hex}"
+    dispatcher = MalformedSuccessThenFailDispatcher(database_engine)
+    try:
+        with _client(database_engine, workspace_access_key, dispatcher) as client:
+            response = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+        assert response.status_code == 500
+        assert response.json()["error"]["code"] == "analysis_job_result_invalid"
+        assert malformed_id not in response.text
+        assert "provider-secret" not in response.text
+    finally:
+        _cleanup(database_engine, app_ids={app_id, malformed_id}, keys={key})
 
 
 def test_failing_replay_publisher_never_overwrites_successfully_claimed_job(

@@ -41,6 +41,7 @@ from app.repositories.jobs import (
     require_valid_succeeded_job_result,
 )
 from app.schemas.jobs import (
+    ANALYSIS_JOB_INTEGRATION_ERROR_CODES,
     AnalysisJobCreate,
     AnalysisJobError,
     AnalysisJobOutcome,
@@ -67,65 +68,6 @@ _SPECIAL_ERRORS = {
         message="Analysis could not be queued. Please retry.",
     ),
 }
-_KNOWN_INTEGRATION_CODES = frozenset(
-    {
-        "analysis_clock_invalid",
-        "analysis_cleanup_failed",
-        "analysis_configuration_invalid",
-        "analysis_job_identity_changed",
-        "analysis_job_not_found",
-        "analysis_job_result_invalid",
-        "analysis_job_stage_invalid",
-        "analysis_job_state_invalid",
-        "analysis_job_target_invalid",
-        "artifact_job_id_invalid",
-        "artifact_name_invalid",
-        "artifact_payload_invalid",
-        "artifact_payload_too_large",
-        "creator_interval_invalid",
-        "deepseek_configuration_invalid",
-        "deepseek_input_invalid",
-        "deepseek_model_contacts_invalid",
-        "deepseek_model_evidence_invalid",
-        "deepseek_model_output_invalid",
-        "deepseek_request_rejected",
-        "deepseek_response_invalid",
-        "deepseek_response_too_large",
-        "deepseek_unavailable",
-        "game_interval_invalid",
-        "public_page_address_rejected",
-        "public_page_content_type_invalid",
-        "public_page_redirect_invalid",
-        "public_page_redirect_limit",
-        "public_page_request_rejected",
-        "public_page_response_invalid",
-        "public_page_too_large",
-        "public_page_unavailable",
-        "public_page_url_invalid",
-        "s3_configuration_invalid",
-        "s3_request_rejected",
-        "s3_unavailable",
-        "shared_settings_missing",
-        "steam_app_id_invalid",
-        "steam_game_not_found",
-        "steam_request_rejected",
-        "steam_response_invalid",
-        "steam_response_too_large",
-        "steam_source_identity_mismatch",
-        "steam_unavailable",
-        "youtube_channel_id_invalid",
-        "youtube_channel_not_found",
-        "youtube_configuration_invalid",
-        "youtube_quota_unavailable",
-        "youtube_request_rejected",
-        "youtube_response_invalid",
-        "youtube_response_too_large",
-        "youtube_source_identity_mismatch",
-        "youtube_target_invalid",
-        "youtube_unavailable",
-        "youtube_video_limit_invalid",
-    }
-)
 
 
 class JobDispatcher(Protocol):
@@ -174,7 +116,7 @@ def _safe_error(job: AnalysisJob) -> AnalysisJobError | None:
         return None
     if job.error_code in _SPECIAL_ERRORS:
         return _SPECIAL_ERRORS[job.error_code]
-    if job.error_code in _KNOWN_INTEGRATION_CODES:
+    if job.error_code in ANALYSIS_JOB_INTEGRATION_ERROR_CODES:
         message = (
             "Analysis is temporarily unavailable. Please retry."
             if job.retryable
@@ -676,7 +618,7 @@ def create_router(
                     message="Analysis resources could not be closed safely.",
                     retryable=False,
                 ) from None
-            if error.code in _KNOWN_INTEGRATION_CODES:
+            if error.code in ANALYSIS_JOB_INTEGRATION_ERROR_CODES:
                 raise APIError(
                     status_code=502,
                     code=error.code,

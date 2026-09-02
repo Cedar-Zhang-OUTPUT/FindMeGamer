@@ -1,18 +1,24 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
+from datetime import UTC, datetime
 from decimal import Decimal
+from threading import Event, Thread
+from time import monotonic
 from uuid import UUID, uuid4
 
 import pytest
 from alembic import command
-from sqlalchemy import func, inspect, select, text
+from sqlalchemy import event, func, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.db.models.enums import JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
-from app.db.models.jobs import AnalysisJob
+from app.db.models.jobs import AnalysisJob, JOB_CHANGE_ADVISORY_LOCK_ID
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 from app.db.models.settings import SharedSettings
+from app.workers.analysis_tasks import TerminalFailure, write_terminal_failure
 
 
 CORE_TABLES = {
@@ -579,6 +585,129 @@ def test_public_state_repair_is_visible_after_a_preupgrade_cursor(
 
         assert [tuple(row) for row in changed] == [(job_id, 1, 1, False)]
     finally:
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+
+
+def test_runtime_job_mutation_and_public_state_migration_share_lock_order(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    job_id = uuid4()
+    row_locked = Event()
+    release_worker = Event()
+    worker_pid: list[int] = []
+    errors: list[BaseException] = []
+
+    @contextmanager
+    def worker_session_factory() -> Iterator[Session]:
+        with Session(database_engine) as worker_session:
+            worker_pid.append(worker_session.scalar(text("SELECT pg_backend_pid()")))
+            yield worker_session
+
+    def pause_after_worker_row_lock(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ) -> None:
+        normalized = " ".join(statement.casefold().split())
+        if "analysis_jobs" in normalized and "for update" in normalized:
+            row_locked.set()
+            release_worker.wait(timeout=10)
+
+    def mutate_job() -> None:
+        try:
+            write_terminal_failure(
+                job_id,
+                TerminalFailure(
+                    code="analysis_internal_error",
+                    message="Analysis failed unexpectedly. Please retry.",
+                    retryable=True,
+                ),
+                session_factory=worker_session_factory,
+                clock=lambda: datetime.now(UTC),
+            )
+        except BaseException as error:  # pragma: no branch - asserted below
+            errors.append(error)
+
+    def migrate() -> None:
+        try:
+            command.upgrade(alembic_config, "head")
+        except BaseException as error:  # pragma: no branch - asserted below
+            errors.append(error)
+
+    try:
+        command.downgrade(alembic_config, "20260902_0003")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_jobs (
+                        id, target_type, canonical_target_id, canonical_url,
+                        mode, status, completed_units, total_units, retryable
+                    ) VALUES (
+                        :id, 'game', :target_id, :canonical_url,
+                        'create', 'queued', 0, 5, false
+                    )
+                    """
+                ),
+                {
+                    "id": job_id,
+                    "target_id": "2147483600",
+                    "canonical_url": "https://store.steampowered.com/app/2147483600",
+                },
+            )
+
+        event.listen(
+            database_engine, "after_cursor_execute", pause_after_worker_row_lock
+        )
+        worker_thread = Thread(target=mutate_job, daemon=True)
+        worker_thread.start()
+        assert row_locked.wait(timeout=5)
+
+        migration_thread = Thread(target=migrate, daemon=True)
+        migration_thread.start()
+        deadline = monotonic() + 5
+        advisory_holder_pid = None
+        while monotonic() < deadline and advisory_holder_pid is None:
+            with database_engine.connect() as observation:
+                advisory_holder_pid = observation.scalar(
+                    text(
+                        """
+                        SELECT pid
+                        FROM pg_locks
+                        WHERE locktype = 'advisory'
+                          AND granted
+                          AND classid::bigint * 4294967296 + objid::bigint = :lock_id
+                        ORDER BY pid
+                        LIMIT 1
+                        """
+                    ),
+                    {"lock_id": JOB_CHANGE_ADVISORY_LOCK_ID},
+                )
+            if advisory_holder_pid is None:
+                row_locked.wait(timeout=0.01)
+        assert advisory_holder_pid is not None
+        assert worker_pid
+        assert advisory_holder_pid == worker_pid[0]
+        release_worker.set()
+        worker_thread.join(timeout=10)
+        migration_thread.join(timeout=10)
+
+        assert not worker_thread.is_alive()
+        assert not migration_thread.is_alive()
+        assert errors == []
+        with database_engine.connect() as verification:
+            assert (
+                verification.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260902_0004"
+            )
+    finally:
+        release_worker.set()
+        event.remove(
+            database_engine, "after_cursor_execute", pause_after_worker_row_lock
+        )
         command.upgrade(alembic_config, "head")
         with database_engine.begin() as connection:
             connection.execute(

@@ -74,6 +74,11 @@ def _job(
                 mode=JobMode.CREATE,
                 status=status,
                 profile_id=profile_id,
+                result_payload=(
+                    {"profile_id": str(profile_id)}
+                    if status is JobStatus.SUCCEEDED and profile_id is not None
+                    else None
+                ),
             )
         )
     return job_id

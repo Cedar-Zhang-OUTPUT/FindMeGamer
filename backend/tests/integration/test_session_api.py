@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator
+from uuid import UUID
 
 from fastapi.testclient import TestClient
 from sqlalchemy import select
@@ -33,9 +34,10 @@ def test_session_rejects_invalid_bearer(client) -> None:
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "workspace_key_invalid"
-    assert response.json()["error"]["correlation_id"] == response.headers[
-        "x-correlation-id"
-    ]
+    assert (
+        response.json()["error"]["correlation_id"]
+        == response.headers["x-correlation-id"]
+    )
 
 
 def test_session_returns_only_sanitized_workspace_state(
@@ -74,15 +76,18 @@ def test_session_returns_only_sanitized_workspace_state(
     assert "never-return-this" not in response.text
 
 
-def test_error_propagates_safe_correlation_id(client) -> None:
+def test_client_correlation_id_is_replaced_with_server_uuid(client) -> None:
+    supplied = "test-workspace-access-key"
     response = client.get(
         "/api/v1/session",
-        headers={"X-Correlation-ID": "client-request_123"},
+        headers={"X-Correlation-ID": supplied},
     )
 
     assert response.status_code == 401
-    assert response.headers["x-correlation-id"] == "client-request_123"
-    assert response.json()["error"]["correlation_id"] == "client-request_123"
+    correlation_id = response.headers["x-correlation-id"]
+    assert correlation_id != supplied
+    assert str(UUID(correlation_id)) == correlation_id
+    assert response.json()["error"]["correlation_id"] == correlation_id
 
 
 def test_unsafe_correlation_id_is_replaced(client) -> None:
@@ -104,15 +109,16 @@ def test_unmatched_route_uses_stable_error_envelope(client) -> None:
     )
 
     assert response.status_code == 404
+    correlation_id = response.headers["x-correlation-id"]
+    assert str(UUID(correlation_id)) == correlation_id
     assert response.json() == {
         "error": {
             "code": "not_found",
             "message": "The requested resource was not found.",
             "retryable": False,
-            "correlation_id": "missing-route_123",
+            "correlation_id": correlation_id,
         }
     }
-    assert response.headers["x-correlation-id"] == "missing-route_123"
 
 
 def test_unexpected_error_uses_safe_error_envelope(client) -> None:
@@ -126,12 +132,14 @@ def test_unexpected_error_uses_safe_error_envelope(client) -> None:
     )
 
     assert response.status_code == 500
+    correlation_id = response.headers["x-correlation-id"]
+    assert str(UUID(correlation_id)) == correlation_id
     assert response.json() == {
         "error": {
             "code": "internal_error",
             "message": "The request could not be completed.",
             "retryable": True,
-            "correlation_id": "failed-route_123",
+            "correlation_id": correlation_id,
         }
     }
     assert "never-return-this" not in response.text
@@ -232,9 +240,10 @@ def test_rate_limit_backend_failure_returns_safe_retryable_error(
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "authentication_unavailable"
     assert response.json()["error"]["retryable"] is True
-    assert response.json()["error"]["correlation_id"] == response.headers[
-        "x-correlation-id"
-    ]
+    assert (
+        response.json()["error"]["correlation_id"]
+        == response.headers["x-correlation-id"]
+    )
     assert "never-return-this" not in response.text
 
 

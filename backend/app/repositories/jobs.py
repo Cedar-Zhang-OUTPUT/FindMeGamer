@@ -2,15 +2,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, tuple_
+from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
-from app.analysis.targets import CanonicalTarget
+from app.analysis.targets import CanonicalTarget, InvalidTarget, canonicalize_target
 from app.db.models.enums import JobMode, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import (
     AnalysisJob,
-    JOB_CHANGE_ADVISORY_LOCK_ID,
+    acquire_job_change_lock,
     next_job_change_timestamp,
 )
 from app.db.models.profiles import CreatorProfile, GameProfile
@@ -30,20 +30,56 @@ def require_valid_succeeded_job_result(session: Session, job: AnalysisJob) -> No
         profile = session.get(GameProfile, job.profile_id)
         valid = bool(
             profile is not None
+            and _is_canonical_identity(
+                TargetType.GAME,
+                job.canonical_target_id,
+                job.canonical_url,
+            )
+            and _is_canonical_identity(
+                TargetType.GAME,
+                profile.steam_app_id,
+                profile.canonical_url,
+            )
             and profile.steam_app_id == job.canonical_target_id
-            and profile.canonical_url.rstrip("/") == job.canonical_url.rstrip("/")
+            and profile.canonical_url == job.canonical_url
         )
     elif job.target_type is TargetType.CREATOR:
         profile = session.get(CreatorProfile, job.profile_id)
         valid = bool(
             profile is not None
+            and _is_canonical_identity(
+                TargetType.CREATOR,
+                job.canonical_target_id,
+                job.canonical_url,
+            )
+            and _is_canonical_identity(
+                TargetType.CREATOR,
+                profile.youtube_channel_id,
+                profile.canonical_url,
+            )
             and profile.youtube_channel_id == job.canonical_target_id
-            and profile.canonical_url.rstrip("/") == job.canonical_url.rstrip("/")
+            and profile.canonical_url == job.canonical_url
         )
     else:
         valid = False
     if not valid:
         raise PermanentIntegrationError("analysis_job_result_invalid")
+
+
+def _is_canonical_identity(
+    target_type: TargetType, canonical_id: object, canonical_url: object
+) -> bool:
+    if not isinstance(canonical_id, str) or not isinstance(canonical_url, str):
+        return False
+    try:
+        canonical = canonicalize_target(target_type, canonical_url)
+    except InvalidTarget:
+        return False
+    return bool(
+        not canonical.requires_resolution
+        and canonical.canonical_id == canonical_id
+        and canonical.canonical_url == canonical_url
+    )
 
 
 @dataclass(frozen=True)
@@ -104,6 +140,7 @@ class JobsRepository:
         return self._session.get(AnalysisJob, job_id)
 
     def get_job_for_update(self, job_id: UUID) -> AnalysisJob | None:
+        acquire_job_change_lock(self._session)
         return self._session.scalar(
             select(AnalysisJob).where(AnalysisJob.id == job_id).with_for_update()
         )
@@ -115,9 +152,7 @@ class JobsRepository:
         status: JobStatus | None,
         limit: int,
     ) -> tuple[list[AnalysisJob], bool]:
-        self._session.execute(
-            select(func.pg_advisory_xact_lock(JOB_CHANGE_ADVISORY_LOCK_ID))
-        )
+        acquire_job_change_lock(self._session)
         statement = select(AnalysisJob)
         if status is not None:
             statement = statement.where(AnalysisJob.status == status)

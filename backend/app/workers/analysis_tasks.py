@@ -19,7 +19,7 @@ from celery.exceptions import TaskPredicate
 from app.core.config import get_settings
 from app.core.database import session_scope
 from app.db.models.enums import AnalysisStage, JobStatus, TargetType
-from app.db.models.jobs import AnalysisJob
+from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
 from app.integrations.errors import (
     InvalidModelOutput,
     PermanentIntegrationError,
@@ -250,6 +250,7 @@ def _write_terminal_failure(
 ) -> bool:
     with session_factory() as session:
         try:
+            acquire_job_change_lock(session)
             job = session.scalar(
                 select(AnalysisJob).where(AnalysisJob.id == job_id).with_for_update()
             )
@@ -309,6 +310,7 @@ class AnalysisJobExecutor:
     def _claim(self, job_id: UUID) -> TargetType | None:
         with self._session_factory() as session:
             try:
+                acquire_job_change_lock(session)
                 job = session.scalar(
                     select(AnalysisJob)
                     .where(AnalysisJob.id == job_id)

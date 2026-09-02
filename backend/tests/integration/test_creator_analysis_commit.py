@@ -74,6 +74,11 @@ def _job(
                 mode=JobMode.REANALYZE,
                 status=status,
                 profile_id=profile_id,
+                result_payload=(
+                    {"profile_id": str(profile_id)}
+                    if status is JobStatus.SUCCEEDED and profile_id is not None
+                    else None
+                ),
             )
         )
     return job_id
@@ -685,6 +690,7 @@ def test_advance_is_forward_only_and_succeeded_is_a_noop(committed_factory) -> N
         session.flush()
         job.status = JobStatus.SUCCEEDED
         job.profile_id = profile.id
+        job.result_payload = {"profile_id": str(profile.id)}
         job.completed_units = 5
     service.advance(job_id, completed_units=2)
     with committed_factory() as session:

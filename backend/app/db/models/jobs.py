@@ -80,6 +80,10 @@ def next_job_change_timestamp(executor) -> datetime:
     return changed_at
 
 
+def acquire_job_change_lock(executor) -> None:
+    executor.execute(select(func.pg_advisory_xact_lock(JOB_CHANGE_ADVISORY_LOCK_ID)))
+
+
 def string_enum(enum_type, name: str, length: int) -> Enum:
     return Enum(
         enum_type,
@@ -162,7 +166,7 @@ class AnalysisJob(TimestampMixin, Base):
 
 
 def _serialize_and_timestamp_job_change(_mapper, connection, target) -> None:
-    connection.execute(select(func.pg_advisory_xact_lock(JOB_CHANGE_ADVISORY_LOCK_ID)))
+    acquire_job_change_lock(connection)
     target.updated_at = next_job_change_timestamp(connection)
 
 

@@ -24,7 +24,9 @@ WORKSPACE_ACCESS_KEY = "test-workspace-access-key"
 os.environ.setdefault(
     "WORKSPACE_ACCESS_KEY_HASH", hash_workspace_key(WORKSPACE_ACCESS_KEY)
 )
-_test_master_key = tempfile.NamedTemporaryFile(prefix="find-me-gamer-key-", delete=False)
+_test_master_key = tempfile.NamedTemporaryFile(
+    prefix="find-me-gamer-key-", delete=False
+)
 _test_master_key.write(base64.b64encode(bytes(range(32))))
 _test_master_key.close()
 os.chmod(_test_master_key.name, 0o600)
@@ -106,9 +108,7 @@ def database_engine(database_url: str) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def session(
-    migrated_database: None, database_engine: Engine
-) -> Iterator[Session]:
+def session(migrated_database: None, database_engine: Engine) -> Iterator[Session]:
     connection = database_engine.connect()
     transaction = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
@@ -202,7 +202,5 @@ def captured_logs(
 
 
 @pytest.fixture
-def database_inspector(
-    migrated_database: None, database_engine: Engine
-) -> Inspector:
+def database_inspector(migrated_database: None, database_engine: Engine) -> Inspector:
     return inspect(database_engine)

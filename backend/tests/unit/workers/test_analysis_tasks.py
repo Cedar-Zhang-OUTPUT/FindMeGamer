@@ -511,6 +511,53 @@ def test_corrupted_success_is_rejected_and_never_overwritten(
     assert job.status is JobStatus.SUCCEEDED
 
 
+@pytest.mark.parametrize("target_type", list(TargetType))
+def test_coordinated_malformed_success_is_rejected_and_never_overwritten(
+    session: Session, target_type: TargetType
+) -> None:
+    malformed_id = "AKIASECRETEXAMPLE123"
+    malformed_url = "https://evil.example/path?api_key=provider-secret"
+    job = AnalysisJob(
+        target_type=target_type,
+        canonical_target_id=malformed_id,
+        canonical_url=malformed_url,
+        mode=JobMode.CREATE,
+        status=JobStatus.SUCCEEDED,
+    )
+    if target_type is TargetType.GAME:
+        profile = GameProfile(
+            steam_app_id=malformed_id,
+            canonical_url=malformed_url,
+            sort_name="Malformed game success",
+        )
+    else:
+        profile = CreatorProfile(
+            youtube_channel_id=malformed_id,
+            canonical_url=malformed_url,
+            sort_name="Malformed creator success",
+        )
+    session.add_all([job, profile])
+    session.flush()
+    job.profile_id = profile.id
+    job.result_payload = {"profile_id": str(profile.id)}
+    session.flush()
+
+    with pytest.raises(PermanentIntegrationError) as raised:
+        write_terminal_failure(
+            job.id,
+            TerminalFailure(
+                code="analysis_internal_error",
+                message="Analysis failed unexpectedly. Please retry.",
+                retryable=True,
+            ),
+            session_factory=lambda: _session_factory(session),
+            clock=lambda: NOW,
+        )
+
+    assert raised.value.code == "analysis_job_result_invalid"
+    assert job.status is JobStatus.SUCCEEDED
+
+
 def test_terminal_failure_validates_aware_clock(session: Session) -> None:
     job = _job(session)
     with pytest.raises(PermanentIntegrationError) as raised:

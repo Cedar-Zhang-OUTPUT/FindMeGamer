@@ -24,10 +24,11 @@ from app.analysis.prompts.game import (
     GAME_VISUAL_PROMPT_VERSION,
 )
 from app.db.models.enums import AnalysisStage, JobStatus, TargetType
-from app.db.models.jobs import AnalysisJob
+from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 from app.db.models.settings import SharedSettings
 from app.integrations.errors import PermanentIntegrationError
+from app.repositories.jobs import require_valid_succeeded_job_result
 from app.repositories.settings import SHARED_SETTINGS_ID
 from app.schemas.ai_game import GameSynthesis, GameVisualAnalysis
 from app.schemas.ai_creator import (
@@ -84,6 +85,7 @@ class GameAnalysisService:
 
     def start(self, job_id: UUID) -> GameJobLease:
         with self._session_factory() as session, session.begin():
+            acquire_job_change_lock(session)
             job = session.scalar(
                 select(AnalysisJob).where(AnalysisJob.id == job_id).with_for_update()
             )
@@ -123,6 +125,7 @@ class GameAnalysisService:
         if completed_units not in (2, 4):
             raise ValueError("game progress must use a documented coarse boundary")
         with self._session_factory() as session, session.begin():
+            acquire_job_change_lock(session)
             job = session.scalar(
                 select(AnalysisJob).where(AnalysisJob.id == job_id).with_for_update()
             )
@@ -162,6 +165,7 @@ class GameAnalysisService:
         if not isinstance(publication, GameAnalysisPublication):
             raise TypeError("finalization requires a GameAnalysisPublication")
         with self._session_factory() as session, session.begin():
+            acquire_job_change_lock(session)
             job = session.scalar(
                 select(AnalysisJob)
                 .where(AnalysisJob.id == lease.job_id)
@@ -274,12 +278,8 @@ class GameAnalysisService:
 
     @staticmethod
     def _valid_succeeded_profile_id(session: Session, job: AnalysisJob) -> UUID | None:
-        if job.profile_id is None:
-            return None
-        profile = session.get(GameProfile, job.profile_id)
-        if profile is None or profile.steam_app_id != job.canonical_target_id:
-            return None
-        return profile.id
+        require_valid_succeeded_job_result(session, job)
+        return job.profile_id
 
     def _aware_now(self) -> datetime:
         value = self._clock()
@@ -350,6 +350,7 @@ class CreatorAnalysisService:
 
     def start(self, job_id: UUID) -> CreatorJobLease:
         with self._session_factory() as session, session.begin():
+            acquire_job_change_lock(session)
             job = session.scalar(
                 select(AnalysisJob).where(AnalysisJob.id == job_id).with_for_update()
             )
@@ -389,6 +390,7 @@ class CreatorAnalysisService:
         if completed_units not in (2, 4):
             raise ValueError("creator progress must use a documented coarse boundary")
         with self._session_factory() as session, session.begin():
+            acquire_job_change_lock(session)
             job = session.scalar(
                 select(AnalysisJob).where(AnalysisJob.id == job_id).with_for_update()
             )
@@ -429,6 +431,7 @@ class CreatorAnalysisService:
         ):
             raise TypeError("invalid Creator finalization input")
         with self._session_factory() as session, session.begin():
+            acquire_job_change_lock(session)
             job = session.scalar(
                 select(AnalysisJob)
                 .where(AnalysisJob.id == lease.job_id)
@@ -640,12 +643,8 @@ class CreatorAnalysisService:
 
     @staticmethod
     def _valid_succeeded_profile_id(session: Session, job: AnalysisJob) -> UUID | None:
-        if job.profile_id is None:
-            return None
-        profile = session.get(CreatorProfile, job.profile_id)
-        if profile is None or profile.youtube_channel_id != job.canonical_target_id:
-            return None
-        return profile.id
+        require_valid_succeeded_job_result(session, job)
+        return job.profile_id
 
     def _aware_now(self) -> datetime:
         value = self._clock()
