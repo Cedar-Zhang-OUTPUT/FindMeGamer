@@ -37,16 +37,17 @@ from app.schemas.ai_match import FinalRankingOutput, PairwiseMatchBrief, Ranking
 RANKING_MODEL = "deepseek-v4-pro"
 SCORE_QUANTUM = Decimal("0.0001")
 _PUBLIC_INTERNAL_MECHANIC_PATTERNS = (
-    re.compile(r"\b(?:total|dimension|match|fit)[\s_-]*scores?\b", re.IGNORECASE),
+    re.compile(r"\b(?:total|dimension)[\s_-]*scores?\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:match|fit)(?:[\s_-]+\w+){0,2}[\s_-]+"
+        r"(?:score|rating|percentage|percent)s?\b",
+        re.IGNORECASE,
+    ),
     re.compile(r"\bbackend[\s_-]*order\b", re.IGNORECASE),
     re.compile(r"\b(?:recommendation[\s_-]*)?threshold\b", re.IGNORECASE),
     re.compile(r"\bresult[\s_-]*group\b", re.IGNORECASE),
     re.compile(r"\b(?:recommended|other)[\s_-]*(?:group|bucket)\b", re.IGNORECASE),
-    re.compile(
-        r"\b(?:rank|ranked|ranking)\b\s*(?:(?:is|as|at|=|:|no\.?|number)\s*)?"
-        r"#?\s*(?:\d+(?:st|nd|rd|th)?|first|second|third|fourth|fifth)\b",
-        re.IGNORECASE,
-    ),
+    re.compile(r"\b(?:rank|ranked|ranking)\b", re.IGNORECASE),
 )
 
 

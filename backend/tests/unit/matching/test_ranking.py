@@ -275,6 +275,28 @@ def test_final_public_text_rejects_internal_match_score_or_rank(
     assert repository.publications == []
 
 
+@pytest.mark.parametrize(
+    "canary",
+    [
+        "This is the top-ranked Creator with a fit rating of 0.82.",
+        "The ranking places this Creator first.",
+        "The Match percentage is 82%.",
+        "The fit percent is 82 percent.",
+    ],
+)
+def test_final_public_text_rejects_equivalent_rank_and_fit_rating_claims(
+    canary: str,
+) -> None:
+    output = _ranking(creator_ids=(CREATOR_A,))
+    item = output.items[0].model_copy(update={"match_reasons": (canary,)})
+    output = output.model_copy(update={"items": (item,)})
+    repository = FakeRepository(_locked(match_briefs=(_brief(CREATOR_A, "A"),)))
+
+    with pytest.raises(InvalidRankingOutput):
+        _service(repository, FakeAI(output)).run(TASK_ID)
+    assert repository.publications == []
+
+
 def test_public_pairwise_brief_rejects_internal_fit_score_language() -> None:
     dirty_brief = _brief(CREATOR_A, "A").model_copy(
         update={"match_reasons": ("The internal fit score is 0.82.",)}
@@ -286,18 +308,22 @@ def test_public_pairwise_brief_rejects_internal_fit_score_language() -> None:
     assert repository.publications == []
 
 
-def test_public_match_text_allows_supplied_subscriber_and_view_numbers() -> None:
+def test_public_match_text_allows_supplied_channel_and_game_fact_numbers() -> None:
     factual_brief = _brief(CREATOR_A, "A").model_copy(
         update={
             "match_reasons": (
                 "The supplied channel evidence reports 120,000 subscribers.",
+                "The supplied video evidence reports a duration of 12 minutes.",
             )
         }
     )
     output = _ranking(creator_ids=(CREATOR_A,))
     item = output.items[0]
     outcomes = item.dimension_outcomes.model_copy(
-        update={"performance_fit": "The supplied recent median is 45,000 views."}
+        update={
+            "content_fit": "The supplied game facts describe a 4-player campaign.",
+            "performance_fit": "The supplied recent median is 45,000 views.",
+        }
     )
     output = output.model_copy(
         update={"items": (item.model_copy(update={"dimension_outcomes": outcomes}),)}
