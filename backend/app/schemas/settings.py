@@ -15,7 +15,10 @@ class ReanalysisSettingsResponse(BaseModel):
 
 
 class ConnectionSecretUpdate(BaseModel):
-    secret: Annotated[str, Field(min_length=1, max_length=16_384)]
+    secret: Annotated[
+        str,
+        Field(min_length=1, max_length=16_384, json_schema_extra={"writeOnly": True}),
+    ]
 
 
 class ConnectionStatusResponse(BaseModel):

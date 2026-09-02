@@ -1,0 +1,2054 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisJobCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/JobMode",
+            "default": "create"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          },
+          "url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_type",
+          "url"
+        ],
+        "title": "AnalysisJobCreate",
+        "type": "object"
+      },
+      "AnalysisJobError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "pattern": "^[a-z][a-z0-9_]{0,127}$",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "enum": [
+              "Analysis failed unexpectedly. Please retry.",
+              "Analysis could not be queued. Please retry.",
+              "Analysis is temporarily unavailable. Please retry.",
+              "Analysis could not be completed for this target."
+            ],
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "AnalysisJobError",
+        "type": "object"
+      },
+      "AnalysisJobResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_target_id": {
+            "title": "Canonical Target Id",
+            "type": "string"
+          },
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completed_units": {
+            "minimum": 0.0,
+            "title": "Completed Units",
+            "type": "integer"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisJobError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/JobMode"
+          },
+          "outcome": {
+            "const": "job",
+            "default": "job",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          },
+          "total_units": {
+            "minimum": 0.0,
+            "title": "Total Units",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_type",
+          "canonical_target_id",
+          "canonical_url",
+          "mode",
+          "status",
+          "stage",
+          "completed_units",
+          "total_units",
+          "retryable",
+          "correlation_id",
+          "profile_id",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "AnalysisJobResponse",
+        "type": "object"
+      },
+      "AnalysisStage": {
+        "enum": [
+          "fetching_data",
+          "analyzing",
+          "finalizing"
+        ],
+        "title": "AnalysisStage",
+        "type": "string"
+      },
+      "ChangedJobsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "affected_profile_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Affected Profile Ids",
+            "type": "array"
+          },
+          "cursor": {
+            "title": "Cursor",
+            "type": "string"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AnalysisJobResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "cursor",
+          "has_more",
+          "affected_profile_ids"
+        ],
+        "title": "ChangedJobsResponse",
+        "type": "object"
+      },
+      "ConnectionSecretUpdate": {
+        "properties": {
+          "secret": {
+            "maxLength": 16384,
+            "minLength": 1,
+            "title": "Secret",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "secret"
+        ],
+        "title": "ConnectionSecretUpdate",
+        "type": "object"
+      },
+      "ConnectionStatusResponse": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "last_test_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "success",
+                  "failure"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Test Status"
+          },
+          "last_tested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Tested At"
+          }
+        },
+        "required": [
+          "configured",
+          "last_test_status",
+          "last_tested_at"
+        ],
+        "title": "ConnectionStatusResponse",
+        "type": "object"
+      },
+      "CreatorContactResponse": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "validation_state": {
+            "title": "Validation State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "source",
+          "source_url",
+          "validation_state"
+        ],
+        "title": "CreatorContactResponse",
+        "type": "object"
+      },
+      "CreatorManualUpdate": {
+        "properties": {
+          "contact_email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Email"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "required": [
+          "contact_email",
+          "notes"
+        ],
+        "title": "CreatorManualUpdate",
+        "type": "object"
+      },
+      "CreatorProfileCard": {
+        "properties": {
+          "brief": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreatorContactResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_facts": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_analyzed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Analyzed At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_analysis_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Analysis At"
+          },
+          "source_status": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "type": {
+            "const": "creator",
+            "default": "creator",
+            "title": "Type",
+            "type": "string"
+          },
+          "youtube_channel_id": {
+            "title": "Youtube Channel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "youtube_channel_id",
+          "canonical_url",
+          "favorite",
+          "current_facts",
+          "brief",
+          "source_status",
+          "last_analyzed_at",
+          "next_analysis_at",
+          "contact"
+        ],
+        "title": "CreatorProfileCard",
+        "type": "object"
+      },
+      "CreatorProfileDetail": {
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "brief": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreatorContactResponse"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_facts": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_analyzed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Analyzed At"
+          },
+          "manual_notes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Notes"
+          },
+          "model_metadata": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_analysis_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Analysis At"
+          },
+          "prompt_metadata": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "source_status": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "type": {
+            "const": "creator",
+            "default": "creator",
+            "title": "Type",
+            "type": "string"
+          },
+          "youtube_channel_id": {
+            "title": "Youtube Channel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "youtube_channel_id",
+          "canonical_url",
+          "favorite",
+          "current_facts",
+          "brief",
+          "source_status",
+          "last_analyzed_at",
+          "next_analysis_at",
+          "contact",
+          "analysis",
+          "model_metadata",
+          "prompt_metadata",
+          "manual_notes"
+        ],
+        "title": "CreatorProfileDetail",
+        "type": "object"
+      },
+      "CursorPage_CreatorProfileCard_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CreatorProfileCard"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CursorPage[CreatorProfileCard]",
+        "type": "object"
+      },
+      "CursorPage_GameProfileCard_": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GameProfileCard"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CursorPage[GameProfileCard]",
+        "type": "object"
+      },
+      "ExistingProfileResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_target_id": {
+            "title": "Canonical Target Id",
+            "type": "string"
+          },
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "existing_profile_id": {
+            "format": "uuid",
+            "title": "Existing Profile Id",
+            "type": "string"
+          },
+          "outcome": {
+            "const": "existing_profile",
+            "default": "existing_profile",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          }
+        },
+        "required": [
+          "existing_profile_id",
+          "target_type",
+          "canonical_target_id",
+          "canonical_url"
+        ],
+        "title": "ExistingProfileResponse",
+        "type": "object"
+      },
+      "FavoriteUpdate": {
+        "properties": {
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "favorite"
+        ],
+        "title": "FavoriteUpdate",
+        "type": "object"
+      },
+      "GameProfileCard": {
+        "properties": {
+          "brief": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "current_facts": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_analyzed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Analyzed At"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_analysis_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Analysis At"
+          },
+          "source_status": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "steam_app_id": {
+            "title": "Steam App Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "game",
+            "default": "game",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "steam_app_id",
+          "canonical_url",
+          "favorite",
+          "current_facts",
+          "brief",
+          "source_status",
+          "last_analyzed_at",
+          "next_analysis_at"
+        ],
+        "title": "GameProfileCard",
+        "type": "object"
+      },
+      "GameProfileDetail": {
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "brief": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "current_facts": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "last_analyzed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Analyzed At"
+          },
+          "model_metadata": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "next_analysis_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Analysis At"
+          },
+          "prompt_metadata": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "source_status": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "steam_app_id": {
+            "title": "Steam App Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "game",
+            "default": "game",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "steam_app_id",
+          "canonical_url",
+          "favorite",
+          "current_facts",
+          "brief",
+          "source_status",
+          "last_analyzed_at",
+          "next_analysis_at",
+          "analysis",
+          "model_metadata",
+          "prompt_metadata"
+        ],
+        "title": "GameProfileDetail",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "JobMode": {
+        "enum": [
+          "create",
+          "reanalyze"
+        ],
+        "title": "JobMode",
+        "type": "string"
+      },
+      "JobStatus": {
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "failed"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "PublicJSONObject": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/PublicJSONValue"
+        },
+        "type": "object"
+      },
+      "PublicJSONValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "items": {
+              "$ref": "#/components/schemas/PublicJSONValue"
+            },
+            "type": "array"
+          },
+          {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PublicJSONValue"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "ReanalysisSettingsResponse": {
+        "properties": {
+          "creator_interval_days": {
+            "title": "Creator Interval Days",
+            "type": "integer"
+          },
+          "game_interval_days": {
+            "title": "Game Interval Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "creator_interval_days",
+          "game_interval_days"
+        ],
+        "title": "ReanalysisSettingsResponse",
+        "type": "object"
+      },
+      "ReanalysisSettingsUpdate": {
+        "properties": {
+          "creator_interval_days": {
+            "maximum": 30.0,
+            "minimum": 1.0,
+            "title": "Creator Interval Days",
+            "type": "integer"
+          },
+          "game_interval_days": {
+            "maximum": 90.0,
+            "minimum": 1.0,
+            "title": "Game Interval Days",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "creator_interval_days",
+          "game_interval_days"
+        ],
+        "title": "ReanalysisSettingsUpdate",
+        "type": "object"
+      },
+      "RetryAnalysisJobRequest": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "RetryAnalysisJobRequest",
+        "type": "object"
+      },
+      "SessionResponse": {
+        "properties": {
+          "api_version": {
+            "title": "Api Version",
+            "type": "string"
+          },
+          "service_connections": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "title": "Service Connections",
+            "type": "object"
+          },
+          "workspace_name": {
+            "title": "Workspace Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_name",
+          "api_version",
+          "service_connections"
+        ],
+        "title": "SessionResponse",
+        "type": "object"
+      },
+      "TargetType": {
+        "enum": [
+          "game",
+          "creator"
+        ],
+        "title": "TargetType",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Find Me Gamer API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/jobs": {
+      "get": {
+        "operationId": "listJobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "changed_after",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed After"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/JobStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangedJobsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Changed Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/analysis": {
+      "post": {
+        "operationId": "createAnalysisJob",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisJobCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "existing_profile": "#/components/schemas/ExistingProfileResponse",
+                      "job": "#/components/schemas/AnalysisJobResponse"
+                    },
+                    "propertyName": "outcome"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AnalysisJobResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ExistingProfileResponse"
+                    }
+                  ],
+                  "title": "Response Createanalysisjob"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "discriminator": {
+                    "mapping": {
+                      "existing_profile": "#/components/schemas/ExistingProfileResponse",
+                      "job": "#/components/schemas/AnalysisJobResponse"
+                    },
+                    "propertyName": "outcome"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AnalysisJobResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ExistingProfileResponse"
+                    }
+                  ],
+                  "title": "Response 201 Createanalysisjob"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Analysis Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/analysis/{job_id}/retry": {
+      "post": {
+        "operationId": "retryAnalysisJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryAnalysisJobRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisJobResponse"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry Analysis Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/jobs/{job_id}": {
+      "get": {
+        "operationId": "getAnalysisJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/api/v1/profiles/creators": {
+      "get": {
+        "operationId": "listCreatorProfiles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 255,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "only_collection",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only Collection",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_CreatorProfileCard_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Creators",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/api/v1/profiles/creators/{profile_id}/manual": {
+      "patch": {
+        "operationId": "updateCreatorManual",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatorManualUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatorProfileDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Creator Manual",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/api/v1/profiles/games": {
+      "get": {
+        "operationId": "listGameProfiles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 255,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "only_collection",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only Collection",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CursorPage_GameProfileCard_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Games",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile_type}": {
+      "get": {
+        "operationId": "rejectUnknownProfileType",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_type",
+            "required": true,
+            "schema": {
+              "title": "Profile Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reject Unknown List Type",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile_type}/{profile_id}": {
+      "get": {
+        "operationId": "getProfile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Profile Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_type",
+            "required": true,
+            "schema": {
+              "title": "Profile Type",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/GameProfileDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CreatorProfileDetail"
+                    }
+                  ],
+                  "title": "Response Getprofile"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Profile",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile_type}/{profile_id}/favorite": {
+      "patch": {
+        "operationId": "setProfileFavorite",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Profile Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_type",
+            "required": true,
+            "schema": {
+              "title": "Profile Type",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FavoriteUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/GameProfileCard"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CreatorProfileCard"
+                    }
+                  ],
+                  "title": "Response Setprofilefavorite"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Favorite",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/api/v1/session": {
+      "get": {
+        "operationId": "validateSession",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Session",
+        "tags": [
+          "session"
+        ]
+      }
+    },
+    "/api/v1/settings/connections/{service}": {
+      "get": {
+        "operationId": "getConnectionStatus",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service",
+            "required": true,
+            "schema": {
+              "title": "Service",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Connection",
+        "tags": [
+          "settings"
+        ]
+      },
+      "post": {
+        "operationId": "testConnection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service",
+            "required": true,
+            "schema": {
+              "title": "Service",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Test Connection",
+        "tags": [
+          "settings"
+        ]
+      },
+      "put": {
+        "operationId": "replaceConnectionSecret",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "service",
+            "required": true,
+            "schema": {
+              "title": "Service",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionSecretUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Replace Connection",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/reanalysis": {
+      "get": {
+        "operationId": "getReanalysisSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReanalysisSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Reanalysis",
+        "tags": [
+          "settings"
+        ]
+      },
+      "patch": {
+        "operationId": "updateReanalysisSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReanalysisSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReanalysisSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Reanalysis",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/health/live": {
+      "get": {
+        "operationId": "checkLiveness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Checkliveness",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Live",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "checkReadiness",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Checkreadiness",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Ready",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  }
+}

@@ -33,7 +33,9 @@ def create_router(authenticate_workspace: Callable) -> APIRouter:
         dependencies=[Depends(authenticate_workspace)],
     )
 
-    @router.get("/session", response_model=SessionResponse)
+    @router.get(
+        "/session", response_model=SessionResponse, operation_id="validateSession"
+    )
     def session(database_session: Session = Depends(get_session)) -> SessionResponse:
         settings = database_session.scalar(select(SharedSettings))
         if settings is None:

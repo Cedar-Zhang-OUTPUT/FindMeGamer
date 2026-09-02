@@ -350,7 +350,11 @@ def create_router(
         dependencies=[Depends(authenticate_workspace)],
     )
 
-    @router.get("/games", response_model=CursorPage[GameProfileCard])
+    @router.get(
+        "/games",
+        response_model=CursorPage[GameProfileCard],
+        operation_id="listGameProfiles",
+    )
     def list_games(
         query: Annotated[str, Query(max_length=255)] = "",
         only_collection: bool = False,
@@ -385,7 +389,11 @@ def create_router(
             ),
         )
 
-    @router.get("/creators", response_model=CursorPage[CreatorProfileCard])
+    @router.get(
+        "/creators",
+        response_model=CursorPage[CreatorProfileCard],
+        operation_id="listCreatorProfiles",
+    )
     def list_creators(
         query: Annotated[str, Query(max_length=255)] = "",
         only_collection: bool = False,
@@ -420,7 +428,11 @@ def create_router(
             ),
         )
 
-    @router.patch("/creators/{profile_id}/manual", response_model=CreatorProfileDetail)
+    @router.patch(
+        "/creators/{profile_id}/manual",
+        response_model=CreatorProfileDetail,
+        operation_id="updateCreatorManual",
+    )
     def update_creator_manual(
         profile_id: UUID,
         update: CreatorManualUpdate,
@@ -439,6 +451,7 @@ def create_router(
     @router.get(
         "/{profile_type}/{profile_id}",
         response_model=GameProfileDetail | CreatorProfileDetail,
+        operation_id="getProfile",
     )
     def read_profile(
         profile_type: Annotated[str, Depends(_require_profile_type)],
@@ -461,6 +474,7 @@ def create_router(
     @router.patch(
         "/{profile_type}/{profile_id}/favorite",
         response_model=GameProfileCard | CreatorProfileCard,
+        operation_id="setProfileFavorite",
     )
     def set_favorite(
         profile_type: Annotated[str, Depends(_require_profile_type)],
@@ -485,7 +499,7 @@ def create_router(
             return _creator_card(creator)
         raise _unknown_profile_type()
 
-    @router.get("/{profile_type}")
+    @router.get("/{profile_type}", operation_id="rejectUnknownProfileType")
     def reject_unknown_list_type(profile_type: str) -> None:
         raise _unknown_profile_type()
 

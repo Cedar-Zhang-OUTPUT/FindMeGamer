@@ -517,7 +517,7 @@ def create_router(
         dependencies=[Depends(authenticate_workspace)],
     )
 
-    @router.get("", response_model=ChangedJobsResponse)
+    @router.get("", response_model=ChangedJobsResponse, operation_id="listJobs")
     def list_changed_jobs(
         changed_after: str | None = None,
         status: JobStatus | None = None,
@@ -570,7 +570,9 @@ def create_router(
             affected_profile_ids=affected_profile_ids,
         )
 
-    @router.get("/{job_id}", response_model=AnalysisJobResponse)
+    @router.get(
+        "/{job_id}", response_model=AnalysisJobResponse, operation_id="getAnalysisJob"
+    )
     def read_job(job_id: UUID) -> AnalysisJobResponse:
         with session_factory() as database_session:
             job = JobsRepository(database_session).get_job(job_id)
@@ -588,6 +590,7 @@ def create_router(
         "/analysis",
         response_model=AnalysisJobOutcome,
         responses={201: {"model": AnalysisJobOutcome}},
+        operation_id="createAnalysisJob",
     )
     def create_analysis_job(
         payload: AnalysisJobCreate,
@@ -693,6 +696,7 @@ def create_router(
         "/analysis/{job_id}/retry",
         response_model=AnalysisJobResponse,
         responses={201: {"model": AnalysisJobResponse}},
+        operation_id="retryAnalysisJob",
     )
     def retry_analysis_job(
         job_id: UUID,

@@ -72,7 +72,11 @@ def create_router(
         dependencies=[Depends(authenticate_workspace)],
     )
 
-    @router.get("/reanalysis", response_model=ReanalysisSettingsResponse)
+    @router.get(
+        "/reanalysis",
+        response_model=ReanalysisSettingsResponse,
+        operation_id="getReanalysisSettings",
+    )
     def read_reanalysis(
         database_session: Session = Depends(get_session),
     ) -> ReanalysisSettingsResponse:
@@ -82,7 +86,11 @@ def create_router(
             game_interval_days=stored.game_interval_days,
         )
 
-    @router.patch("/reanalysis", response_model=ReanalysisSettingsResponse)
+    @router.patch(
+        "/reanalysis",
+        response_model=ReanalysisSettingsResponse,
+        operation_id="updateReanalysisSettings",
+    )
     def update_reanalysis(
         update: ReanalysisSettingsUpdate,
         database_session: Session = Depends(get_session),
@@ -97,7 +105,11 @@ def create_router(
             game_interval_days=stored.game_interval_days,
         )
 
-    @router.get("/connections/{service}", response_model=ConnectionStatusResponse)
+    @router.get(
+        "/connections/{service}",
+        response_model=ConnectionStatusResponse,
+        operation_id="getConnectionStatus",
+    )
     def read_connection(
         service: Annotated[str, Depends(_require_supported_service)],
         database_session: Session = Depends(get_session),
@@ -105,7 +117,11 @@ def create_router(
         stored = SettingsRepository(database_session).get_connection(service)
         return _connection_status(stored)
 
-    @router.put("/connections/{service}", response_model=ConnectionStatusResponse)
+    @router.put(
+        "/connections/{service}",
+        response_model=ConnectionStatusResponse,
+        operation_id="replaceConnectionSecret",
+    )
     def replace_connection(
         service: Annotated[str, Depends(_require_supported_service)],
         update: ConnectionSecretUpdate,
@@ -118,7 +134,11 @@ def create_router(
         database_session.commit()
         return _connection_status(stored)
 
-    @router.post("/connections/{service}", response_model=ConnectionStatusResponse)
+    @router.post(
+        "/connections/{service}",
+        response_model=ConnectionStatusResponse,
+        operation_id="testConnection",
+    )
     def test_connection(
         service: Annotated[str, Depends(_require_supported_service)],
         database_session: Session = Depends(get_session),

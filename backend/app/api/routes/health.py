@@ -67,11 +67,11 @@ def create_router(readiness_probe: ReadinessProbe | None = None) -> APIRouter:
     probe = readiness_probe or default_readiness_probe()
     router = APIRouter(prefix="/health", tags=["health"])
 
-    @router.get("/live")
+    @router.get("/live", operation_id="checkLiveness")
     def live() -> dict[str, str]:
         return {"status": "ok"}
 
-    @router.get("/ready")
+    @router.get("/ready", operation_id="checkReadiness")
     def ready(response: Response) -> dict[str, str]:
         if probe.is_ready():
             return {"status": "ok"}
@@ -79,5 +79,6 @@ def create_router(readiness_probe: ReadinessProbe | None = None) -> APIRouter:
         return {"status": "unavailable"}
 
     return router
+
 
 router = create_router()
