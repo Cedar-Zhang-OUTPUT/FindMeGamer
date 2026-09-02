@@ -21,11 +21,20 @@ from app.db.models.match import (
     PairwiseState,
 )
 from app.db.models.profiles import CreatorProfile, GameProfile
-from app.matching.pairwise import PairwiseCheckpointError, PairwiseService
+from app.matching.pairwise import (
+    PairwiseCheckpointError,
+    PairwiseService,
+    SQLPairwiseRepository,
+)
 from app.schemas.ai_creator import CreatorBrief
 from app.schemas.ai_game import GameBrief
 from app.schemas.ai_match import PairwiseMatchBrief
-from app.workers.match_tasks import MatchTaskStore, PairwiseTerminalFailure
+from app.workers.match_tasks import (
+    MatchTaskExecutor,
+    MatchTaskStore,
+    PairwiseTerminalFailure,
+    start_match_task,
+)
 
 
 NOW = datetime(2026, 9, 2, 12, 0, tzinfo=UTC)
@@ -106,6 +115,22 @@ class FakeAI:
         if isinstance(self.output, BaseException):
             raise self.output
         return self.output
+
+
+class FakeDispatcher:
+    def __init__(self) -> None:
+        self.pairwise: list[tuple[UUID, UUID]] = []
+        self.advances: list[UUID] = []
+        self.rankings: list[UUID] = []
+
+    def dispatch_pairwise(self, task_id: UUID, creator_id: UUID) -> None:
+        self.pairwise.append((task_id, creator_id))
+
+    def dispatch_advance(self, task_id: UUID) -> None:
+        self.advances.append(task_id)
+
+    def dispatch_ranking(self, task_id: UUID) -> None:
+        self.rankings.append(task_id)
 
 
 def _creator(number: int) -> CreatorProfile:
@@ -398,6 +423,126 @@ def test_failure_never_overwrites_success_and_preserves_successful_sibling(
         )
         == 0
     )
+
+
+def test_ranking_start_redelivery_preserves_the_advanced_task(
+    session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task, creators = _task_with_selected(session, 1)
+    creator_ids = [creator.id for creator in creators]
+    store = _store(session)
+    store.prepare(task.id, creator_ids)
+    _service(session, FakeAI(_brief(creator_ids[0]))).run(task.id, creator_ids[0])
+    assert store.mark_ranking_enqueued(task.id) is True
+    session.expire_all()
+    before = session.get(MatchTask, task.id)
+    assert before is not None
+    expected = (
+        before.status,
+        before.stage,
+        before.ranking_enqueued_at,
+        before.completed_units,
+        before.error_code,
+        before.completed_at,
+    )
+    dispatcher = FakeDispatcher()
+    executor = MatchTaskExecutor(
+        screening=type(
+            "PersistedScreening",
+            (),
+            {"run": lambda _self, _task_id: creator_ids},
+        )(),
+        pairwise_factory=lambda: (_ for _ in ()).throw(
+            AssertionError("pairwise service must not be constructed")
+        ),
+        store=store,
+        dispatcher=dispatcher,
+    )
+    monkeypatch.setattr("app.workers.match_tasks.get_match_executor", lambda: executor)
+
+    start_match_task.apply(args=[str(task.id)], retries=3, throw=True).get()
+
+    session.expire_all()
+    after = session.get(MatchTask, task.id)
+    assert after is not None
+    assert (
+        after.status,
+        after.stage,
+        after.ranking_enqueued_at,
+        after.completed_units,
+        after.error_code,
+        after.completed_at,
+    ) == expected
+    assert dispatcher.pairwise == []
+
+
+def test_failure_first_duplicate_pair_allows_valid_inflight_success(
+    database_engine: Engine,
+    request: pytest.FixtureRequest,
+) -> None:
+    with Session(database_engine) as setup:
+        task, creators = _task_with_selected(setup, 1)
+        setup.commit()
+        task_id = task.id
+        game_id = task.game_id
+        creator_id = creators[0].id
+
+    def cleanup() -> None:
+        with Session(database_engine) as cleanup_session:
+            saved = cleanup_session.get(MatchTask, task_id)
+            if saved is not None:
+                cleanup_session.delete(saved)
+                cleanup_session.flush()
+            cleanup_session.execute(
+                delete(CreatorProfile).where(CreatorProfile.id == creator_id)
+            )
+            cleanup_session.execute(
+                delete(GameProfile).where(GameProfile.id == game_id)
+            )
+            cleanup_session.commit()
+
+    request.addfinalizer(cleanup)
+    session_factory = sessionmaker_for(database_engine)
+    store = MatchTaskStore(session_factory=session_factory, clock=lambda: NOW)
+    store.prepare(task_id, [creator_id])
+    for _duplicate in range(2):
+        with session_factory() as claimed_session:
+            locked = SQLPairwiseRepository(claimed_session, clock=lambda: NOW).claim(
+                task_id, creator_id
+            )
+            assert locked.creator_id == creator_id
+            assert locked.completed_brief is None
+
+    failure = PairwiseTerminalFailure(
+        code="deepseek_unavailable",
+        message="Match is temporarily unavailable. Please retry.",
+        retryable=True,
+    )
+    assert store.fail_pair(task_id, creator_id, failure) is True
+    with session_factory() as success_session:
+        assert SQLPairwiseRepository(success_session, clock=lambda: NOW).apply_success(
+            task_id, creator_id, _brief(creator_id)
+        ) == _brief(creator_id)
+
+    with session_factory() as verify:
+        saved_task = verify.get(MatchTask, task_id)
+        saved_pair = verify.scalar(
+            select(MatchPairwiseRecord).where(
+                MatchPairwiseRecord.match_task_id == task_id,
+                MatchPairwiseRecord.creator_id == creator_id,
+            )
+        )
+        assert saved_task is not None
+        assert saved_pair is not None
+        assert saved_task.status is MatchStatus.RUNNING
+        assert saved_task.stage is MatchStage.PAIRWISE
+        assert saved_task.error_code is None
+        assert saved_task.error_message is None
+        assert saved_task.retryable is False
+        assert saved_task.completed_at is None
+        assert saved_pair.state is PairwiseState.SUCCEEDED
+        assert saved_pair.match_brief == _brief(creator_id).model_dump(mode="json")
 
 
 @pytest.mark.parametrize(

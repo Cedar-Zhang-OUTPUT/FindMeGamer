@@ -133,6 +133,8 @@ class SQLPairwiseRepository:
                     record.match_brief, expected_creator_id=creator_id
                 ),
             )
+        if task.status == MatchStatus.FAILED and record.state == PairwiseState.FAILED:
+            raise PairwiseCheckpointError("match_pair_terminal")
         if (
             task.status != MatchStatus.RUNNING
             or task.stage != MatchStage.PAIRWISE
@@ -202,6 +204,9 @@ class SQLPairwiseRepository:
         _require_uuid(match_task_id, "match task")
         _require_uuid(creator_id, "creator")
         validated = _validated_brief(brief, expected_creator_id=creator_id)
+        task = self._session.scalar(
+            select(MatchTask).where(MatchTask.id == match_task_id).with_for_update()
+        )
         record = self._session.scalar(
             select(MatchPairwiseRecord)
             .where(
@@ -210,12 +215,26 @@ class SQLPairwiseRepository:
             )
             .with_for_update()
         )
+        if task is None:
+            raise PairwiseCheckpointError("match_task_not_found")
         if record is None:
             raise PairwiseCheckpointError("match_pair_not_found")
         if record.state == PairwiseState.SUCCEEDED:
             return _validated_brief(record.match_brief, expected_creator_id=creator_id)
-        if record.state != PairwiseState.RUNNING:
+        if (
+            record.state not in (PairwiseState.RUNNING, PairwiseState.FAILED)
+            or task.status not in (MatchStatus.RUNNING, MatchStatus.FAILED)
+            or task.stage != MatchStage.PAIRWISE
+        ):
             raise PairwiseCheckpointError("match_pair_not_running")
+        failed_task_matches_record = (
+            task.status == MatchStatus.FAILED
+            and record.state == PairwiseState.FAILED
+            and task.error_code == record.error_code
+            and task.error_message == record.error_message
+            and task.retryable is record.retryable
+            and task.completed_at == record.completed_at
+        )
         now = _aware_utc(self._clock)
         record.state = PairwiseState.SUCCEEDED
         record.match_brief = validated.model_dump(mode="json")
@@ -225,11 +244,22 @@ class SQLPairwiseRepository:
         record.completed_at = now
         record.updated_at = now
 
-        task = self._session.scalar(
-            select(MatchTask).where(MatchTask.id == match_task_id).with_for_update()
+        other_failed_count = self._session.scalar(
+            select(func.count())
+            .select_from(MatchPairwiseRecord)
+            .where(
+                MatchPairwiseRecord.match_task_id == match_task_id,
+                MatchPairwiseRecord.creator_id != creator_id,
+                MatchPairwiseRecord.state == PairwiseState.FAILED,
+            )
         )
-        if task is None:
-            raise PairwiseCheckpointError("match_task_not_found")
+        if failed_task_matches_record and not other_failed_count:
+            task.status = MatchStatus.RUNNING
+            task.stage = MatchStage.PAIRWISE
+            task.error_code = None
+            task.error_message = None
+            task.retryable = False
+            task.completed_at = None
         succeeded_count = self._session.scalar(
             select(func.count())
             .select_from(MatchPairwiseRecord)

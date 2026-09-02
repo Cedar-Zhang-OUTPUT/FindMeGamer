@@ -179,7 +179,16 @@ class MatchTaskStore:
             )
             if task is None:
                 raise PairwiseCheckpointError("match_task_not_found")
-            if task.status != MatchStatus.RUNNING or task.stage != MatchStage.PAIRWISE:
+            if task.status == MatchStatus.SUCCEEDED:
+                return []
+            ranking_redelivery = (
+                task.status == MatchStatus.RUNNING
+                and task.stage == MatchStage.RANKING
+                and task.ranking_enqueued_at is not None
+            )
+            if not ranking_redelivery and (
+                task.status != MatchStatus.RUNNING or task.stage != MatchStage.PAIRWISE
+            ):
                 raise PairwiseCheckpointError("match_task_not_preparable")
             selected_rows = session.scalars(
                 select(MatchScreeningRecord)
@@ -210,6 +219,12 @@ class MatchTaskStore:
             }
             if not set(records) <= set(selected):
                 raise PairwiseCheckpointError("match_checkpoint_invalid")
+            if ranking_redelivery:
+                if set(records) != set(selected) or any(
+                    not _valid_succeeded_record(record) for record in records.values()
+                ):
+                    raise PairwiseCheckpointError("match_checkpoint_invalid")
+                return []
             now = _aware_utc(self._clock)
             for creator_id in selected:
                 if creator_id in records:
@@ -425,9 +440,14 @@ class MatchTaskExecutor:
         for creator_id in self.store.prepare(task_id, selected):
             self.dispatcher.dispatch_pairwise(task_id, creator_id)
 
-    def run_pair(self, task_id: UUID, creator_id: UUID) -> PairwiseMatchBrief:
+    def run_pair(self, task_id: UUID, creator_id: UUID) -> PairwiseMatchBrief | None:
         with self._pairwise_factory() as service:
-            result = service.run(task_id, creator_id)
+            try:
+                result = service.run(task_id, creator_id)
+            except PairwiseCheckpointError as error:
+                if error.code == "match_pair_terminal":
+                    return None
+                raise
         self.dispatcher.dispatch_advance(task_id)
         return result
 
@@ -629,6 +649,23 @@ def _parse_uuid(value: object) -> UUID | None:
     if parsed.int == 0 or str(parsed) != value:
         return None
     return parsed
+
+
+def _valid_succeeded_record(record: MatchPairwiseRecord) -> bool:
+    if record.state != PairwiseState.SUCCEEDED:
+        return False
+    try:
+        brief = PairwiseMatchBrief.model_validate_json(
+            json.dumps(
+                record.match_brief,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+        )
+    except Exception:
+        return False
+    return brief.creator_id == record.creator_id
 
 
 def _require_uuid(value: object) -> UUID:

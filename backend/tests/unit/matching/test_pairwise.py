@@ -17,6 +17,7 @@ from app.matching.pairwise import (
     InvalidPairwiseOutput,
     LockedPairwiseInput,
     PAIRWISE_MODEL,
+    PairwiseCheckpointError,
     PairwiseService,
 )
 from app.schemas.ai_game import GameBrief
@@ -441,6 +442,26 @@ def test_terminal_invalid_model_failure_is_safe_and_preserves_no_raw_text(
     assert failure.retryable is True
     assert raw not in failure.message
     assert "secret" not in failure.message.casefold()
+
+
+def test_terminal_pair_redelivery_is_an_explicit_worker_noop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = FakeStore()
+    dispatcher = FakeDispatcher()
+    executor = _executor(
+        pairwise=FakePairwise(PairwiseCheckpointError("match_pair_terminal")),
+        store=store,
+        dispatcher=dispatcher,
+    )
+    monkeypatch.setattr("app.workers.match_tasks.get_match_executor", lambda: executor)
+
+    run_pairwise_match.apply(
+        args=[str(TASK_ID), str(CREATOR_ID)], retries=3, throw=True
+    ).get()
+
+    assert store.failures == []
+    assert dispatcher.advances == []
 
 
 def test_invalid_uuid_arguments_are_noops_before_runtime_or_database(
