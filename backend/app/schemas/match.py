@@ -1,5 +1,6 @@
-"""Closed public Match result projections with hidden ranking data omitted."""
+"""Closed public Match API projections with hidden ranking data omitted."""
 
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -85,11 +86,72 @@ class MatchResultItem(PublicMatchModel):
     outreach: MatchOutreachState
 
 
+class MatchCreate(PublicMatchModel):
+    game_id: UUID
+
+
+class MatchGameHeader(PublicMatchModel):
+    id: UUID
+    name: str
+    steam_app_id: str
+    canonical_url: str
+    cover_url: str | None = None
+
+
+MatchErrorMessage = Literal[
+    "Match could not be queued. Please retry.",
+    "Match is temporarily unavailable. Please retry.",
+    "Match could not be completed. Please retry.",
+    "Match failed unexpectedly. Please retry.",
+]
+
+
+class MatchError(PublicMatchModel):
+    code: str = Field(pattern=r"^[a-z][a-z0-9_]{0,127}$")
+    message: MatchErrorMessage
+
+
+class MatchSummary(PublicMatchModel):
+    id: UUID
+    game: MatchGameHeader
+    status: Literal["queued", "running", "succeeded", "failed", "superseded"]
+    stage: Literal["screening", "pairwise", "ranking"]
+    completed_units: int = Field(ge=0)
+    total_units: int = Field(ge=0)
+    result_count: int = Field(ge=0)
+    retryable: bool
+    error: MatchError | None = None
+    correlation_id: str | None
+    supersedes_id: UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+
+class MatchDetail(MatchSummary):
+    result_state: Literal["pending", "available", "no_suitable_creators"]
+    recommended_matches: list[MatchResultItem]
+    other_matches: list[MatchResultItem]
+
+
+class MatchPage(PublicMatchModel):
+    items: list[MatchSummary]
+    cursor: str | None
+    has_more: bool
+
+
 __all__ = [
     "MatchBrief",
+    "MatchCreate",
     "MatchCreatorCard",
     "MatchCreatorContact",
+    "MatchDetail",
     "MatchDimensionOutcomes",
+    "MatchError",
+    "MatchGameHeader",
     "MatchOutreachState",
+    "MatchPage",
     "MatchResultItem",
+    "MatchSummary",
 ]

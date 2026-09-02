@@ -12,6 +12,7 @@ def create_celery_app(*, broker_url: str | None = None) -> Celery:
         broker=broker_url or settings.redis_url,
         backend=None,
         include=[
+            "app.matching.retention",
             "app.workers.analysis_tasks",
             "app.workers.match_tasks",
             "app.workers.schedules",
@@ -40,7 +41,11 @@ def create_celery_app(*, broker_url: str | None = None) -> Celery:
             "mandatory-profile-reanalysis": {
                 "task": "find_me_gamer.reanalysis.enqueue_due",
                 "schedule": 900.0,
-            }
+            },
+            "match-input-retention": {
+                "task": "find_me_gamer.match.purge_expired_inputs",
+                "schedule": 3600.0,
+            },
         },
     )
     return app

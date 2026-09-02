@@ -57,6 +57,10 @@ EXPECTED_OPERATIONS = {
         "POST",
         "/api/v1/jobs/analysis/{job_id}/retry",
     ): "retryAnalysisJob",
+    ("POST", "/api/v1/matches"): "createMatch",
+    ("GET", "/api/v1/matches"): "listMatches",
+    ("GET", "/api/v1/matches/{match_task_id}"): "getMatch",
+    ("POST", "/api/v1/matches/{match_task_id}/retry"): "retryMatch",
 }
 HTTP_METHODS = frozenset(
     {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
@@ -128,6 +132,8 @@ def test_openapi_retains_bearer_auth_and_required_idempotency_headers(client) ->
     for method, path in (
         ("POST", "/api/v1/jobs/analysis"),
         ("POST", "/api/v1/jobs/analysis/{job_id}/retry"),
+        ("POST", "/api/v1/matches"),
+        ("POST", "/api/v1/matches/{match_task_id}/retry"),
     ):
         parameters = _operation(schema, method, path)["parameters"]
         idempotency = [

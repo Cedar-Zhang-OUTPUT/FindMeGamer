@@ -205,6 +205,163 @@
         "title": "AnalysisStage",
         "type": "string"
       },
+      "ChangedAnalysisJobResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_target_id": {
+            "title": "Canonical Target Id",
+            "type": "string"
+          },
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completed_units": {
+            "minimum": 0.0,
+            "title": "Completed Units",
+            "type": "integer"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisJobError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "analysis",
+            "default": "analysis",
+            "title": "Kind",
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/JobMode"
+          },
+          "outcome": {
+            "const": "job",
+            "default": "job",
+            "title": "Outcome",
+            "type": "string"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "resource_id": {
+            "format": "uuid",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "target_type": {
+            "$ref": "#/components/schemas/TargetType"
+          },
+          "total_units": {
+            "minimum": 0.0,
+            "title": "Total Units",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "target_type",
+          "canonical_target_id",
+          "canonical_url",
+          "mode",
+          "status",
+          "stage",
+          "completed_units",
+          "total_units",
+          "retryable",
+          "correlation_id",
+          "profile_id",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at",
+          "resource_id"
+        ],
+        "title": "ChangedAnalysisJobResponse",
+        "type": "object"
+      },
       "ChangedJobsResponse": {
         "additionalProperties": false,
         "properties": {
@@ -226,7 +383,21 @@
           },
           "items": {
             "items": {
-              "$ref": "#/components/schemas/AnalysisJobResponse"
+              "discriminator": {
+                "mapping": {
+                  "analysis": "#/components/schemas/ChangedAnalysisJobResponse",
+                  "match": "#/components/schemas/ChangedMatchJobResponse"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ChangedAnalysisJobResponse"
+                },
+                {
+                  "$ref": "#/components/schemas/ChangedMatchJobResponse"
+                }
+              ]
             },
             "title": "Items",
             "type": "array"
@@ -239,6 +410,152 @@
           "affected_profile_ids"
         ],
         "title": "ChangedJobsResponse",
+        "type": "object"
+      },
+      "ChangedMatchJobResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completed_units": {
+            "minimum": 0.0,
+            "title": "Completed Units",
+            "type": "integer"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "match",
+            "default": "match",
+            "title": "Kind",
+            "type": "string"
+          },
+          "resource_id": {
+            "format": "uuid",
+            "title": "Resource Id",
+            "type": "string"
+          },
+          "result_count": {
+            "minimum": 0.0,
+            "title": "Result Count",
+            "type": "integer"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "stage": {
+            "enum": [
+              "screening",
+              "pairwise",
+              "ranking"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          },
+          "total_units": {
+            "minimum": 0.0,
+            "title": "Total Units",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource_id",
+          "status",
+          "stage",
+          "completed_units",
+          "total_units",
+          "result_count",
+          "retryable",
+          "error",
+          "correlation_id",
+          "game_id",
+          "supersedes_id",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "ChangedMatchJobResponse",
         "type": "object"
       },
       "ConnectionSecretUpdate": {
@@ -873,6 +1190,814 @@
         "title": "JobStatus",
         "type": "string"
       },
+      "MatchBrief": {
+        "additionalProperties": false,
+        "properties": {
+          "audience_fit": {
+            "$ref": "#/components/schemas/MatchBriefDimension"
+          },
+          "brand_safety": {
+            "$ref": "#/components/schemas/MatchBriefDimension"
+          },
+          "content_fit": {
+            "$ref": "#/components/schemas/MatchBriefDimension"
+          },
+          "evidence": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "match_reasons": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Match Reasons",
+            "type": "array"
+          },
+          "performance_fit": {
+            "$ref": "#/components/schemas/MatchBriefDimension"
+          },
+          "promotion_fit": {
+            "$ref": "#/components/schemas/MatchBriefDimension"
+          },
+          "risks": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Risks",
+            "type": "array"
+          },
+          "strengths": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Strengths",
+            "type": "array"
+          }
+        },
+        "required": [
+          "content_fit",
+          "audience_fit",
+          "performance_fit",
+          "promotion_fit",
+          "brand_safety",
+          "strengths",
+          "risks",
+          "evidence",
+          "match_reasons"
+        ],
+        "title": "MatchBrief",
+        "type": "object"
+      },
+      "MatchBriefDimension": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Analysis",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          }
+        },
+        "required": [
+          "analysis",
+          "evidence"
+        ],
+        "title": "MatchBriefDimension",
+        "type": "object"
+      },
+      "MatchCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "game_id"
+        ],
+        "title": "MatchCreate",
+        "type": "object"
+      },
+      "MatchCreatorCard": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchCreatorContact"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contact_available": {
+            "title": "Contact Available",
+            "type": "boolean"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "performance_summary": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Performance Summary"
+          },
+          "recent_average_views": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recent Average Views"
+          },
+          "recent_median_views": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recent Median Views"
+          },
+          "subscriber_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscriber Count"
+          },
+          "youtube_channel_id": {
+            "title": "Youtube Channel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "youtube_channel_id",
+          "canonical_url",
+          "favorite",
+          "contact_available",
+          "contact"
+        ],
+        "title": "MatchCreatorCard",
+        "type": "object"
+      },
+      "MatchCreatorContact": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "validation_state": {
+            "title": "Validation State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "source",
+          "source_url",
+          "validation_state"
+        ],
+        "title": "MatchCreatorContact",
+        "type": "object"
+      },
+      "MatchDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completed_units": {
+            "minimum": 0.0,
+            "title": "Completed Units",
+            "type": "integer"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "game": {
+            "$ref": "#/components/schemas/MatchGameHeader"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "other_matches": {
+            "items": {
+              "$ref": "#/components/schemas/MatchResultItem"
+            },
+            "title": "Other Matches",
+            "type": "array"
+          },
+          "recommended_matches": {
+            "items": {
+              "$ref": "#/components/schemas/MatchResultItem"
+            },
+            "title": "Recommended Matches",
+            "type": "array"
+          },
+          "result_count": {
+            "minimum": 0.0,
+            "title": "Result Count",
+            "type": "integer"
+          },
+          "result_state": {
+            "enum": [
+              "pending",
+              "available",
+              "no_suitable_creators"
+            ],
+            "title": "Result State",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "stage": {
+            "enum": [
+              "screening",
+              "pairwise",
+              "ranking"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          },
+          "total_units": {
+            "minimum": 0.0,
+            "title": "Total Units",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "game",
+          "status",
+          "stage",
+          "completed_units",
+          "total_units",
+          "result_count",
+          "retryable",
+          "correlation_id",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at",
+          "result_state",
+          "recommended_matches",
+          "other_matches"
+        ],
+        "title": "MatchDetail",
+        "type": "object"
+      },
+      "MatchDimensionOutcomes": {
+        "additionalProperties": false,
+        "properties": {
+          "audience_fit": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Audience Fit",
+            "type": "string"
+          },
+          "brand_safety": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Brand Safety",
+            "type": "string"
+          },
+          "content_fit": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Content Fit",
+            "type": "string"
+          },
+          "performance_fit": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Performance Fit",
+            "type": "string"
+          },
+          "promotion_fit": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Promotion Fit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content_fit",
+          "audience_fit",
+          "performance_fit",
+          "promotion_fit",
+          "brand_safety"
+        ],
+        "title": "MatchDimensionOutcomes",
+        "type": "object"
+      },
+      "MatchError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "pattern": "^[a-z][a-z0-9_]{0,127}$",
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "enum": [
+              "Match could not be queued. Please retry.",
+              "Match is temporarily unavailable. Please retry.",
+              "Match could not be completed. Please retry.",
+              "Match failed unexpectedly. Please retry."
+            ],
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "MatchError",
+        "type": "object"
+      },
+      "MatchGameHeader": {
+        "additionalProperties": false,
+        "properties": {
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "steam_app_id": {
+            "title": "Steam App Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "steam_app_id",
+          "canonical_url"
+        ],
+        "title": "MatchGameHeader",
+        "type": "object"
+      },
+      "MatchOutreachState": {
+        "additionalProperties": false,
+        "properties": {
+          "delivery_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivery Id"
+          },
+          "response_state": {
+            "default": "no_response",
+            "enum": [
+              "no_response",
+              "accepted",
+              "declined"
+            ],
+            "title": "Response State",
+            "type": "string"
+          },
+          "send_state": {
+            "default": "not_sent",
+            "enum": [
+              "not_sent",
+              "queued",
+              "sending",
+              "sent",
+              "failed"
+            ],
+            "title": "Send State",
+            "type": "string"
+          }
+        },
+        "title": "MatchOutreachState",
+        "type": "object"
+      },
+      "MatchPage": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MatchSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "cursor",
+          "has_more"
+        ],
+        "title": "MatchPage",
+        "type": "object"
+      },
+      "MatchResultItem": {
+        "additionalProperties": false,
+        "properties": {
+          "creator": {
+            "$ref": "#/components/schemas/MatchCreatorCard"
+          },
+          "dimension_outcomes": {
+            "$ref": "#/components/schemas/MatchDimensionOutcomes"
+          },
+          "match_brief": {
+            "$ref": "#/components/schemas/MatchBrief"
+          },
+          "match_reasons": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Match Reasons",
+            "type": "array"
+          },
+          "outreach": {
+            "$ref": "#/components/schemas/MatchOutreachState"
+          },
+          "qualitative_label": {
+            "enum": [
+              "Strong Match",
+              "Good Match",
+              "Limited Match"
+            ],
+            "title": "Qualitative Label",
+            "type": "string"
+          },
+          "result_group": {
+            "enum": [
+              "recommended",
+              "other"
+            ],
+            "title": "Result Group",
+            "type": "string"
+          }
+        },
+        "required": [
+          "creator",
+          "result_group",
+          "qualitative_label",
+          "dimension_outcomes",
+          "match_reasons",
+          "match_brief",
+          "outreach"
+        ],
+        "title": "MatchResultItem",
+        "type": "object"
+      },
+      "MatchSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "completed_units": {
+            "minimum": 0.0,
+            "title": "Completed Units",
+            "type": "integer"
+          },
+          "correlation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correlation Id"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MatchError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "game": {
+            "$ref": "#/components/schemas/MatchGameHeader"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "result_count": {
+            "minimum": 0.0,
+            "title": "Result Count",
+            "type": "integer"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "stage": {
+            "enum": [
+              "screening",
+              "pairwise",
+              "ranking"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "superseded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "supersedes_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes Id"
+          },
+          "total_units": {
+            "minimum": 0.0,
+            "title": "Total Units",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "game",
+          "status",
+          "stage",
+          "completed_units",
+          "total_units",
+          "result_count",
+          "retryable",
+          "correlation_id",
+          "created_at",
+          "updated_at",
+          "started_at",
+          "completed_at"
+        ],
+        "title": "MatchSummary",
+        "type": "object"
+      },
       "PublicJSONObject": {
         "additionalProperties": {
           "$ref": "#/components/schemas/PublicJSONValue"
@@ -1064,7 +2189,14 @@
             "schema": {
               "anyOf": [
                 {
-                  "$ref": "#/components/schemas/JobStatus"
+                  "enum": [
+                    "queued",
+                    "running",
+                    "succeeded",
+                    "failed",
+                    "superseded"
+                  ],
+                  "type": "string"
                 },
                 {
                   "type": "null"
@@ -1337,6 +2469,232 @@
         "summary": "Read Job",
         "tags": [
           "jobs"
+        ]
+      }
+    },
+    "/api/v1/matches": {
+      "get": {
+        "operationId": "listMatches",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Matches",
+        "tags": [
+          "matches"
+        ]
+      },
+      "post": {
+        "operationId": "createMatch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Match",
+        "tags": [
+          "matches"
+        ]
+      }
+    },
+    "/api/v1/matches/{match_task_id}": {
+      "get": {
+        "operationId": "getMatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "match_task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Task Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Match",
+        "tags": [
+          "matches"
+        ]
+      }
+    },
+    "/api/v1/matches/{match_task_id}/retry": {
+      "post": {
+        "operationId": "retryMatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "match_task_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Match Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchSummary"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry Match",
+        "tags": [
+          "matches"
         ]
       }
     },

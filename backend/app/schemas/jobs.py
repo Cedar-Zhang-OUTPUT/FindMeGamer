@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.core.analysis_job_contract import public_job_failure, valid_analysis_job_state
 from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
+from app.schemas.match import MatchError
 
 
 AnalysisJobErrorMessage = Literal[
@@ -91,10 +92,42 @@ class AnalysisJobError(BaseModel):
         return self
 
 
+class ChangedAnalysisJobResponse(AnalysisJobResponse):
+    kind: Literal["analysis"] = "analysis"
+    resource_id: UUID
+
+
+class ChangedMatchJobResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["match"] = "match"
+    resource_id: UUID
+    status: Literal["queued", "running", "succeeded", "failed", "superseded"]
+    stage: Literal["screening", "pairwise", "ranking"]
+    completed_units: int = Field(ge=0)
+    total_units: int = Field(ge=0)
+    result_count: int = Field(ge=0)
+    retryable: bool
+    error: MatchError | None
+    correlation_id: str | None
+    game_id: UUID
+    supersedes_id: UUID | None
+    created_at: datetime
+    updated_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+
+ChangedJobResponse = Annotated[
+    ChangedAnalysisJobResponse | ChangedMatchJobResponse,
+    Field(discriminator="kind"),
+]
+
+
 class ChangedJobsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    items: list[AnalysisJobResponse]
+    items: list[ChangedJobResponse]
     cursor: str
     has_more: bool
     affected_profile_ids: list[UUID]

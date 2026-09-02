@@ -8,12 +8,13 @@ from datetime import UTC, datetime
 import hashlib
 import hmac
 import json
-from typing import Annotated, Any, ContextManager, Protocol
+from typing import Annotated, Any, ContextManager, Literal, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Header, Query, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy import literal, select, tuple_, union_all
 from sqlalchemy.orm import Session
 
 from app.analysis.targets import (
@@ -39,6 +40,8 @@ from app.core.idempotency import (
 from app.db.models.enums import JobStatus
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
+from app.db.models.jobs import acquire_job_change_lock
+from app.db.models.match import MatchStatus, MatchTask
 from app.integrations.errors import PermanentIntegrationError
 from app.repositories.jobs import (
     JobCreationResult,
@@ -50,10 +53,13 @@ from app.schemas.jobs import (
     AnalysisJobError,
     AnalysisJobOutcome,
     AnalysisJobResponse,
+    ChangedAnalysisJobResponse,
+    ChangedMatchJobResponse,
     ChangedJobsResponse,
     ExistingProfileResponse,
     RetryAnalysisJobRequest,
 )
+from app.api.routes.match import _failure as _match_failure
 
 
 SessionFactory = Callable[[], ContextManager[Session]]
@@ -407,8 +413,11 @@ def _invalid_cursor() -> APIError:
     )
 
 
-def _status_scope(status: JobStatus | None) -> str | None:
-    return status.value if status is not None else None
+ChangedStatus = Literal["queued", "running", "succeeded", "failed", "superseded"]
+
+
+def _status_scope(status: ChangedStatus | JobStatus | None) -> str | None:
+    return status.value if isinstance(status, JobStatus) else status
 
 
 def _cursor_timestamp(value: datetime) -> str:
@@ -425,11 +434,14 @@ def _cursor_signature(payload: dict[str, object], *, signing_key: bytes) -> str:
 
 
 def _encode_cursor(
-    value: tuple[datetime, UUID], *, status: JobStatus | None, signing_key: bytes
+    value: tuple[datetime, str, UUID],
+    *,
+    status: ChangedStatus | None,
+    signing_key: bytes,
 ) -> str:
     signed: dict[str, object] = {
-        "v": 1,
-        "key": [_cursor_timestamp(value[0]), str(value[1])],
+        "v": 2,
+        "key": [_cursor_timestamp(value[0]), value[1], str(value[2])],
         "scope": {"status": _status_scope(status)},
     }
     payload = {
@@ -443,9 +455,9 @@ def _encode_cursor(
 def _decode_cursor(
     raw_cursor: str | None,
     *,
-    status: JobStatus | None,
+    status: ChangedStatus | None,
     signing_key: bytes,
-) -> tuple[datetime, UUID] | None:
+) -> tuple[datetime, str, UUID] | None:
     if raw_cursor is None:
         return None
     if not raw_cursor or len(raw_cursor) > _CURSOR_MAX_LENGTH:
@@ -459,10 +471,10 @@ def _decode_cursor(
         if (
             not isinstance(value, dict)
             or set(value) != {"v", "key", "scope", "signature"}
-            or value["v"] != 1
+            or value["v"] != 2
             or type(value["v"]) is not int
             or not isinstance(value["key"], list)
-            or len(value["key"]) != 2
+            or len(value["key"]) != 3
             or not all(isinstance(item, str) for item in value["key"])
             or value["scope"] != {"status": _status_scope(status)}
             or not isinstance(value["signature"], str)
@@ -476,7 +488,7 @@ def _decode_cursor(
         expected = _cursor_signature(signed, signing_key=signing_key)
         if not hmac.compare_digest(value["signature"], expected):
             raise ValueError("invalid signature")
-        timestamp_text, job_id_text = value["key"]
+        timestamp_text, kind, job_id_text = value["key"]
         if not timestamp_text.endswith("Z"):
             raise ValueError("naive timestamp")
         timestamp = datetime.fromisoformat(timestamp_text[:-1] + "+00:00")
@@ -485,7 +497,11 @@ def _decode_cursor(
         job_id = UUID(job_id_text)
         if str(job_id) != job_id_text:
             raise ValueError("noncanonical UUID")
-        return timestamp, job_id
+        if kind not in {"analysis", "match"} and not (
+            kind == "" and job_id == _ZERO_UUID
+        ):
+            raise ValueError("invalid kind")
+        return timestamp, kind, job_id
     except (
         binascii.Error,
         UnicodeDecodeError,
@@ -520,20 +536,87 @@ def create_router(
     @router.get("", response_model=ChangedJobsResponse, operation_id="listJobs")
     def list_changed_jobs(
         changed_after: str | None = None,
-        status: JobStatus | None = None,
+        status: ChangedStatus | None = None,
         limit: Annotated[int, Query(ge=1, le=200)] = 100,
     ) -> ChangedJobsResponse:
         decoded = _decode_cursor(
             changed_after, status=status, signing_key=cursor_signing_key
         )
         with session_factory() as database_session:
+            acquire_job_change_lock(database_session)
             repository = JobsRepository(database_session)
-            jobs, has_more = repository.list_changed_jobs(
-                cursor=decoded, status=status, limit=limit
+            analysis_keys = select(
+                AnalysisJob.updated_at.label("updated_at"),
+                literal("analysis").label("kind"),
+                AnalysisJob.id.label("resource_id"),
             )
+            match_keys = select(
+                MatchTask.updated_at.label("updated_at"),
+                literal("match").label("kind"),
+                MatchTask.id.label("resource_id"),
+            )
+            if status is not None:
+                if status == "superseded":
+                    analysis_keys = analysis_keys.where(literal(False))
+                else:
+                    analysis_keys = analysis_keys.where(AnalysisJob.status == status)
+                match_keys = match_keys.where(MatchTask.status == status)
+            changed = union_all(analysis_keys, match_keys).subquery()
+            statement = select(
+                changed.c.updated_at, changed.c.kind, changed.c.resource_id
+            )
+            if decoded is not None:
+                statement = statement.where(
+                    tuple_(
+                        changed.c.updated_at,
+                        changed.c.kind,
+                        changed.c.resource_id,
+                    )
+                    > tuple_(decoded[0], decoded[1], decoded[2])
+                )
+            keys = database_session.execute(
+                statement.order_by(
+                    changed.c.updated_at,
+                    changed.c.kind,
+                    changed.c.resource_id,
+                ).limit(limit + 1)
+            ).all()
+            page = list(keys[:limit])
+            has_more = len(keys) > limit
+            analysis_ids = [row.resource_id for row in page if row.kind == "analysis"]
+            match_ids = [row.resource_id for row in page if row.kind == "match"]
+            analysis_by_id = (
+                {
+                    value.id: value
+                    for value in database_session.scalars(
+                        select(AnalysisJob).where(AnalysisJob.id.in_(analysis_ids))
+                    )
+                }
+                if analysis_ids
+                else {}
+            )
+            match_by_id = (
+                {
+                    value.id: value
+                    for value in database_session.scalars(
+                        select(MatchTask).where(MatchTask.id.in_(match_ids))
+                    )
+                }
+                if match_ids
+                else {}
+            )
+            jobs = [
+                analysis_by_id[row.resource_id]
+                for row in page
+                if row.kind == "analysis"
+            ]
             succeeded_profiles = repository.load_succeeded_profiles(jobs)
-            if jobs:
-                next_value = (jobs[-1].updated_at, jobs[-1].id)
+            if page:
+                next_value = (
+                    page[-1].updated_at,
+                    page[-1].kind,
+                    page[-1].resource_id,
+                )
                 cursor = _encode_cursor(
                     next_value, status=status, signing_key=cursor_signing_key
                 )
@@ -541,20 +624,48 @@ def create_router(
                 cursor = changed_after
             else:
                 cursor = _encode_cursor(
-                    (repository.database_now(), _ZERO_UUID),
+                    (repository.database_now(), "", _ZERO_UUID),
                     status=status,
                     signing_key=cursor_signing_key,
                 )
-            items = [
-                project_analysis_job(
-                    database_session,
-                    job,
-                    succeeded_profile=succeeded_profiles.get(
-                        (job.target_type, job.profile_id)
-                    ),
-                )
-                for job in jobs
-            ]
+            items = []
+            for row in page:
+                if row.kind == "analysis":
+                    job = analysis_by_id[row.resource_id]
+                    projected = project_analysis_job(
+                        database_session,
+                        job,
+                        succeeded_profile=succeeded_profiles.get(
+                            (job.target_type, job.profile_id)
+                        ),
+                    )
+                    items.append(
+                        ChangedAnalysisJobResponse(
+                            **projected.model_dump(), resource_id=job.id
+                        )
+                    )
+                else:
+                    task = match_by_id[row.resource_id]
+                    error, retryable = _match_failure(task)
+                    items.append(
+                        ChangedMatchJobResponse(
+                            resource_id=task.id,
+                            status=task.status.value,
+                            stage=task.stage.value,
+                            completed_units=task.completed_units,
+                            total_units=task.total_units,
+                            result_count=task.result_count,
+                            retryable=retryable and bool(task.retryable),
+                            error=error,
+                            correlation_id=safe_correlation_id(task.correlation_id),
+                            game_id=task.game_id,
+                            supersedes_id=task.supersedes_id,
+                            created_at=task.created_at,
+                            updated_at=task.updated_at,
+                            started_at=task.started_at,
+                            completed_at=task.completed_at,
+                        )
+                    )
             affected_profile_ids = list(
                 dict.fromkeys(
                     job.profile_id

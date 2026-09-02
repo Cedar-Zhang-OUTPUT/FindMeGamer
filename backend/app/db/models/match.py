@@ -17,12 +17,17 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
-from app.db.models.jobs import string_enum
+from app.db.models.jobs import (
+    acquire_job_change_lock,
+    next_job_change_timestamp,
+    string_enum,
+)
 
 
 class MatchStatus(StrEnum):
@@ -167,6 +172,28 @@ class MatchTask(TimestampMixin, Base):
             name="fk_match_tasks_supersedes",
         )
     )
+
+
+def _serialize_and_timestamp_match_change(_mapper, connection, target) -> None:
+    acquire_job_change_lock(connection)
+    values = [
+        value
+        for value in (
+            target.created_at,
+            target.updated_at,
+            target.started_at,
+            target.completed_at,
+            target.ranking_enqueued_at,
+        )
+        if isinstance(value, datetime)
+    ]
+    target.updated_at = next_job_change_timestamp(
+        connection, floor=max(values) if values else None
+    )
+
+
+event.listen(MatchTask, "before_insert", _serialize_and_timestamp_match_change)
+event.listen(MatchTask, "before_update", _serialize_and_timestamp_match_change)
 
 
 class MatchScreeningRecord(TimestampMixin, Base):

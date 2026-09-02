@@ -147,6 +147,12 @@ def test_changed_jobs_endpoint_returns_authenticated_empty_page_with_cursor(
     }
     assert response.json()["cursor"]
 
+    next_response = auth_client.get(
+        "/api/v1/jobs", params={"changed_after": response.json()["cursor"]}
+    )
+    assert next_response.status_code == 200
+    assert next_response.json()["items"] == []
+
 
 def test_initial_empty_cursor_cannot_skip_a_job_committed_between_poll_statements(
     migrated_database: None,
@@ -848,7 +854,9 @@ def test_succeeded_job_polling_bulk_loads_profiles_under_one_fenced_snapshot(
     )
     profiles_index = statements.index(profile_selects[0])
     assert advisory_index < jobs_index < profiles_index
-    assert len(statements) <= 4
+    # The unified Analysis/Match keyset adds one bounded cross-table query before
+    # the existing bulk profile projection.
+    assert len(statements) <= 5
 
 
 @pytest.mark.parametrize("cursor", ["", "x" * 2049, "not-base64", _encode([1, 2])])
@@ -863,15 +871,15 @@ def test_malformed_cursor_is_rejected_safely(
 @pytest.mark.parametrize(
     "mutate",
     [
-        lambda value: {**value, "v": 2},
+        lambda value: {**value, "v": 3},
         lambda value: {**value, "unexpected": True},
         lambda value: {
             **value,
-            "key": ["2026-09-02T09:00:00", value["key"][1]],
+            "key": ["2026-09-02T09:00:00", value["key"][1], value["key"][2]],
         },
         lambda value: {
             **value,
-            "key": [value["key"][0], str(uuid4()).upper()],
+            "key": [value["key"][0], value["key"][1], str(uuid4()).upper()],
         },
     ],
 )
@@ -898,7 +906,7 @@ def test_tampered_future_shape_naive_time_and_noncanonical_uuid_are_rejected(
             },
             separators=(",", ":"),
         ).encode(),
-        lambda value, canonical: canonical.replace(b'"v":1', b'"v":1,"v":1', 1),
+        lambda value, canonical: canonical.replace(b'"v":2', b'"v":2,"v":2', 1),
         lambda value, canonical: canonical.replace(b'"scope"', b'"\\u0073cope"', 1),
     ],
     ids=["whitespace", "key-order", "duplicate-key", "escaped-key"],

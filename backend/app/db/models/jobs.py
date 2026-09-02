@@ -37,8 +37,17 @@ analysis_job_change_watermark = Table(
     Column("last_changed_at", DateTime(timezone=True), nullable=False),
     CheckConstraint("singleton", name="singleton_true"),
 )
-_NEXT_JOB_CHANGE_TIMESTAMP = text(
-    """
+
+
+def _next_job_change_statement(*, include_matches: bool):
+    sources = (
+        "SELECT updated_at FROM analysis_jobs "
+        "UNION ALL SELECT updated_at FROM match_tasks"
+        if include_matches
+        else "SELECT updated_at FROM analysis_jobs"
+    )
+    return text(
+        f"""
     INSERT INTO analysis_job_change_watermark AS watermark (
         singleton,
         last_changed_at
@@ -50,10 +59,11 @@ _NEXT_JOB_CHANGE_TIMESTAMP = text(
             COALESCE(
                 (
                     SELECT max(updated_at) + INTERVAL '1 microsecond'
-                    FROM analysis_jobs
+                    FROM ({sources}) AS changed_jobs
                 ),
                 '-infinity'::timestamptz
-            )
+            ),
+            COALESCE(CAST(:floor AS timestamptz), '-infinity'::timestamptz)
         )
     )
     ON CONFLICT (singleton) DO UPDATE
@@ -63,18 +73,31 @@ _NEXT_JOB_CHANGE_TIMESTAMP = text(
         COALESCE(
             (
                 SELECT max(updated_at) + INTERVAL '1 microsecond'
-                FROM analysis_jobs
+                FROM ({sources}) AS changed_jobs
             ),
             '-infinity'::timestamptz
-        )
+        ),
+        COALESCE(CAST(:floor AS timestamptz), '-infinity'::timestamptz)
     )
     RETURNING last_changed_at
     """
-)
+    )
 
 
-def next_job_change_timestamp(executor) -> datetime:
-    changed_at = executor.scalar(_NEXT_JOB_CHANGE_TIMESTAMP)
+_NEXT_ANALYSIS_CHANGE_TIMESTAMP = _next_job_change_statement(include_matches=False)
+_NEXT_UNIFIED_CHANGE_TIMESTAMP = _next_job_change_statement(include_matches=True)
+
+
+def next_job_change_timestamp(executor, *, floor: datetime | None = None) -> datetime:
+    has_match_table = bool(
+        executor.scalar(text("SELECT to_regclass('public.match_tasks') IS NOT NULL"))
+    )
+    statement = (
+        _NEXT_UNIFIED_CHANGE_TIMESTAMP
+        if has_match_table
+        else _NEXT_ANALYSIS_CHANGE_TIMESTAMP
+    )
+    changed_at = executor.scalar(statement, {"floor": floor})
     if (
         not isinstance(changed_at, datetime)
         or changed_at.tzinfo is None
@@ -184,7 +207,19 @@ class AnalysisJob(TimestampMixin, Base):
 
 def _serialize_and_timestamp_job_change(_mapper, connection, target) -> None:
     acquire_job_change_lock(connection)
-    target.updated_at = next_job_change_timestamp(connection)
+    values = [
+        value
+        for value in (
+            target.created_at,
+            target.updated_at,
+            target.started_at,
+            target.completed_at,
+        )
+        if isinstance(value, datetime)
+    ]
+    target.updated_at = next_job_change_timestamp(
+        connection, floor=max(values) if values else None
+    )
 
 
 event.listen(AnalysisJob, "before_insert", _serialize_and_timestamp_job_change)

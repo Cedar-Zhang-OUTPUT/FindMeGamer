@@ -42,12 +42,19 @@ def test_beat_registers_stable_task_at_exact_fifteen_minute_cadence() -> None:
 
     assert enqueue_due_reanalysis.name == SCHEDULE_TASK_NAME
     assert celery_app.tasks[SCHEDULE_TASK_NAME].name == SCHEDULE_TASK_NAME
+    from app.matching.retention import MATCH_RETENTION_TASK_NAME
+
     assert celery_app.conf.beat_schedule == {
         "mandatory-profile-reanalysis": {
             "task": SCHEDULE_TASK_NAME,
             "schedule": 900.0,
-        }
+        },
+        "match-input-retention": {
+            "task": MATCH_RETENTION_TASK_NAME,
+            "schedule": 3600.0,
+        },
     }
+    assert "app.matching.retention" in celery_app.conf.include
     assert celery_app.conf.task_serializer == "json"
     assert celery_app.conf.accept_content == ["json"]
     assert celery_app.conf.enable_utc is True

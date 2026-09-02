@@ -2,6 +2,7 @@ import atexit
 import base64
 import logging
 import os
+from inspect import signature
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -79,6 +80,17 @@ class FakeJobDispatcher:
             raise self.error
 
 
+class FakeMatchDispatcher:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, UUID]] = []
+        self.error: Exception | None = None
+
+    def dispatch(self, task_name: str, task_id: UUID) -> None:
+        self.calls.append((task_name, task_id))
+        if self.error is not None:
+            raise self.error
+
+
 @pytest.fixture(scope="session")
 def database_url() -> str:
     url = os.environ.get("DATABASE_URL")
@@ -146,18 +158,24 @@ def job_dispatcher() -> FakeJobDispatcher:
 
 
 @pytest.fixture
+def match_dispatcher() -> FakeMatchDispatcher:
+    return FakeMatchDispatcher()
+
+
+@pytest.fixture
 def client(
     session: Session,
     rate_limit_counter: FakeRateLimitCounter,
     workspace_access_key: str,
     connection_probe: FakeConnectionProbe,
     job_dispatcher: FakeJobDispatcher,
+    match_dispatcher: FakeMatchDispatcher,
 ) -> Iterator[TestClient]:
     @contextmanager
     def job_session_factory() -> Iterator[Session]:
         yield session
 
-    test_app = create_app(
+    app_kwargs = dict(
         workspace_key_hash=hash_workspace_key(workspace_access_key),
         rate_limiter=FixedWindowRateLimiter(
             counter=rate_limit_counter,
@@ -170,6 +188,9 @@ def client(
         job_session_factory=job_session_factory,
         job_dispatcher=job_dispatcher,
     )
+    if "match_dispatcher" in signature(create_app).parameters:
+        app_kwargs["match_dispatcher"] = match_dispatcher
+    test_app = create_app(**app_kwargs)
 
     def override_get_session() -> Iterator[Session]:
         yield session

@@ -22,6 +22,7 @@ from app.db.models.match import (
     MatchTask,
 )
 from app.db.models.profiles import CreatorProfile, GameProfile
+from app.db.models.outreach import OutreachCampaign
 from app.schemas.ai_creator import CreatorBrief
 from app.schemas.ai_game import GameBrief
 from app.schemas.ai_match import ScreeningSelection
@@ -334,6 +335,13 @@ class MatchRepository:
             task.completed_units = 1
             task.total_units = 1
             task.completed_at = now
+            campaign = self._session.scalar(
+                select(OutreachCampaign).where(
+                    OutreachCampaign.match_task_id == task.id
+                )
+            )
+            if campaign is None:
+                self._session.add(OutreachCampaign(match_task_id=task.id))
         self._session.flush()
         return [
             record.creator_id for record in records if record.creator_id in keep_ids
