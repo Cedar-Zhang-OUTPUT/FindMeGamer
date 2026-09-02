@@ -328,12 +328,15 @@ def _creator_card(creator: CreatorProfile) -> MatchCreatorCard:
     analysis = (
         creator.analysis if not stale and isinstance(creator.analysis, dict) else {}
     )
+    brief = creator.brief if not stale and isinstance(creator.brief, dict) else {}
     metrics = facts.get("recent_metrics")
     metrics = metrics if isinstance(metrics, dict) else {}
     contact = _selected_contact(list(creator.contacts), manual_only=stale)
     title = facts.get("title")
     avatar = facts.get("avatar_url")
     performance = _available_text(analysis.get("recent_performance_summary"))
+    if performance is None:
+        performance = _available_text(brief.get("performance_context"))
     if performance is None:
         flat_performance = facts.get("performance_summary")
         performance = (

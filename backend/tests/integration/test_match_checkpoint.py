@@ -6,6 +6,7 @@ import threading
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -33,6 +34,7 @@ from app.workers.match_tasks import (
     MatchTaskExecutor,
     MatchTaskStore,
     PairwiseTerminalFailure,
+    START_MATCH_TASK_NAME,
     start_match_task,
 )
 
@@ -459,6 +461,88 @@ def test_serialized_concurrent_pair_failure_orders_keep_task_nonretryable(
     assert saved_task.retryable is False
     assert saved_task.error_code == "deepseek_input_invalid"
     assert saved_task.error_message == "Match could not be completed. Please retry."
+
+
+@pytest.mark.parametrize(
+    ("remaining_has_permanent", "expected_retryable", "expected_code", "api_status"),
+    [
+        (False, True, "deepseek_unavailable", 202),
+        (True, False, "match_checkpoint_invalid", 409),
+    ],
+    ids=["remaining-all-retryable", "remaining-includes-permanent"],
+)
+def test_late_duplicate_success_recomputes_remaining_failure_and_api_retry(
+    auth_client: TestClient,
+    session: Session,
+    match_dispatcher,
+    remaining_has_permanent: bool,
+    expected_retryable: bool,
+    expected_code: str,
+    api_status: int,
+) -> None:
+    task, creators = _task_with_selected(session, 3 if remaining_has_permanent else 2)
+    ordered = sorted(creators, key=lambda creator: creator.id)
+    late_success, retryable_sibling = ordered[:2]
+    permanent_sibling = ordered[2] if remaining_has_permanent else None
+    store = _store(session)
+    store.prepare(task.id, [creator.id for creator in creators])
+    permanent_late_failure = PairwiseTerminalFailure(
+        code="deepseek_input_invalid",
+        message="Match could not be completed. Please retry.",
+        retryable=False,
+    )
+    retryable_failure = PairwiseTerminalFailure(
+        code="deepseek_unavailable",
+        message="Match is temporarily unavailable. Please retry.",
+        retryable=True,
+    )
+    remaining_permanent_failure = PairwiseTerminalFailure(
+        code="match_checkpoint_invalid",
+        message="Match could not be completed. Please retry.",
+        retryable=False,
+    )
+    assert store.fail_pair(task.id, late_success.id, permanent_late_failure) is True
+    if permanent_sibling is not None:
+        assert (
+            store.fail_pair(task.id, permanent_sibling.id, remaining_permanent_failure)
+            is True
+        )
+    assert store.fail_pair(task.id, retryable_sibling.id, retryable_failure) is True
+    session.expire_all()
+    before = session.get(MatchTask, task.id)
+    assert before is not None
+    assert before.error_code == "deepseek_input_invalid"
+    assert before.retryable is False
+
+    with _session_factory_for(session) as late_session, late_session.begin():
+        assert SQLPairwiseRepository(late_session, clock=lambda: NOW).apply_success(
+            task.id, late_success.id, _brief(late_success.id)
+        ) == _brief(late_success.id)
+
+    session.expire_all()
+    recomputed = session.get(MatchTask, task.id)
+    assert recomputed is not None
+    assert recomputed.status is MatchStatus.FAILED
+    assert recomputed.retryable is expected_retryable
+    assert recomputed.error_code == expected_code
+    assert recomputed.error_message == (
+        "Match is temporarily unavailable. Please retry."
+        if expected_retryable
+        else "Match could not be completed. Please retry."
+    )
+
+    response = auth_client.post(
+        f"/api/v1/matches/{task.id}/retry",
+        headers={"Idempotency-Key": f"late-success-{task.id}"},
+    )
+
+    assert response.status_code == api_status
+    if api_status == 202:
+        assert response.json()["retryable"] is False
+        assert match_dispatcher.calls == [(START_MATCH_TASK_NAME, task.id)]
+    else:
+        assert response.json()["error"]["code"] == "match_not_retryable"
+        assert match_dispatcher.calls == []
 
 
 def test_ranking_start_redelivery_preserves_the_advanced_task(

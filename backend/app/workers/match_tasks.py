@@ -33,7 +33,11 @@ from app.integrations.errors import (
     InvalidModelOutput,
     TransientIntegrationError,
 )
-from app.matching.pairwise import PairwiseCheckpointError, PairwiseService
+from app.matching.pairwise import (
+    PairwiseCheckpointError,
+    PairwiseService,
+    recompute_pair_failure_task,
+)
 from app.matching.ranking import RankingCheckpointError, RankingService
 from app.matching.screening import InvalidScreeningOutput, ScreeningService
 from app.schemas.ai_match import PairwiseMatchBrief
@@ -289,25 +293,8 @@ class MatchTaskStore:
             record.updated_at = now
             if task.status not in (MatchStatus.SUCCEEDED, MatchStatus.SUPERSEDED):
                 session.flush()
-                failed_records = session.scalars(
-                    select(MatchPairwiseRecord)
-                    .where(
-                        MatchPairwiseRecord.match_task_id == task_id,
-                        MatchPairwiseRecord.state == PairwiseState.FAILED,
-                    )
-                    .order_by(
-                        MatchPairwiseRecord.retryable,
-                        MatchPairwiseRecord.creator_id,
-                    )
-                ).all()
-                aggregate_failure = failed_records[0]
-                task.status = MatchStatus.FAILED
-                task.error_code = aggregate_failure.error_code
-                task.error_message = aggregate_failure.error_message
-                task.retryable = all(row.retryable for row in failed_records)
-                task.completed_at = now
+                recompute_pair_failure_task(session, task)
                 task.updated_at = now
-                task.result_count = 0
             session.flush()
             return True
 

@@ -95,6 +95,32 @@ class PairwiseRepository(Protocol):
     ) -> PairwiseMatchBrief: ...
 
 
+def recompute_pair_failure_task(session: Session, task: MatchTask) -> bool:
+    failed_records = session.scalars(
+        select(MatchPairwiseRecord)
+        .where(
+            MatchPairwiseRecord.match_task_id == task.id,
+            MatchPairwiseRecord.state == PairwiseState.FAILED,
+        )
+        .order_by(
+            MatchPairwiseRecord.retryable,
+            MatchPairwiseRecord.creator_id,
+        )
+    ).all()
+    if not failed_records:
+        return False
+    aggregate_failure = failed_records[0]
+    task.status = MatchStatus.FAILED
+    task.error_code = aggregate_failure.error_code
+    task.error_message = aggregate_failure.error_message
+    task.retryable = all(row.retryable for row in failed_records)
+    task.completed_at = max(
+        row.completed_at for row in failed_records if row.completed_at is not None
+    )
+    task.result_count = 0
+    return True
+
+
 class SQLPairwiseRepository:
     """Own row-locked claim/apply work inside caller-owned short transactions."""
 
@@ -244,16 +270,9 @@ class SQLPairwiseRepository:
         record.completed_at = now
         record.updated_at = now
 
-        other_failed_count = self._session.scalar(
-            select(func.count())
-            .select_from(MatchPairwiseRecord)
-            .where(
-                MatchPairwiseRecord.match_task_id == match_task_id,
-                MatchPairwiseRecord.creator_id != creator_id,
-                MatchPairwiseRecord.state == PairwiseState.FAILED,
-            )
-        )
-        if failed_task_matches_record and not other_failed_count:
+        self._session.flush()
+        has_failed_sibling = recompute_pair_failure_task(self._session, task)
+        if failed_task_matches_record and not has_failed_sibling:
             task.status = MatchStatus.RUNNING
             task.stage = MatchStage.PAIRWISE
             task.error_code = None
@@ -406,4 +425,5 @@ __all__ = [
     "PAIRWISE_MODEL",
     "PairwiseCheckpointError",
     "PairwiseService",
+    "recompute_pair_failure_task",
 ]

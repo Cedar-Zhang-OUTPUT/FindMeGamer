@@ -524,6 +524,67 @@ def test_match_detail_groups_hidden_order_and_projects_current_creator_contact_o
     assert "dimension_scores" not in json.dumps(body)
 
 
+def test_match_detail_uses_available_creator_brief_performance_fallback(
+    auth_client: TestClient, session: Session
+) -> None:
+    game, creator = _profiles(session)
+    creator.analysis = {
+        "recent_performance_summary": _unavailable(
+            "Recent performance analysis unavailable."
+        )
+    }
+    brief = _creator_brief()
+    brief["performance_context"] = {
+        "status": "available",
+        "value": "Brief-backed recent performance.",
+        "evidence": [
+            {
+                "kind": "source_fact",
+                "source_type": "video_id",
+                "reference": "video:video-1",
+            }
+        ],
+        "confidence": "high",
+    }
+    creator.brief = CreatorBrief.model_validate(brief).model_dump(mode="json")
+    task = _task(session, game, status=MatchStatus.SUCCEEDED, stage=MatchStage.RANKING)
+    task.completed_units = task.total_units = 3
+    task.result_count = 1
+    _add_checkpoint_chain(session, task, creator, order=0)
+    session.add(
+        MatchResultItem(
+            match_task_id=task.id,
+            creator_id=creator.id,
+            backend_order=0,
+            match_brief=_pairwise(creator.id),
+            total_score=Decimal("0.8000"),
+            dimension_scores={"hidden": 1},
+            dimension_outcomes={
+                key: "Public outcome."
+                for key in (
+                    "content_fit",
+                    "audience_fit",
+                    "performance_fit",
+                    "promotion_fit",
+                    "brand_safety",
+                )
+            },
+            match_reasons=["Current task reason."],
+            result_group=MatchResultGroup.RECOMMENDED,
+            qualitative_label="Good Match",
+        )
+    )
+    session.add(OutreachCampaign(match_task_id=task.id))
+    session.flush()
+
+    response = auth_client.get(f"/api/v1/matches/{task.id}")
+
+    assert response.status_code == 200
+    creator_body = response.json()["recommended_matches"][0]["creator"]
+    assert creator_body["performance_summary"] == "Brief-backed recent performance."
+    assert "performance_context" not in creator_body
+
+
 def _second_creator(session: Session) -> CreatorProfile:
     channel = f"UC{uuid4().hex[:22]}"
     creator = CreatorProfile(
