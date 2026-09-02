@@ -25,6 +25,11 @@ from app.analysis.targets import (
     resolve_target,
 )
 from app.core.errors import APIError, safe_correlation_id
+from app.core.analysis_job_contract import (
+    INTEGRATION_ERROR_CODES,
+    public_job_failure,
+    valid_analysis_job_state,
+)
 from app.core.idempotency import (
     IDEMPOTENCY_RETENTION,
     InvalidIdempotencyKey,
@@ -41,7 +46,6 @@ from app.repositories.jobs import (
     require_valid_succeeded_job_result,
 )
 from app.schemas.jobs import (
-    ANALYSIS_JOB_INTEGRATION_ERROR_CODES,
     AnalysisJobCreate,
     AnalysisJobError,
     AnalysisJobOutcome,
@@ -61,13 +65,6 @@ _GENERIC_FAILURE = AnalysisJobError(
     code="analysis_internal_error",
     message="Analysis failed unexpectedly. Please retry.",
 )
-_SPECIAL_ERRORS = {
-    "analysis_internal_error": _GENERIC_FAILURE,
-    "analysis_queue_unavailable": AnalysisJobError(
-        code="analysis_queue_unavailable",
-        message="Analysis could not be queued. Please retry.",
-    ),
-}
 
 
 class JobDispatcher(Protocol):
@@ -114,16 +111,10 @@ class CommittedResponse:
 def _safe_error(job: AnalysisJob) -> AnalysisJobError | None:
     if job.status is not JobStatus.FAILED:
         return None
-    if job.error_code in _SPECIAL_ERRORS:
-        return _SPECIAL_ERRORS[job.error_code]
-    if job.error_code in ANALYSIS_JOB_INTEGRATION_ERROR_CODES:
-        message = (
-            "Analysis is temporarily unavailable. Please retry."
-            if job.retryable
-            else "Analysis could not be completed for this target."
-        )
-        return AnalysisJobError(code=job.error_code, message=message)
-    return _GENERIC_FAILURE
+    failure = public_job_failure(job.error_code)
+    if failure is None:
+        return _GENERIC_FAILURE
+    return AnalysisJobError(code=job.error_code, message=failure.message)
 
 
 def _invalid_job_result() -> APIError:
@@ -142,28 +133,47 @@ def _invalid_job_state() -> APIError:
     )
 
 
-def _require_safe_public_job_state(job: AnalysisJob) -> None:
-    completed_units = job.completed_units
-    total_units = job.total_units
-    if (
-        not isinstance(completed_units, int)
-        or isinstance(completed_units, bool)
-        or not isinstance(total_units, int)
-        or isinstance(total_units, bool)
-        or completed_units < 0
-        or total_units < 0
-        or completed_units > total_units
-        or (job.status is not JobStatus.FAILED and job.retryable)
+def _require_safe_public_job_state(
+    job: AnalysisJob, error: AnalysisJobError | None, retryable: bool
+) -> None:
+    if not valid_analysis_job_state(
+        status=job.status,
+        stage=job.stage,
+        completed_units=job.completed_units,
+        total_units=job.total_units,
+        error_code=error.code if error is not None else None,
+        error_message=error.message if error is not None else None,
+        retryable=retryable,
+        profile_id=job.profile_id,
+        result_present=job.result_payload is not None,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
     ):
         raise _invalid_job_state()
 
 
+_SUCCEEDED_PROFILE_NOT_PROVIDED = object()
+
+
 def project_analysis_job(
-    database_session: Session, job: AnalysisJob
+    database_session: Session,
+    job: AnalysisJob,
+    *,
+    succeeded_profile: object = _SUCCEEDED_PROFILE_NOT_PROVIDED,
 ) -> AnalysisJobResponse:
-    _require_safe_public_job_state(job)
+    error = _safe_error(job)
+    failure = public_job_failure(error.code) if error is not None else None
+    retryable = failure.retryable if failure is not None else job.retryable
+    _require_safe_public_job_state(job, error, retryable)
     try:
-        require_valid_succeeded_job_result(database_session, job)
+        if succeeded_profile is _SUCCEEDED_PROFILE_NOT_PROVIDED:
+            require_valid_succeeded_job_result(database_session, job)
+        else:
+            require_valid_succeeded_job_result(
+                database_session, job, succeeded_profile=succeeded_profile
+            )
     except PermanentIntegrationError as error:
         if error.code == "analysis_job_result_invalid":
             raise _invalid_job_result() from None
@@ -178,8 +188,8 @@ def project_analysis_job(
         stage=job.stage,
         completed_units=job.completed_units,
         total_units=job.total_units,
-        retryable=job.retryable,
-        error=_safe_error(job),
+        retryable=retryable,
+        error=error,
         correlation_id=safe_correlation_id(job.correlation_id),
         profile_id=job.profile_id,
         created_at=job.created_at,
@@ -521,6 +531,7 @@ def create_router(
             jobs, has_more = repository.list_changed_jobs(
                 cursor=decoded, status=status, limit=limit
             )
+            succeeded_profiles = repository.load_succeeded_profiles(jobs)
             if jobs:
                 next_value = (jobs[-1].updated_at, jobs[-1].id)
                 cursor = _encode_cursor(
@@ -534,7 +545,16 @@ def create_router(
                     status=status,
                     signing_key=cursor_signing_key,
                 )
-            items = [project_analysis_job(database_session, job) for job in jobs]
+            items = [
+                project_analysis_job(
+                    database_session,
+                    job,
+                    succeeded_profile=succeeded_profiles.get(
+                        (job.target_type, job.profile_id)
+                    ),
+                )
+                for job in jobs
+            ]
             affected_profile_ids = list(
                 dict.fromkeys(
                     job.profile_id
@@ -618,7 +638,7 @@ def create_router(
                     message="Analysis resources could not be closed safely.",
                     retryable=False,
                 ) from None
-            if error.code in ANALYSIS_JOB_INTEGRATION_ERROR_CODES:
+            if error.code in INTEGRATION_ERROR_CODES:
                 raise APIError(
                     status_code=502,
                     code=error.code,

@@ -21,6 +21,10 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.analysis_job_contract import (
+    ANALYSIS_JOB_STATUS_SHAPE_SQL,
+    PUBLIC_JOB_ERROR_MAPPING_SQL,
+)
 from app.db.base import Base, TimestampMixin
 from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
 
@@ -123,6 +127,14 @@ class AnalysisJob(TimestampMixin, Base):
         CheckConstraint(
             "status = 'failed' OR NOT retryable",
             name="ck_analysis_jobs_retryable_only_failed",
+        ),
+        CheckConstraint(
+            f"status <> 'failed' OR ({PUBLIC_JOB_ERROR_MAPPING_SQL})",
+            name="ck_analysis_jobs_error_mapping",
+        ),
+        CheckConstraint(
+            ANALYSIS_JOB_STATUS_SHAPE_SQL,
+            name="ck_analysis_jobs_status_shape",
         ),
         Index(
             "uq_analysis_jobs_active_target",

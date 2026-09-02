@@ -3,7 +3,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select, tuple_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.analysis.targets import CanonicalTarget, InvalidTarget, canonicalize_target
 from app.db.models.enums import JobMode, JobStatus, TargetType
@@ -17,7 +17,15 @@ from app.db.models.profiles import CreatorProfile, GameProfile
 from app.integrations.errors import PermanentIntegrationError
 
 
-def require_valid_succeeded_job_result(session: Session, job: AnalysisJob) -> None:
+_PROFILE_NOT_PROVIDED = object()
+
+
+def require_valid_succeeded_job_result(
+    session: Session,
+    job: AnalysisJob,
+    *,
+    succeeded_profile: object = _PROFILE_NOT_PROVIDED,
+) -> None:
     if job.status is not JobStatus.SUCCEEDED:
         return
     if job.profile_id is None or not isinstance(job.result_payload, dict):
@@ -27,7 +35,11 @@ def require_valid_succeeded_job_result(session: Session, job: AnalysisJob) -> No
     if job.result_payload.get("profile_id") != str(job.profile_id):
         raise PermanentIntegrationError("analysis_job_result_invalid")
     if job.target_type is TargetType.GAME:
-        profile = session.get(GameProfile, job.profile_id)
+        profile = (
+            session.get(GameProfile, job.profile_id)
+            if succeeded_profile is _PROFILE_NOT_PROVIDED
+            else succeeded_profile
+        )
         valid = bool(
             profile is not None
             and _is_canonical_identity(
@@ -44,7 +56,11 @@ def require_valid_succeeded_job_result(session: Session, job: AnalysisJob) -> No
             and profile.canonical_url == job.canonical_url
         )
     elif job.target_type is TargetType.CREATOR:
-        profile = session.get(CreatorProfile, job.profile_id)
+        profile = (
+            session.get(CreatorProfile, job.profile_id)
+            if succeeded_profile is _PROFILE_NOT_PROVIDED
+            else succeeded_profile
+        )
         valid = bool(
             profile is not None
             and _is_canonical_identity(
@@ -165,6 +181,52 @@ class JobsRepository:
             statement.order_by(AnalysisJob.updated_at, AnalysisJob.id).limit(limit + 1)
         ).all()
         return list(rows[:limit]), len(rows) > limit
+
+    def load_succeeded_profiles(
+        self, jobs: list[AnalysisJob]
+    ) -> dict[tuple[TargetType, UUID], GameProfile | CreatorProfile]:
+        game_ids = {
+            job.profile_id
+            for job in jobs
+            if job.status is JobStatus.SUCCEEDED
+            and job.target_type is TargetType.GAME
+            and job.profile_id is not None
+        }
+        creator_ids = {
+            job.profile_id
+            for job in jobs
+            if job.status is JobStatus.SUCCEEDED
+            and job.target_type is TargetType.CREATOR
+            and job.profile_id is not None
+        }
+        profiles: dict[tuple[TargetType, UUID], GameProfile | CreatorProfile] = {}
+        if game_ids:
+            for profile in self._session.scalars(
+                select(GameProfile)
+                .options(
+                    load_only(
+                        GameProfile.id,
+                        GameProfile.steam_app_id,
+                        GameProfile.canonical_url,
+                    )
+                )
+                .where(GameProfile.id.in_(game_ids))
+            ):
+                profiles[(TargetType.GAME, profile.id)] = profile
+        if creator_ids:
+            for profile in self._session.scalars(
+                select(CreatorProfile)
+                .options(
+                    load_only(
+                        CreatorProfile.id,
+                        CreatorProfile.youtube_channel_id,
+                        CreatorProfile.canonical_url,
+                    )
+                )
+                .where(CreatorProfile.id.in_(creator_ids))
+            ):
+                profiles[(TargetType.CREATOR, profile.id)] = profile
+        return profiles
 
     def database_now(self) -> datetime:
         return next_job_change_timestamp(self._session)

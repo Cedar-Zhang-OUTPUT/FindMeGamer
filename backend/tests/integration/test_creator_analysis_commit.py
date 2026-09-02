@@ -64,6 +64,9 @@ def _job(
     profile_id: UUID | None = None,
 ) -> UUID:
     job_id = uuid4()
+    effective_profile_id = (
+        profile_id or uuid4() if status is JobStatus.SUCCEEDED else None
+    )
     with factory.begin() as session:
         session.add(
             AnalysisJob(
@@ -73,11 +76,39 @@ def _job(
                 canonical_url="https://www.youtube.com/channel/UCcreator123",
                 mode=JobMode.REANALYZE,
                 status=status,
-                profile_id=profile_id,
-                result_payload=(
-                    {"profile_id": str(profile_id)}
-                    if status is JobStatus.SUCCEEDED and profile_id is not None
+                stage=(
+                    AnalysisStage.FINALIZING
+                    if status is JobStatus.SUCCEEDED
+                    else (
+                        AnalysisStage.FETCHING_DATA
+                        if status is JobStatus.RUNNING
+                        else None
+                    )
+                ),
+                completed_units=5 if status is JobStatus.SUCCEEDED else 0,
+                total_units=(
+                    5 if status in (JobStatus.RUNNING, JobStatus.SUCCEEDED) else 0
+                ),
+                error_code=(
+                    "analysis_internal_error" if status is JobStatus.FAILED else None
+                ),
+                error_message=(
+                    "Analysis failed unexpectedly. Please retry."
+                    if status is JobStatus.FAILED
                     else None
+                ),
+                retryable=status is JobStatus.FAILED,
+                profile_id=effective_profile_id,
+                result_payload=(
+                    {"profile_id": str(effective_profile_id)}
+                    if effective_profile_id is not None
+                    else None
+                ),
+                started_at=(
+                    NOW if status in (JobStatus.RUNNING, JobStatus.SUCCEEDED) else None
+                ),
+                completed_at=(
+                    NOW if status in (JobStatus.FAILED, JobStatus.SUCCEEDED) else None
                 ),
             )
         )
@@ -592,6 +623,10 @@ def test_semantic_and_contact_binder_failures_preserve_profile_and_contacts(
         job = session.get(AnalysisJob, job_id)
         assert job is not None
         job.status = JobStatus.FAILED
+        job.error_code = "analysis_internal_error"
+        job.error_message = "Analysis failed unexpectedly. Please retry."
+        job.retryable = True
+        job.completed_at = NOW
     next_job = _job(committed_factory)
     bad_contact_payload = creator_synthesis_payload()
     bad_contact_payload["public_email"] = {
@@ -611,23 +646,23 @@ def test_semantic_and_contact_binder_failures_preserve_profile_and_contacts(
 
 
 @pytest.mark.parametrize(
-    ("status", "stage", "units"),
+    ("status", "stage", "units", "total_units"),
     [
-        (JobStatus.RUNNING, AnalysisStage.ANALYZING, 3),
-        (JobStatus.QUEUED, AnalysisStage.FINALIZING, 4),
+        (JobStatus.RUNNING, AnalysisStage.ANALYZING, 3, 5),
+        (JobStatus.RUNNING, AnalysisStage.FINALIZING, 6, 7),
     ],
 )
 def test_resume_preserves_stage_started_at_and_progress(
-    committed_factory, status, stage, units
+    committed_factory, status, stage, units, total_units
 ) -> None:
     job_id = _job(committed_factory, status=status)
-    first_started = NOW - timedelta(hours=2)
+    first_started = NOW - timedelta(minutes=30)
     with committed_factory.begin() as session:
         job = session.get(AnalysisJob, job_id)
         assert job is not None
         job.stage = stage
         job.completed_units = units
-        job.total_units = 5
+        job.total_units = total_units
         job.started_at = first_started
 
     CreatorAnalysisService(session_factory=committed_factory, clock=lambda: NOW).start(
@@ -640,6 +675,7 @@ def test_resume_preserves_stage_started_at_and_progress(
         assert job.status is JobStatus.RUNNING
         assert job.stage is stage
         assert job.completed_units == units
+        assert job.total_units == total_units
         assert job.started_at == first_started
 
 
@@ -692,12 +728,35 @@ def test_advance_is_forward_only_and_succeeded_is_a_noop(committed_factory) -> N
         job.profile_id = profile.id
         job.result_payload = {"profile_id": str(profile.id)}
         job.completed_units = 5
+        job.completed_at = NOW
     service.advance(job_id, completed_units=2)
     with committed_factory() as session:
         job = session.get(AnalysisJob, job_id)
         assert job is not None
         assert job.status is JobStatus.SUCCEEDED
         assert job.completed_units == 5
+
+
+def test_advance_keeps_nondefault_running_progress_below_total(
+    committed_factory,
+) -> None:
+    job_id = _job(committed_factory, status=JobStatus.RUNNING)
+    with committed_factory.begin() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        job.completed_units = 0
+        job.total_units = 1
+
+    CreatorAnalysisService(
+        session_factory=committed_factory, clock=lambda: NOW
+    ).advance(job_id, completed_units=2)
+
+    with committed_factory() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        assert job.status is JobStatus.RUNNING
+        assert job.stage is AnalysisStage.ANALYZING
+        assert (job.completed_units, job.total_units) == (0, 1)
 
 
 def test_invalid_current_creator_interval_rolls_back_publication(

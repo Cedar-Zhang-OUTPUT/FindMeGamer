@@ -9,12 +9,13 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from sqlalchemy import update
+from sqlalchemy import event, update
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from app.core.crypto import SecretCipher
 from app.core.errors import APIError
+from app.core.analysis_job_contract import PUBLIC_JOB_FAILURES
 from app.core.security import hash_workspace_key
 from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob
@@ -52,21 +53,25 @@ def _job(
         mode=JobMode.CREATE,
         status=status,
         stage=(
-            AnalysisStage.FINALIZING
-            if status is JobStatus.SUCCEEDED
-            else AnalysisStage.FETCHING_DATA
+            None
+            if status is JobStatus.QUEUED
+            else (
+                AnalysisStage.FINALIZING
+                if status is JobStatus.SUCCEEDED
+                else AnalysisStage.FETCHING_DATA
+            )
         ),
         completed_units=5 if status is JobStatus.SUCCEEDED else 0,
-        total_units=5,
+        total_units=0 if status is JobStatus.QUEUED else 5,
         retryable=status is JobStatus.FAILED,
         correlation_id=str(uuid4()),
         profile_id=profile_id,
-        started_at=NOW,
+        started_at=None if status is JobStatus.QUEUED else NOW,
         completed_at=NOW if status in {JobStatus.SUCCEEDED, JobStatus.FAILED} else None,
     )
     if status is JobStatus.FAILED:
         job.error_code = "analysis_queue_unavailable"
-        job.error_message = "unsafe raw broker redis://credential@example"
+        job.error_message = "Analysis could not be queued. Please retry."
     if status is JobStatus.SUCCEEDED and profile_id is not None:
         job.result_payload = {"profile_id": str(profile_id)}
     session.add(job)
@@ -215,6 +220,9 @@ def test_subsequent_poll_waits_for_invisible_update_before_advancing(
                 job = delayed.get(AnalysisJob, job_id)
                 assert job is not None
                 job.status = JobStatus.RUNNING
+                job.stage = AnalysisStage.FETCHING_DATA
+                job.total_units = 5
+                job.started_at = datetime.now(UTC)
                 delayed.flush()
 
                 def poll() -> None:
@@ -278,6 +286,9 @@ def test_change_arriving_after_cursor_advances_past_regressed_database_clock(
                 job = mutate.get(AnalysisJob, job_id)
                 assert job is not None
                 job.status = JobStatus.RUNNING
+                job.stage = AnalysisStage.FETCHING_DATA
+                job.total_units = 5
+                job.started_at = datetime.now(UTC)
             changed = client.get("/api/v1/jobs", params={"changed_after": baseline})
 
         assert changed.status_code == 200
@@ -293,8 +304,6 @@ def test_job_read_uses_one_safe_projection_and_never_reflects_internal_fields(
     auth_client: TestClient, session: Session
 ) -> None:
     job = _job(session, status=JobStatus.FAILED)
-    job.result_payload = {"provider_text": "do-not-return"}
-    session.flush()
 
     response = auth_client.get(f"/api/v1/jobs/{job.id}")
     body = response.json()
@@ -381,6 +390,7 @@ def test_coordinated_malformed_success_identity_is_rejected_by_public_projection
         total_units=5,
         profile_id=profile.id,
         result_payload={"profile_id": str(profile.id)},
+        started_at=NOW,
         completed_at=NOW,
     )
     session.add(job)
@@ -421,6 +431,52 @@ def test_central_projection_rejects_invalid_persisted_job_state(
     assert error.value.status_code == 500
 
 
+@pytest.mark.parametrize("case", ["queued", "running", "succeeded", "failed"])
+def test_central_projection_rejects_cross_status_state(
+    session: Session, case: str
+) -> None:
+    if case == "succeeded":
+        app_id = str(1_900_000_000 + uuid4().int % 100_000_000)
+        profile = GameProfile(
+            steam_app_id=app_id,
+            canonical_url=f"https://store.steampowered.com/app/{app_id}",
+            sort_name="Structurally corrupt success",
+        )
+        session.add(profile)
+        session.flush()
+        job = _job(session, status=JobStatus.SUCCEEDED, profile_id=profile.id)
+        job.stage = None
+        job.completed_units = 0
+        job.completed_at = None
+    else:
+        status = {
+            "queued": JobStatus.QUEUED,
+            "running": JobStatus.RUNNING,
+            "failed": JobStatus.FAILED,
+        }[case]
+        job = _job(session, status=status)
+        if case == "queued":
+            job.stage = AnalysisStage.FINALIZING
+            job.completed_units = 5
+            job.total_units = 5
+            job.started_at = NOW
+            job.completed_at = NOW
+        elif case == "running":
+            job.error_code = "steam_unavailable"
+            job.error_message = "Analysis is temporarily unavailable. Please retry."
+            job.completed_at = NOW
+        else:
+            job.error_code = None
+            job.error_message = None
+            job.completed_at = None
+            job.profile_id = uuid4()
+
+    with pytest.raises(APIError) as error:
+        project_analysis_job(session, job)
+
+    assert error.value.code == "analysis_job_state_invalid"
+
+
 @pytest.mark.parametrize(
     ("updates", "match"),
     [
@@ -442,6 +498,81 @@ def test_public_job_schema_rejects_unsafe_state(
         AnalysisJobResponse.model_validate(payload)
 
 
+def _valid_queued_response_payload() -> dict[str, object]:
+    return {
+        "outcome": "job",
+        "id": str(uuid4()),
+        "target_type": "game",
+        "canonical_target_id": "123",
+        "canonical_url": "https://store.steampowered.com/app/123",
+        "mode": "create",
+        "status": "queued",
+        "stage": None,
+        "completed_units": 0,
+        "total_units": 0,
+        "retryable": False,
+        "error": None,
+        "correlation_id": None,
+        "profile_id": None,
+        "created_at": NOW.isoformat(),
+        "updated_at": NOW.isoformat(),
+        "started_at": None,
+        "completed_at": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {
+            "stage": "finalizing",
+            "completed_units": 5,
+            "total_units": 5,
+            "profile_id": str(uuid4()),
+            "started_at": NOW.isoformat(),
+            "completed_at": NOW.isoformat(),
+        },
+        {
+            "status": "running",
+            "stage": "fetching_data",
+            "total_units": 5,
+            "started_at": NOW.isoformat(),
+            "completed_at": NOW.isoformat(),
+            "error": {
+                "code": "steam_unavailable",
+                "message": "Analysis is temporarily unavailable. Please retry.",
+            },
+        },
+        {
+            "status": "succeeded",
+            "total_units": 5,
+        },
+        {
+            "status": "failed",
+            "profile_id": str(uuid4()),
+        },
+        {
+            "status": "failed",
+            "stage": "fetching_data",
+            "total_units": 5,
+            "error": {
+                "code": "steam_unavailable",
+                "message": "Analysis is temporarily unavailable. Please retry.",
+            },
+            "retryable": True,
+            "started_at": (NOW + timedelta(hours=1)).isoformat(),
+            "completed_at": (NOW - timedelta(hours=1)).isoformat(),
+        },
+    ],
+)
+def test_public_job_schema_rejects_cross_status_state(updates) -> None:
+    payload = _valid_queued_response_payload()
+    payload.update(updates)
+
+    with pytest.raises(ValidationError):
+        AnalysisJobResponse.model_validate(payload)
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -453,6 +584,24 @@ def test_public_job_schema_rejects_unsafe_state(
     ],
 )
 def test_public_job_error_schema_accepts_only_fixed_safe_mappings(payload) -> None:
+    with pytest.raises(ValidationError):
+        AnalysisJobError.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "code": "steam_game_not_found",
+            "message": "Analysis is temporarily unavailable. Please retry.",
+        },
+        {
+            "code": "steam_unavailable",
+            "message": "Analysis could not be completed for this target.",
+        },
+    ],
+)
+def test_public_job_error_schema_rejects_cross_code_message_mappings(payload) -> None:
     with pytest.raises(ValidationError):
         AnalysisJobError.model_validate(payload)
 
@@ -482,6 +631,20 @@ def test_public_job_error_schema_accepts_existing_safe_mappings(payload) -> None
     assert AnalysisJobError.model_validate(payload).model_dump() == payload
 
 
+def test_every_public_job_error_code_has_one_schema_message() -> None:
+    alternate_messages = {failure.message for failure in PUBLIC_JOB_FAILURES.values()}
+    for code, failure in PUBLIC_JOB_FAILURES.items():
+        assert AnalysisJobError(
+            code=code,
+            message=failure.message,
+        ).model_dump() == {"code": code, "message": failure.message}
+        wrong_message = next(
+            message for message in alternate_messages if message != failure.message
+        )
+        with pytest.raises(ValidationError):
+            AnalysisJobError(code=code, message=wrong_message)
+
+
 @pytest.mark.parametrize("path", ["/api/v1/jobs/{job_id}", "/api/v1/jobs"])
 def test_corrupt_succeeded_job_is_rejected_before_every_public_projection(
     auth_client: TestClient, session: Session, path: str
@@ -509,13 +672,12 @@ def test_corrupt_succeeded_job_is_rejected_before_every_public_projection(
 
 
 def test_unknown_stored_error_degrades_to_generic_safe_failure(
-    auth_client: TestClient, session: Session
+    session: Session,
 ) -> None:
     job = _job(session, status=JobStatus.FAILED)
     job.error_code = "unknown_private_provider_error"
     job.error_message = "api-key=never-return"
-    session.flush()
-    body = auth_client.get(f"/api/v1/jobs/{job.id}").json()
+    body = project_analysis_job(session, job).model_dump(mode="json")
     assert body["error"] == {
         "code": "analysis_internal_error",
         "message": "Analysis failed unexpectedly. Please retry.",
@@ -597,8 +759,12 @@ def test_status_cursor_is_scope_bound_and_later_transition_appears(
         .where(AnalysisJob.id == job.id)
         .values(
             status=JobStatus.SUCCEEDED,
+            stage=AnalysisStage.FINALIZING,
+            completed_units=5,
+            total_units=5,
             profile_id=profile.id,
             result_payload={"profile_id": str(profile.id)},
+            completed_at=NOW + timedelta(seconds=1),
             updated_at=NOW + timedelta(seconds=2),
         )
     )
@@ -626,6 +792,69 @@ def test_succeeded_items_return_stable_deduplicated_affected_profile_ids(
         str(second.id),
     }
     assert body["affected_profile_ids"] == [str(profile.id)]
+
+
+def test_succeeded_job_polling_bulk_loads_profiles_under_one_fenced_snapshot(
+    auth_client: TestClient, session: Session
+) -> None:
+    for offset in range(25):
+        app_id = str(1_800_000_000 + offset)
+        profile = GameProfile(
+            steam_app_id=app_id,
+            canonical_url=f"https://store.steampowered.com/app/{app_id}",
+            sort_name=f"Bulk profile {offset}",
+        )
+        session.add(profile)
+        session.flush()
+        _job(session, status=JobStatus.SUCCEEDED, profile_id=profile.id)
+    session.expunge_all()
+
+    statements: list[str] = []
+
+    def record_statement(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ) -> None:
+        statements.append(" ".join(statement.casefold().split()))
+
+    connection = session.connection()
+    event.listen(connection, "before_cursor_execute", record_statement)
+    try:
+        response = auth_client.get("/api/v1/jobs", params={"limit": 100})
+    finally:
+        event.remove(connection, "before_cursor_execute", record_statement)
+
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == 25
+    profile_selects = [
+        statement
+        for statement in statements
+        if statement.startswith("select") and " from game_profiles" in statement
+    ]
+    assert len(profile_selects) == 1
+    assert all(
+        column not in profile_selects[0]
+        for column in (
+            "current_facts",
+            "analysis",
+            "brief",
+            "source_status",
+            "model_metadata",
+            "prompt_metadata",
+        )
+    )
+    advisory_index = next(
+        index
+        for index, statement in enumerate(statements)
+        if "pg_advisory_xact_lock" in statement
+    )
+    jobs_index = next(
+        index
+        for index, statement in enumerate(statements)
+        if statement.startswith("select") and " from analysis_jobs" in statement
+    )
+    profiles_index = statements.index(profile_selects[0])
+    assert advisory_index < jobs_index < profiles_index
+    assert len(statements) <= 4
 
 
 @pytest.mark.parametrize("cursor", ["", "x" * 2049, "not-base64", _encode([1, 2])])

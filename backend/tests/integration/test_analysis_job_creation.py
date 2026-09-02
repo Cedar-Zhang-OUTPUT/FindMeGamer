@@ -27,7 +27,7 @@ from app.analysis.targets import (
 from app.core.crypto import SecretCipher
 from app.core.idempotency import request_hash
 from app.core.security import hash_workspace_key
-from app.db.models.enums import JobMode, JobStatus, TargetType
+from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
 from app.db.models.profiles import CreatorProfile, GameProfile
@@ -287,17 +287,40 @@ def _failed_job(
         if target_type is TargetType.GAME
         else f"https://www.youtube.com/channel/{canonical_id}"
     )
+    timestamp = datetime.now(UTC) + timedelta(seconds=1)
+    profile_id = uuid4() if status is JobStatus.SUCCEEDED else None
+    failed_code = "analysis_internal_error" if retryable else "steam_game_not_found"
+    failed_message = (
+        "Analysis failed unexpectedly. Please retry."
+        if retryable
+        else "Analysis could not be completed for this target."
+    )
     job = AnalysisJob(
         target_type=target_type,
         canonical_target_id=canonical_id,
         canonical_url=canonical_url,
         mode=mode,
         status=status,
-        retryable=retryable,
-        error_code="upstream_timeout",
-        error_message="contains unsafe upstream detail secret=do-not-return",
-        result_payload={"hidden": "do-not-return"},
-        completed_at=datetime.now(UTC) if status is JobStatus.FAILED else None,
+        stage=(
+            AnalysisStage.FINALIZING
+            if status is JobStatus.SUCCEEDED
+            else (AnalysisStage.FETCHING_DATA if status is JobStatus.RUNNING else None)
+        ),
+        completed_units=5 if status is JobStatus.SUCCEEDED else 0,
+        total_units=(5 if status in (JobStatus.RUNNING, JobStatus.SUCCEEDED) else 0),
+        retryable=retryable if status is JobStatus.FAILED else False,
+        error_code=failed_code if status is JobStatus.FAILED else None,
+        error_message=failed_message if status is JobStatus.FAILED else None,
+        profile_id=profile_id,
+        result_payload=(
+            {"profile_id": str(profile_id)} if profile_id is not None else None
+        ),
+        started_at=(
+            timestamp if status in (JobStatus.RUNNING, JobStatus.SUCCEEDED) else None
+        ),
+        completed_at=(
+            timestamp if status in (JobStatus.FAILED, JobStatus.SUCCEEDED) else None
+        ),
     )
     session.add(job)
     session.flush()
@@ -1001,6 +1024,15 @@ def test_create_prefers_existing_profile_over_active_reanalysis(
         mode=JobMode.REANALYZE,
         status=active_status,
         correlation_id="original-active-correlation",
+        stage=(
+            AnalysisStage.FETCHING_DATA if active_status is JobStatus.RUNNING else None
+        ),
+        total_units=5 if active_status is JobStatus.RUNNING else 0,
+        started_at=(
+            datetime.now(UTC) + timedelta(seconds=1)
+            if active_status is JobStatus.RUNNING
+            else None
+        ),
     )
     session.add_all((profile, active))
     session.flush()
@@ -1076,6 +1108,9 @@ def test_reanalyze_with_existing_profile_still_returns_active_job(
         canonical_url=canonical_url,
         mode=JobMode.REANALYZE,
         status=JobStatus.RUNNING,
+        stage=AnalysisStage.FETCHING_DATA,
+        total_units=5,
+        started_at=datetime.now(UTC) + timedelta(seconds=1),
     )
     session.add_all((profile, active))
     session.flush()
@@ -1309,8 +1344,7 @@ def test_job_response_does_not_leak_internal_fields(
         status=JobStatus.QUEUED,
         retryable=False,
     )
-    active.error_message = "unsafe secret"
-    active.result_payload = {"secret": "hidden"}
+    active.correlation_id = "unsafe-secret"
     session.flush()
 
     response = auth_client.post(
@@ -1325,7 +1359,7 @@ def test_job_response_does_not_leak_internal_fields(
     assert response.status_code == 200
     assert response.json()["id"] == str(active.id)
     assert "unsafe" not in serialized
-    assert "hidden" not in serialized
+    assert response.json()["correlation_id"] is None
     assert "idempotency" not in serialized.casefold()
 
 
@@ -1402,7 +1436,7 @@ def test_retry_creates_new_historical_job_and_replays_same_key(
     assert UUID(first.json()["id"]) != source.id
     assert first.json()["mode"] == "reanalyze"
     assert source.status is JobStatus.FAILED
-    assert source.error_code == "upstream_timeout"
+    assert source.error_code == "analysis_internal_error"
     assert (
         session.scalar(
             select(func.count())
@@ -1435,6 +1469,9 @@ def test_retry_reuses_an_existing_active_duplicate(
         canonical_url=source.canonical_url,
         mode=JobMode.REANALYZE,
         status=JobStatus.RUNNING,
+        stage=AnalysisStage.FETCHING_DATA,
+        total_units=5,
+        started_at=datetime.now(UTC) + timedelta(seconds=1),
     )
     session.add(active)
     session.flush()

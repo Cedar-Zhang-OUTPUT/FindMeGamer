@@ -1,5 +1,8 @@
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from pathlib import Path
+import subprocess
+import sys
 from uuid import UUID, uuid4
 
 import pytest
@@ -8,6 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.analysis_job_contract import PUBLIC_JOB_FAILURES
 from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob
 from app.db.models.profiles import CreatorProfile, GameProfile
@@ -29,6 +33,7 @@ from app.workers.celery_app import celery_app
 
 
 NOW = datetime(2026, 9, 2, 8, 30, tzinfo=UTC)
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 
 class FakePipeline:
@@ -41,6 +46,18 @@ class FakePipeline:
         if self.error is not None:
             raise self.error
         return uuid4()
+
+
+def test_worker_module_can_be_first_application_import_in_a_fresh_process() -> None:
+    completed = subprocess.run(
+        [sys.executable, "-c", "import app.workers.analysis_tasks"],
+        cwd=BACKEND_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
 
 
 class PipelineFactory:
@@ -76,6 +93,7 @@ def _job(
         if target_type is TargetType.GAME
         else f"https://www.youtube.com/channel/{canonical_id}"
     )
+    profile_id = uuid4() if status is JobStatus.SUCCEEDED else None
     job = AnalysisJob(
         target_type=target_type,
         canonical_target_id=canonical_id,
@@ -83,6 +101,30 @@ def _job(
         mode=JobMode.CREATE,
         status=status,
         correlation_id=f"correlation-{uuid4()}",
+        stage=(
+            AnalysisStage.FINALIZING
+            if status is JobStatus.SUCCEEDED
+            else (AnalysisStage.FETCHING_DATA if status is JobStatus.RUNNING else None)
+        ),
+        completed_units=5 if status is JobStatus.SUCCEEDED else 0,
+        total_units=(5 if status in (JobStatus.RUNNING, JobStatus.SUCCEEDED) else 0),
+        error_code=("analysis_internal_error" if status is JobStatus.FAILED else None),
+        error_message=(
+            "Analysis failed unexpectedly. Please retry."
+            if status is JobStatus.FAILED
+            else None
+        ),
+        retryable=status is JobStatus.FAILED,
+        profile_id=profile_id,
+        result_payload=(
+            {"profile_id": str(profile_id)} if profile_id is not None else None
+        ),
+        started_at=(
+            NOW if status in (JobStatus.RUNNING, JobStatus.SUCCEEDED) else None
+        ),
+        completed_at=(
+            NOW if status in (JobStatus.FAILED, JobStatus.SUCCEEDED) else None
+        ),
     )
     session.add(job)
     session.flush()
@@ -123,6 +165,45 @@ def test_celery_app_is_broker_only_json_and_registers_stable_task() -> None:
     assert celery_app.conf.task_acks_late is True
     assert celery_app.conf.task_reject_on_worker_lost is True
     assert celery_app.conf.worker_prefetch_multiplier == 1
+
+
+@pytest.mark.parametrize(
+    ("code", "message", "retryable"),
+    [
+        (
+            "steam_game_not_found",
+            "Analysis is temporarily unavailable. Please retry.",
+            True,
+        ),
+        (
+            "steam_unavailable",
+            "Analysis could not be completed for this target.",
+            False,
+        ),
+    ],
+)
+def test_terminal_failure_rejects_cross_code_semantics(
+    code: str, message: str, retryable: bool
+) -> None:
+    with pytest.raises(ValueError):
+        TerminalFailure(code=code, message=message, retryable=retryable)
+
+
+def test_every_public_job_error_code_has_one_terminal_failure_shape() -> None:
+    alternate_messages = {failure.message for failure in PUBLIC_JOB_FAILURES.values()}
+    for code, failure in PUBLIC_JOB_FAILURES.items():
+        assert TerminalFailure(
+            code=code,
+            message=failure.message,
+            retryable=failure.retryable,
+        ) == TerminalFailure(code, failure.message, failure.retryable)
+        wrong_message = next(
+            message for message in alternate_messages if message != failure.message
+        )
+        with pytest.raises(ValueError):
+            TerminalFailure(code, wrong_message, failure.retryable)
+        with pytest.raises(ValueError):
+            TerminalFailure(code, failure.message, not failure.retryable)
     assert celery_app.conf.broker_connection_retry_on_startup is True
     assert "app.workers.analysis_tasks" in celery_app.conf.include
 
@@ -191,7 +272,7 @@ def test_running_redelivery_preserves_progress_and_started_time(
     session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     job = _job(session, status=JobStatus.RUNNING)
-    original_started = datetime(2026, 9, 1, 1, 2, tzinfo=UTC)
+    original_started = datetime(2026, 9, 2, 8, 0, tzinfo=UTC)
     job.started_at = original_started
     job.stage = AnalysisStage.ANALYZING
     job.completed_units = 3
@@ -211,6 +292,32 @@ def test_running_redelivery_preserves_progress_and_started_time(
     assert saved.stage is AnalysisStage.ANALYZING
     assert (saved.completed_units, saved.total_units) == (3, 5)
     assert pipeline.calls == [job.id]
+
+
+def test_running_redelivery_preserves_valid_nondefault_total_units(
+    session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    job = _job(session, status=JobStatus.RUNNING)
+    job.stage = AnalysisStage.ANALYZING
+    job.completed_units = 3
+    job.total_units = 7
+    session.flush()
+    pipeline = FakePipeline()
+    executor, _factory = _executor(session, pipeline)
+    monkeypatch.setattr(
+        "app.workers.analysis_tasks.get_analysis_executor", lambda: executor
+    )
+
+    run_analysis_job.apply(args=[str(job.id)], throw=True).get()
+
+    session.expire_all()
+    saved = session.get(AnalysisJob, job.id)
+    assert saved is not None
+    assert (saved.stage, saved.completed_units, saved.total_units) == (
+        AnalysisStage.ANALYZING,
+        3,
+        7,
+    )
 
 
 @pytest.mark.parametrize("status", [JobStatus.FAILED, JobStatus.SUCCEEDED])
@@ -407,6 +514,38 @@ def test_terminal_failure_is_idempotent_and_preserves_first_outcome(
     assert (saved.error_code, saved.retryable) == ("steam_game_not_found", False)
 
 
+def test_running_terminal_failure_preserves_valid_progress_shape(
+    session: Session,
+) -> None:
+    job = _job(session, status=JobStatus.RUNNING)
+    job.stage = AnalysisStage.ANALYZING
+    job.completed_units = 3
+    job.total_units = 7
+    started_at = job.started_at
+    session.flush()
+
+    write_terminal_failure(
+        job.id,
+        TerminalFailure(
+            code="steam_game_not_found",
+            message="Analysis could not be completed for this target.",
+            retryable=False,
+        ),
+        session_factory=lambda: _session_factory(session),
+        clock=lambda: NOW,
+    )
+
+    session.expire_all()
+    saved = session.get(AnalysisJob, job.id)
+    assert saved is not None
+    assert (saved.stage, saved.completed_units, saved.total_units) == (
+        AnalysisStage.ANALYZING,
+        3,
+        7,
+    )
+    assert saved.started_at == started_at
+
+
 @pytest.mark.parametrize("terminal_state", ["missing", "failed", "succeeded"])
 def test_terminal_noop_never_evaluates_failure_clock(
     session: Session, terminal_state: str
@@ -517,29 +656,36 @@ def test_coordinated_malformed_success_is_rejected_and_never_overwritten(
 ) -> None:
     malformed_id = "AKIASECRETEXAMPLE123"
     malformed_url = "https://evil.example/path?api_key=provider-secret"
+    profile_id = uuid4()
     job = AnalysisJob(
         target_type=target_type,
         canonical_target_id=malformed_id,
         canonical_url=malformed_url,
         mode=JobMode.CREATE,
         status=JobStatus.SUCCEEDED,
+        stage=AnalysisStage.FINALIZING,
+        completed_units=5,
+        total_units=5,
+        profile_id=profile_id,
+        result_payload={"profile_id": str(profile_id)},
+        started_at=NOW,
+        completed_at=NOW,
     )
     if target_type is TargetType.GAME:
         profile = GameProfile(
+            id=profile_id,
             steam_app_id=malformed_id,
             canonical_url=malformed_url,
             sort_name="Malformed game success",
         )
     else:
         profile = CreatorProfile(
+            id=profile_id,
             youtube_channel_id=malformed_id,
             canonical_url=malformed_url,
             sort_name="Malformed creator success",
         )
     session.add_all([job, profile])
-    session.flush()
-    job.profile_id = profile.id
-    job.result_payload = {"profile_id": str(profile.id)}
     session.flush()
 
     with pytest.raises(PermanentIntegrationError) as raised:

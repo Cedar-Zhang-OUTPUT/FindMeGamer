@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from threading import Event, Thread
 from time import monotonic
@@ -13,11 +13,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
-from app.db.models.enums import JobStatus, TargetType
+from app.db.models.enums import AnalysisStage, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob, JOB_CHANGE_ADVISORY_LOCK_ID
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 from app.db.models.settings import SharedSettings
+from app.repositories.jobs import JobsRepository
 from app.workers.analysis_tasks import TerminalFailure, write_terminal_failure
 
 
@@ -85,9 +86,20 @@ def test_analysis_job_enums_are_enforced_by_postgresql(
         "target_type": "game",
         "mode": "create",
         "status": "queued",
-        "stage": "fetching_data",
+        "stage": None,
+        "completed_units": 0,
+        "total_units": 0,
+        "started_at": None,
     }
-    values[column] = value
+    if column == "stage":
+        values.update(
+            status="running",
+            stage=value,
+            total_units=5,
+            started_at=datetime.now(UTC),
+        )
+    else:
+        values[column] = value
     savepoint = session.begin_nested()
     try:
         with pytest.raises(IntegrityError) as error:
@@ -96,10 +108,11 @@ def test_analysis_job_enums_are_enforced_by_postgresql(
                     """
                     INSERT INTO analysis_jobs (
                         id, target_type, canonical_target_id, canonical_url,
-                        mode, status, stage
+                        mode, status, stage, completed_units, total_units, started_at
                     ) VALUES (
                         :id, :target_type, :canonical_target_id, :canonical_url,
-                        :mode, :status, :stage
+                        :mode, :status, :stage, :completed_units, :total_units,
+                        :started_at
                     )
                     """
                 ),
@@ -474,7 +487,7 @@ def test_analysis_job_schema_upgrade_repairs_legacy_rows_and_adds_query_index(
                     "WHERE singleton"
                 )
             )
-        assert tuple(repaired[:3]) == (0, 0, False)
+        assert tuple(repaired[:3]) == (0, 5, False)
         assert repaired.updated_at > legacy_updated_at
         assert watermark >= repaired.updated_at
 
@@ -583,7 +596,7 @@ def test_public_state_repair_is_visible_after_a_preupgrade_cursor(
                 },
             ).all()
 
-        assert [tuple(row) for row in changed] == [(job_id, 1, 1, False)]
+        assert [tuple(row) for row in changed] == [(job_id, 4, 5, False)]
     finally:
         command.upgrade(alembic_config, "head")
         with database_engine.begin() as connection:
@@ -648,7 +661,7 @@ def test_runtime_job_mutation_and_public_state_migration_share_lock_order(
                         mode, status, completed_units, total_units, retryable
                     ) VALUES (
                         :id, 'game', :target_id, :canonical_url,
-                        'create', 'queued', 0, 5, false
+                            'create', 'queued', 0, 0, false
                     )
                     """
                 ),
@@ -716,18 +729,539 @@ def test_runtime_job_mutation_and_public_state_migration_share_lock_order(
             )
 
 
+def test_public_state_migration_does_not_deadlock_frozen_old_writer_order(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    job_id = uuid4()
+    row_locked = Event()
+    release_writer = Event()
+    writer_errors: list[BaseException] = []
+    migration_errors: list[BaseException] = []
+
+    def frozen_old_writer() -> None:
+        try:
+            with Session(database_engine) as writer:
+                job = writer.scalar(
+                    select(AnalysisJob)
+                    .where(AnalysisJob.id == job_id)
+                    .with_for_update()
+                )
+                assert job is not None
+                row_locked.set()
+                release_writer.wait(timeout=10)
+                job.status = JobStatus.FAILED
+                job.error_code = "analysis_internal_error"
+                job.error_message = "Analysis failed unexpectedly. Please retry."
+                job.retryable = True
+                job.completed_at = datetime.now(UTC)
+                writer.flush()
+                writer.commit()
+        except BaseException as error:  # pragma: no branch - asserted below
+            writer_errors.append(error)
+
+    def migrate() -> None:
+        try:
+            command.upgrade(alembic_config, "head")
+        except BaseException as error:  # pragma: no branch - asserted below
+            migration_errors.append(error)
+
+    try:
+        command.downgrade(alembic_config, "20260902_0003")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_jobs (
+                        id, target_type, canonical_target_id, canonical_url,
+                        mode, status, completed_units, total_units, retryable
+                    ) VALUES (
+                        :id, 'game', '2147483599',
+                        'https://store.steampowered.com/app/2147483599',
+                        'create', 'queued', 0, 0, false
+                    )
+                    """
+                ),
+                {"id": job_id},
+            )
+
+        writer_thread = Thread(target=frozen_old_writer, daemon=True)
+        writer_thread.start()
+        assert row_locked.wait(timeout=5)
+
+        migration_thread = Thread(target=migrate, daemon=True)
+        migration_thread.start()
+        migration_thread.join(timeout=5)
+        assert not migration_thread.is_alive()
+        assert len(migration_errors) == 1
+        original = getattr(migration_errors[0], "orig", migration_errors[0])
+        assert getattr(original, "sqlstate", None) == "55P03"
+
+        release_writer.set()
+        writer_thread.join(timeout=10)
+
+        assert not writer_thread.is_alive()
+        assert writer_errors == []
+        command.upgrade(alembic_config, "head")
+        with database_engine.connect() as verification:
+            assert (
+                verification.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260902_0004"
+            )
+            assert (
+                verification.scalar(
+                    text("SELECT status FROM analysis_jobs WHERE id = :job_id"),
+                    {"job_id": job_id},
+                )
+                == "failed"
+            )
+    finally:
+        release_writer.set()
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+
+
+def test_public_state_migration_busy_gate_prevents_three_party_lock_cycle(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    job_id = uuid4()
+    row_locked = Event()
+    release_writer = Event()
+    migration_done = Event()
+    poll_advisory_acquired = Event()
+    release_poll_after_advisory = Event()
+    writer_errors: list[BaseException] = []
+    migration_errors: list[BaseException] = []
+    poll_errors: list[BaseException] = []
+    poll_pid: list[int] = []
+
+    def frozen_old_writer() -> None:
+        try:
+            with Session(database_engine) as writer:
+                job = writer.scalar(
+                    select(AnalysisJob)
+                    .where(AnalysisJob.id == job_id)
+                    .with_for_update()
+                )
+                assert job is not None
+                row_locked.set()
+                release_writer.wait(timeout=10)
+                job.status = JobStatus.FAILED
+                job.error_code = "analysis_internal_error"
+                job.error_message = "Analysis failed unexpectedly. Please retry."
+                job.retryable = True
+                job.completed_at = datetime.now(UTC)
+                writer.commit()
+        except BaseException as error:  # pragma: no branch - asserted below
+            writer_errors.append(error)
+
+    def migrate() -> None:
+        try:
+            command.upgrade(alembic_config, "head")
+        except BaseException as error:  # pragma: no branch - asserted below
+            migration_errors.append(error)
+        finally:
+            migration_done.set()
+
+    def poll() -> None:
+        try:
+            with Session(database_engine) as polling_session:
+                poll_pid.append(polling_session.scalar(text("SELECT pg_backend_pid()")))
+                connection = polling_session.connection()
+
+                def pause_after_advisory(
+                    _connection,
+                    _cursor,
+                    statement,
+                    _parameters,
+                    _context,
+                    _executemany,
+                ) -> None:
+                    if "pg_advisory_xact_lock" in statement.casefold():
+                        poll_advisory_acquired.set()
+                        release_poll_after_advisory.wait(timeout=10)
+
+                event.listen(connection, "after_cursor_execute", pause_after_advisory)
+                try:
+                    JobsRepository(polling_session).list_changed_jobs(
+                        cursor=None,
+                        status=None,
+                        limit=100,
+                    )
+                finally:
+                    event.remove(
+                        connection, "after_cursor_execute", pause_after_advisory
+                    )
+                polling_session.commit()
+        except BaseException as error:  # pragma: no branch - asserted below
+            poll_errors.append(error)
+
+    try:
+        command.downgrade(alembic_config, "20260902_0003")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_jobs (
+                        id, target_type, canonical_target_id, canonical_url,
+                        mode, status, completed_units, total_units, retryable
+                    ) VALUES (
+                        :id, 'game', '2147483593',
+                        'https://store.steampowered.com/app/2147483593',
+                        'create', 'queued', 0, 0, false
+                    )
+                    """
+                ),
+                {"id": job_id},
+            )
+
+        writer_thread = Thread(target=frozen_old_writer, daemon=True)
+        writer_thread.start()
+        assert row_locked.wait(timeout=5)
+
+        migration_thread = Thread(target=migrate, daemon=True)
+        migration_thread.start()
+        deadline = monotonic() + 5
+        migration_waiting = False
+        while monotonic() < deadline and not migration_done.is_set():
+            with database_engine.connect() as observation:
+                migration_waiting = bool(
+                    observation.scalar(
+                        text(
+                            """
+                            SELECT EXISTS (
+                                SELECT 1
+                                FROM pg_locks
+                                WHERE locktype = 'relation'
+                                  AND relation = 'analysis_jobs'::regclass
+                                  AND mode = 'AccessExclusiveLock'
+                                  AND NOT granted
+                            )
+                            """
+                        )
+                    )
+                )
+            if migration_waiting:
+                break
+
+        poll_thread = Thread(target=poll, daemon=True)
+        poll_thread.start()
+        assert poll_advisory_acquired.wait(timeout=5)
+        release_poll_after_advisory.set()
+        if migration_waiting:
+            deadline = monotonic() + 5
+            poll_waits_for_table = False
+            while monotonic() < deadline and not poll_waits_for_table:
+                if poll_pid:
+                    with database_engine.connect() as observation:
+                        poll_waits_for_table = bool(
+                            observation.scalar(
+                                text(
+                                    """
+                                    SELECT EXISTS (
+                                        SELECT 1
+                                        FROM pg_locks
+                                        WHERE locktype = 'relation'
+                                          AND pid = :pid
+                                          AND relation = 'analysis_jobs'::regclass
+                                          AND mode = 'AccessShareLock'
+                                          AND NOT granted
+                                    )
+                                    """
+                                ),
+                                {"pid": poll_pid[0]},
+                            )
+                        )
+            assert poll_waits_for_table
+        release_writer.set()
+        writer_thread.join(timeout=10)
+        migration_thread.join(timeout=10)
+        poll_thread.join(timeout=10)
+
+        assert not writer_thread.is_alive()
+        assert not migration_thread.is_alive()
+        assert not poll_thread.is_alive()
+        assert writer_errors == []
+        assert poll_errors == []
+        assert len(migration_errors) == 1
+        original = getattr(migration_errors[0], "orig", migration_errors[0])
+        assert getattr(original, "sqlstate", None) == "55P03"
+        with database_engine.connect() as verification:
+            assert (
+                verification.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260902_0003"
+            )
+    finally:
+        release_writer.set()
+        release_poll_after_advisory.set()
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+
+
+def test_public_state_migration_repairs_every_legacy_status_shape(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    job_ids = {
+        status: uuid4() for status in ("queued", "running", "succeeded", "failed")
+    }
+    try:
+        command.downgrade(alembic_config, "20260902_0003")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_jobs (
+                        id, target_type, canonical_target_id, canonical_url,
+                        mode, status, stage, completed_units, total_units,
+                        error_code, error_message, retryable, profile_id,
+                        result_payload, started_at, completed_at
+                    ) VALUES
+                    (
+                        :queued_id, 'game', '2147483595',
+                        'https://store.steampowered.com/app/2147483595',
+                        'create', 'queued', 'finalizing', 5, 5,
+                        NULL, NULL, false, NULL, NULL,
+                        clock_timestamp(), clock_timestamp()
+                    ),
+                    (
+                        :running_id, 'game', '2147483596',
+                        'https://store.steampowered.com/app/2147483596',
+                        'create', 'running', NULL, 5, 5,
+                        'steam_unavailable', 'unsafe legacy detail', true, NULL, NULL,
+                        NULL, clock_timestamp()
+                    ),
+                    (
+                        :succeeded_id, 'game', '2147483597',
+                        'https://store.steampowered.com/app/2147483597',
+                        'create', 'succeeded', NULL, 0, 5,
+                        NULL, NULL, false, NULL, NULL,
+                        NULL, NULL
+                    ),
+                    (
+                        :failed_id, 'game', '2147483598',
+                        'https://store.steampowered.com/app/2147483598',
+                        'create', 'failed', 'analyzing', 9, 1,
+                        'steam_unavailable', 'wrong public message', false, NULL, NULL,
+                        NULL, NULL
+                    )
+                    """
+                ),
+                {f"{status}_id": job_id for status, job_id in job_ids.items()},
+            )
+
+        command.upgrade(alembic_config, "head")
+
+        with database_engine.connect() as connection:
+            rows = {
+                row.id: row
+                for row in connection.execute(
+                    text(
+                        """
+                        SELECT id, status, stage, completed_units, total_units,
+                               error_code, error_message, retryable, profile_id,
+                               result_payload, started_at, completed_at
+                        FROM analysis_jobs
+                        WHERE id = ANY(:job_ids)
+                        """
+                    ),
+                    {"job_ids": list(job_ids.values())},
+                )
+            }
+
+        queued = rows[job_ids["queued"]]
+        assert tuple(queued[1:]) == (
+            "queued",
+            None,
+            0,
+            0,
+            None,
+            None,
+            False,
+            None,
+            None,
+            None,
+            None,
+        )
+        running = rows[job_ids["running"]]
+        assert tuple(running[1:9]) == (
+            "running",
+            "fetching_data",
+            4,
+            5,
+            None,
+            None,
+            False,
+            None,
+        )
+        assert running.result_payload is None
+        assert running.started_at is not None
+        assert running.completed_at is None
+        succeeded = rows[job_ids["succeeded"]]
+        assert tuple(succeeded[1:9]) == (
+            "failed",
+            None,
+            0,
+            0,
+            "analysis_job_result_invalid",
+            "Analysis could not be completed for this target.",
+            False,
+            None,
+        )
+        assert succeeded.result_payload is None
+        assert succeeded.started_at is None
+        assert succeeded.completed_at is not None
+        failed = rows[job_ids["failed"]]
+        assert tuple(failed[1:9]) == (
+            "failed",
+            "analyzing",
+            4,
+            5,
+            "steam_unavailable",
+            "Analysis is temporarily unavailable. Please retry.",
+            True,
+            None,
+        )
+        assert failed.result_payload is None
+        assert failed.started_at is not None
+        assert failed.completed_at is not None
+    finally:
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = ANY(:job_ids)"),
+                {"job_ids": list(job_ids.values())},
+            )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "stage = 'finalizing', completed_units = 5, total_units = 5, "
+        "started_at = clock_timestamp(), completed_at = clock_timestamp()",
+        "status = 'running', stage = 'fetching_data', total_units = 5, "
+        "started_at = clock_timestamp(), completed_at = clock_timestamp()",
+        "status = 'succeeded', total_units = 5",
+        "status = 'failed'",
+        "updated_at = created_at - interval '1 day'",
+    ],
+)
+def test_analysis_job_status_shape_is_enforced_by_postgresql(
+    session: Session, mutation: str
+) -> None:
+    job = _job(f"invalid-status-shape-{uuid4()}", JobStatus.QUEUED)
+    session.add(job)
+    session.flush()
+    savepoint = session.begin_nested()
+    try:
+        with pytest.raises(IntegrityError) as error:
+            session.execute(
+                text(f"UPDATE analysis_jobs SET {mutation} WHERE id = :job_id"),
+                {"job_id": job.id},
+            )
+        assert error.value.orig.diag.constraint_name == (
+            "ck_analysis_jobs_status_shape"
+        )
+    finally:
+        savepoint.rollback()
+
+
 def test_alembic_metadata_has_no_pending_schema_operations(
     migrated_database: None, alembic_config
 ) -> None:
     command.check(alembic_config)
 
 
+def test_public_state_migration_repairs_future_created_legacy_job_timestamp(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    job_id = uuid4()
+    try:
+        command.downgrade(alembic_config, "20260902_0003")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO analysis_jobs (
+                        id, target_type, canonical_target_id, canonical_url,
+                        mode, status, completed_units, total_units, retryable,
+                        created_at, updated_at
+                    ) VALUES (
+                        :id, 'game', '2147483594',
+                        'https://store.steampowered.com/app/2147483594',
+                        'create', 'queued', 0, 0, false,
+                        clock_timestamp() + interval '1 day', clock_timestamp()
+                    )
+                    """
+                ),
+                {"id": job_id},
+            )
+
+        command.upgrade(alembic_config, "head")
+
+        with database_engine.connect() as connection:
+            created_at, updated_at = connection.execute(
+                text(
+                    """
+                    SELECT created_at, updated_at
+                    FROM analysis_jobs
+                    WHERE id = :job_id
+                    """
+                ),
+                {"job_id": job_id},
+            ).one()
+        assert updated_at >= created_at
+    finally:
+        command.upgrade(alembic_config, "head")
+        with database_engine.begin() as connection:
+            connection.execute(
+                text("DELETE FROM analysis_jobs WHERE id = :job_id"),
+                {"job_id": job_id},
+            )
+
+
 def _job(target_id: str, status: JobStatus) -> AnalysisJob:
+    profile_id = uuid4() if status is JobStatus.SUCCEEDED else None
+    terminal_timestamp = datetime.now(UTC) + timedelta(seconds=1)
     return AnalysisJob(
         target_type=TargetType.GAME,
         canonical_target_id=target_id,
         canonical_url=f"https://store.steampowered.com/app/{target_id}",
         status=status,
+        stage=(
+            AnalysisStage.FINALIZING
+            if status is JobStatus.SUCCEEDED
+            else (AnalysisStage.FETCHING_DATA if status is JobStatus.RUNNING else None)
+        ),
+        completed_units=5 if status is JobStatus.SUCCEEDED else 0,
+        total_units=(5 if status in (JobStatus.RUNNING, JobStatus.SUCCEEDED) else 0),
+        error_code=("analysis_internal_error" if status is JobStatus.FAILED else None),
+        error_message=(
+            "Analysis failed unexpectedly. Please retry."
+            if status is JobStatus.FAILED
+            else None
+        ),
+        retryable=status is JobStatus.FAILED,
+        profile_id=profile_id,
+        result_payload=(
+            {"profile_id": str(profile_id)} if profile_id is not None else None
+        ),
+        started_at=(
+            terminal_timestamp
+            if status in (JobStatus.RUNNING, JobStatus.SUCCEEDED)
+            else None
+        ),
+        completed_at=(
+            terminal_timestamp
+            if status in (JobStatus.SUCCEEDED, JobStatus.FAILED)
+            else None
+        ),
     )
 
 

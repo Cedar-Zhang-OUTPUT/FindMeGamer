@@ -16,6 +16,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from celery.exceptions import TaskPredicate
 
+from app.core.analysis_job_contract import (
+    INTEGRATION_ERROR_CODES,
+    INTERNAL_FAILURE_MESSAGE,
+    QUEUE_FAILURE_MESSAGE,
+    public_job_failure,
+    valid_analysis_job_state,
+)
 from app.core.config import get_settings
 from app.core.database import session_scope
 from app.db.models.enums import AnalysisStage, JobStatus, TargetType
@@ -32,83 +39,6 @@ from app.workers.celery_app import celery_app
 ANALYSIS_TASK_NAME = "find_me_gamer.analysis.run"
 TOTAL_ANALYSIS_UNITS = 5
 _safe_code = re.compile(r"^[a-z][a-z0-9_]{0,127}$")
-
-TEMPORARY_FAILURE_MESSAGE = "Analysis is temporarily unavailable. Please retry."
-PERMANENT_FAILURE_MESSAGE = "Analysis could not be completed for this target."
-INTERNAL_FAILURE_MESSAGE = "Analysis failed unexpectedly. Please retry."
-QUEUE_FAILURE_MESSAGE = "Analysis could not be queued. Please retry."
-
-_INTEGRATION_CODES = frozenset(
-    {
-        "analysis_clock_invalid",
-        "analysis_cleanup_failed",
-        "analysis_configuration_invalid",
-        "analysis_job_identity_changed",
-        "analysis_job_not_found",
-        "analysis_job_result_invalid",
-        "analysis_job_stage_invalid",
-        "analysis_job_state_invalid",
-        "analysis_job_target_invalid",
-        "artifact_job_id_invalid",
-        "artifact_name_invalid",
-        "artifact_payload_invalid",
-        "artifact_payload_too_large",
-        "creator_interval_invalid",
-        "deepseek_configuration_invalid",
-        "deepseek_input_invalid",
-        "deepseek_model_contacts_invalid",
-        "deepseek_model_evidence_invalid",
-        "deepseek_model_output_invalid",
-        "deepseek_request_rejected",
-        "deepseek_response_invalid",
-        "deepseek_response_too_large",
-        "deepseek_unavailable",
-        "game_interval_invalid",
-        "public_page_address_rejected",
-        "public_page_content_type_invalid",
-        "public_page_redirect_invalid",
-        "public_page_redirect_limit",
-        "public_page_request_rejected",
-        "public_page_response_invalid",
-        "public_page_too_large",
-        "public_page_unavailable",
-        "public_page_url_invalid",
-        "s3_configuration_invalid",
-        "s3_request_rejected",
-        "s3_unavailable",
-        "shared_settings_missing",
-        "steam_app_id_invalid",
-        "steam_game_not_found",
-        "steam_request_rejected",
-        "steam_response_invalid",
-        "steam_response_too_large",
-        "steam_source_identity_mismatch",
-        "steam_unavailable",
-        "youtube_channel_id_invalid",
-        "youtube_channel_not_found",
-        "youtube_configuration_invalid",
-        "youtube_quota_unavailable",
-        "youtube_request_rejected",
-        "youtube_response_invalid",
-        "youtube_response_too_large",
-        "youtube_source_identity_mismatch",
-        "youtube_target_invalid",
-        "youtube_unavailable",
-        "youtube_video_limit_invalid",
-    }
-)
-_SPECIAL_FAILURES = {
-    "analysis_internal_error": INTERNAL_FAILURE_MESSAGE,
-    "analysis_queue_unavailable": QUEUE_FAILURE_MESSAGE,
-}
-_ALLOWED_MESSAGES = frozenset(
-    {
-        TEMPORARY_FAILURE_MESSAGE,
-        PERMANENT_FAILURE_MESSAGE,
-        INTERNAL_FAILURE_MESSAGE,
-        QUEUE_FAILURE_MESSAGE,
-    }
-)
 
 
 class Pipeline(Protocol):
@@ -152,12 +82,14 @@ class TerminalFailure:
     retryable: bool
 
     def __post_init__(self) -> None:
+        expected = public_job_failure(self.code)
         if (
             not isinstance(self.code, str)
             or not _safe_code.fullmatch(self.code)
-            or self.code not in _INTEGRATION_CODES | _SPECIAL_FAILURES.keys()
-            or self.message not in _ALLOWED_MESSAGES
+            or expected is None
+            or self.message != expected.message
             or type(self.retryable) is not bool
+            or self.retryable is not expected.retryable
         ):
             raise ValueError("invalid safe terminal failure")
 
@@ -166,7 +98,10 @@ class SafeTaskError(RuntimeError):
     """Celery metadata containing only an allowlisted stable code."""
 
     def __init__(self, code: str) -> None:
-        if code not in _INTEGRATION_CODES and code != "analysis_database_unavailable":
+        if (
+            code not in INTEGRATION_ERROR_CODES
+            and code != "analysis_database_unavailable"
+        ):
             code = "analysis_internal_error"
         self.code = code
         super().__init__(code)
@@ -206,6 +141,25 @@ def _parse_job_id(raw_job_id: object) -> UUID | None:
     if value.int == 0 or str(value) != raw_job_id:
         return None
     return value
+
+
+def _require_valid_job_state(job: AnalysisJob) -> None:
+    if not valid_analysis_job_state(
+        status=job.status,
+        stage=job.stage,
+        completed_units=job.completed_units,
+        total_units=job.total_units,
+        error_code=job.error_code,
+        error_message=job.error_message,
+        retryable=job.retryable,
+        profile_id=job.profile_id,
+        result_present=job.result_payload is not None,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+    ):
+        raise PermanentIntegrationError("analysis_job_state_invalid")
 
 
 def write_terminal_failure(
@@ -254,24 +208,34 @@ def _write_terminal_failure(
             job = session.scalar(
                 select(AnalysisJob).where(AnalysisJob.id == job_id).with_for_update()
             )
-            if job is None or job.status is JobStatus.FAILED:
+            if job is None:
+                session.commit()
+                return False
+            if job.status is JobStatus.FAILED:
+                _require_valid_job_state(job)
                 session.commit()
                 return False
             if job.status is JobStatus.SUCCEEDED:
                 require_valid_succeeded_job_result(session, job)
+                _require_valid_job_state(job)
                 session.commit()
                 return False
             if job.status is JobStatus.RUNNING and preserve_running:
+                _require_valid_job_state(job)
                 session.commit()
                 return False
             if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
                 raise PermanentIntegrationError("analysis_job_state_invalid")
+            _require_valid_job_state(job)
             completed_at = _aware_utc(clock)
-            job.status = JobStatus.FAILED
             job.error_code = failure.code
             job.error_message = failure.message
             job.retryable = failure.retryable
+            job.profile_id = None
+            job.result_payload = None
+            job.status = JobStatus.FAILED
             job.completed_at = completed_at
+            _require_valid_job_state(job)
             session.flush()
             session.commit()
             return True
@@ -316,32 +280,32 @@ class AnalysisJobExecutor:
                     .where(AnalysisJob.id == job_id)
                     .with_for_update()
                 )
-                if job is None or job.status is JobStatus.FAILED:
+                if job is None:
+                    session.commit()
+                    return None
+                if job.status is JobStatus.FAILED:
+                    _require_valid_job_state(job)
                     session.commit()
                     return None
                 if job.status is JobStatus.SUCCEEDED:
                     require_valid_succeeded_job_result(session, job)
+                    _require_valid_job_state(job)
                     session.commit()
                     return None
                 if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
                     raise PermanentIntegrationError("analysis_job_state_invalid")
                 if job.target_type not in (TargetType.GAME, TargetType.CREATOR):
                     raise PermanentIntegrationError("analysis_job_target_invalid")
-                now = _aware_utc(self._clock)
+                _require_valid_job_state(job)
                 if job.status is JobStatus.QUEUED:
+                    now = _aware_utc(self._clock)
                     job.status = JobStatus.RUNNING
-                if job.stage is None:
                     job.stage = AnalysisStage.FETCHING_DATA
-                job.completed_units = min(
-                    max(job.completed_units, 0), TOTAL_ANALYSIS_UNITS
-                )
-                if job.total_units <= 0:
+                    job.completed_units = 0
                     job.total_units = TOTAL_ANALYSIS_UNITS
-                else:
-                    job.total_units = max(job.total_units, job.completed_units)
-                if job.started_at is None:
                     job.started_at = now
                 target_type = job.target_type
+                _require_valid_job_state(job)
                 session.flush()
                 session.commit()
                 return target_type
@@ -360,17 +324,16 @@ def get_analysis_executor() -> AnalysisJobExecutor:
     )
 
 
-def _failure_for(code: object, *, retryable: bool) -> TerminalFailure:
-    if not isinstance(code, str) or code not in _INTEGRATION_CODES:
-        return TerminalFailure(
-            code="analysis_internal_error",
-            message=INTERNAL_FAILURE_MESSAGE,
-            retryable=True,
-        )
+def _failure_for(code: object) -> TerminalFailure:
+    failure = public_job_failure(code)
+    if failure is None:
+        code = "analysis_internal_error"
+        failure = public_job_failure(code)
+        assert failure is not None
     return TerminalFailure(
         code=code,
-        message=TEMPORARY_FAILURE_MESSAGE if retryable else PERMANENT_FAILURE_MESSAGE,
-        retryable=retryable,
+        message=failure.message,
+        retryable=failure.retryable,
     )
 
 
@@ -402,16 +365,17 @@ def run_analysis_job(task, job_id: str) -> None:
     try:
         executor.execute(parsed_job_id)
     except (TransientIntegrationError, InvalidModelOutput) as error:
-        failure = _failure_for(error.code, retryable=True)
-        if task.request.retries >= policy.max_retries:
-            try:
-                executor.fail(parsed_job_id, failure)
-            except SQLAlchemyError:
-                raise SafeTaskError("analysis_database_unavailable") from None
-            return
-        _retry(task, failure.code, policy)
+        failure = _failure_for(error.code)
+        if failure.retryable and task.request.retries < policy.max_retries:
+            _retry(task, failure.code, policy)
+        try:
+            executor.fail(parsed_job_id, failure)
+        except SQLAlchemyError:
+            raise SafeTaskError("analysis_database_unavailable") from None
     except PermanentIntegrationError as error:
-        failure = _failure_for(error.code, retryable=False)
+        failure = _failure_for(error.code)
+        if failure.retryable and task.request.retries < policy.max_retries:
+            _retry(task, failure.code, policy)
         try:
             executor.fail(parsed_job_id, failure)
         except SQLAlchemyError:

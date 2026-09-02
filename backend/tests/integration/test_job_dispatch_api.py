@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.crypto import SecretCipher
 from app.core.security import hash_workspace_key
-from app.db.models.enums import JobMode, JobStatus, TargetType
+from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
 from app.db.models.profiles import CreatorProfile, GameProfile
@@ -65,8 +65,12 @@ class CorruptSuccessThenFailDispatcher(ObservingDispatcher):
             mutate.add(profile)
             mutate.flush()
             job.status = JobStatus.SUCCEEDED
+            job.stage = AnalysisStage.FINALIZING
+            job.completed_units = 5
+            job.total_units = 5
             job.profile_id = profile.id
             job.result_payload = {"profile_id": str(uuid4())}
+            job.started_at = NOW
             job.completed_at = NOW
         raise RuntimeError("redis://unsafe@broker")
 
@@ -89,8 +93,12 @@ class MalformedSuccessThenFailDispatcher(ObservingDispatcher):
             job.canonical_target_id = malformed_id
             job.canonical_url = malformed_url
             job.status = JobStatus.SUCCEEDED
+            job.stage = AnalysisStage.FINALIZING
+            job.completed_units = 5
+            job.total_units = 5
             job.profile_id = profile.id
             job.result_payload = {"profile_id": str(profile.id)}
+            job.started_at = NOW
             job.completed_at = NOW
         raise RuntimeError("redis://unsafe@broker")
 
@@ -102,6 +110,9 @@ class ClaimThenFailDispatcher(ObservingDispatcher):
             job = mutate.get(AnalysisJob, job_id)
             assert job is not None
             job.status = JobStatus.RUNNING
+            job.stage = AnalysisStage.FETCHING_DATA
+            job.completed_units = 0
+            job.total_units = 5
             job.started_at = NOW
         raise RuntimeError("redis://unsafe@broker")
 
@@ -342,8 +353,12 @@ def test_stale_queued_replay_rejects_corrupt_succeeded_result(
                 mutate.add(profile)
                 mutate.flush()
                 job.status = JobStatus.SUCCEEDED
+                job.stage = AnalysisStage.FINALIZING
+                job.completed_units = 5
+                job.total_units = 5
                 job.profile_id = profile.id
                 job.result_payload = {"profile_id": str(uuid4())}
+                job.started_at = NOW
                 job.completed_at = NOW
             replay = client.post(
                 "/api/v1/jobs/analysis",
@@ -406,8 +421,12 @@ def test_stale_replay_rejects_coordinated_malformed_success_identity(
                 job.canonical_target_id = malformed_id
                 job.canonical_url = malformed_url
                 job.status = JobStatus.SUCCEEDED
+                job.stage = AnalysisStage.FINALIZING
+                job.completed_units = 5
+                job.total_units = 5
                 job.profile_id = profile.id
                 job.result_payload = {"profile_id": str(profile.id)}
+                job.started_at = NOW
                 job.completed_at = NOW
             replay = client.post(
                 "/api/v1/jobs/analysis",
@@ -458,8 +477,12 @@ def test_cached_succeeded_replay_revalidates_postgres_result_identity(
                 mutate.add(profile)
                 mutate.flush()
                 job.status = JobStatus.SUCCEEDED
+                job.stage = AnalysisStage.FINALIZING
+                job.completed_units = 5
+                job.total_units = 5
                 job.profile_id = profile.id
                 job.result_payload = {"profile_id": str(profile.id)}
+                job.started_at = NOW
                 job.completed_at = NOW
             valid_replay = client.post(
                 "/api/v1/jobs/analysis",
@@ -469,7 +492,7 @@ def test_cached_succeeded_replay_revalidates_postgres_result_identity(
                     "url": f"https://store.steampowered.com/app/{app_id}",
                 },
             )
-            assert valid_replay.json()["status"] == "succeeded"
+            assert valid_replay.json().get("status") == "succeeded", valid_replay.json()
             with Session(database_engine) as mutate, mutate.begin():
                 job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
                 assert job is not None
@@ -680,6 +703,10 @@ def test_existing_profile_and_running_active_job_are_not_dispatched(
             canonical_url=f"https://store.steampowered.com/app/{running_id}",
             mode=JobMode.CREATE,
             status=JobStatus.RUNNING,
+            stage=AnalysisStage.FETCHING_DATA,
+            completed_units=0,
+            total_units=5,
+            started_at=NOW,
         )
         seed.add(running)
     dispatcher = ObservingDispatcher(database_engine)

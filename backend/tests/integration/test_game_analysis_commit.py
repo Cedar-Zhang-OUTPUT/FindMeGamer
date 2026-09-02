@@ -64,6 +64,9 @@ def _job(
     profile_id: UUID | None = None,
 ) -> UUID:
     job_id = uuid4()
+    effective_profile_id = (
+        profile_id or uuid4() if status is JobStatus.SUCCEEDED else None
+    )
     with factory.begin() as session:
         session.add(
             AnalysisJob(
@@ -73,11 +76,39 @@ def _job(
                 canonical_url=f"https://store.steampowered.com/app/{app_id}",
                 mode=JobMode.CREATE,
                 status=status,
-                profile_id=profile_id,
-                result_payload=(
-                    {"profile_id": str(profile_id)}
-                    if status is JobStatus.SUCCEEDED and profile_id is not None
+                stage=(
+                    AnalysisStage.FINALIZING
+                    if status is JobStatus.SUCCEEDED
+                    else (
+                        AnalysisStage.FETCHING_DATA
+                        if status is JobStatus.RUNNING
+                        else None
+                    )
+                ),
+                completed_units=5 if status is JobStatus.SUCCEEDED else 0,
+                total_units=(
+                    5 if status in (JobStatus.RUNNING, JobStatus.SUCCEEDED) else 0
+                ),
+                error_code=(
+                    "analysis_internal_error" if status is JobStatus.FAILED else None
+                ),
+                error_message=(
+                    "Analysis failed unexpectedly. Please retry."
+                    if status is JobStatus.FAILED
                     else None
+                ),
+                retryable=status is JobStatus.FAILED,
+                profile_id=effective_profile_id,
+                result_payload=(
+                    {"profile_id": str(effective_profile_id)}
+                    if effective_profile_id is not None
+                    else None
+                ),
+                started_at=(
+                    NOW if status in (JobStatus.RUNNING, JobStatus.SUCCEEDED) else None
+                ),
+                completed_at=(
+                    NOW if status in (JobStatus.FAILED, JobStatus.SUCCEEDED) else None
                 ),
             )
         )
@@ -219,15 +250,15 @@ def test_missing_job_is_rejected_safely(committed_factory) -> None:
 def test_running_job_preserves_first_started_at_and_monotonic_progress(
     committed_factory,
 ) -> None:
-    first_started = NOW - timedelta(hours=3)
+    first_started = NOW - timedelta(minutes=30)
     job_id = _job(committed_factory, status=JobStatus.RUNNING)
     with committed_factory.begin() as session:
         job = session.get(AnalysisJob, job_id)
         assert job is not None
         job.started_at = first_started
-        job.stage = AnalysisStage.ANALYZING
-        job.completed_units = 3
-        job.total_units = 5
+        job.stage = AnalysisStage.FINALIZING
+        job.completed_units = 6
+        job.total_units = 7
 
     GameAnalysisService(session_factory=committed_factory, clock=lambda: NOW).start(
         job_id
@@ -238,9 +269,9 @@ def test_running_job_preserves_first_started_at_and_monotonic_progress(
         assert job is not None
         assert job.started_at == first_started
         assert job.status is JobStatus.RUNNING
-        assert job.stage is AnalysisStage.ANALYZING
-        assert job.completed_units == 3
-        assert job.total_units == 5
+        assert job.stage is AnalysisStage.FINALIZING
+        assert job.completed_units == 6
+        assert job.total_units == 7
 
 
 @pytest.mark.parametrize(
@@ -250,13 +281,13 @@ def test_running_job_preserves_first_started_at_and_monotonic_progress(
         (AnalysisStage.FINALIZING, 4),
     ],
 )
-def test_queued_resume_preserves_stage_progress_and_first_started_at(
+def test_running_resume_preserves_stage_progress_and_first_started_at(
     committed_factory,
     stage: AnalysisStage,
     completed_units: int,
 ) -> None:
-    first_started = NOW - timedelta(hours=2)
-    job_id = _job(committed_factory, status=JobStatus.QUEUED)
+    first_started = NOW - timedelta(minutes=20)
+    job_id = _job(committed_factory, status=JobStatus.RUNNING)
     with committed_factory.begin() as session:
         job = session.get(AnalysisJob, job_id)
         assert job is not None
@@ -301,6 +332,28 @@ def test_advance_never_regresses_finalizing_stage_or_progress(
         assert job.stage is AnalysisStage.FINALIZING
         assert job.completed_units == 4
         assert job.total_units == 5
+
+
+def test_advance_keeps_nondefault_running_progress_below_total(
+    committed_factory,
+) -> None:
+    job_id = _job(committed_factory, status=JobStatus.RUNNING)
+    with committed_factory.begin() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        job.completed_units = 0
+        job.total_units = 1
+
+    GameAnalysisService(session_factory=committed_factory, clock=lambda: NOW).advance(
+        job_id, completed_units=2
+    )
+
+    with committed_factory() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        assert job.status is JobStatus.RUNNING
+        assert job.stage is AnalysisStage.ANALYZING
+        assert (job.completed_units, job.total_units) == (0, 1)
 
 
 def test_advance_after_success_converges_without_mutation(committed_factory) -> None:

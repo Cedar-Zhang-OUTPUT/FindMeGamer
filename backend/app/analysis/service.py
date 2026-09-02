@@ -23,6 +23,7 @@ from app.analysis.prompts.game import (
     GAME_SYNTHESIS_PROMPT_VERSION,
     GAME_VISUAL_PROMPT_VERSION,
 )
+from app.core.analysis_job_contract import valid_analysis_job_state
 from app.db.models.enums import AnalysisStage, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
@@ -42,6 +43,25 @@ from app.schemas.profiles import public_json_object
 
 TOTAL_GAME_ANALYSIS_UNITS = 5
 TOTAL_CREATOR_ANALYSIS_UNITS = 5
+
+
+def _require_valid_job_state(job: AnalysisJob) -> None:
+    if not valid_analysis_job_state(
+        status=job.status,
+        stage=job.stage,
+        completed_units=job.completed_units,
+        total_units=job.total_units,
+        error_code=job.error_code,
+        error_message=job.error_message,
+        retryable=job.retryable,
+        profile_id=job.profile_id,
+        result_present=job.result_payload is not None,
+        created_at=job.created_at,
+        updated_at=job.updated_at,
+        started_at=job.started_at,
+        completed_at=job.completed_at,
+    ):
+        raise PermanentIntegrationError("analysis_job_state_invalid")
 
 
 class SessionFactory(Protocol):
@@ -94,6 +114,7 @@ class GameAnalysisService:
             self._require_game_job(job)
             if job.status is JobStatus.SUCCEEDED:
                 profile_id = self._valid_succeeded_profile_id(session, job)
+                _require_valid_job_state(job)
                 if profile_id is None:
                     raise PermanentIntegrationError("analysis_job_result_invalid")
                 return GameJobLease(
@@ -104,17 +125,15 @@ class GameAnalysisService:
                 )
             if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
                 raise PermanentIntegrationError("analysis_job_state_invalid")
-            now = self._aware_now()
+            _require_valid_job_state(job)
             if job.status is JobStatus.QUEUED:
+                now = self._aware_now()
                 job.status = JobStatus.RUNNING
-            if job.stage is None:
                 job.stage = AnalysisStage.FETCHING_DATA
-            job.completed_units = min(
-                max(job.completed_units, 0), TOTAL_GAME_ANALYSIS_UNITS
-            )
-            job.total_units = TOTAL_GAME_ANALYSIS_UNITS
-            if job.started_at is None:
+                job.completed_units = 0
+                job.total_units = TOTAL_GAME_ANALYSIS_UNITS
                 job.started_at = now
+            _require_valid_job_state(job)
             return GameJobLease(
                 job_id=job.id,
                 app_id=job.canonical_target_id,
@@ -135,12 +154,12 @@ class GameAnalysisService:
             if job.status is JobStatus.SUCCEEDED:
                 if self._valid_succeeded_profile_id(session, job) is None:
                     raise PermanentIntegrationError("analysis_job_result_invalid")
+                _require_valid_job_state(job)
                 return
             if job.status is not JobStatus.RUNNING:
                 raise PermanentIntegrationError("analysis_job_state_invalid")
-            job.total_units = TOTAL_GAME_ANALYSIS_UNITS
             job.completed_units = max(job.completed_units, completed_units)
-            job.completed_units = min(job.completed_units, job.total_units)
+            job.completed_units = min(job.completed_units, job.total_units - 1)
             requested_stage = (
                 AnalysisStage.FINALIZING
                 if completed_units == 4
@@ -154,6 +173,7 @@ class GameAnalysisService:
             }
             if stage_order[requested_stage] > stage_order[job.stage]:
                 job.stage = requested_stage
+            _require_valid_job_state(job)
 
     def finalize(
         self,
@@ -180,6 +200,7 @@ class GameAnalysisService:
                 raise PermanentIntegrationError("analysis_job_identity_changed")
             if job.status is JobStatus.SUCCEEDED:
                 profile_id = self._valid_succeeded_profile_id(session, job)
+                _require_valid_job_state(job)
                 if profile_id is None:
                     raise PermanentIntegrationError("analysis_job_result_invalid")
                 return profile_id
@@ -249,11 +270,14 @@ class GameAnalysisService:
 
             job.status = JobStatus.SUCCEEDED
             job.stage = AnalysisStage.FINALIZING
-            job.completed_units = TOTAL_GAME_ANALYSIS_UNITS
-            job.total_units = TOTAL_GAME_ANALYSIS_UNITS
+            job.completed_units = job.total_units
             job.profile_id = profile.id
             job.result_payload = {"profile_id": str(profile.id)}
             job.completed_at = analyzed_at
+            job.error_code = None
+            job.error_message = None
+            job.retryable = False
+            _require_valid_job_state(job)
             session.flush()
             return profile.id
 
@@ -359,6 +383,7 @@ class CreatorAnalysisService:
             self._require_creator_job(job)
             if job.status is JobStatus.SUCCEEDED:
                 profile_id = self._valid_succeeded_profile_id(session, job)
+                _require_valid_job_state(job)
                 if profile_id is None:
                     raise PermanentIntegrationError("analysis_job_result_invalid")
                 return CreatorJobLease(
@@ -369,17 +394,15 @@ class CreatorAnalysisService:
                 )
             if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
                 raise PermanentIntegrationError("analysis_job_state_invalid")
-            now = self._aware_now()
+            _require_valid_job_state(job)
             if job.status is JobStatus.QUEUED:
+                now = self._aware_now()
                 job.status = JobStatus.RUNNING
-            if job.stage is None:
                 job.stage = AnalysisStage.FETCHING_DATA
-            job.completed_units = min(
-                max(job.completed_units, 0), TOTAL_CREATOR_ANALYSIS_UNITS
-            )
-            job.total_units = TOTAL_CREATOR_ANALYSIS_UNITS
-            if job.started_at is None:
+                job.completed_units = 0
+                job.total_units = TOTAL_CREATOR_ANALYSIS_UNITS
                 job.started_at = now
+            _require_valid_job_state(job)
             return CreatorJobLease(
                 job_id=job.id,
                 channel_id=job.canonical_target_id,
@@ -400,12 +423,12 @@ class CreatorAnalysisService:
             if job.status is JobStatus.SUCCEEDED:
                 if self._valid_succeeded_profile_id(session, job) is None:
                     raise PermanentIntegrationError("analysis_job_result_invalid")
+                _require_valid_job_state(job)
                 return
             if job.status is not JobStatus.RUNNING:
                 raise PermanentIntegrationError("analysis_job_state_invalid")
-            job.total_units = TOTAL_CREATOR_ANALYSIS_UNITS
             job.completed_units = min(
-                max(job.completed_units, completed_units), job.total_units
+                max(job.completed_units, completed_units), job.total_units - 1
             )
             requested_stage = (
                 AnalysisStage.FINALIZING
@@ -420,6 +443,7 @@ class CreatorAnalysisService:
             }
             if order[requested_stage] > order[job.stage]:
                 job.stage = requested_stage
+            _require_valid_job_state(job)
 
     def finalize(
         self,
@@ -446,6 +470,7 @@ class CreatorAnalysisService:
                 raise PermanentIntegrationError("analysis_job_identity_changed")
             if job.status is JobStatus.SUCCEEDED:
                 profile_id = self._valid_succeeded_profile_id(session, job)
+                _require_valid_job_state(job)
                 if profile_id is None:
                     raise PermanentIntegrationError("analysis_job_result_invalid")
                 return profile_id
@@ -558,11 +583,14 @@ class CreatorAnalysisService:
 
             job.status = JobStatus.SUCCEEDED
             job.stage = AnalysisStage.FINALIZING
-            job.completed_units = TOTAL_CREATOR_ANALYSIS_UNITS
-            job.total_units = TOTAL_CREATOR_ANALYSIS_UNITS
+            job.completed_units = job.total_units
             job.profile_id = profile.id
             job.result_payload = {"profile_id": str(profile.id)}
             job.completed_at = analyzed_at
+            job.error_code = None
+            job.error_message = None
+            job.retryable = False
+            _require_valid_job_state(job)
             session.flush()
             return profile.id
 
