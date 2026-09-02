@@ -13,6 +13,7 @@ from app.api.routes import profiles as profile_routes
 from app.api.routes import jobs as job_routes
 from app.api.routes import match as match_routes
 from app.api.routes import outreach as outreach_routes
+from app.api.routes import responses as response_routes
 from app.api.routes import session, settings as settings_routes
 from app.analysis.targets import ChannelResolver
 from app.analysis.runtime import build_production_channel_resolver
@@ -161,6 +162,12 @@ def create_app(
         return response
 
     app.include_router(health.create_router(readiness_probe))
+    app.include_router(
+        response_routes.create_router(
+            rate_limiter=rate_limiter,
+            resolve_client_address=client_address_resolver.resolve,
+        )
+    )
     app.include_router(session.create_router(authenticate_workspace))
     app.include_router(
         settings_routes.create_router(
