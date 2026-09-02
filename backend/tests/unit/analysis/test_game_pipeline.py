@@ -396,6 +396,26 @@ def test_invalid_static_image_is_nonfatal_without_provider_call() -> None:
     assert service.publication.visual.status == "unavailable"
 
 
+def test_visual_bundle_programmer_value_error_propagates_without_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline, service, _, _, deepseek, events = _pipeline()
+
+    def programmer_bug(source: SteamGameSource):
+        raise ValueError("programmer bug")
+
+    monkeypatch.setattr(
+        "app.analysis.game_pipeline.build_game_visual_bundle", programmer_bug
+    )
+
+    with pytest.raises(ValueError, match="programmer bug"):
+        pipeline.run(service.job_id)
+
+    assert deepseek.vision_calls == []
+    assert service.publication is None
+    assert not any(event[0] == "finalize" for event in events)
+
+
 def test_mismatched_source_identity_is_safe_and_never_persisted() -> None:
     source = sample_game_source().model_copy(update={"app_id": "999"})
     pipeline, service, _, artifacts, deepseek, _ = _pipeline(source=source)

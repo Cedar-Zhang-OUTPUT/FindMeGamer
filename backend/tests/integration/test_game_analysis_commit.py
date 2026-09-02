@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from copy import deepcopy
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from threading import Barrier, Thread
 from uuid import UUID, uuid4
 
@@ -243,6 +243,32 @@ def test_clock_must_be_aware_utc_before_work_starts(committed_factory) -> None:
     service = GameAnalysisService(
         session_factory=committed_factory,
         clock=lambda: datetime(2026, 9, 2, 8, 30),
+    )
+
+    with pytest.raises(PermanentIntegrationError, match="analysis_clock_invalid"):
+        service.start(job_id)
+
+    with committed_factory() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        assert job.status is JobStatus.QUEUED
+        assert job.started_at is None
+
+
+def test_clock_rejects_tzinfo_with_indeterminate_utc_offset(
+    committed_factory,
+) -> None:
+    class IndeterminateTimezone(tzinfo):
+        def utcoffset(self, value):
+            return None
+
+        def dst(self, value):
+            return None
+
+    job_id = _job(committed_factory)
+    service = GameAnalysisService(
+        session_factory=committed_factory,
+        clock=lambda: datetime(2026, 9, 2, 8, 30, tzinfo=IndeterminateTimezone()),
     )
 
     with pytest.raises(PermanentIntegrationError, match="analysis_clock_invalid"):

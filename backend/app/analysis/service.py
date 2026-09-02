@@ -255,6 +255,10 @@ class GameAnalysisService:
 
     def _aware_now(self) -> datetime:
         value = self._clock()
-        if not isinstance(value, datetime) or value.tzinfo is None:
+        if (
+            not isinstance(value, datetime)
+            or value.tzinfo is None
+            or value.utcoffset() is None
+        ):
             raise PermanentIntegrationError("analysis_clock_invalid")
         return value.astimezone(UTC)
