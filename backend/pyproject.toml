@@ -39,6 +39,7 @@ required-version = "25.1.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

@@ -3,10 +3,20 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 from urllib.parse import urlsplit
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
+
+from app.outreach.smtp import normalize_smtp_host
 
 
 DEFAULT_ACCEPTED_LABEL = "Yes, I'm in"
@@ -238,6 +248,79 @@ class OutreachTemplateList(OutreachValue):
     items: list[OutreachTemplateResponse]
 
 
+class SMTPSettingsUpdate(OutreachValue):
+    host: str = Field(max_length=253)
+    port: int = Field(default=465, ge=1, le=65_535)
+    encryption: Literal["tls", "starttls", "none"] = "tls"
+    username: EmailStr
+    password: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=16_384,
+        json_schema_extra={"writeOnly": True},
+    )
+    from_name: str = Field(max_length=255)
+    reply_to: EmailStr
+    emails_per_minute: int = Field(default=10, ge=1, le=60)
+
+    @field_validator("host")
+    @classmethod
+    def validate_host(cls, value: str) -> str:
+        normalized = value.strip()
+        return normalize_smtp_host(normalized)
+
+    @field_validator("username", "reply_to", mode="before")
+    @classmethod
+    def normalize_email(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("from_name")
+    @classmethod
+    def normalize_from_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized or _contains_control_character(normalized):
+            raise ValueError("From Name must contain safe visible text")
+        return normalized
+
+    @field_validator("password")
+    @classmethod
+    def normalize_password(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("SMTP password must contain visible text")
+        return normalized
+
+
+class SMTPSettingsResponse(OutreachValue):
+    configured: bool
+    host: str | None
+    port: int | None
+    encryption: Literal["tls", "starttls", "none"] | None
+    username: str | None
+    from_name: str | None
+    reply_to: str | None
+    emails_per_minute: int = Field(ge=1, le=60)
+    last_test_status: Literal["success", "failure"] | None
+    last_tested_at: datetime | None
+
+
+class SMTPTestEmailRequest(OutreachValue):
+    recipient: EmailStr
+
+    @field_validator("recipient", mode="before")
+    @classmethod
+    def normalize_recipient(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
+class SMTPTestResult(OutreachValue):
+    succeeded: bool
+    last_test_status: Literal["success", "failure"]
+    last_tested_at: datetime
+
+
 __all__ = [
     "ACCEPTED_RESPONSE_URL_PLACEHOLDER",
     "DEFAULT_ACCEPTED_LABEL",
@@ -251,6 +334,10 @@ __all__ = [
     "RESPONSE_URL_PLACEHOLDERS",
     "RenderedDelivery",
     "ResponseURLs",
+    "SMTPSettingsResponse",
+    "SMTPSettingsUpdate",
+    "SMTPTestEmailRequest",
+    "SMTPTestResult",
     "TemplateContext",
     "TemplateData",
 ]

@@ -34,6 +34,8 @@ from app.core.rate_limit import (
     RedisRateLimitCounter,
 )
 from app.core.security import validate_workspace_key_hash
+from app.outreach.rate_limit import SMTPRateLimiter
+from app.outreach.smtp import SMTPGateway
 
 
 def create_app(
@@ -52,6 +54,8 @@ def create_app(
     match_dispatcher: match_routes.MatchAPIDispatcher | None = None,
     match_clock: match_routes.Clock = utc_now,
     match_seed_factory: match_routes.SeedFactory = match_routes.random_signed_64_bit,
+    smtp_gateway: SMTPGateway | None = None,
+    smtp_rate_limiter: SMTPRateLimiter | None = None,
 ) -> FastAPI:
     configure_request_logging()
     settings = get_settings()
@@ -92,6 +96,18 @@ def create_app(
             limit=settings.workspace_rate_limit,
             window_seconds=settings.workspace_rate_limit_window_seconds,
         )
+    owned_smtp_redis_client: Redis | None = None
+    effective_smtp_gateway = smtp_gateway or SMTPGateway()
+    if smtp_rate_limiter is None:
+        smtp_redis_client = owned_redis_client
+        if smtp_redis_client is None:
+            owned_smtp_redis_client = Redis.from_url(
+                settings.redis_url,
+                socket_connect_timeout=settings.redis_connect_timeout_seconds,
+                socket_timeout=settings.redis_read_timeout_seconds,
+            )
+            smtp_redis_client = owned_smtp_redis_client
+        smtp_rate_limiter = SMTPRateLimiter(smtp_redis_client)
     authenticate_workspace = create_workspace_authenticator(
         workspace_key_hash=effective_workspace_key_hash,
         rate_limiter=rate_limiter,
@@ -106,6 +122,8 @@ def create_app(
         finally:
             if owned_redis_client is not None:
                 owned_redis_client.close()
+            if owned_smtp_redis_client is not None:
+                owned_smtp_redis_client.close()
 
     app = FastAPI(title="Find Me Gamer API", version="1.0.0", lifespan=lifespan)
     install_error_handlers(app)
@@ -177,7 +195,14 @@ def create_app(
             cursor_signing_secret=effective_workspace_key_hash,
         )
     )
-    app.include_router(outreach_routes.create_router(authenticate_workspace))
+    app.include_router(
+        outreach_routes.create_router(
+            authenticate_workspace,
+            secret_cipher=effective_secret_cipher,
+            smtp_gateway=effective_smtp_gateway,
+            smtp_rate_limiter=smtp_rate_limiter,
+        )
+    )
     return app
 
 

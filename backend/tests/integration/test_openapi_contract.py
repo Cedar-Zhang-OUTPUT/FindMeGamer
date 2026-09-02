@@ -87,6 +87,16 @@ EXPECTED_OPERATIONS = {
         "POST",
         "/api/v1/outreach/templates/{template_id}/preview",
     ): "previewOutreachTemplate",
+    ("GET", "/api/v1/outreach/smtp"): "getOutreachSMTPSettings",
+    ("PUT", "/api/v1/outreach/smtp"): "updateOutreachSMTPSettings",
+    (
+        "POST",
+        "/api/v1/outreach/smtp/test-connection",
+    ): "testOutreachSMTPConnection",
+    (
+        "POST",
+        "/api/v1/outreach/smtp/test-email",
+    ): "sendOutreachSMTPTestEmail",
 }
 HTTP_METHODS = frozenset(
     {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
@@ -270,6 +280,20 @@ def test_openapi_secret_is_write_only_request_only_and_responses_are_sanitized(
         for property_name in components[component_name].get("properties", {})
     }
     assert exposed_properties.isdisjoint(forbidden_properties)
+
+
+def test_openapi_smtp_password_is_write_only_and_never_a_response_property(
+    client,
+) -> None:
+    schema = client.app.openapi()
+    components = schema["components"]["schemas"]
+    update = components["SMTPSettingsUpdate"]
+
+    assert update["additionalProperties"] is False
+    assert update["properties"]["password"]["writeOnly"] is True
+    assert components["SMTPSettingsResponse"]["additionalProperties"] is False
+    assert "password" not in components["SMTPSettingsResponse"]["properties"]
+    assert components["SMTPTestResult"]["additionalProperties"] is False
 
 
 def _guarded_export_environment(tmp_path: Path, hash_seed: str) -> dict[str, str]:

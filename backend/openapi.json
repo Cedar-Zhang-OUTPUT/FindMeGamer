@@ -2340,6 +2340,248 @@
         "title": "RetryAnalysisJobRequest",
         "type": "object"
       },
+      "SMTPSettingsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "emails_per_minute": {
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Emails Per Minute",
+            "type": "integer"
+          },
+          "encryption": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tls",
+                  "starttls",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encryption"
+          },
+          "from_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Name"
+          },
+          "host": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "last_test_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "success",
+                  "failure"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Test Status"
+          },
+          "last_tested_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Tested At"
+          },
+          "port": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Port"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "configured",
+          "host",
+          "port",
+          "encryption",
+          "username",
+          "from_name",
+          "reply_to",
+          "emails_per_minute",
+          "last_test_status",
+          "last_tested_at"
+        ],
+        "title": "SMTPSettingsResponse",
+        "type": "object"
+      },
+      "SMTPSettingsUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "emails_per_minute": {
+            "default": 10,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Emails Per Minute",
+            "type": "integer"
+          },
+          "encryption": {
+            "default": "tls",
+            "enum": [
+              "tls",
+              "starttls",
+              "none"
+            ],
+            "title": "Encryption",
+            "type": "string"
+          },
+          "from_name": {
+            "maxLength": 255,
+            "title": "From Name",
+            "type": "string"
+          },
+          "host": {
+            "maxLength": 253,
+            "title": "Host",
+            "type": "string"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 16384,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password",
+            "writeOnly": true
+          },
+          "port": {
+            "default": 465,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "reply_to": {
+            "format": "email",
+            "title": "Reply To",
+            "type": "string"
+          },
+          "username": {
+            "format": "email",
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "host",
+          "username",
+          "from_name",
+          "reply_to"
+        ],
+        "title": "SMTPSettingsUpdate",
+        "type": "object"
+      },
+      "SMTPTestEmailRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "recipient": {
+            "format": "email",
+            "title": "Recipient",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recipient"
+        ],
+        "title": "SMTPTestEmailRequest",
+        "type": "object"
+      },
+      "SMTPTestResult": {
+        "additionalProperties": false,
+        "properties": {
+          "last_test_status": {
+            "enum": [
+              "success",
+              "failure"
+            ],
+            "title": "Last Test Status",
+            "type": "string"
+          },
+          "last_tested_at": {
+            "format": "date-time",
+            "title": "Last Tested At",
+            "type": "string"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "succeeded",
+          "last_test_status",
+          "last_tested_at"
+        ],
+        "title": "SMTPTestResult",
+        "type": "object"
+      },
       "SessionResponse": {
         "properties": {
           "api_version": {
@@ -2954,6 +3196,148 @@
         "summary": "Retry Match",
         "tags": [
           "matches"
+        ]
+      }
+    },
+    "/api/v1/outreach/smtp": {
+      "get": {
+        "operationId": "getOutreachSMTPSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SMTPSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Smtp Settings",
+        "tags": [
+          "outreach"
+        ]
+      },
+      "put": {
+        "operationId": "updateOutreachSMTPSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SMTPSettingsUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SMTPSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Smtp Settings",
+        "tags": [
+          "outreach"
+        ]
+      }
+    },
+    "/api/v1/outreach/smtp/test-connection": {
+      "post": {
+        "operationId": "testOutreachSMTPConnection",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SMTPTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Test Smtp Connection",
+        "tags": [
+          "outreach"
+        ]
+      }
+    },
+    "/api/v1/outreach/smtp/test-email": {
+      "post": {
+        "operationId": "sendOutreachSMTPTestEmail",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SMTPTestEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SMTPTestResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Send Smtp Test Email",
+        "tags": [
+          "outreach"
         ]
       }
     },

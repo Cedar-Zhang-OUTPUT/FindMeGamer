@@ -6,6 +6,7 @@ from inspect import signature
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from email.message import EmailMessage
 from pathlib import Path
 from uuid import UUID
 
@@ -91,6 +92,42 @@ class FakeMatchDispatcher:
             raise self.error
 
 
+class FakeSMTPGateway:
+    def __init__(self) -> None:
+        self.probes: list[object] = []
+        self.sends: list[tuple[object, EmailMessage]] = []
+        self.error: Exception | None = None
+        self.before_call = lambda: None
+
+    def probe(self, config: object) -> None:
+        self.before_call()
+        self.probes.append(config)
+        if self.error is not None:
+            raise self.error
+
+    def send(self, config: object, message: EmailMessage) -> object:
+        self.before_call()
+        self.sends.append((config, message))
+        if self.error is not None:
+            raise self.error
+        return object()
+
+
+class FakeSMTPRateLimiter:
+    def __init__(self) -> None:
+        self.delay = 0.0
+        self.error: Exception | None = None
+        self.calls: list[tuple[str, int]] = []
+        self.before_call = lambda: None
+
+    def acquire(self, workspace: str, per_minute: int) -> float:
+        self.before_call()
+        self.calls.append((workspace, per_minute))
+        if self.error is not None:
+            raise self.error
+        return self.delay
+
+
 @pytest.fixture(scope="session")
 def database_url() -> str:
     url = os.environ.get("DATABASE_URL")
@@ -163,6 +200,16 @@ def match_dispatcher() -> FakeMatchDispatcher:
 
 
 @pytest.fixture
+def smtp_gateway() -> FakeSMTPGateway:
+    return FakeSMTPGateway()
+
+
+@pytest.fixture
+def smtp_rate_limiter() -> FakeSMTPRateLimiter:
+    return FakeSMTPRateLimiter()
+
+
+@pytest.fixture
 def client(
     session: Session,
     rate_limit_counter: FakeRateLimitCounter,
@@ -170,6 +217,8 @@ def client(
     connection_probe: FakeConnectionProbe,
     job_dispatcher: FakeJobDispatcher,
     match_dispatcher: FakeMatchDispatcher,
+    smtp_gateway: FakeSMTPGateway,
+    smtp_rate_limiter: FakeSMTPRateLimiter,
 ) -> Iterator[TestClient]:
     @contextmanager
     def job_session_factory() -> Iterator[Session]:
@@ -190,6 +239,10 @@ def client(
     )
     if "match_dispatcher" in signature(create_app).parameters:
         app_kwargs["match_dispatcher"] = match_dispatcher
+    if "smtp_gateway" in signature(create_app).parameters:
+        app_kwargs["smtp_gateway"] = smtp_gateway
+    if "smtp_rate_limiter" in signature(create_app).parameters:
+        app_kwargs["smtp_rate_limiter"] = smtp_rate_limiter
     test_app = create_app(**app_kwargs)
 
     def override_get_session() -> Iterator[Session]:
