@@ -99,6 +99,26 @@ def test_metrics_ignore_oversized_integer_counts_without_float_overflow() -> Non
     assert metrics.median_views is None
 
 
+@pytest.mark.parametrize(
+    ("counts", "expected_average"),
+    [
+        ((0, 0, 1), 0.333333),
+        ((1, 2, 2), 1.666667),
+    ],
+)
+def test_metrics_preserve_ordinary_six_decimal_fractional_averages(
+    counts: tuple[int, ...], expected_average: float
+) -> None:
+    videos = tuple(
+        _video(str(index), days_old=None, views=count)
+        for index, count in enumerate(counts)
+    )
+
+    metrics = compute_creator_metrics(videos)
+
+    assert metrics.average_views == expected_average
+
+
 def test_metrics_round_and_bound_near_limit_fractional_mean_and_median() -> None:
     maximum = 9_223_372_036_854_775_807
     videos = (
@@ -166,6 +186,33 @@ def test_thumbnail_selection_balances_recency_and_performance_deterministically(
         video.id
         for video in select_representative_thumbnails(tuple(reversed(videos)), count=12)
     ]
+
+
+def test_thumbnail_recency_preserves_far_future_microsecond_order() -> None:
+    older_at = datetime(3000, 1, 1, tzinfo=UTC)
+    newer_at = older_at + timedelta(microseconds=1)
+    older = _video("a-old", days_old=None, views=10).model_copy(
+        update={"published_at": older_at}
+    )
+    newer = _video("z-new", days_old=None, views=10).model_copy(
+        update={"published_at": newer_at}
+    )
+
+    selected = select_representative_thumbnails((older, newer), count=1)
+
+    assert selected == [newer]
+
+
+def test_duplicate_canonicalization_preserves_far_future_microsecond_order() -> None:
+    older_at = datetime(3000, 1, 1, tzinfo=UTC)
+    newer_at = older_at + timedelta(microseconds=1)
+    prototype = _video("same", days_old=None, views=10)
+    older = prototype.model_copy(update={"published_at": older_at})
+    newer = prototype.model_copy(update={"published_at": newer_at})
+
+    metrics = compute_creator_metrics((older, newer))
+
+    assert metrics.newest_published_at == newer_at
 
 
 def test_thumbnail_selection_deduplicates_and_ignores_missing_assets() -> None:

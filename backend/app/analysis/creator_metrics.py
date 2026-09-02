@@ -204,24 +204,36 @@ def _stable_optional_bool_key(value: object) -> tuple[int, int, str]:
     return (2, 0, f"{type(value).__qualname__}:{value!r}")
 
 
-def _recency_key(video: VideoSource) -> tuple[int, float, str]:
+def _recency_key(video: VideoSource) -> tuple[int, int, int, int, int, int, str]:
     published = _aware_utc(video.published_at)
-    return (
-        0 if published is not None else 1,
-        -published.timestamp() if published is not None else 0.0,
-        video.id,
-    )
+    return (*_descending_datetime_key(published), video.id)
 
 
-def _performance_key(video: VideoSource) -> tuple[int, int, int, float, str]:
+def _performance_key(
+    video: VideoSource,
+) -> tuple[int, int, int, int, int, int, int, int, str]:
     count = _valid_nonnegative_int(video.view_count)
     published = _aware_utc(video.published_at)
     return (
         0 if count is not None else 1,
         -count if count is not None else 0,
-        0 if published is not None else 1,
-        -published.timestamp() if published is not None else 0.0,
+        *_descending_datetime_key(published),
         video.id,
+    )
+
+
+def _descending_datetime_key(
+    value: datetime | None,
+) -> tuple[int, int, int, int, int, int]:
+    if value is None:
+        return (1, 0, 0, 0, 0, 0)
+    return (
+        0,
+        -value.toordinal(),
+        -value.hour,
+        -value.minute,
+        -value.second,
+        -value.microsecond,
     )
 
 
@@ -249,7 +261,7 @@ def _bounded_metric_number(value: Decimal) -> int | float | None:
     if (
         isfinite(candidate)
         and 0 <= candidate <= MAX_PUBLIC_COUNT
-        and Decimal.from_float(candidate) == rounded
+        and Decimal(str(candidate)) == rounded
     ):
         return candidate
     bounded_integer = int(value.to_integral_value(rounding=ROUND_HALF_UP))
