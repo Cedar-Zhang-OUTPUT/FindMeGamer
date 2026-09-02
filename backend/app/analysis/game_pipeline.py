@@ -11,6 +11,7 @@ from app.analysis.prompts.game import (
     build_game_synthesis_bundle,
     build_game_visual_bundle,
 )
+from app.analysis.prompts.common import render_vision_prompt
 from app.analysis.service import GameAnalysisPublication, GameAnalysisService
 from app.integrations.errors import (
     IntegrationError,
@@ -139,7 +140,7 @@ class GameAnalysisPipeline:
             return unavailable_visual_analysis(_VISION_FAILURE_REASON)
         if not bundle.image_urls:
             return unavailable_visual_analysis(_NO_IMAGES_REASON)
-        prompt = "\n".join(message.content for message in bundle.messages)
+        prompt = render_vision_prompt(bundle.messages)
         for _ in range(2):
             try:
                 output = self._deepseek.complete_vision(
@@ -148,10 +149,13 @@ class GameAnalysisPipeline:
                     list(bundle.image_urls),
                     GameVisualAnalysis,
                 )
-                validate_stage_evidence(output, bundle.evidence_catalog)
-                return output
-            except (IntegrationError, ValueError):
+            except IntegrationError:
                 continue
+            try:
+                validate_stage_evidence(output, bundle.evidence_catalog)
+            except ValueError:
+                continue
+            return output
         return unavailable_visual_analysis(_VISION_FAILURE_REASON)
 
 

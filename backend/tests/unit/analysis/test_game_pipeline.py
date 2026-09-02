@@ -17,6 +17,7 @@ from app.analysis.prompts.game import (
     build_game_synthesis_bundle,
     build_game_visual_bundle,
 )
+from app.analysis.prompts.common import render_vision_prompt
 from app.analysis.service import GameAnalysisPublication, GameJobLease
 from app.integrations.errors import (
     InvalidModelOutput,
@@ -224,11 +225,12 @@ def test_pipeline_uses_exact_stage_bundles_models_and_order() -> None:
     assert deepseek.vision_calls == [
         (
             VISION_MODEL,
-            "\n".join(message.content for message in visual_bundle.messages),
+            render_vision_prompt(visual_bundle.messages),
             list(visual_bundle.image_urls),
             GameVisualAnalysis,
         )
     ]
+    assert deepseek.vision_calls[0][1].startswith("SYSTEM\n")
     assert events == [
         ("start", service.job_id),
         ("steam", "1245620"),
@@ -352,6 +354,20 @@ def test_vision_does_not_swallow_process_control_failures() -> None:
 
     with pytest.raises(KeyboardInterrupt):
         pipeline.run(service.job_id)
+
+
+def test_vision_does_not_swallow_gateway_programmer_value_error() -> None:
+    programmer_bug = ValueError("programmer bug")
+    pipeline, service, _, _, deepseek, events = _pipeline(
+        vision=[programmer_bug, programmer_bug]
+    )
+
+    with pytest.raises(ValueError, match="programmer bug"):
+        pipeline.run(service.job_id)
+
+    assert len(deepseek.vision_calls) == 1
+    assert service.publication is None
+    assert not any(event[0] == "finalize" for event in events)
 
 
 def test_semantically_invalid_vision_retries_once_then_falls_back() -> None:
