@@ -70,9 +70,7 @@ def _cursor_scope(
     }
 
 
-def _cursor_signature(
-    payload: dict[str, object], *, signing_key: bytes
-) -> str:
+def _cursor_signature(payload: dict[str, object], *, signing_key: bytes) -> str:
     canonical = json.dumps(
         payload,
         sort_keys=True,
@@ -149,9 +147,7 @@ def _decode_cursor(
             "key": value["key"],
             "scope": value["scope"],
         }
-        expected_signature = _cursor_signature(
-            signed_payload, signing_key=signing_key
-        )
+        expected_signature = _cursor_signature(signed_payload, signing_key=signing_key)
         if not hmac.compare_digest(value["signature"], expected_signature):
             raise ValueError("cursor signature mismatch")
         profile_id = UUID(value["key"][1])
@@ -197,7 +193,9 @@ def _creator_youtube_is_stale(source_status: object) -> bool:
     )
 
 
-def _selected_contact(creator: CreatorProfile) -> CreatorContactResponse | None:
+def _selected_contact(
+    creator: CreatorProfile, *, manual_only: bool = False
+) -> CreatorContactResponse | None:
     active = [contact for contact in creator.contacts if contact.is_active]
     manual = sorted(
         (contact for contact in active if contact.is_manual),
@@ -207,6 +205,8 @@ def _selected_contact(creator: CreatorProfile) -> CreatorContactResponse | None:
         selected = manual[0]
         source = "manual"
     else:
+        if manual_only:
+            return None
         validation_rank = {
             "verified": 3,
             "valid": 2,
@@ -259,11 +259,9 @@ def _game_detail(profile: GameProfile) -> GameProfileDetail:
 
 
 def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
-    current_facts = (
-        {}
-        if _creator_youtube_is_stale(profile.source_status)
-        else profile.current_facts
-    )
+    stale = _creator_youtube_is_stale(profile.source_status)
+    current_facts = {} if stale else profile.current_facts
+    brief = {} if stale else profile.brief
     return CreatorProfileCard(
         id=profile.id,
         name=profile.sort_name,
@@ -271,18 +269,21 @@ def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
         canonical_url=profile.canonical_url,
         favorite=profile.favorite,
         current_facts=public_json_object(current_facts),
-        brief=public_json_object(profile.brief),
+        brief=public_json_object(brief),
         source_status=public_json_object(profile.source_status),
         last_analyzed_at=profile.last_analyzed_at,
         next_analysis_at=profile.next_analysis_at,
-        contact=_selected_contact(profile),
+        contact=_selected_contact(profile, manual_only=stale),
     )
 
 
 def _creator_detail(profile: CreatorProfile) -> CreatorProfileDetail:
+    analysis = (
+        {} if _creator_youtube_is_stale(profile.source_status) else profile.analysis
+    )
     return CreatorProfileDetail(
         **_creator_card(profile).model_dump(),
-        analysis=public_json_object(profile.analysis),
+        analysis=public_json_object(analysis),
         model_metadata=public_json_object(profile.model_metadata),
         prompt_metadata=public_json_object(profile.prompt_metadata),
         manual_notes=profile.manual_notes,
@@ -341,8 +342,7 @@ def create_router(
     authenticate_workspace: Callable, *, cursor_signing_secret: str
 ) -> APIRouter:
     cursor_signing_key = hashlib.sha256(
-        b"find-me-gamer/profile-cursor/v1\0"
-        + cursor_signing_secret.encode("utf-8")
+        b"find-me-gamer/profile-cursor/v1\0" + cursor_signing_secret.encode("utf-8")
     ).digest()
     router = APIRouter(
         prefix="/api/v1/profiles",
@@ -420,9 +420,7 @@ def create_router(
             ),
         )
 
-    @router.patch(
-        "/creators/{profile_id}/manual", response_model=CreatorProfileDetail
-    )
+    @router.patch("/creators/{profile_id}/manual", response_model=CreatorProfileDetail)
     def update_creator_manual(
         profile_id: UUID,
         update: CreatorManualUpdate,
@@ -472,9 +470,7 @@ def create_router(
     ) -> GameProfileCard | CreatorProfileCard:
         repository = ProfilesRepository(database_session)
         if profile_type == "games":
-            game = repository.set_game_favorite(
-                profile_id, favorite=update.favorite
-            )
+            game = repository.set_game_favorite(profile_id, favorite=update.favorite)
             if game is None:
                 raise _profile_not_found()
             database_session.commit()

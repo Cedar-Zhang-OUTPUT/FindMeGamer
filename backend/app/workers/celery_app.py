@@ -11,7 +11,7 @@ def create_celery_app(*, broker_url: str | None = None) -> Celery:
         "find_me_gamer",
         broker=broker_url or settings.redis_url,
         backend=None,
-        include=["app.workers.analysis_tasks"],
+        include=["app.workers.analysis_tasks", "app.workers.schedules"],
     )
     app.conf.update(
         task_serializer="json",
@@ -31,6 +31,12 @@ def create_celery_app(*, broker_url: str | None = None) -> Celery:
             "max_retries": 0,
         },
         worker_prefetch_multiplier=1,
+        beat_schedule={
+            "mandatory-profile-reanalysis": {
+                "task": "find_me_gamer.reanalysis.enqueue_due",
+                "schedule": 900.0,
+            }
+        },
     )
     return app
 

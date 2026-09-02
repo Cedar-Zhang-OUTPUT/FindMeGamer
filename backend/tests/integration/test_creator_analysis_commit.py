@@ -412,6 +412,14 @@ def test_reanalysis_preserves_manual_contact_notes_favorite_and_replaces_discove
     committed_factory,
 ) -> None:
     profile_id = _profile(committed_factory)
+    with committed_factory.begin() as session:
+        profile = session.get(CreatorProfile, profile_id)
+        assert profile is not None
+        profile.source_status = {
+            "youtube": "stale",
+            "freshness": "stale",
+            "custom_marker": "replaced after successful refresh",
+        }
     job_id = _job(committed_factory)
 
     assert _pipeline(committed_factory).run(job_id) == profile_id
@@ -419,6 +427,12 @@ def test_reanalysis_preserves_manual_contact_notes_favorite_and_replaces_discove
     snapshot = _snapshot(committed_factory, profile_id)
     assert snapshot["favorite"] is True
     assert snapshot["manual_notes"] == "Warm lead"
+    assert snapshot["source_status"] == {
+        "youtube": "available",
+        "visual_analysis": "unavailable",
+        "contact_discovery": "available",
+        "freshness": "current",
+    }
     assert (
         "team@example.com",
         "manual",

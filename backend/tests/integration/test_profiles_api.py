@@ -331,9 +331,7 @@ def test_profile_json_projections_recursively_remove_sensitive_internal_keys(
     }
     assert card["brief"] == {"summary": "Public brief"}
     assert card["source_status"] == {"steam": {"status": "current"}}
-    assert detail["analysis"] == {
-        "public_analysis": {"theme": "Automation"}
-    }
+    assert detail["analysis"] == {"public_analysis": {"theme": "Automation"}}
     assert detail["model_metadata"] == {"analysis_model": "test-model"}
     assert detail["prompt_metadata"] == {"version": "game-v1"}
     for secret in (
@@ -512,18 +510,16 @@ def test_duplicate_and_case_variant_names_page_without_skips_or_duplicates(
         "a" * 2049,
         base64.urlsafe_b64encode(b"not-json").decode().rstrip("="),
         base64.urlsafe_b64encode(json.dumps(["Alpha"]).encode()).decode().rstrip("="),
-        base64.urlsafe_b64encode(
-            json.dumps(["Alpha", "not-a-uuid"]).encode()
-        ).decode().rstrip("="),
-        base64.urlsafe_b64encode(
-            json.dumps(["Alpha", str(uuid4()), "extra"]).encode()
-        ).decode().rstrip("="),
+        base64.urlsafe_b64encode(json.dumps(["Alpha", "not-a-uuid"]).encode())
+        .decode()
+        .rstrip("="),
+        base64.urlsafe_b64encode(json.dumps(["Alpha", str(uuid4()), "extra"]).encode())
+        .decode()
+        .rstrip("="),
     ],
 )
 def test_malformed_cursor_uses_safe_error(auth_client, cursor: str) -> None:
-    response = auth_client.get(
-        "/api/v1/profiles/creators", params={"cursor": cursor}
-    )
+    response = auth_client.get("/api/v1/profiles/creators", params={"cursor": cursor})
 
     assert_error(response, status=400, code="profile_cursor_invalid")
 
@@ -532,13 +528,15 @@ def test_tampered_cursor_tuple_is_rejected(auth_client, session: Session) -> Non
     creator = add_creator(
         session, channel_id="cursor-original", name="Original Cursor Name"
     )
-    cursor = base64.urlsafe_b64encode(
-        json.dumps(["Tampered Name", str(creator.id)]).encode()
-    ).decode().rstrip("=")
-
-    response = auth_client.get(
-        "/api/v1/profiles/creators", params={"cursor": cursor}
+    cursor = (
+        base64.urlsafe_b64encode(
+            json.dumps(["Tampered Name", str(creator.id)]).encode()
+        )
+        .decode()
+        .rstrip("=")
     )
+
+    response = auth_client.get("/api/v1/profiles/creators", params={"cursor": cursor})
 
     assert_error(response, status=400, code="profile_cursor_invalid")
 
@@ -560,23 +558,21 @@ def test_cursor_signature_rejects_a_different_existing_tuple(
         channel_id="signed-cursor-second",
         name="Signed Cursor",
     )
-    cursor = auth_client.get(
-        "/api/v1/profiles/creators", params={"limit": 1}
-    ).json()["next_cursor"]
-    payload = json.loads(
-        base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
-    )
+    cursor = auth_client.get("/api/v1/profiles/creators", params={"limit": 1}).json()[
+        "next_cursor"
+    ]
+    payload = json.loads(base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)))
     if isinstance(payload, list):
         payload[1] = str(second_id)
     else:
         payload["key"][1] = str(second_id)
-    tampered = base64.urlsafe_b64encode(
-        json.dumps(payload, separators=(",", ":")).encode()
-    ).decode().rstrip("=")
-
-    response = auth_client.get(
-        "/api/v1/profiles/creators", params={"cursor": tampered}
+    tampered = (
+        base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode())
+        .decode()
+        .rstrip("=")
     )
+
+    response = auth_client.get("/api/v1/profiles/creators", params={"cursor": tampered})
 
     assert_error(response, status=400, code="profile_cursor_invalid")
 
@@ -600,13 +596,11 @@ def test_cursor_is_bound_to_resource_type(auth_client, session: Session) -> None
         app_id="cross-resource-cursor",
         name="Cross Resource",
     )
-    cursor = auth_client.get(
-        "/api/v1/profiles/creators", params={"limit": 1}
-    ).json()["next_cursor"]
+    cursor = auth_client.get("/api/v1/profiles/creators", params={"limit": 1}).json()[
+        "next_cursor"
+    ]
 
-    response = auth_client.get(
-        "/api/v1/profiles/games", params={"cursor": cursor}
-    )
+    response = auth_client.get("/api/v1/profiles/games", params={"cursor": cursor})
 
     assert_error(response, status=400, code="profile_cursor_invalid")
 
@@ -636,9 +630,9 @@ def test_cursor_is_bound_to_normalized_filter_scope(
         name="Bravo Scope",
         favorite=True,
     )
-    cursor = auth_client.get(
-        "/api/v1/profiles/creators", params=first_params
-    ).json()["next_cursor"]
+    cursor = auth_client.get("/api/v1/profiles/creators", params=first_params).json()[
+        "next_cursor"
+    ]
 
     response = auth_client.get(
         "/api/v1/profiles/creators",
@@ -662,9 +656,7 @@ def test_search_is_case_insensitive_and_treats_wildcards_literally(
     case_match = auth_client.get(
         "/api/v1/profiles/creators", params={"query": "strategy"}
     )
-    percent_match = auth_client.get(
-        "/api/v1/profiles/creators", params={"query": "%"}
-    )
+    percent_match = auth_client.get("/api/v1/profiles/creators", params={"query": "%"})
     underscore_match = auth_client.get(
         "/api/v1/profiles/creators", params={"query": "_"}
     )
@@ -673,9 +665,7 @@ def test_search_is_case_insensitive_and_treats_wildcards_literally(
         "100% STRATEGY",
         "1000 strategy",
     ]
-    assert [item["name"] for item in percent_match.json()["items"]] == [
-        "100% STRATEGY"
-    ]
+    assert [item["name"] for item in percent_match.json()["items"]] == ["100% STRATEGY"]
     assert [item["name"] for item in underscore_match.json()["items"]] == [
         "Under_score"
     ]
@@ -693,17 +683,13 @@ def test_collection_filter_uses_shared_favorite_flag(
         session, channel_id="other-creator", name="Other Creator", favorite=False
     )
 
-    games = auth_client.get(
-        "/api/v1/profiles/games", params={"only_collection": True}
-    )
+    games = auth_client.get("/api/v1/profiles/games", params={"only_collection": True})
     creators = auth_client.get(
         "/api/v1/profiles/creators", params={"only_collection": True}
     )
 
     assert [item["name"] for item in games.json()["items"]] == ["Favorite Game"]
-    assert [item["name"] for item in creators.json()["items"]] == [
-        "Favorite Creator"
-    ]
+    assert [item["name"] for item in creators.json()["items"]] == ["Favorite Creator"]
 
 
 @pytest.mark.parametrize("profile_type", ["games", "creators"])
@@ -713,9 +699,7 @@ def test_favorite_sets_explicit_desired_state_idempotently(
     profile = (
         add_game(session, app_id="3001", name="Favorite Target")
         if profile_type == "games"
-        else add_creator(
-            session, channel_id="favorite-target", name="Favorite Target"
-        )
+        else add_creator(session, channel_id="favorite-target", name="Favorite Target")
     )
 
     first = auth_client.patch(
@@ -755,9 +739,7 @@ def test_favorite_requires_an_explicit_boolean(auth_client, payload) -> None:
 def test_discovered_contact_selection_is_deterministic(
     auth_client, session: Session
 ) -> None:
-    creator = add_creator(
-        session, channel_id="contact-order", name="Contact Ordering"
-    )
+    creator = add_creator(session, channel_id="contact-order", name="Contact Ordering")
     creator.contacts.extend(
         [
             CreatorContact(
@@ -802,9 +784,7 @@ def test_discovered_contact_selection_is_deterministic(
 def test_manual_contact_update_preserves_discovered_contacts_and_updates_notes(
     auth_client, session: Session
 ) -> None:
-    creator = add_creator(
-        session, channel_id="manual-update", name="Manual Update"
-    )
+    creator = add_creator(session, channel_id="manual-update", name="Manual Update")
     discovered = CreatorContact(
         email="discovered@example.com",
         source_type="website",
@@ -844,7 +824,9 @@ def test_manual_contact_update_preserves_discovered_contacts_and_updates_notes(
         and contact.is_active
         for contact in stored_contacts
     )
-    assert sum(contact.is_manual and contact.is_active for contact in stored_contacts) == 1
+    assert (
+        sum(contact.is_manual and contact.is_active for contact in stored_contacts) == 1
+    )
 
 
 def test_clearing_manual_contact_falls_back_to_discovered_and_can_clear_notes(
@@ -966,10 +948,12 @@ def test_stale_creator_hides_current_facts_but_retains_identity_and_manual_data(
     assert card["name"] == "Stale Creator"
     assert card["youtube_channel_id"] == creator.youtube_channel_id
     assert card["current_facts"] == {}
+    assert card["brief"] == {}
     assert card["source_status"] == stale_status
     assert card["contact"]["email"] == "manual-stale@example.com"
     assert detail["current_facts"] == {}
-    assert detail["analysis"] == {"content": {"primary_genres": ["strategy"]}}
+    assert detail["brief"] == {}
+    assert detail["analysis"] == {}
     assert detail["manual_notes"] == "Keep this note"
 
 
@@ -1020,9 +1004,7 @@ def test_stale_status_does_not_hide_game_facts(auth_client, session: Session) ->
 
 
 @pytest.mark.parametrize("profile_type", ["games", "creators"])
-def test_unknown_profile_uses_stable_error(
-    auth_client, profile_type: str
-) -> None:
+def test_unknown_profile_uses_stable_error(auth_client, profile_type: str) -> None:
     missing_id = UUID("ffffffff-ffff-ffff-ffff-ffffffffffff")
 
     detail = auth_client.get(f"/api/v1/profiles/{profile_type}/{missing_id}")
@@ -1053,9 +1035,7 @@ def test_unknown_or_singular_profile_type_uses_stable_error(
 
 
 def test_unknown_profile_type_wins_over_favorite_body_validation(auth_client) -> None:
-    response = auth_client.patch(
-        f"/api/v1/profiles/players/{uuid4()}/favorite"
-    )
+    response = auth_client.patch(f"/api/v1/profiles/players/{uuid4()}/favorite")
 
     assert_error(response, status=404, code="profile_type_unknown")
 
@@ -1068,9 +1048,7 @@ def test_invalid_profile_uuid_uses_safe_validation_error(auth_client) -> None:
 
 @pytest.mark.parametrize("limit", [0, 101])
 @pytest.mark.parametrize("profile_type", ["games", "creators"])
-def test_list_limit_is_bounded(
-    auth_client, profile_type: str, limit: int
-) -> None:
+def test_list_limit_is_bounded(auth_client, profile_type: str, limit: int) -> None:
     response = auth_client.get(
         f"/api/v1/profiles/{profile_type}", params={"limit": limit}
     )
@@ -1079,9 +1057,7 @@ def test_list_limit_is_bounded(
 
 
 def test_search_query_length_is_bounded(auth_client) -> None:
-    response = auth_client.get(
-        "/api/v1/profiles/games", params={"query": "a" * 256}
-    )
+    response = auth_client.get("/api/v1/profiles/games", params={"query": "a" * 256})
 
     assert_error(response, status=422, code="request_invalid")
 

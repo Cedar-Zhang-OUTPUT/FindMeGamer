@@ -1,16 +1,29 @@
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import TypeVar
 from uuid import UUID
 
-from sqlalchemy import Select, select, tuple_
+from sqlalchemy import Select, cast, func, literal, select, tuple_, union_all, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, selectinload
 
-from app.db.models.jobs import acquire_job_change_lock
+from app.db.models.enums import JobStatus, TargetType
+from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 
 
 ProfileT = TypeVar("ProfileT", GameProfile, CreatorProfile)
 CursorValue = tuple[str, UUID]
+
+
+@dataclass(frozen=True, slots=True)
+class DueProfile:
+    next_analysis_at: datetime
+    target_type: TargetType
+    profile_id: UUID
+    canonical_target_id: str
+    canonical_url: str
 
 
 class ProfilesRepository:
@@ -97,6 +110,94 @@ class ProfilesRepository:
             .with_for_update()
             .options(selectinload(CreatorProfile.contacts))
         )
+
+    def list_due_profiles(self, *, now: datetime, limit: int) -> list[DueProfile]:
+        active_game = (
+            select(AnalysisJob.id)
+            .where(
+                AnalysisJob.target_type == TargetType.GAME,
+                AnalysisJob.canonical_target_id == GameProfile.steam_app_id,
+                AnalysisJob.status.in_((JobStatus.QUEUED, JobStatus.RUNNING)),
+            )
+            .exists()
+        )
+        active_creator = (
+            select(AnalysisJob.id)
+            .where(
+                AnalysisJob.target_type == TargetType.CREATOR,
+                AnalysisJob.canonical_target_id == CreatorProfile.youtube_channel_id,
+                AnalysisJob.status.in_((JobStatus.QUEUED, JobStatus.RUNNING)),
+            )
+            .exists()
+        )
+        due = union_all(
+            select(
+                GameProfile.next_analysis_at.label("next_analysis_at"),
+                literal(TargetType.GAME.value).label("target_type"),
+                GameProfile.id.label("profile_id"),
+                GameProfile.steam_app_id.label("canonical_target_id"),
+                GameProfile.canonical_url.label("canonical_url"),
+            ).where(
+                GameProfile.next_analysis_at.is_not(None),
+                GameProfile.next_analysis_at <= now,
+                ~active_game,
+            ),
+            select(
+                CreatorProfile.next_analysis_at.label("next_analysis_at"),
+                literal(TargetType.CREATOR.value).label("target_type"),
+                CreatorProfile.id.label("profile_id"),
+                CreatorProfile.youtube_channel_id.label("canonical_target_id"),
+                CreatorProfile.canonical_url.label("canonical_url"),
+            ).where(
+                CreatorProfile.next_analysis_at.is_not(None),
+                CreatorProfile.next_analysis_at <= now,
+                ~active_creator,
+            ),
+        ).subquery()
+        rows = self._session.execute(
+            select(due)
+            .order_by(
+                due.c.next_analysis_at,
+                due.c.target_type,
+                due.c.profile_id,
+            )
+            .limit(limit)
+        ).all()
+        return [
+            DueProfile(
+                next_analysis_at=row.next_analysis_at,
+                target_type=TargetType(row.target_type),
+                profile_id=row.profile_id,
+                canonical_target_id=row.canonical_target_id,
+                canonical_url=row.canonical_url,
+            )
+            for row in rows
+        ]
+
+    def mark_stale_creators(self, now: datetime) -> int:
+        cutoff = now - timedelta(days=30)
+        stale_patch = cast(
+            {"youtube": "stale", "freshness": "stale"},
+            JSONB,
+        )
+        result = self._session.execute(
+            update(CreatorProfile)
+            .where(
+                CreatorProfile.last_analyzed_at.is_not(None),
+                CreatorProfile.last_analyzed_at < cutoff,
+                (
+                    func.lower(
+                        CreatorProfile.source_status["youtube"].astext
+                    ).is_distinct_from("stale")
+                    | func.lower(
+                        CreatorProfile.source_status["freshness"].astext
+                    ).is_distinct_from("stale")
+                ),
+            )
+            .values(source_status=CreatorProfile.source_status.op("||")(stale_patch))
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount
 
     def set_game_favorite(
         self, profile_id: UUID, *, favorite: bool
