@@ -425,6 +425,42 @@ def test_failure_never_overwrites_success_and_preserves_successful_sibling(
     )
 
 
+@pytest.mark.parametrize(
+    "failure_order",
+    [("permanent", "retryable"), ("retryable", "permanent")],
+    ids=["permanent-finishes-first", "permanent-finishes-last"],
+)
+def test_serialized_concurrent_pair_failure_orders_keep_task_nonretryable(
+    session: Session, failure_order: tuple[str, str]
+) -> None:
+    task, creators = _task_with_selected(session, 2)
+    store = _store(session)
+    store.prepare(task.id, [creator.id for creator in creators])
+    failures = {
+        "permanent": PairwiseTerminalFailure(
+            code="deepseek_input_invalid",
+            message="Match could not be completed. Please retry.",
+            retryable=False,
+        ),
+        "retryable": PairwiseTerminalFailure(
+            code="deepseek_unavailable",
+            message="Match is temporarily unavailable. Please retry.",
+            retryable=True,
+        ),
+    }
+
+    for creator, failure_name in zip(creators, failure_order, strict=True):
+        assert store.fail_pair(task.id, creator.id, failures[failure_name]) is True
+
+    session.expire_all()
+    saved_task = session.get(MatchTask, task.id)
+    assert saved_task is not None
+    assert saved_task.status is MatchStatus.FAILED
+    assert saved_task.retryable is False
+    assert saved_task.error_code == "deepseek_input_invalid"
+    assert saved_task.error_message == "Match could not be completed. Please retry."
+
+
 def test_ranking_start_redelivery_preserves_the_advanced_task(
     session: Session,
     monkeypatch: pytest.MonkeyPatch,

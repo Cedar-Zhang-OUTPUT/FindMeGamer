@@ -6,7 +6,7 @@ import base64
 import binascii
 from collections.abc import Callable
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import hmac
 import json
@@ -298,9 +298,24 @@ def _selected_contact(
     )
 
 
-def _bounded_int(facts: dict, key: str) -> int | None:
-    value = facts.get(key)
-    return value if type(value) is int and 0 <= value <= 2**63 - 1 else None
+def _bounded_count(value: object) -> int | None:
+    if type(value) is int:
+        candidate = value
+    elif type(value) is float:
+        decimal = Decimal(str(value))
+        if not decimal.is_finite():
+            return None
+        candidate = int(decimal.to_integral_value(rounding=ROUND_HALF_UP))
+    else:
+        return None
+    return candidate if 0 <= candidate <= 2**63 - 1 else None
+
+
+def _available_text(value: object) -> str | None:
+    if not isinstance(value, dict) or value.get("status") != "available":
+        return None
+    text = value.get("value")
+    return text if isinstance(text, str) and 0 < len(text) <= 2000 else None
 
 
 def _creator_card(creator: CreatorProfile) -> MatchCreatorCard:
@@ -310,10 +325,22 @@ def _creator_card(creator: CreatorProfile) -> MatchCreatorCard:
         if not stale and isinstance(creator.current_facts, dict)
         else {}
     )
+    analysis = (
+        creator.analysis if not stale and isinstance(creator.analysis, dict) else {}
+    )
+    metrics = facts.get("recent_metrics")
+    metrics = metrics if isinstance(metrics, dict) else {}
     contact = _selected_contact(list(creator.contacts), manual_only=stale)
     title = facts.get("title")
     avatar = facts.get("avatar_url")
-    performance = facts.get("performance_summary")
+    performance = _available_text(analysis.get("recent_performance_summary"))
+    if performance is None:
+        flat_performance = facts.get("performance_summary")
+        performance = (
+            flat_performance
+            if isinstance(flat_performance, str) and 0 < len(flat_performance) <= 2000
+            else None
+        )
     return MatchCreatorCard(
         id=creator.id,
         name=title if isinstance(title, str) and title else creator.sort_name,
@@ -321,14 +348,14 @@ def _creator_card(creator: CreatorProfile) -> MatchCreatorCard:
         canonical_url=creator.canonical_url,
         avatar_url=avatar if isinstance(avatar, str) and avatar else None,
         favorite=creator.favorite,
-        subscriber_count=_bounded_int(facts, "subscriber_count"),
-        recent_average_views=_bounded_int(facts, "recent_average_views"),
-        recent_median_views=_bounded_int(facts, "recent_median_views"),
-        performance_summary=(
-            performance
-            if isinstance(performance, str) and 0 < len(performance) <= 2000
-            else None
+        subscriber_count=_bounded_count(facts.get("subscriber_count")),
+        recent_average_views=_bounded_count(
+            metrics.get("average_views", facts.get("recent_average_views"))
         ),
+        recent_median_views=_bounded_count(
+            metrics.get("median_views", facts.get("recent_median_views"))
+        ),
+        performance_summary=performance,
         contact_available=contact is not None,
         contact=contact,
     )
@@ -578,6 +605,14 @@ def _required_resume_stage(session: Session, task: MatchTask) -> str:
     pairs = session.scalars(
         select(MatchPairwiseRecord).where(MatchPairwiseRecord.match_task_id == task.id)
     ).all()
+    if task.stage is MatchStage.PAIRWISE and any(
+        row.state is PairwiseState.FAILED and not row.retryable for row in pairs
+    ):
+        raise APIError(
+            status_code=409,
+            code="match_not_retryable",
+            message="This Match cannot be retried.",
+        )
     if task.stage is MatchStage.RANKING:
         if {row.creator_id for row in pairs} != selected or any(
             row.state is not PairwiseState.SUCCEEDED or row.match_brief is None

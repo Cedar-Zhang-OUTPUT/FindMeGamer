@@ -8,6 +8,7 @@ from decimal import Decimal
 import json
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
@@ -131,14 +132,44 @@ def _profiles(session: Session) -> tuple[GameProfile, CreatorProfile]:
         canonical_url=f"https://www.youtube.com/channel/{channel}",
         sort_name="Current Creator",
         current_facts={
+            "channel_id": channel,
+            "canonical_url": f"https://www.youtube.com/channel/{channel}",
             "title": "Current Creator",
+            "custom_url": "@currentcreator",
+            "published_at": "2020-01-01T00:00:00Z",
+            "country": "US",
             "avatar_url": "https://cdn.example/avatar.jpg",
+            "banner_url": "https://cdn.example/banner.jpg",
             "subscriber_count": 1234,
-            "recent_average_views": 321,
-            "recent_median_views": 300,
-            "performance_summary": "Steady recent performance.",
+            "hidden_subscriber_count": False,
+            "total_view_count": 10000,
+            "public_video_count": 20,
+            "recent_metrics": {
+                "recent_public_video_count": 3,
+                "numeric_view_sample_count": 2,
+                "average_views": 321.5,
+                "median_views": 300.5,
+                "publishing_frequency": None,
+                "newest_published_at": "2026-08-30T00:00:00Z",
+                "oldest_published_at": "2026-08-01T00:00:00Z",
+            },
+            "representative_videos": [],
         },
-        analysis={},
+        analysis={
+            "recent_performance_summary": {
+                "status": "available",
+                "value": "Steady recent performance.",
+                "evidence": [
+                    {
+                        "kind": "source_fact",
+                        "source_type": "video_id",
+                        "reference": "video:video-1",
+                        "observation": "Recent public views are consistent.",
+                    }
+                ],
+                "confidence": "high",
+            }
+        },
         brief=_creator_brief(),
         source_status={"youtube": "current", "freshness": "current"},
         favorite=True,
@@ -466,6 +497,13 @@ def test_match_detail_groups_hidden_order_and_projects_current_creator_contact_o
         )
     )
     session.flush()
+    current_body = auth_client.get(f"/api/v1/matches/{task.id}").json()
+    current_visible = current_body["other_matches"][0]["creator"]
+    assert current_visible["subscriber_count"] == 1234
+    assert current_visible["recent_average_views"] == 322
+    assert current_visible["recent_median_views"] == 301
+    assert current_visible["performance_summary"] == "Steady recent performance."
+
     creator.source_status = {"youtube": "stale", "freshness": "stale"}
     session.flush()
     body = auth_client.get(f"/api/v1/matches/{task.id}").json()
@@ -622,6 +660,95 @@ def test_retry_resumes_screening_pairwise_and_ranking_checkpoints(
             else START_MATCH_TASK_NAME
         )
         assert match_dispatcher.calls[-1] == (expected, task.id)
+
+
+@pytest.mark.parametrize(
+    ("pair_retryability", "expected_status"),
+    [((False, True), 409), ((True, True), 202)],
+    ids=["mixed-permanence", "all-retryable"],
+)
+def test_pairwise_retry_requires_every_failed_checkpoint_to_be_retryable(
+    auth_client: TestClient,
+    session: Session,
+    match_dispatcher,
+    pair_retryability: tuple[bool, bool],
+    expected_status: int,
+) -> None:
+    game, first_creator = _profiles(session)
+    second_creator = _second_creator(session)
+    task = _task(session, game, status=MatchStatus.FAILED, stage=MatchStage.PAIRWISE)
+    task.completed_units = 1
+    task.total_units = 4
+    task.error_code = "deepseek_unavailable"
+    task.error_message = "Match is temporarily unavailable. Please retry."
+    task.retryable = True
+    for order, (creator, retryable) in enumerate(
+        zip((first_creator, second_creator), pair_retryability, strict=True)
+    ):
+        session.add(
+            MatchScreeningRecord(
+                match_task_id=task.id,
+                creator_id=creator.id,
+                screening_order=order,
+                locked_creator_brief=_creator_brief(),
+                selected=True,
+                expires_at=task.input_expires_at,
+                created_at=NOW,
+                updated_at=NOW,
+            )
+        )
+        session.flush()
+        session.add(
+            MatchCandidateInput(
+                match_task_id=task.id,
+                creator_id=creator.id,
+                locked_creator_profile={"id": str(creator.id)},
+                input_model_metadata={},
+                input_prompt_metadata={},
+                expires_at=task.input_expires_at,
+                created_at=NOW,
+                updated_at=NOW,
+            )
+        )
+        session.flush()
+        session.add(
+            MatchPairwiseRecord(
+                match_task_id=task.id,
+                creator_id=creator.id,
+                state=PairwiseState.FAILED,
+                attempt_count=1,
+                error_code=(
+                    "deepseek_unavailable" if retryable else "deepseek_input_invalid"
+                ),
+                error_message=(
+                    "Match is temporarily unavailable. Please retry."
+                    if retryable
+                    else "Match could not be completed. Please retry."
+                ),
+                retryable=retryable,
+                started_at=NOW,
+                completed_at=NOW,
+                created_at=NOW,
+                updated_at=NOW,
+            )
+        )
+    session.flush()
+    assert auth_client.get(f"/api/v1/matches/{task.id}").json()["retryable"] is True
+
+    response = auth_client.post(
+        f"/api/v1/matches/{task.id}/retry",
+        headers={"Idempotency-Key": f"retry-mixed-{task.id}"},
+    )
+
+    assert response.status_code == expected_status
+    session.refresh(task)
+    if expected_status == 409:
+        assert response.json()["error"]["code"] == "match_not_retryable"
+        assert task.status is MatchStatus.FAILED
+        assert match_dispatcher.calls == []
+    else:
+        assert task.status is MatchStatus.RUNNING
+        assert match_dispatcher.calls == [(START_MATCH_TASK_NAME, task.id)]
 
 
 def test_expired_retry_atomically_supersedes_and_replays_one_new_task(
