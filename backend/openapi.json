@@ -678,10 +678,6 @@
             "title": "Notes"
           }
         },
-        "required": [
-          "contact_email",
-          "notes"
-        ],
         "title": "CreatorManualUpdate",
         "type": "object"
       },

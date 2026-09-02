@@ -891,12 +891,10 @@ def test_clearing_manual_contact_falls_back_to_discovered_and_can_clear_notes(
     "payload",
     [
         {"contact_email": "not-an-email", "notes": "Note"},
-        {"contact_email": "valid@example.com"},
-        {"notes": "Note"},
         {"contact_email": "valid@example.com", "notes": 123},
     ],
 )
-def test_manual_update_validates_complete_typed_body(
+def test_manual_update_validates_typed_body(
     auth_client, creator_id: UUID, payload: dict[str, object]
 ) -> None:
     response = auth_client.patch(
@@ -904,6 +902,29 @@ def test_manual_update_validates_complete_typed_body(
     )
 
     assert_error(response, status=422, code="request_invalid")
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_email", "expected_notes"),
+    [
+        ({"contact_email": "valid@example.com"}, "valid@example.com", None),
+        ({"notes": "Note"}, "public@example.com", "Note"),
+    ],
+)
+def test_manual_update_accepts_an_omitted_nullable_field_as_null(
+    auth_client,
+    creator_id: UUID,
+    payload: dict[str, object],
+    expected_email: str,
+    expected_notes: str | None,
+) -> None:
+    response = auth_client.patch(
+        f"/api/v1/profiles/creators/{creator_id}/manual", json=payload
+    )
+
+    assert response.status_code == 200
+    assert response.json()["contact"]["email"] == expected_email
+    assert response.json()["manual_notes"] == expected_notes
 
 
 @pytest.mark.parametrize(

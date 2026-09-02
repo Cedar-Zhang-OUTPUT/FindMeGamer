@@ -16,13 +16,7 @@ from pydantic import (
 
 
 type PublicJSONValue = (
-    str
-    | int
-    | float
-    | bool
-    | None
-    | list[PublicJSONValue]
-    | dict[str, PublicJSONValue]
+    str | int | float | bool | None | list[PublicJSONValue] | dict[str, PublicJSONValue]
 )
 type PublicJSONObject = Annotated[
     dict[str, PublicJSONValue],
@@ -99,9 +93,7 @@ def _word_forms(word: str) -> tuple[str, ...]:
 
 
 _semantic_word_forms = {
-    form: word
-    for word in _semantic_vocabulary
-    for form in _word_forms(word)
+    form: word for word in _semantic_vocabulary for form in _word_forms(word)
 }
 _compact_word_forms = tuple(
     sorted(_semantic_word_forms, key=lambda form: (-len(form), form))
@@ -184,9 +176,7 @@ def _validate_public_json(value: object) -> None:
                 if keys > PUBLIC_JSON_MAX_KEYS:
                     raise ValueError("public profile JSON exceeds the key budget")
                 if not isinstance(raw_key, str):
-                    raise ValueError(
-                        "public profile JSON object keys must be strings"
-                    )
+                    raise ValueError("public profile JSON object keys must be strings")
                 if len(raw_key) > PUBLIC_JSON_MAX_KEY_LENGTH:
                     raise ValueError(
                         "public profile JSON object key exceeds the length budget"
@@ -198,9 +188,7 @@ def _validate_public_json(value: object) -> None:
     visit(value, depth=0)
 
 
-def _project_public_json(
-    value: object, *, restricted_context: bool
-) -> PublicJSONValue:
+def _project_public_json(value: object, *, restricted_context: bool) -> PublicJSONValue:
     # Structural types have already been checked by _validate_public_json.
     if value is None or isinstance(value, str | bool | int | float):
         return value  # type: ignore[return-value]
@@ -311,9 +299,7 @@ def _is_security_key(words: tuple[str, ...]) -> bool:
         return True
     if "key" in word_set and _key_qualifier_words.intersection(word_set):
         return True
-    return "session" in word_set and bool(
-        _session_object_words.intersection(word_set)
-    )
+    return "session" in word_set and bool(_session_object_words.intersection(word_set))
 
 
 class FavoriteUpdate(BaseModel):
@@ -321,8 +307,8 @@ class FavoriteUpdate(BaseModel):
 
 
 class CreatorManualUpdate(BaseModel):
-    contact_email: EmailStr | None
-    notes: Annotated[StrictStr, Field(max_length=20_000)] | None
+    contact_email: EmailStr | None = None
+    notes: Annotated[StrictStr, Field(max_length=20_000)] | None = None
 
 
 class CreatorContactResponse(BaseModel):

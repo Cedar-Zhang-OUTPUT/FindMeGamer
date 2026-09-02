@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas import profiles as profile_schemas
-from app.schemas.profiles import GameProfileDetail
+from app.schemas.profiles import CreatorManualUpdate, GameProfileDetail
 from tests.profile_policy_cases import (
     CONTEXT_METRIC_KEYS,
     NEAR_MISS_KEY_FORMS,
@@ -38,6 +38,33 @@ def test_public_json_schema_uses_generator_supported_untyped_container() -> None
         "type": "object",
     }
     assert "PublicJSONValue" not in definitions
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_email", "expected_notes"),
+    [
+        ({}, None, None),
+        ({"contact_email": None, "notes": None}, None, None),
+        (
+            {
+                "contact_email": "creator@example.com",
+                "notes": "Reached at PAX",
+            },
+            "creator@example.com",
+            "Reached at PAX",
+        ),
+    ],
+)
+def test_creator_manual_update_accepts_missing_null_and_values(
+    payload: dict[str, object],
+    expected_email: str | None,
+    expected_notes: str | None,
+) -> None:
+    update = CreatorManualUpdate.model_validate(payload)
+    actual_email = str(update.contact_email) if update.contact_email else None
+
+    assert actual_email == expected_email
+    assert update.notes == expected_notes
 
 
 def test_profile_response_schema_sanitizes_json_without_route_helpers() -> None:
@@ -142,8 +169,9 @@ def test_profile_response_filters_generated_security_key_matrix() -> None:
     }
 
 
-def test_profile_response_preserves_public_metrics_and_filters_contextual_metrics(
-) -> None:
+def test_profile_response_preserves_public_metrics_and_filters_contextual_metrics() -> (
+    None
+):
     detail = _game_detail(
         current_facts={
             "score": 88,
@@ -195,9 +223,7 @@ def test_profile_response_filters_generated_contextual_metric_matrix() -> None:
         }
         for ancestor in RESTRICTED_ANCESTOR_FORMS
     }
-    compact_metrics = {
-        key: 1 for key in RESTRICTED_COMPACT_METRIC_FORMS
-    }
+    compact_metrics = {key: 1 for key in RESTRICTED_COMPACT_METRIC_FORMS}
     detail = _game_detail(
         current_facts={
             "score": 87,
@@ -261,9 +287,7 @@ def test_profile_validation_error_never_includes_unsupported_value_repr() -> Non
 
     assert ERROR_REPR_CANARY not in str(captured.value)
     assert ERROR_REPR_CANARY not in captured.value.json()
-    assert ERROR_REPR_CANARY not in json.dumps(
-        captured.value.errors(), default=repr
-    )
+    assert ERROR_REPR_CANARY not in json.dumps(captured.value.errors(), default=repr)
 
 
 @pytest.mark.parametrize(
@@ -281,18 +305,14 @@ def test_profile_response_validates_values_beneath_filtered_keys(
 
     assert ERROR_REPR_CANARY not in str(captured.value)
     assert ERROR_REPR_CANARY not in captured.value.json()
-    assert ERROR_REPR_CANARY not in json.dumps(
-        captured.value.errors(), default=repr
-    )
+    assert ERROR_REPR_CANARY not in json.dumps(captured.value.errors(), default=repr)
 
 
 @pytest.mark.parametrize("key_length", [3_000, 6_000, 12_000])
 def test_profile_response_rejects_oversized_keys_before_classification(
     key_length: int, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    repeated_api_key = (
-        "api" * ((key_length - 1) // 3 + 1)
-    )[: key_length - 1] + "x"
+    repeated_api_key = ("api" * ((key_length - 1) // 3 + 1))[: key_length - 1] + "x"
     classified_keys: list[str] = []
 
     def record_classification(key: str) -> tuple[str, ...]:

@@ -7,8 +7,10 @@ BACKEND_SCHEMA="$BACKEND_DIR/openapi.json"
 PACKAGE_DIR="$ROOT_DIR/macos"
 TARGET_DIR="$PACKAGE_DIR/Sources/FindMeGamerAPI"
 TARGET_SCHEMA="$TARGET_DIR/openapi.json"
+NORMALIZER="$ROOT_DIR/script/normalize_openapi_for_swift.py"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/find-me-gamer-openapi.XXXXXX")"
 NETWORK_GUARD="$TEMP_DIR/network-guard"
+NORMALIZED_SCHEMA="$TEMP_DIR/openapi.json.normalized"
 SCHEMA_BACKUP="$TEMP_DIR/openapi.json.previous"
 SCHEMA_REPLACED=0
 SCHEMA_PREEXISTED=0
@@ -97,7 +99,10 @@ validation_python="$(command -v python3)" || {
   exit 1
 }
 
-"$validation_python" - "$BACKEND_SCHEMA" <<'PYTHON'
+"$validation_python" "$NORMALIZER" "$BACKEND_SCHEMA" "$NORMALIZED_SCHEMA"
+
+"$validation_python" - "$BACKEND_SCHEMA" "$NORMALIZED_SCHEMA" <<'PYTHON'
+import hashlib
 import json
 import re
 import sys
@@ -148,7 +153,14 @@ expected = [
     "confirmCreatorResponse",
 ]
 with open(sys.argv[1], "rb") as stream:
-    document = json.load(stream)
+    source_bytes = stream.read()
+    document = json.loads(source_bytes)
+with open(sys.argv[2], "rb") as stream:
+    swift_document = json.load(stream)
+
+source_digest = hashlib.sha256(source_bytes).hexdigest()
+if swift_document.get("x-find-me-gamer-source-sha256") != source_digest:
+    raise SystemExit("Swift OpenAPI schema source digest is invalid")
 
 actual = []
 response_roots = []
@@ -170,6 +182,32 @@ if not all(re.fullmatch(r"[a-z][A-Za-z0-9]*", value) for value in actual):
     raise SystemExit("OpenAPI operation IDs must be camelCase")
 if "createSendBatch" in actual:
     raise SystemExit("OpenAPI contains the stale createSendBatch alias")
+
+swift_actual = [
+    operation["operationId"]
+    for path in swift_document["paths"].values()
+    for operation in path.values()
+    if isinstance(operation, dict) and "operationId" in operation
+]
+if swift_actual != actual:
+    raise SystemExit("Swift OpenAPI operation IDs differ from the backend source")
+
+
+def contains_value_null_union(value):
+    if isinstance(value, list):
+        return any(contains_value_null_union(item) for item in value)
+    if not isinstance(value, dict):
+        return False
+    alternatives = value.get("anyOf")
+    if isinstance(alternatives, list) and len(alternatives) == 2:
+        null_count = sum(item == {"type": "null"} for item in alternatives)
+        if null_count == 1:
+            return True
+    return any(contains_value_null_union(item) for item in value.values())
+
+
+if contains_value_null_union(swift_document):
+    raise SystemExit("Swift OpenAPI schema retains an unsupported value/null union")
 
 schemas = document["components"]["schemas"]
 pending = list(response_roots)
@@ -221,7 +259,7 @@ PYTHON
 
 mkdir -p "$TARGET_DIR"
 candidate="$TARGET_DIR/.openapi.json.sync.$$"
-cp "$BACKEND_SCHEMA" "$candidate"
+cp "$NORMALIZED_SCHEMA" "$candidate"
 if [[ -f "$TARGET_SCHEMA" ]] && cmp -s "$candidate" "$TARGET_SCHEMA"; then
   rm -f "$candidate"
 else
@@ -233,8 +271,8 @@ else
   SCHEMA_REPLACED=1
 fi
 
-cmp -s "$BACKEND_SCHEMA" "$TARGET_SCHEMA" || {
-  echo "Swift OpenAPI schema differs from the backend contract" >&2
+cmp -s "$NORMALIZED_SCHEMA" "$TARGET_SCHEMA" || {
+  echo "Swift OpenAPI schema differs from the normalized backend contract" >&2
   exit 1
 }
 
