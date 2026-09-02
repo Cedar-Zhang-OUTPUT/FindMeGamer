@@ -281,6 +281,30 @@ class JobsRepository:
         self._session.flush()
         return JobCreationResult(job=job, created=True)
 
+    def create_creator_seed_job(
+        self,
+        target: CanonicalTarget,
+        *,
+        correlation_id: str,
+    ) -> JobCreationResult:
+        """Create a normal initial Job for an already-persisted seed carrier."""
+        if target.target_type is not TargetType.CREATOR or target.requires_resolution:
+            raise ValueError("Creator seed target must be fully canonical")
+        active = self.active_job(target)
+        if active is not None:
+            return JobCreationResult(job=active)
+        job = AnalysisJob(
+            target_type=TargetType.CREATOR,
+            canonical_target_id=target.canonical_id,
+            canonical_url=target.canonical_url,
+            mode=JobMode.CREATE,
+            status=JobStatus.QUEUED,
+            correlation_id=correlation_id,
+        )
+        self._session.add(job)
+        self._session.flush()
+        return JobCreationResult(job=job, created=True)
+
     def retry_or_reuse_job(
         self,
         source: AnalysisJob,
