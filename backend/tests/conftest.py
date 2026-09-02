@@ -128,6 +128,18 @@ class FakeSMTPRateLimiter:
         return self.delay
 
 
+class FakeOutreachBatchDispatcher:
+    def __init__(self) -> None:
+        self.calls: list[UUID] = []
+        self.error: Exception | None = None
+
+    def dispatch(self, send_batch_id: UUID) -> int:
+        self.calls.append(send_batch_id)
+        if self.error is not None:
+            raise self.error
+        return 0
+
+
 @pytest.fixture(scope="session")
 def database_url() -> str:
     url = os.environ.get("DATABASE_URL")
@@ -210,6 +222,11 @@ def smtp_rate_limiter() -> FakeSMTPRateLimiter:
 
 
 @pytest.fixture
+def outreach_batch_dispatcher() -> FakeOutreachBatchDispatcher:
+    return FakeOutreachBatchDispatcher()
+
+
+@pytest.fixture
 def client(
     session: Session,
     rate_limit_counter: FakeRateLimitCounter,
@@ -219,6 +236,7 @@ def client(
     match_dispatcher: FakeMatchDispatcher,
     smtp_gateway: FakeSMTPGateway,
     smtp_rate_limiter: FakeSMTPRateLimiter,
+    outreach_batch_dispatcher: FakeOutreachBatchDispatcher,
 ) -> Iterator[TestClient]:
     @contextmanager
     def job_session_factory() -> Iterator[Session]:
@@ -243,6 +261,8 @@ def client(
         app_kwargs["smtp_gateway"] = smtp_gateway
     if "smtp_rate_limiter" in signature(create_app).parameters:
         app_kwargs["smtp_rate_limiter"] = smtp_rate_limiter
+    if "outreach_batch_dispatcher" in signature(create_app).parameters:
+        app_kwargs["outreach_batch_dispatcher"] = outreach_batch_dispatcher
     test_app = create_app(**app_kwargs)
 
     def override_get_session() -> Iterator[Session]:

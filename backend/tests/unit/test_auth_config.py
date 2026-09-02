@@ -82,6 +82,7 @@ def test_external_gateway_settings_have_canonical_server_only_defaults() -> None
     assert settings.steam_store_base_url == "https://store.steampowered.com/api"
     assert settings.youtube_api_base_url == "https://www.googleapis.com/youtube/v3"
     assert settings.deepseek_api_base_url == "https://api.deepseek.com"
+    assert settings.external_base_url == "https://find-me-gamer.example.invalid"
     assert settings.s3_region == "us-east-1"
     assert settings.s3_bucket == "find-me-gamer-artifacts"
     assert settings.s3_endpoint_url is None
@@ -95,6 +96,8 @@ def test_external_gateway_settings_have_canonical_server_only_defaults() -> None
         ("deepseek_api_base_url", "https://user@example.com"),
         ("deepseek_api_base_url", "https://api.deepseek.com?key=secret"),
         ("deepseek_api_base_url", "https://api.deepseek.com/#fragment"),
+        ("external_base_url", "http://find-me-gamer.example.com"),
+        ("external_base_url", "https://user@example.com"),
         ("s3_endpoint_url", "http://s3.example.com"),
         ("s3_bucket", "Bad_Bucket"),
         ("s3_region", ""),
@@ -119,9 +122,21 @@ def test_external_gateway_settings_allow_loopback_http_and_strip_trailing_slash(
         youtube_api_base_url="http://localhost:18081/youtube/v3/",
         deepseek_api_base_url="http://[::1]:18082/v1/",
         s3_endpoint_url="http://localhost:4566/",
+        external_base_url="http://localhost:8000/",
     )
 
     assert settings.steam_store_base_url == "http://127.0.0.1:18080/steam"
     assert settings.youtube_api_base_url == "http://localhost:18081/youtube/v3"
     assert settings.deepseek_api_base_url == "http://[::1]:18082/v1"
     assert settings.s3_endpoint_url == "http://localhost:4566"
+    assert settings.external_base_url == "http://localhost:8000"
+
+
+def test_settings_reject_reversed_outreach_retry_delays() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            workspace_access_key_hash=VALID_WORKSPACE_HASH,
+            outreach_retry_base_delay_seconds=61,
+            outreach_retry_max_delay_seconds=60,
+        )

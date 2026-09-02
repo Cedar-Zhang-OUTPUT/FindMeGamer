@@ -15,6 +15,7 @@ def create_celery_app(*, broker_url: str | None = None) -> Celery:
             "app.matching.retention",
             "app.workers.analysis_tasks",
             "app.workers.match_tasks",
+            "app.workers.outreach_tasks",
             "app.workers.schedules",
         ],
     )

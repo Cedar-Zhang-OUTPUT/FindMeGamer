@@ -56,6 +56,7 @@ def create_app(
     match_seed_factory: match_routes.SeedFactory = match_routes.random_signed_64_bit,
     smtp_gateway: SMTPGateway | None = None,
     smtp_rate_limiter: SMTPRateLimiter | None = None,
+    outreach_batch_dispatcher: outreach_routes.OutreachBatchDispatcher | None = None,
 ) -> FastAPI:
     configure_request_logging()
     settings = get_settings()
@@ -201,6 +202,7 @@ def create_app(
             secret_cipher=effective_secret_cipher,
             smtp_gateway=effective_smtp_gateway,
             smtp_rate_limiter=smtp_rate_limiter,
+            batch_dispatcher=outreach_batch_dispatcher,
         )
     )
     return app

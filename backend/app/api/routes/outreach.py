@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import formataddr
 import json
-from typing import Annotated
+from typing import Annotated, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Header, Request, Response
@@ -82,6 +82,17 @@ _PREVIEW_URLS = ResponseURLs(
     accepted_url="https://example.invalid/r/preview-accepted",
     declined_url="https://example.invalid/r/preview-declined",
 )
+
+
+class OutreachBatchDispatcher(Protocol):
+    def dispatch(self, send_batch_id: UUID) -> int: ...
+
+
+class CeleryOutreachBatchDispatcher:
+    def dispatch(self, send_batch_id: UUID) -> int:
+        from app.workers.outreach_tasks import enqueue_send_batch
+
+        return enqueue_send_batch(send_batch_id)
 
 
 def _idempotency_key(raw: str | None) -> str:
@@ -166,6 +177,31 @@ def _stable_json_response(body: dict[str, object]) -> Response:
         status_code=201,
         media_type="application/json",
     )
+
+
+def _dispatch_committed_batch(
+    body: dict[str, object], dispatcher: OutreachBatchDispatcher
+) -> Response:
+    try:
+        send_batch_id = UUID(str(body["id"]))
+        if str(send_batch_id) != body["id"] or send_batch_id.int == 0:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        raise APIError(
+            status_code=500,
+            code="outreach_state_invalid",
+            message="The Outreach state is invalid.",
+        ) from None
+    try:
+        dispatcher.dispatch(send_batch_id)
+    except Exception:
+        raise APIError(
+            status_code=503,
+            code="outreach_queue_unavailable",
+            message="Outreach could not be queued. Please retry.",
+            retryable=True,
+        ) from None
+    return _stable_json_response(body)
 
 
 def _not_found() -> APIError:
@@ -385,7 +421,9 @@ def create_router(
     secret_cipher: SecretCipher,
     smtp_gateway: SMTPGateway,
     smtp_rate_limiter: SMTPRateLimiter,
+    batch_dispatcher: OutreachBatchDispatcher | None = None,
 ) -> APIRouter:
+    effective_batch_dispatcher = batch_dispatcher or CeleryOutreachBatchDispatcher()
     router = APIRouter(
         prefix="/api/v1/outreach",
         tags=["outreach"],
@@ -430,7 +468,7 @@ def create_router(
             )
             if replay is not None:
                 database_session.commit()
-                return _stable_json_response(replay)
+                return _dispatch_committed_batch(replay, effective_batch_dispatcher)
             projection = create_send_batch(
                 database_session, payload, secret_cipher=secret_cipher
             )
@@ -444,7 +482,7 @@ def create_router(
                 now=now,
             )
             database_session.commit()
-            return _stable_json_response(body)
+            return _dispatch_committed_batch(body, effective_batch_dispatcher)
         except APIError:
             database_session.rollback()
             raise
@@ -455,7 +493,7 @@ def create_router(
             )
             if replay is not None:
                 database_session.commit()
-                return _stable_json_response(replay)
+                return _dispatch_committed_batch(replay, effective_batch_dispatcher)
             database_session.rollback()
             raise APIError(
                 status_code=409,
@@ -490,7 +528,7 @@ def create_router(
             )
             if replay is not None:
                 database_session.commit()
-                return _stable_json_response(replay)
+                return _dispatch_committed_batch(replay, effective_batch_dispatcher)
             projection = resend_delivery(
                 database_session,
                 delivery_id,
@@ -507,7 +545,7 @@ def create_router(
                 now=now,
             )
             database_session.commit()
-            return _stable_json_response(body)
+            return _dispatch_committed_batch(body, effective_batch_dispatcher)
         except APIError:
             database_session.rollback()
             raise
@@ -518,7 +556,7 @@ def create_router(
             )
             if replay is not None:
                 database_session.commit()
-                return _stable_json_response(replay)
+                return _dispatch_committed_batch(replay, effective_batch_dispatcher)
             database_session.rollback()
             raise APIError(
                 status_code=409,

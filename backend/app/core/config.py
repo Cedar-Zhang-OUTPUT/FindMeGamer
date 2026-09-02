@@ -77,11 +77,15 @@ class Settings(BaseSettings):
     analysis_task_max_retries: int = Field(default=3, ge=0, le=10)
     analysis_retry_base_delay_seconds: int = Field(default=2, ge=1, le=300)
     analysis_retry_max_delay_seconds: int = Field(default=60, ge=1, le=3_600)
+    outreach_task_max_retries: int = Field(default=3, ge=0, le=10)
+    outreach_retry_base_delay_seconds: int = Field(default=2, ge=1, le=300)
+    outreach_retry_max_delay_seconds: int = Field(default=60, ge=1, le=3_600)
     trusted_proxy_cidrs: tuple[str, ...] = ()
     master_key_file: Path = Path("/etc/find-me-gamer/master.key")
     steam_store_base_url: str = "https://store.steampowered.com/api"
     youtube_api_base_url: str = "https://www.googleapis.com/youtube/v3"
     deepseek_api_base_url: str = "https://api.deepseek.com"
+    external_base_url: str = "https://find-me-gamer.example.invalid"
     s3_region: str = "us-east-1"
     s3_bucket: str = "find-me-gamer-artifacts"
     s3_endpoint_url: str | None = None
@@ -102,6 +106,13 @@ class Settings(BaseSettings):
             raise ValueError(
                 "Analysis retry base delay must not exceed its maximum delay."
             )
+        if (
+            self.outreach_retry_base_delay_seconds
+            > self.outreach_retry_max_delay_seconds
+        ):
+            raise ValueError(
+                "Outreach retry base delay must not exceed its maximum delay."
+            )
         return self
 
     @field_validator("trusted_proxy_cidrs")
@@ -118,6 +129,7 @@ class Settings(BaseSettings):
         "steam_store_base_url",
         "youtube_api_base_url",
         "deepseek_api_base_url",
+        "external_base_url",
         "s3_endpoint_url",
     )
     @classmethod
