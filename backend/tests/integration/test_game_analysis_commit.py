@@ -238,6 +238,42 @@ def test_running_job_preserves_first_started_at_and_monotonic_progress(
         assert job.total_units == 5
 
 
+@pytest.mark.parametrize(
+    ("stage", "completed_units"),
+    [
+        (AnalysisStage.ANALYZING, 2),
+        (AnalysisStage.FINALIZING, 4),
+    ],
+)
+def test_queued_resume_preserves_stage_progress_and_first_started_at(
+    committed_factory,
+    stage: AnalysisStage,
+    completed_units: int,
+) -> None:
+    first_started = NOW - timedelta(hours=2)
+    job_id = _job(committed_factory, status=JobStatus.QUEUED)
+    with committed_factory.begin() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        job.started_at = first_started
+        job.stage = stage
+        job.completed_units = completed_units
+        job.total_units = 5
+
+    GameAnalysisService(session_factory=committed_factory, clock=lambda: NOW).start(
+        job_id
+    )
+
+    with committed_factory() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        assert job.status is JobStatus.RUNNING
+        assert job.stage is stage
+        assert job.completed_units == completed_units
+        assert job.total_units == 5
+        assert job.started_at == first_started
+
+
 def test_advance_never_regresses_finalizing_stage_or_progress(
     committed_factory,
 ) -> None:

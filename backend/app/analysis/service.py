@@ -91,8 +91,7 @@ class GameAnalysisService:
             now = self._aware_now()
             if job.status is JobStatus.QUEUED:
                 job.status = JobStatus.RUNNING
-                job.stage = AnalysisStage.FETCHING_DATA
-            elif job.stage is None:
+            if job.stage is None:
                 job.stage = AnalysisStage.FETCHING_DATA
             job.completed_units = min(
                 max(job.completed_units, 0), TOTAL_GAME_ANALYSIS_UNITS
