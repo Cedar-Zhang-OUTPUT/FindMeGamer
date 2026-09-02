@@ -1998,6 +1998,241 @@
         "title": "MatchSummary",
         "type": "object"
       },
+      "OutreachTemplateCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_label": {
+            "default": "Yes, I'm in",
+            "maxLength": 255,
+            "title": "Accepted Label",
+            "type": "string"
+          },
+          "body_markdown": {
+            "title": "Body Markdown",
+            "type": "string"
+          },
+          "declined_label": {
+            "default": "No, I'm not interested",
+            "maxLength": 255,
+            "title": "Declined Label",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "title": "Name",
+            "type": "string"
+          },
+          "subject_template": {
+            "title": "Subject Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "subject_template",
+          "body_markdown"
+        ],
+        "title": "OutreachTemplateCreate",
+        "type": "object"
+      },
+      "OutreachTemplateList": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OutreachTemplateResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "OutreachTemplateList",
+        "type": "object"
+      },
+      "OutreachTemplatePreviewDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_label": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted Label"
+          },
+          "body_markdown": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Markdown"
+          },
+          "declined_label": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declined Label"
+          },
+          "subject_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Template"
+          }
+        },
+        "title": "OutreachTemplatePreviewDraft",
+        "type": "object"
+      },
+      "OutreachTemplateResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_label": {
+            "title": "Accepted Label",
+            "type": "string"
+          },
+          "body_markdown": {
+            "title": "Body Markdown",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "declined_label": {
+            "title": "Declined Label",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_default": {
+            "title": "Is Default",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "subject_template": {
+            "title": "Subject Template",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "version",
+          "subject_template",
+          "body_markdown",
+          "accepted_label",
+          "declined_label",
+          "is_default",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OutreachTemplateResponse",
+        "type": "object"
+      },
+      "OutreachTemplateUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_label": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted Label"
+          },
+          "body_markdown": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Markdown"
+          },
+          "declined_label": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Declined Label"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "subject_template": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Template"
+          }
+        },
+        "title": "OutreachTemplateUpdate",
+        "type": "object"
+      },
       "PublicJSONObject": {
         "additionalProperties": {
           "$ref": "#/components/schemas/PublicJSONValue"
@@ -2073,6 +2308,30 @@
           "game_interval_days"
         ],
         "title": "ReanalysisSettingsUpdate",
+        "type": "object"
+      },
+      "RenderedDelivery": {
+        "additionalProperties": false,
+        "properties": {
+          "html": {
+            "title": "Html",
+            "type": "string"
+          },
+          "markdown": {
+            "title": "Markdown",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "markdown",
+          "html"
+        ],
+        "title": "RenderedDelivery",
         "type": "object"
       },
       "RetryAnalysisJobRequest": {
@@ -2695,6 +2954,380 @@
         "summary": "Retry Match",
         "tags": [
           "matches"
+        ]
+      }
+    },
+    "/api/v1/outreach/templates": {
+      "get": {
+        "operationId": "listOutreachTemplates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachTemplateList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Templates",
+        "tags": [
+          "outreach"
+        ]
+      },
+      "post": {
+        "operationId": "createOutreachTemplate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutreachTemplateCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachTemplateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Template",
+        "tags": [
+          "outreach"
+        ]
+      }
+    },
+    "/api/v1/outreach/templates/{template_id}": {
+      "delete": {
+        "operationId": "deleteOutreachTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Delete Template",
+        "tags": [
+          "outreach"
+        ]
+      },
+      "get": {
+        "operationId": "getOutreachTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachTemplateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Template",
+        "tags": [
+          "outreach"
+        ]
+      },
+      "patch": {
+        "operationId": "updateOutreachTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OutreachTemplateUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachTemplateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Template",
+        "tags": [
+          "outreach"
+        ]
+      }
+    },
+    "/api/v1/outreach/templates/{template_id}/default": {
+      "post": {
+        "operationId": "setDefaultOutreachTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachTemplateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Default Template",
+        "tags": [
+          "outreach"
+        ]
+      }
+    },
+    "/api/v1/outreach/templates/{template_id}/duplicate": {
+      "post": {
+        "operationId": "duplicateOutreachTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachTemplateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Duplicate Template",
+        "tags": [
+          "outreach"
+        ]
+      }
+    },
+    "/api/v1/outreach/templates/{template_id}/preview": {
+      "post": {
+        "operationId": "previewOutreachTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/OutreachTemplatePreviewDraft"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Draft"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RenderedDelivery"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Template",
+        "tags": [
+          "outreach"
         ]
       }
     },

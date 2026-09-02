@@ -61,6 +61,32 @@ EXPECTED_OPERATIONS = {
     ("GET", "/api/v1/matches"): "listMatches",
     ("GET", "/api/v1/matches/{match_task_id}"): "getMatch",
     ("POST", "/api/v1/matches/{match_task_id}/retry"): "retryMatch",
+    ("GET", "/api/v1/outreach/templates"): "listOutreachTemplates",
+    ("POST", "/api/v1/outreach/templates"): "createOutreachTemplate",
+    (
+        "GET",
+        "/api/v1/outreach/templates/{template_id}",
+    ): "getOutreachTemplate",
+    (
+        "PATCH",
+        "/api/v1/outreach/templates/{template_id}",
+    ): "updateOutreachTemplate",
+    (
+        "DELETE",
+        "/api/v1/outreach/templates/{template_id}",
+    ): "deleteOutreachTemplate",
+    (
+        "POST",
+        "/api/v1/outreach/templates/{template_id}/duplicate",
+    ): "duplicateOutreachTemplate",
+    (
+        "POST",
+        "/api/v1/outreach/templates/{template_id}/default",
+    ): "setDefaultOutreachTemplate",
+    (
+        "POST",
+        "/api/v1/outreach/templates/{template_id}/preview",
+    ): "previewOutreachTemplate",
 }
 HTTP_METHODS = frozenset(
     {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
@@ -143,6 +169,72 @@ def test_openapi_retains_bearer_auth_and_required_idempotency_headers(client) ->
         ]
         assert len(idempotency) == 1
         assert idempotency[0]["required"] is True
+
+    for method, path in (
+        ("POST", "/api/v1/outreach/templates"),
+        ("PATCH", "/api/v1/outreach/templates/{template_id}"),
+        ("DELETE", "/api/v1/outreach/templates/{template_id}"),
+        ("POST", "/api/v1/outreach/templates/{template_id}/duplicate"),
+        ("POST", "/api/v1/outreach/templates/{template_id}/default"),
+        ("POST", "/api/v1/outreach/templates/{template_id}/preview"),
+    ):
+        parameters = _operation(schema, method, path).get("parameters", [])
+        assert all(value.get("name") != "Idempotency-Key" for value in parameters)
+
+
+def test_openapi_template_requests_are_closed_and_responses_are_read_only(
+    client,
+) -> None:
+    schema = client.app.openapi()
+    components = schema["components"]["schemas"]
+    editable = {
+        "name",
+        "subject_template",
+        "body_markdown",
+        "accepted_label",
+        "declined_label",
+    }
+    response_fields = editable | {
+        "id",
+        "version",
+        "is_default",
+        "created_at",
+        "updated_at",
+    }
+
+    assert set(components["OutreachTemplateCreate"]["properties"]) == editable
+    assert components["OutreachTemplateCreate"]["additionalProperties"] is False
+    assert set(components["OutreachTemplateUpdate"]["properties"]) == editable
+    assert components["OutreachTemplateUpdate"]["additionalProperties"] is False
+    assert set(components["OutreachTemplatePreviewDraft"]["properties"]) == (
+        editable - {"name"}
+    )
+    assert components["OutreachTemplatePreviewDraft"]["additionalProperties"] is False
+    assert set(components["OutreachTemplateResponse"]["properties"]) == response_fields
+    assert components["OutreachTemplateResponse"]["additionalProperties"] is False
+
+    for method, path, status in (
+        ("GET", "/api/v1/outreach/templates", "200"),
+        ("POST", "/api/v1/outreach/templates", "201"),
+        ("GET", "/api/v1/outreach/templates/{template_id}", "200"),
+        ("PATCH", "/api/v1/outreach/templates/{template_id}", "200"),
+        ("POST", "/api/v1/outreach/templates/{template_id}/duplicate", "201"),
+        ("POST", "/api/v1/outreach/templates/{template_id}/default", "200"),
+    ):
+        response_schema = _operation(schema, method, path)["responses"][status][
+            "content"
+        ]["application/json"]["schema"]
+        if path == "/api/v1/outreach/templates" and method == "GET":
+            assert response_schema["$ref"].endswith("/OutreachTemplateList")
+        else:
+            assert response_schema["$ref"].endswith("/OutreachTemplateResponse")
+
+    preview_schema = _operation(
+        schema,
+        "POST",
+        "/api/v1/outreach/templates/{template_id}/preview",
+    )["responses"]["200"]["content"]["application/json"]["schema"]
+    assert preview_schema["$ref"].endswith("/RenderedDelivery")
 
 
 def test_openapi_secret_is_write_only_request_only_and_responses_are_sanitized(

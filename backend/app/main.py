@@ -12,6 +12,7 @@ from app.api.routes.health import ReadinessProbe
 from app.api.routes import profiles as profile_routes
 from app.api.routes import jobs as job_routes
 from app.api.routes import match as match_routes
+from app.api.routes import outreach as outreach_routes
 from app.api.routes import session, settings as settings_routes
 from app.analysis.targets import ChannelResolver
 from app.analysis.runtime import build_production_channel_resolver
@@ -176,6 +177,7 @@ def create_app(
             cursor_signing_secret=effective_workspace_key_hash,
         )
     )
+    app.include_router(outreach_routes.create_router(authenticate_workspace))
     return app
 
 
