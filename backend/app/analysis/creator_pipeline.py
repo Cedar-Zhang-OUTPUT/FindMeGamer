@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import re
 from typing import Protocol, TypeVar
-from urllib.parse import urlsplit
 from uuid import UUID
 
 from email_validator import EmailNotValidError, validate_email
-import idna
 
 from app.analysis.contracts import ArtifactStore, CreatorSource, Message, VideoSource
 from app.analysis.creator_metrics import (
@@ -35,6 +33,7 @@ from app.schemas.ai_creator import (
     CreatorVisualAnalysis,
     EmailContactCandidate,
     URLContactCandidate,
+    _canonical_public_url_key,
     bind_creator_contacts,
 )
 from app.schemas.ai_game import (
@@ -64,9 +63,6 @@ _EMAIL_PATTERN = re.compile(
 )
 _URL_PATTERN = re.compile(r"https?://[^\s<>\"']{1,512}", re.IGNORECASE)
 _TRAILING_URL_PUNCTUATION = ".,;:!?)]}"
-_UNRESERVED = frozenset(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
-)
 _SOCIAL_HOSTS = frozenset(
     {
         "discord.com",
@@ -325,7 +321,11 @@ def _discover_creator_contacts(
     def add_url(value: str, *, source_type: str, source_url: str) -> None:
         if len(candidates) >= MAX_CONTACT_CANDIDATES:
             return
-        kind = "social_link" if _is_social_url(value) else "linked_site"
+        try:
+            key = _url_key(value)
+        except ValueError:
+            return
+        kind = "social_link" if _is_social_hostname(key[1]) else "linked_site"
         label = "social" if kind == "social_link" else "site"
         try:
             candidate = URLContactCandidate(
@@ -338,7 +338,6 @@ def _discover_creator_contacts(
             )
         except ValueError:
             return
-        key = _url_key(value)
         if key in url_keys:
             return
         url_keys.add(key)
@@ -404,61 +403,14 @@ def _ordered_contacts(text: str) -> list[tuple[str, str]]:
     return [(kind, value) for _, _, kind, value in matches]
 
 
-def _is_social_url(value: str) -> bool:
-    hostname = (urlsplit(value).hostname or "").casefold().rstrip(".")
+def _is_social_hostname(hostname: str) -> bool:
     return any(
         hostname == host or hostname.endswith(f".{host}") for host in _SOCIAL_HOSTS
     )
 
 
 def _url_key(value: str) -> tuple[str, str, int | None, str, str]:
-    parsed = urlsplit(value)
-    port = parsed.port
-    if (parsed.scheme.casefold(), port) in {("http", 80), ("https", 443)}:
-        port = None
-    hostname = idna.encode(
-        (parsed.hostname or "").rstrip("."), uts46=True, std3_rules=True
-    ).decode("ascii")
-    return (
-        parsed.scheme.casefold(),
-        hostname.casefold(),
-        port,
-        _remove_dot_segments(_normalize_unreserved(parsed.path or "/")),
-        _normalize_unreserved(parsed.query),
-    )
-
-
-def _normalize_unreserved(component: str) -> str:
-    normalized: list[str] = []
-    position = 0
-    while position < len(component):
-        if component[position] != "%":
-            normalized.append(component[position])
-            position += 1
-            continue
-        encoded = component[position + 1 : position + 3]
-        character = chr(int(encoded, 16))
-        normalized.append(
-            character if character in _UNRESERVED else f"%{encoded.upper()}"
-        )
-        position += 3
-    return "".join(normalized)
-
-
-def _remove_dot_segments(path: str) -> str:
-    output: list[str] = []
-    for segment in path.split("/"):
-        if segment == ".":
-            continue
-        if segment == "..":
-            if output and output[-1] != "":
-                output.pop()
-            continue
-        output.append(segment)
-    normalized = "/".join(output)
-    if path.startswith("/") and not normalized.startswith("/"):
-        normalized = f"/{normalized}"
-    return normalized or "/"
+    return _canonical_public_url_key(value)
 
 
 def unavailable_visual_analysis(reason: str) -> CreatorVisualAnalysis:

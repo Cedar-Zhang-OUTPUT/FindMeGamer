@@ -5,16 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 import http.client
 from ipaddress import ip_address
+from queue import Empty, Queue
 import socket
 import ssl
+from threading import Thread
 from time import monotonic
 from typing import Callable, Iterable, Protocol
 from urllib.parse import urljoin, urlsplit
 
-from pydantic import ValidationError
-
 from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
-from app.schemas.ai_creator import URLContactCandidate
+from app.schemas.ai_creator import _parse_public_url
 
 
 DEFAULT_MAX_REDIRECTS = 3
@@ -44,7 +44,14 @@ class RawPageResponse:
 
 
 class HostResolver(Protocol):
-    def resolve(self, hostname: str, port: int) -> tuple[str, ...]: ...
+    def resolve(
+        self,
+        hostname: str,
+        port: int,
+        *,
+        deadline: float,
+        clock: Callable[[], float],
+    ) -> tuple[str, ...]: ...
 
 
 class PageTransport(Protocol):
@@ -59,17 +66,46 @@ class PageTransport(Protocol):
         connect_timeout: float,
         read_timeout: float,
         max_response_bytes: int,
+        deadline: float,
+        clock: Callable[[], float],
     ) -> RawPageResponse: ...
 
 
 class SocketResolver:
-    def resolve(self, hostname: str, port: int) -> tuple[str, ...]:
-        records = socket.getaddrinfo(
-            hostname,
-            port,
-            type=socket.SOCK_STREAM,
-            proto=socket.IPPROTO_TCP,
-        )
+    def resolve(
+        self,
+        hostname: str,
+        port: int,
+        *,
+        deadline: float,
+        clock: Callable[[], float],
+    ) -> tuple[str, ...]:
+        results: Queue[tuple[bool, object]] = Queue(maxsize=1)
+
+        def lookup() -> None:
+            try:
+                value = socket.getaddrinfo(
+                    hostname,
+                    port,
+                    type=socket.SOCK_STREAM,
+                    proto=socket.IPPROTO_TCP,
+                )
+            except BaseException as error:
+                results.put((False, error))
+            else:
+                results.put((True, value))
+
+        Thread(target=lookup, daemon=True).start()
+        try:
+            succeeded, value = results.get(timeout=_remaining(deadline, clock))
+        except Empty:
+            raise socket.timeout("public page DNS deadline exceeded") from None
+        _remaining(deadline, clock)
+        if not succeeded:
+            assert isinstance(value, BaseException)
+            raise value
+        assert isinstance(value, list)
+        records = value
         return tuple(sorted({record[4][0] for record in records}))
 
 
@@ -87,15 +123,18 @@ class PinnedHTTPTransport:
         connect_timeout: float,
         read_timeout: float,
         max_response_bytes: int,
+        deadline: float,
+        clock: Callable[[], float],
     ) -> RawPageResponse:
         parsed = urlsplit(url)
+        bounded_connect_timeout = min(connect_timeout, _remaining(deadline, clock))
         connection: http.client.HTTPConnection
         if parsed.scheme == "https":
             connection = _PinnedHTTPSConnection(
                 server_hostname,
                 connect_ip=connect_ip,
                 port=port,
-                timeout=connect_timeout,
+                timeout=bounded_connect_timeout,
                 context=ssl.create_default_context(),
             )
         else:
@@ -103,43 +142,47 @@ class PinnedHTTPTransport:
                 server_hostname,
                 connect_ip=connect_ip,
                 port=port,
-                timeout=connect_timeout,
+                timeout=bounded_connect_timeout,
             )
         target = parsed.path or "/"
         if parsed.query:
             target = f"{target}?{parsed.query}"
         try:
-            connection.request(
-                "GET",
-                target,
-                headers={
-                    "Host": host_header,
-                    "Accept": "text/html,text/plain,application/xhtml+xml",
-                    "User-Agent": "FindMeGamer/1.0 contact-discovery",
-                    "Connection": "close",
-                },
-            )
-            response = connection.getresponse()
-            if connection.sock is not None:
-                connection.sock.settimeout(read_timeout)
-            chunks: list[bytes] = []
-            received = 0
-            while True:
-                chunk = response.read(min(16_384, max_response_bytes + 1 - received))
-                if not chunk:
-                    break
-                chunks.append(chunk)
-                received += len(chunk)
-                if received > max_response_bytes:
-                    break
-            raw_length = response.getheader("Content-Length")
-            content_length = (
-                int(raw_length)
-                if raw_length is not None
-                and raw_length.isascii()
-                and raw_length.isdecimal()
-                else None
-            )
+            try:
+                _remaining(deadline, clock)
+                connection.request(
+                    "GET",
+                    target,
+                    headers={
+                        "Host": host_header,
+                        "Accept": "text/html,text/plain,application/xhtml+xml",
+                        "User-Agent": "FindMeGamer/1.0 contact-discovery",
+                        "Connection": "close",
+                    },
+                )
+                _remaining(deadline, clock)
+                _set_socket_timeout(connection, read_timeout, deadline, clock)
+                response = connection.getresponse()
+                _remaining(deadline, clock)
+                content_length = _content_length(response)
+                chunks: list[bytes] = []
+                received = 0
+                while content_length is None or content_length <= max_response_bytes:
+                    _set_socket_timeout(connection, read_timeout, deadline, clock)
+                    chunk = response.read(
+                        min(16_384, max_response_bytes + 1 - received)
+                    )
+                    _remaining(deadline, clock)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    received += len(chunk)
+                    if received > max_response_bytes:
+                        break
+            except http.client.HTTPException:
+                raise PermanentIntegrationError(
+                    "public_page_response_invalid"
+                ) from None
             return RawPageResponse(
                 status_code=response.status,
                 content_type=response.getheader("Content-Type"),
@@ -175,7 +218,11 @@ class _PinnedHTTPSConnection(http.client.HTTPSConnection):
             self.timeout,
             self.source_address,
         )
-        self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
+        try:
+            self.sock = self._context.wrap_socket(raw_socket, server_hostname=self.host)
+        except BaseException:
+            raw_socket.close()
+            raise
 
 
 class PublicPageGateway:
@@ -221,14 +268,12 @@ class PublicPageGateway:
 
     def fetch_page(self, url: str) -> PublicPage:
         current = url
-        started = self._clock()
+        deadline = self._clock() + self._total_timeout_seconds
         for redirect_count in range(self._max_redirects + 1):
-            self._check_elapsed(started)
-            parsed = _validated_url(current)
-            hostname = parsed.hostname
-            assert hostname is not None
+            self._check_deadline(deadline)
+            parsed, hostname = _validated_url(current)
             port = parsed.port or (443 if parsed.scheme == "https" else 80)
-            addresses = self._resolve_global_addresses(hostname, port)
+            addresses = self._resolve_global_addresses(hostname, port, deadline)
             connect_ip = addresses[0]
             host_header = hostname
             if parsed.port is not None:
@@ -243,10 +288,12 @@ class PublicPageGateway:
                     connect_timeout=self._connect_timeout_seconds,
                     read_timeout=self._read_timeout_seconds,
                     max_response_bytes=self._max_response_bytes,
+                    deadline=deadline,
+                    clock=self._clock,
                 )
             except (TimeoutError, socket.timeout, OSError):
                 raise TransientIntegrationError("public_page_unavailable") from None
-            self._check_elapsed(started)
+            self._check_deadline(deadline)
             if response.status_code in _REDIRECT_STATUSES:
                 if redirect_count >= self._max_redirects:
                     raise PermanentIntegrationError("public_page_redirect_limit")
@@ -268,16 +315,20 @@ class PublicPageGateway:
                 and response.content_length > self._max_response_bytes
             ):
                 raise PermanentIntegrationError("public_page_too_large")
-            body = self._bounded_body(response.body_chunks)
+            body = self._bounded_body(response.body_chunks, deadline)
             text = _decode_text(body, response.content_type)
             if len(text) > self._max_decoded_characters:
                 raise PermanentIntegrationError("public_page_too_large")
             return PublicPage(url=current, text=text, content_type=content_type)
         raise AssertionError("bounded redirect loop exhausted")
 
-    def _resolve_global_addresses(self, hostname: str, port: int) -> tuple[str, ...]:
+    def _resolve_global_addresses(
+        self, hostname: str, port: int, deadline: float
+    ) -> tuple[str, ...]:
         try:
-            addresses = self._resolver.resolve(hostname, port)
+            addresses = self._resolver.resolve(
+                hostname, port, deadline=deadline, clock=self._clock
+            )
         except (TimeoutError, socket.timeout, OSError):
             raise TransientIntegrationError("public_page_unavailable") from None
         if not addresses:
@@ -301,36 +352,73 @@ class PublicPageGateway:
             raise PermanentIntegrationError("public_page_address_rejected") from None
         return tuple(sorted(set(normalized)))
 
-    def _bounded_body(self, chunks: Iterable[bytes]) -> bytes:
+    def _bounded_body(self, chunks: Iterable[bytes], deadline: float) -> bytes:
         result = bytearray()
         for chunk in chunks:
+            self._check_deadline(deadline)
             if not isinstance(chunk, bytes):
                 raise PermanentIntegrationError("public_page_response_invalid")
             result.extend(chunk)
+            self._check_deadline(deadline)
             if len(result) > self._max_response_bytes:
                 raise PermanentIntegrationError("public_page_too_large")
         return bytes(result)
 
-    def _check_elapsed(self, started: float) -> None:
-        if self._clock() - started > self._total_timeout_seconds:
-            raise TransientIntegrationError("public_page_unavailable")
+    def _check_deadline(self, deadline: float) -> None:
+        try:
+            _remaining(deadline, self._clock)
+        except socket.timeout:
+            raise TransientIntegrationError("public_page_unavailable") from None
 
 
 def _validated_url(url: str):
     try:
-        URLContactCandidate(
-            candidate_id="public-page.validation",
-            kind="linked_site",
-            value=url,
-            source_type="linked_public_page",
-            source_url=url,
-            validation_state="unvalidated",
-        )
-        parsed = urlsplit(url)
-        parsed.port
-    except (ValidationError, ValueError, TypeError):
+        if not isinstance(url, str) or not 8 <= len(url) <= 512:
+            raise ValueError("invalid public URL")
+        parsed, canonical_host = _parse_public_url(url)
+    except (ValueError, TypeError):
         raise PermanentIntegrationError("public_page_url_invalid") from None
-    return parsed
+    return parsed, canonical_host
+
+
+def _remaining(deadline: float, clock: Callable[[], float]) -> float:
+    remaining = deadline - clock()
+    if remaining <= 0:
+        raise socket.timeout("public page deadline exceeded")
+    return remaining
+
+
+def _set_socket_timeout(
+    connection: http.client.HTTPConnection,
+    read_timeout: float,
+    deadline: float,
+    clock: Callable[[], float],
+) -> None:
+    remaining = min(read_timeout, _remaining(deadline, clock))
+    if connection.sock is not None:
+        connection.sock.settimeout(remaining)
+
+
+def _content_length(response: http.client.HTTPResponse) -> int | None:
+    values = [
+        value
+        for name, value in response.getheaders()
+        if name.casefold() == "content-length"
+    ]
+    if not values:
+        return None
+    if len(values) != 1:
+        raise PermanentIntegrationError("public_page_response_invalid")
+    raw_length = values[0]
+    if (
+        not isinstance(raw_length, str)
+        or not raw_length
+        or len(raw_length) > 20
+        or not raw_length.isascii()
+        or not raw_length.isdecimal()
+    ):
+        raise PermanentIntegrationError("public_page_response_invalid")
+    return int(raw_length)
 
 
 def _decode_text(body: bytes, content_type: str | None) -> str:
@@ -349,4 +437,10 @@ def _decode_text(body: bytes, content_type: str | None) -> str:
         return body.decode("utf-8", errors="replace")
 
 
-__all__ = ["PublicPage", "PublicPageGateway", "RawPageResponse"]
+__all__ = [
+    "PinnedHTTPTransport",
+    "PublicPage",
+    "PublicPageGateway",
+    "RawPageResponse",
+    "SocketResolver",
+]

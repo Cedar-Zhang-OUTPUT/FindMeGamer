@@ -13,6 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.analysis.contracts import VideoSource
 
 
+MAX_PUBLIC_COUNT = 9_223_372_036_854_775_807
+
+
 class PublishingFrequency(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
@@ -161,7 +164,7 @@ def _performance_key(video: VideoSource) -> tuple[int, int, int, float, str]:
 
 
 def _valid_nonnegative_int(value: object) -> int | None:
-    return value if type(value) is int and value >= 0 else None
+    return value if type(value) is int and 0 <= value <= MAX_PUBLIC_COUNT else None
 
 
 def _aware_utc(value: object) -> datetime | None:

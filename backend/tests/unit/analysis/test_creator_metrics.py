@@ -87,6 +87,18 @@ def test_metrics_reject_unaware_timestamps_and_bool_or_nonfinite_counts() -> Non
     assert metrics.newest_published_at is None
 
 
+def test_metrics_ignore_oversized_integer_counts_without_float_overflow() -> None:
+    oversized = _video("oversized", days_old=None, views=10).model_copy(
+        update={"view_count": 10**10_000}
+    )
+
+    metrics = compute_creator_metrics((oversized,))
+
+    assert metrics.numeric_view_sample_count == 0
+    assert metrics.average_views is None
+    assert metrics.median_views is None
+
+
 def test_thumbnail_selection_balances_recency_and_performance_deterministically() -> (
     None
 ):

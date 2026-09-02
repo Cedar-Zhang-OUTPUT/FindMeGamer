@@ -28,6 +28,7 @@ from app.db.models.jobs import AnalysisJob
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 from app.db.models.settings import SharedSettings
 from app.integrations.errors import PermanentIntegrationError
+from app.repositories.settings import SHARED_SETTINGS_ID
 from app.schemas.ai_game import GameSynthesis, GameVisualAnalysis
 from app.schemas.ai_creator import (
     BoundCreatorContacts,
@@ -455,7 +456,11 @@ class CreatorAnalysisService:
             ) != lease.canonical_url.rstrip("/"):
                 raise PermanentIntegrationError("youtube_source_identity_mismatch")
 
-            settings = session.scalar(select(SharedSettings).with_for_update())
+            settings = session.scalar(
+                select(SharedSettings)
+                .where(SharedSettings.id == SHARED_SETTINGS_ID)
+                .with_for_update()
+            )
             if settings is None:
                 raise PermanentIntegrationError("shared_settings_missing")
             interval_days = self._read_creator_interval(settings)

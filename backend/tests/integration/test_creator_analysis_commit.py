@@ -19,6 +19,7 @@ from app.db.models.jobs import AnalysisJob
 from app.db.models.profiles import CreatorContact, CreatorProfile
 from app.db.models.settings import SharedSettings
 from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
+from app.repositories.settings import SHARED_SETTINGS_ID
 from app.schemas.ai_creator import (
     CreatorMetadataAnalysis,
     CreatorSynthesis,
@@ -317,6 +318,54 @@ def test_create_publishes_exact_projection_and_job_atomically(
             "youtube-playlist-pages.json",
             "youtube-video-responses.json",
         ]
+
+
+def test_publication_uses_canonical_settings_when_rogue_row_exists(
+    committed_factory,
+) -> None:
+    rogue_id = uuid4()
+    with committed_factory.begin() as session:
+        canonical = session.get(SharedSettings, SHARED_SETTINGS_ID)
+        assert canonical is not None
+        canonical.creator_interval_days = 11
+        session.add(SharedSettings(id=rogue_id, creator_interval_days=7))
+    try:
+        job_id = _job(committed_factory)
+
+        profile_id = _pipeline(committed_factory).run(job_id)
+
+        with committed_factory() as session:
+            profile = session.get(CreatorProfile, profile_id)
+            assert profile is not None
+            assert profile.next_analysis_at == NOW + timedelta(days=11)
+    finally:
+        with committed_factory.begin() as session:
+            rogue = session.get(SharedSettings, rogue_id)
+            if rogue is not None:
+                session.delete(rogue)
+
+
+def test_publication_fails_when_canonical_settings_are_missing_even_with_rogue_row(
+    committed_factory,
+) -> None:
+    rogue_id = uuid4()
+    with committed_factory.begin() as session:
+        canonical = session.get(SharedSettings, SHARED_SETTINGS_ID)
+        assert canonical is not None
+        session.delete(canonical)
+        session.add(SharedSettings(id=rogue_id, creator_interval_days=7))
+    try:
+        job_id = _job(committed_factory)
+
+        with pytest.raises(PermanentIntegrationError, match="shared_settings_missing"):
+            _pipeline(committed_factory).run(job_id)
+    finally:
+        with committed_factory.begin() as session:
+            rogue = session.get(SharedSettings, rogue_id)
+            if rogue is not None:
+                session.delete(rogue)
+            if session.get(SharedSettings, SHARED_SETTINGS_ID) is None:
+                session.add(SharedSettings(id=SHARED_SETTINGS_ID))
 
 
 def test_reanalysis_preserves_manual_contact_notes_favorite_and_replaces_discovered(
