@@ -34,6 +34,7 @@ from app.integrations.errors import (
     TransientIntegrationError,
 )
 from app.matching.pairwise import PairwiseCheckpointError, PairwiseService
+from app.matching.ranking import RankingCheckpointError, RankingService
 from app.matching.screening import InvalidScreeningOutput, ScreeningService
 from app.schemas.ai_match import PairwiseMatchBrief
 from app.workers.analysis_tasks import RetryPolicy, get_retry_policy, random_jitter
@@ -78,6 +79,9 @@ _PERMANENT_CODES = frozenset(
         "match_pair_not_running",
         "match_task_not_found",
         "match_task_not_preparable",
+        "match_task_not_rankable",
+        "match_publication_invalid",
+        "match_ranking_checkpoint_invalid",
         "screening_output_invalid",
         "screening_output_unknown_creator",
     }
@@ -427,11 +431,15 @@ class MatchTaskExecutor:
         pairwise_factory: Callable[[], AbstractContextManager[PairwiseService]],
         store: MatchTaskStore,
         dispatcher: MatchDispatcher,
+        ranking_factory: (
+            Callable[[], AbstractContextManager[RankingService]] | None
+        ) = None,
     ) -> None:
         self.screening = screening
         self._pairwise_factory = pairwise_factory
         self.store = store
         self.dispatcher = dispatcher
+        self._ranking_factory = ranking_factory
 
     def start(self, task_id: UUID) -> None:
         selected = self.screening.run(task_id)
@@ -461,6 +469,12 @@ class MatchTaskExecutor:
             raise TransientIntegrationError("match_queue_unavailable") from None
         return True
 
+    def finalize(self, task_id: UUID) -> int:
+        if self._ranking_factory is None:
+            raise RankingCheckpointError("match_ranking_checkpoint_invalid")
+        with self._ranking_factory() as service:
+            return service.run(task_id)
+
 
 class _ProductionScreening:
     def run(self, task_id: UUID) -> list[UUID]:
@@ -472,6 +486,12 @@ class _ProductionScreening:
 def _production_pairwise_service():
     with _production_gateway() as ai:
         yield PairwiseService(session_factory=session_scope, ai=ai)
+
+
+@contextmanager
+def _production_ranking_service():
+    with _production_gateway() as ai:
+        yield RankingService(session_factory=session_scope, ai=ai)
 
 
 @contextmanager
@@ -496,6 +516,7 @@ def get_match_executor() -> MatchTaskExecutor:
         pairwise_factory=_production_pairwise_service,
         store=MatchTaskStore(session_factory=session_scope),
         dispatcher=CeleryMatchDispatcher(),
+        ranking_factory=_production_ranking_service,
     )
 
 
@@ -639,6 +660,32 @@ def advance_match_task(task, match_task_id: str) -> None:
         )
 
 
+@celery_app.task(
+    bind=True,
+    name=FINALIZE_MATCH_TASK_NAME,
+    ignore_result=True,
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
+def finalize_match_ranking(task, match_task_id: str) -> None:
+    parsed = _parse_uuid(match_task_id)
+    if parsed is None:
+        return
+    executor = get_match_executor()
+    try:
+        executor.finalize(parsed)
+    except TaskPredicate:
+        raise
+    except Exception as error:
+        _handle_failure(
+            task,
+            task_id=parsed,
+            creator_id=None,
+            error=error,
+            executor=executor,
+        )
+
+
 def _parse_uuid(value: object) -> UUID | None:
     if not isinstance(value, str) or len(value) != 36:
         return None
@@ -695,6 +742,7 @@ __all__ = [
     "START_MATCH_TASK_NAME",
     "advisory_lock_key",
     "advance_match_task",
+    "finalize_match_ranking",
     "run_pairwise_match",
     "start_match_task",
 ]

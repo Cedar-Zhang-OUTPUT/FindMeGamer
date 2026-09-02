@@ -1,0 +1,388 @@
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from decimal import Decimal
+from pathlib import Path
+import subprocess
+import sys
+from types import SimpleNamespace
+from uuid import UUID
+
+import pytest
+from celery.exceptions import Retry
+from pydantic import ValidationError
+
+from app.analysis.prompts.common import parse_prompt_payload
+from app.integrations.errors import InvalidModelOutput, TransientIntegrationError
+from app.matching.ranking import (
+    RANKING_MODEL,
+    InvalidRankingOutput,
+    LockedRankingInput,
+    RankingService,
+)
+from app.schemas.ai_match import FinalRankingOutput, PairwiseMatchBrief
+from app.schemas.match import MatchResultItem
+from app.schemas.profiles import CreatorProfileCard
+from app.workers.match_tasks import FINALIZE_MATCH_TASK_NAME, finalize_match_ranking
+
+
+NOW = datetime(2026, 9, 2, 16, 0, tzinfo=UTC)
+TASK_ID = UUID("10000000-0000-4000-8000-000000000001")
+CREATOR_A = UUID("20000000-0000-4000-8000-000000000001")
+CREATOR_B = UUID("20000000-0000-4000-8000-000000000002")
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _brief(creator_id: UUID, marker: str) -> PairwiseMatchBrief:
+    dimension = {"analysis": f"{marker} analysis", "evidence": [f"{marker} evidence"]}
+    return PairwiseMatchBrief.model_validate(
+        {
+            "english_language_check": True,
+            "creator_id": creator_id,
+            "content_fit": dimension,
+            "audience_fit": dimension,
+            "performance_fit": dimension,
+            "promotion_fit": dimension,
+            "brand_safety": dimension,
+            "strengths": [f"{marker} strength"],
+            "risks": [f"{marker} risk"],
+            "evidence": [f"{marker} evidence"],
+            "match_reasons": [f"{marker} reason"],
+        }
+    )
+
+
+def _ranking(
+    *,
+    a_score: float = 0.7,
+    a_group: str = "recommended",
+    creator_ids: tuple[UUID, ...] = (CREATOR_A, CREATOR_B),
+) -> FinalRankingOutput:
+    items = []
+    for order, creator_id in enumerate(creator_ids):
+        score = a_score if creator_id == CREATOR_A else 0.69994
+        group = a_group if creator_id == CREATOR_A else "other"
+        items.append(
+            {
+                "creator_id": creator_id,
+                "total_score": score,
+                "dimension_scores": {
+                    "content_fit": score,
+                    "audience_fit": score,
+                    "performance_fit": score,
+                    "promotion_fit": score,
+                    "brand_safety": score,
+                },
+                "backend_order": order,
+                "result_group": group,
+                "qualitative_label": "Good Match",
+                "dimension_outcomes": {
+                    "content_fit": "Aligned content.",
+                    "audience_fit": "Likely audience overlap.",
+                    "performance_fit": "Suitable performance context.",
+                    "promotion_fit": "Suitable promotion format.",
+                    "brand_safety": "No concern in supplied evidence.",
+                },
+                "match_reasons": [f"Reason for {creator_id}."],
+            }
+        )
+    return FinalRankingOutput.model_validate(
+        {"english_language_check": True, "items": items}
+    )
+
+
+class FakeAI:
+    def __init__(self, output: object) -> None:
+        self.output = output
+        self.calls: list[tuple[str, list, type]] = []
+
+    def complete_structured(self, model: str, messages: list, schema: type) -> object:
+        self.calls.append((model, messages, schema))
+        if isinstance(self.output, BaseException):
+            raise self.output
+        return self.output
+
+
+class FakeRepository:
+    def __init__(self, locked: LockedRankingInput) -> None:
+        self.locked = locked
+        self.publications: list[object] = []
+
+    def load(self, match_task_id: UUID) -> LockedRankingInput:
+        assert match_task_id == TASK_ID
+        return self.locked
+
+    def publish(self, match_task_id: UUID, publication: object) -> int:
+        assert match_task_id == TASK_ID
+        self.publications.append(publication)
+        return len(publication.items)
+
+
+class FakeSession:
+    def begin(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return None
+
+
+def _service(repository: FakeRepository, ai: FakeAI) -> RankingService:
+    return RankingService(
+        session_factory=lambda: FakeSession(),
+        ai=ai,
+        repository_factory=lambda _session: repository,
+        clock=lambda: NOW,
+    )
+
+
+def _locked(*, published_count: int | None = None) -> LockedRankingInput:
+    return LockedRankingInput(
+        match_task_id=TASK_ID,
+        threshold=Decimal("0.7000"),
+        match_briefs=(
+            ()
+            if published_count is not None
+            else (_brief(CREATOR_A, "A"), _brief(CREATOR_B, "B"))
+        ),
+        published_count=published_count,
+    )
+
+
+def test_ranking_calls_pro_once_with_only_screening_ordered_successful_briefs() -> None:
+    repository = FakeRepository(_locked())
+    ai = FakeAI(_ranking())
+
+    assert _service(repository, ai).run(TASK_ID) == 2
+    assert len(ai.calls) == 1
+    model, messages, schema = ai.calls[0]
+    assert model == RANKING_MODEL == "deepseek-v4-pro"
+    assert schema is FinalRankingOutput
+    payload = parse_prompt_payload(messages)
+    assert list(payload) == ["match_briefs"]
+    assert [item["creator_id"] for item in payload["match_briefs"]] == [
+        str(CREATOR_A),
+        str(CREATOR_B),
+    ]
+    assert "contact" not in str(payload).casefold()
+    publication = repository.publications[0]
+    assert [item.total_score for item in publication.items] == [
+        Decimal("0.7000"),
+        Decimal("0.6999"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        SimpleNamespace(items=()),
+        _ranking(creator_ids=(CREATOR_A,)),
+        _ranking(creator_ids=(CREATOR_A, UUID("30000000-0000-4000-8000-000000000003"))),
+        _ranking().model_copy(update={"items": (_ranking().items[0],)}),
+    ],
+    ids=["wrong-type", "missing", "unknown", "mutated-malformed"],
+)
+def test_ranking_rejects_malformed_or_nonexact_creator_results(output: object) -> None:
+    repository = FakeRepository(_locked())
+    with pytest.raises(InvalidRankingOutput):
+        _service(repository, FakeAI(output)).run(TASK_ID)
+    assert repository.publications == []
+
+
+@pytest.mark.parametrize(
+    ("score", "model_group", "accepted"),
+    [
+        (0.7, "recommended", True),
+        (0.69994, "other", True),
+        (0.69996, "recommended", True),
+        (0.69994, "recommended", False),
+        (0.7, "other", False),
+    ],
+)
+def test_group_is_verified_from_four_decimal_score_and_frozen_threshold(
+    score: float, model_group: str, accepted: bool
+) -> None:
+    repository = FakeRepository(
+        LockedRankingInput(
+            match_task_id=TASK_ID,
+            threshold=Decimal("0.7000"),
+            match_briefs=(_brief(CREATOR_A, "A"),),
+            published_count=None,
+        )
+    )
+    output = _ranking(a_score=score, a_group=model_group, creator_ids=(CREATOR_A,))
+    if accepted:
+        assert _service(repository, FakeAI(output)).run(TASK_ID) == 1
+    else:
+        with pytest.raises(InvalidRankingOutput):
+            _service(repository, FakeAI(output)).run(TASK_ID)
+        assert repository.publications == []
+
+
+def test_valid_existing_publication_is_authoritative_and_skips_ai() -> None:
+    repository = FakeRepository(_locked(published_count=2))
+    ai = FakeAI(AssertionError("AI must not run after successful publication"))
+    assert _service(repository, ai).run(TASK_ID) == 2
+    assert ai.calls == []
+    assert repository.publications == []
+
+
+def _creator_card() -> CreatorProfileCard:
+    return CreatorProfileCard(
+        id=CREATOR_A,
+        name="Current Creator",
+        youtube_channel_id="UC0000000000000000000000",
+        canonical_url="https://www.youtube.com/channel/UC0000000000000000000000",
+        favorite=True,
+        current_facts={"subscriber_count": 1234},
+        brief={"positioning": "Current public card"},
+        source_status={"youtube": "current"},
+        last_analyzed_at=NOW,
+        next_analysis_at=NOW,
+        contact={
+            "email": "creator@example.com",
+            "source": "manual",
+            "source_url": None,
+            "validation_state": "verified",
+        },
+    )
+
+
+def _public_payload() -> dict[str, object]:
+    brief = _brief(CREATOR_A, "PUBLIC").model_dump(mode="json")
+    brief.pop("english_language_check")
+    brief.pop("creator_id")
+    return {
+        "creator": _creator_card(),
+        "result_group": "recommended",
+        "qualitative_label": "Good Match",
+        "dimension_outcomes": _ranking(creator_ids=(CREATOR_A,))
+        .items[0]
+        .dimension_outcomes.model_dump(),
+        "match_reasons": ["Public qualitative reason."],
+        "match_brief": brief,
+        "outreach": {
+            "send_state": "not_sent",
+            "response_state": "no_response",
+            "delivery_id": None,
+        },
+    }
+
+
+def _schema_property_names(value: object) -> set[str]:
+    if isinstance(value, dict):
+        names = (
+            set(value.get("properties", {}))
+            if isinstance(value.get("properties"), dict)
+            else set()
+        )
+        return names | set().union(
+            *(_schema_property_names(item) for item in value.values())
+        )
+    if isinstance(value, list):
+        return set().union(*(_schema_property_names(item) for item in value))
+    return set()
+
+
+def test_public_match_item_is_closed_and_contains_no_hidden_numeric_or_model_fields() -> (
+    None
+):
+    item = MatchResultItem.model_validate(_public_payload())
+    dumped = item.model_dump(mode="json")
+    forbidden = {
+        "rank",
+        "score",
+        "total_score",
+        "dimension_scores",
+        "backend_order",
+        "english_language_check",
+        "creator_id",
+    }
+    assert forbidden.isdisjoint(
+        _schema_property_names(MatchResultItem.model_json_schema())
+    )
+    assert not any(
+        key in str(dumped)
+        for key in ("total_score", "dimension_scores", "backend_order")
+    )
+    assert dumped["creator"]["contact"]["email"] == "creator@example.com"
+    assert set(dumped["match_brief"]) == {
+        "content_fit",
+        "audience_fit",
+        "performance_fit",
+        "promotion_fit",
+        "brand_safety",
+        "strengths",
+        "risks",
+        "evidence",
+        "match_reasons",
+    }
+    assert "0.987654321-secret-score" not in repr(item)
+
+
+@pytest.mark.parametrize(
+    "hidden", ["rank", "score", "total_score", "dimension_scores", "backend_order"]
+)
+def test_public_match_validation_rejects_hidden_fields_without_echoing_values(
+    hidden: str,
+) -> None:
+    payload = _public_payload()
+    payload[hidden] = "0.987654321-secret-score"
+    with pytest.raises(ValidationError) as raised:
+        MatchResultItem.model_validate(payload)
+    assert hidden in str(raised.value)
+    assert "0.987654321-secret-score" not in str(raised.value)
+
+
+def test_finalize_worker_is_registered_late_acked_and_retries_safely(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert finalize_match_ranking.name == FINALIZE_MATCH_TASK_NAME
+    assert finalize_match_ranking.acks_late is True
+    assert finalize_match_ranking.reject_on_worker_lost is True
+
+    class Executor:
+        def __init__(self) -> None:
+            self.store = SimpleNamespace(fail_task=lambda *_args: True)
+
+        def finalize(self, task_id: UUID) -> int:
+            assert task_id == TASK_ID
+            raise TransientIntegrationError("deepseek_unavailable")
+
+    monkeypatch.setattr("app.workers.match_tasks.get_match_executor", Executor)
+    monkeypatch.setattr("app.workers.match_tasks.random_jitter", lambda _ceiling: 1)
+    with pytest.raises(Retry) as raised:
+        finalize_match_ranking.apply(args=[str(TASK_ID)], throw=True)
+    assert raised.value.when == 3
+
+
+def test_finalize_invalid_uuid_is_noop_before_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.workers.match_tasks.get_match_executor",
+        lambda: (_ for _ in ()).throw(AssertionError("runtime must not be built")),
+    )
+    assert finalize_match_ranking.apply(args=["NOT-A-UUID"], throw=True).get() is None
+
+
+def test_ranking_imports_make_no_network_connection() -> None:
+    script = r"""
+import socket
+def blocked(*args, **kwargs):
+    raise AssertionError("network access during import")
+socket.socket.connect = blocked
+socket.create_connection = blocked
+import app.matching.ranking
+import app.schemas.match
+import app.workers.match_tasks
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=BACKEND_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
