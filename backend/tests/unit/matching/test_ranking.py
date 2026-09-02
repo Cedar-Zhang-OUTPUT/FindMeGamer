@@ -138,14 +138,19 @@ def _service(repository: FakeRepository, ai: FakeAI) -> RankingService:
     )
 
 
-def _locked(*, published_count: int | None = None) -> LockedRankingInput:
+def _locked(
+    *,
+    published_count: int | None = None,
+    threshold: Decimal = Decimal("0.7000"),
+    match_briefs: tuple[PairwiseMatchBrief, ...] | None = None,
+) -> LockedRankingInput:
     return LockedRankingInput(
         match_task_id=TASK_ID,
-        threshold=Decimal("0.7000"),
+        threshold=threshold,
         match_briefs=(
             ()
             if published_count is not None
-            else (_brief(CREATOR_A, "A"), _brief(CREATOR_B, "B"))
+            else match_briefs or (_brief(CREATOR_A, "A"), _brief(CREATOR_B, "B"))
         ),
         published_count=published_count,
     )
@@ -161,7 +166,8 @@ def test_ranking_calls_pro_once_with_only_screening_ordered_successful_briefs() 
     assert model == RANKING_MODEL == "deepseek-v4-pro"
     assert schema is FinalRankingOutput
     payload = parse_prompt_payload(messages)
-    assert list(payload) == ["match_briefs"]
+    assert set(payload) == {"match_briefs", "recommended_match_threshold"}
+    assert payload["recommended_match_threshold"] == "0.7000"
     assert [item["creator_id"] for item in payload["match_briefs"]] == [
         str(CREATOR_A),
         str(CREATOR_B),
@@ -172,6 +178,21 @@ def test_ranking_calls_pro_once_with_only_screening_ordered_successful_briefs() 
         Decimal("0.7000"),
         Decimal("0.6999"),
     ]
+
+
+def test_ranking_passes_nondefault_frozen_threshold_to_the_model_contract() -> None:
+    repository = FakeRepository(
+        _locked(
+            threshold=Decimal("0.6500"),
+            match_briefs=(_brief(CREATOR_A, "A"),),
+        )
+    )
+    ai = FakeAI(_ranking(creator_ids=(CREATOR_A,)))
+
+    assert _service(repository, ai).run(TASK_ID) == 1
+    payload = parse_prompt_payload(ai.calls[0][1])
+    assert payload["recommended_match_threshold"] == "0.6500"
+    assert "0.7000" not in str(ai.calls[0][1])
 
 
 @pytest.mark.parametrize(
@@ -227,6 +248,64 @@ def test_valid_existing_publication_is_authoritative_and_skips_ai() -> None:
     assert _service(repository, ai).run(TASK_ID) == 2
     assert ai.calls == []
     assert repository.publications == []
+
+
+@pytest.mark.parametrize(
+    ("target", "canary"),
+    [
+        ("outcome", "total_score=0.8000"),
+        ("reason", "This Creator is rank #1 for the Match."),
+    ],
+)
+def test_final_public_text_rejects_internal_match_score_or_rank(
+    target: str, canary: str
+) -> None:
+    output = _ranking(creator_ids=(CREATOR_A,))
+    item = output.items[0]
+    if target == "outcome":
+        outcomes = item.dimension_outcomes.model_copy(update={"content_fit": canary})
+        item = item.model_copy(update={"dimension_outcomes": outcomes})
+    else:
+        item = item.model_copy(update={"match_reasons": (canary,)})
+    output = output.model_copy(update={"items": (item,)})
+    repository = FakeRepository(_locked(match_briefs=(_brief(CREATOR_A, "A"),)))
+
+    with pytest.raises(InvalidRankingOutput):
+        _service(repository, FakeAI(output)).run(TASK_ID)
+    assert repository.publications == []
+
+
+def test_public_pairwise_brief_rejects_internal_fit_score_language() -> None:
+    dirty_brief = _brief(CREATOR_A, "A").model_copy(
+        update={"match_reasons": ("The internal fit score is 0.82.",)}
+    )
+    repository = FakeRepository(_locked(match_briefs=(dirty_brief,)))
+
+    with pytest.raises(InvalidRankingOutput):
+        _service(repository, FakeAI(_ranking(creator_ids=(CREATOR_A,)))).run(TASK_ID)
+    assert repository.publications == []
+
+
+def test_public_match_text_allows_supplied_subscriber_and_view_numbers() -> None:
+    factual_brief = _brief(CREATOR_A, "A").model_copy(
+        update={
+            "match_reasons": (
+                "The supplied channel evidence reports 120,000 subscribers.",
+            )
+        }
+    )
+    output = _ranking(creator_ids=(CREATOR_A,))
+    item = output.items[0]
+    outcomes = item.dimension_outcomes.model_copy(
+        update={"performance_fit": "The supplied recent median is 45,000 views."}
+    )
+    output = output.model_copy(
+        update={"items": (item.model_copy(update={"dimension_outcomes": outcomes}),)}
+    )
+    repository = FakeRepository(_locked(match_briefs=(factual_brief,)))
+
+    assert _service(repository, FakeAI(output)).run(TASK_ID) == 1
+    assert len(repository.publications) == 1
 
 
 def _creator_card() -> dict[str, object]:

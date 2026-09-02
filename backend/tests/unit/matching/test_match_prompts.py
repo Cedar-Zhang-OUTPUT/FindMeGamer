@@ -1,4 +1,5 @@
 from copy import deepcopy
+from decimal import Decimal
 import json
 from uuid import UUID
 
@@ -198,7 +199,12 @@ def render_messages(messages: list[Message]) -> str:
             lambda: build_pairwise_prompt(game_brief(), creator_profile()),
             PAIRWISE_MATCH_PROMPT_VERSION,
         ),
-        (lambda: build_ranking_prompt([pairwise_brief()]), RANKING_PROMPT_VERSION),
+        (
+            lambda: build_ranking_prompt(
+                [pairwise_brief()], threshold=Decimal("0.6500")
+            ),
+            RANKING_PROMPT_VERSION,
+        ),
     ],
 )
 def test_match_prompts_are_versioned_typed_deterministic_english_json_only(
@@ -366,10 +372,11 @@ def test_pairwise_prompt_requires_an_exact_stable_creator_identity() -> None:
 
 def test_ranking_prompt_contains_only_validated_pairwise_match_briefs() -> None:
     briefs = [pairwise_brief(CREATOR_B), pairwise_brief(CREATOR_A)]
-    messages = build_ranking_prompt(briefs)
+    messages = build_ranking_prompt(briefs, threshold=Decimal("0.6500"))
     payload = parse_prompt_payload(messages)
 
-    assert set(payload) == {"match_briefs"}
+    assert set(payload) == {"match_briefs", "recommended_match_threshold"}
+    assert payload["recommended_match_threshold"] == "0.6500"
     assert payload["match_briefs"] == [
         brief.model_dump(mode="json") for brief in briefs
     ]
@@ -380,13 +387,22 @@ def test_ranking_prompt_contains_only_validated_pairwise_match_briefs() -> None:
     rendered = render_messages(messages)
     assert "each supplied creator ID exactly once" in rendered
     assert "contact availability, favorite state, and prior outreach" in rendered
+    assert "quantized total_score >= recommended_match_threshold" in rendered
+    assert "otherwise result_group must be other" in rendered
+    assert "Never restate Match or fit scores" in rendered
+    assert "rank, backend order, threshold, or grouping mechanics" in rendered
 
 
 def test_ranking_prompt_rejects_duplicate_or_unvalidated_match_briefs() -> None:
     with pytest.raises(ValueError, match="creator IDs must be unique"):
-        build_ranking_prompt([pairwise_brief(), pairwise_brief()])
+        build_ranking_prompt(
+            [pairwise_brief(), pairwise_brief()], threshold=Decimal("0.6500")
+        )
     with pytest.raises(TypeError, match="validated PairwiseMatchBrief"):
-        build_ranking_prompt([pairwise_brief().model_dump()])  # type: ignore[list-item]
+        build_ranking_prompt(
+            [pairwise_brief().model_dump()],  # type: ignore[list-item]
+            threshold=Decimal("0.6500"),
+        )
 
 
 @pytest.mark.parametrize(
@@ -397,7 +413,7 @@ def test_ranking_prompt_rejects_duplicate_or_unvalidated_match_briefs() -> None:
             [(CREATOR_A, creator_brief(injected=True))],
         ),
         lambda: build_pairwise_prompt(game_brief(injected=True), creator_profile()),
-        lambda: build_ranking_prompt([pairwise_brief()]),
+        lambda: build_ranking_prompt([pairwise_brief()], threshold=Decimal("0.6500")),
     ],
 )
 def test_untrusted_content_remains_quoted_json_and_never_becomes_system_text(

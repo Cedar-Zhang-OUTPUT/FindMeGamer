@@ -1,6 +1,7 @@
 """Versioned, deterministic prompts for the three Match AI stages."""
 
 from collections.abc import Mapping, Sequence
+from decimal import Decimal
 import json
 from uuid import UUID
 
@@ -183,9 +184,12 @@ def build_pairwise_prompt(
 
 def build_ranking_prompt(
     match_briefs: Sequence[PairwiseMatchBrief],
+    *,
+    threshold: Decimal,
 ) -> list[Message]:
     """Build the Pro final-ranking prompt from validated pairwise briefs only."""
 
+    canonical_threshold = _canonical_threshold(threshold)
     if not isinstance(match_briefs, Sequence) or isinstance(
         match_briefs, str | bytes | bytearray
     ):
@@ -207,10 +211,29 @@ def build_ranking_prompt(
             "total and five dimension scores from 0 through 1, a unique non-negative "
             "backend order, result group, qualitative label, qualitative dimension "
             "outcomes, and final Match Reasons. Scores are internal comparative "
-            "assessments, not new numeric factual claims."
+            "assessments, not new numeric factual claims. After total_score is "
+            "quantized to exactly four decimal places, result_group must be "
+            "recommended when quantized total_score >= recommended_match_threshold; "
+            "otherwise result_group must be other. Never restate Match or fit scores, "
+            "rank, backend order, threshold, or grouping mechanics in qualitative "
+            "dimension outcomes or final Match Reasons."
         ),
-        payload={"match_briefs": serialized},
+        payload={
+            "recommended_match_threshold": canonical_threshold,
+            "match_briefs": serialized,
+        },
     )
+
+
+def _canonical_threshold(value: object) -> str:
+    if not isinstance(value, Decimal) or not value.is_finite():
+        raise TypeError("ranking threshold must be a finite Decimal")
+    if not Decimal("0") <= value <= Decimal("1"):
+        raise ValueError("ranking threshold must be from zero to one")
+    quantized = value.quantize(Decimal("0.0001"))
+    if value != quantized:
+        raise ValueError("ranking threshold must use at most four decimal places")
+    return format(quantized, ".4f")
 
 
 def _require_game_brief(game_brief: GameBrief) -> None:

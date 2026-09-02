@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, ROUND_HALF_UP
 import json
+import re
 from typing import Protocol
 from uuid import UUID
 
@@ -35,6 +36,18 @@ from app.schemas.ai_match import FinalRankingOutput, PairwiseMatchBrief, Ranking
 
 RANKING_MODEL = "deepseek-v4-pro"
 SCORE_QUANTUM = Decimal("0.0001")
+_PUBLIC_INTERNAL_MECHANIC_PATTERNS = (
+    re.compile(r"\b(?:total|dimension|match|fit)[\s_-]*scores?\b", re.IGNORECASE),
+    re.compile(r"\bbackend[\s_-]*order\b", re.IGNORECASE),
+    re.compile(r"\b(?:recommendation[\s_-]*)?threshold\b", re.IGNORECASE),
+    re.compile(r"\bresult[\s_-]*group\b", re.IGNORECASE),
+    re.compile(r"\b(?:recommended|other)[\s_-]*(?:group|bucket)\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:rank|ranked|ranking)\b\s*(?:(?:is|as|at|=|:|no\.?|number)\s*)?"
+        r"#?\s*(?:\d+(?:st|nd|rd|th)?|first|second|third|fourth|fifth)\b",
+        re.IGNORECASE,
+    ),
+)
 
 
 class RankingCheckpointError(PermanentIntegrationError):
@@ -280,9 +293,10 @@ class RankingService:
             locked = self._repository_factory(session).load(match_task_id)
         if locked.published_count is not None:
             return locked.published_count
+        _validate_pairwise_public_text(locked.match_briefs)
         raw = self._ai.complete_structured(
             RANKING_MODEL,
-            build_ranking_prompt(locked.match_briefs),
+            build_ranking_prompt(locked.match_briefs, threshold=locked.threshold),
             FinalRankingOutput,
         )
         publication = _validated_output(
@@ -302,6 +316,7 @@ def _validated_output(
     try:
         validated = FinalRankingOutput.model_validate(value.model_dump())
         validated.validate_expected_creator_ids(expected_ids)
+        _validate_final_public_text(validated)
     except (ValidationError, TypeError, ValueError):
         raise InvalidRankingOutput() from None
     items: list[PublicationItem] = []
@@ -312,6 +327,40 @@ def _validated_output(
             raise InvalidRankingOutput()
         items.append(PublicationItem(ranking=ranking, total_score=score))
     return RankingPublication(tuple(items))
+
+
+def _validate_pairwise_public_text(
+    match_briefs: tuple[PairwiseMatchBrief, ...],
+) -> None:
+    for brief in match_briefs:
+        dimensions = (
+            brief.content_fit,
+            brief.audience_fit,
+            brief.performance_fit,
+            brief.promotion_fit,
+            brief.brand_safety,
+        )
+        for dimension in dimensions:
+            _reject_internal_public_text((dimension.analysis, *dimension.evidence))
+        _reject_internal_public_text(
+            (*brief.strengths, *brief.risks, *brief.evidence, *brief.match_reasons)
+        )
+
+
+def _validate_final_public_text(output: FinalRankingOutput) -> None:
+    for item in output.items:
+        _reject_internal_public_text(
+            (*item.dimension_outcomes.model_dump().values(), *item.match_reasons)
+        )
+
+
+def _reject_internal_public_text(values: tuple[str, ...]) -> None:
+    if any(
+        pattern.search(value)
+        for value in values
+        for pattern in _PUBLIC_INTERNAL_MECHANIC_PATTERNS
+    ):
+        raise InvalidRankingOutput()
 
 
 def _quantize_score(value: object) -> Decimal:
