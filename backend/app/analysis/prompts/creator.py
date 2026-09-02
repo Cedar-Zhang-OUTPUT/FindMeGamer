@@ -9,6 +9,7 @@ from app.analysis.prompts.common import (
     clip_text,
     clip_values,
     compact_model_payload,
+    create_visual_asset,
 )
 from app.schemas.ai_creator import (
     CreatorContactEvidence,
@@ -284,7 +285,7 @@ def _available_creator_visual_assets(
     for video in source.videos:
         for index, url in enumerate(video.thumbnail_urls):
             assets.append(
-                VisualAsset(
+                create_visual_asset(
                     asset_ref=f"video:{video.id}:thumbnail:{index}",
                     image_url=url,
                 )

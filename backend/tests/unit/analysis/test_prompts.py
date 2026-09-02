@@ -116,6 +116,36 @@ def test_visual_asset_factory_types_only_static_image_url_validation() -> None:
     assert {error["loc"] for error in unrelated.value.errors()} == {("asset_ref",)}
 
 
+def test_creator_visual_asset_factory_types_only_static_image_url_validation() -> None:
+    creator = sample_creator_source().model_copy(
+        update={
+            "videos": (
+                sample_creator_source()
+                .videos[0]
+                .model_copy(
+                    update={"thumbnail_urls": ("https://cdn.example/dynamic",)}
+                ),
+            )
+        }
+    )
+    with pytest.raises(InvalidVisualAssetInput):
+        build_creator_visual_bundle(creator)
+
+    creator = sample_creator_source().model_copy(
+        update={
+            "videos": (
+                sample_creator_source()
+                .videos[0]
+                .model_copy(
+                    update={"id": "x" * 300},
+                ),
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="video id"):
+        build_creator_visual_bundle(creator)
+
+
 def sample_creator_source(*, canary: str = "raw-secret-canary") -> CreatorSource:
     return CreatorSource(
         channel_id="UC123",
@@ -907,7 +937,7 @@ def test_game_and_creator_visual_builders_enforce_static_image_urls() -> None:
 
     with pytest.raises(InvalidVisualAssetInput):
         build_game_visual_bundle(game)
-    with pytest.raises(ValidationError):
+    with pytest.raises(InvalidVisualAssetInput):
         build_creator_visual_bundle(creator)
 
 
