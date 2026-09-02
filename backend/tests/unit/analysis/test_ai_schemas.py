@@ -560,6 +560,17 @@ def test_contact_evidence_is_strict_frozen_bounded_and_validated() -> None:
         "https://224.0.0.0/contact",
         "https://224.0.0.1/contact",
         "https://239.255.255.255/contact",
+        "https://8.8.8.8/contact",
+        "https://[2606:4700:4700::1111]/contact",
+        "https://[2001:4860:4860::8888]/contact",
+        "https://[::ffff:8.8.8.8]/contact",
+        "https://192.0.0.9/contact",
+        "https://192.0.0.10/contact",
+        "https://[2001:3::1]/contact",
+        "https://192.31.196.1/contact",
+        "https://192.52.193.1/contact",
+        "https://192.175.48.1/contact",
+        "https://[2001:4:112::1]/contact",
         "https://[ff00::]/contact",
         "https://[ff02::1]/contact",
         "https://[ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff]/contact",
@@ -579,9 +590,7 @@ def test_contact_evidence_rejects_non_public_or_control_urls(
     [
         "https://creator.example/contact?ref=channel",
         "http://social.example/creator",
-        "https://[2606:4700:4700::1111]/contact",
-        "https://8.8.8.8/contact",
-        "https://[2001:4860:4860::8888]/contact",
+        "https://例子.测试/contact",
     ],
 )
 def test_contact_evidence_accepts_public_http_urls(public_url: str) -> None:

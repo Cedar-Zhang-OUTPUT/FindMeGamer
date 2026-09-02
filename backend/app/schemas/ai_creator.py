@@ -228,7 +228,7 @@ def _canonical_host(hostname: str) -> str:
     if not normalized or normalized == "localhost" or normalized.endswith(".localhost"):
         raise ValueError("invalid public URL")
     try:
-        address = ip_address(normalized)
+        ip_address(normalized)
     except ValueError:
         try:
             inet_aton(normalized)
@@ -268,18 +268,7 @@ def _canonical_host(hostname: str) -> str:
         except OSError:
             return ascii_hostname
         raise ValueError("invalid public URL")
-    if not address.is_global or any(
-        (
-            address.is_multicast,
-            address.is_loopback,
-            address.is_link_local,
-            address.is_private,
-            address.is_reserved,
-            address.is_unspecified,
-        )
-    ):
-        raise ValueError("invalid public URL")
-    return address.compressed.casefold()
+    raise ValueError("invalid public URL")
 
 
 def _parse_public_url(value: str) -> tuple[SplitResult, str]:
