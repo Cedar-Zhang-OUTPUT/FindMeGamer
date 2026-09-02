@@ -108,6 +108,15 @@ EXPECTED_OPERATIONS = {
         "POST",
         "/api/v1/outreach/deliveries/{delivery_id}/resend",
     ): "resendOutreachDelivery",
+    ("GET", "/api/v1/outreach/campaigns"): "listOutreachCampaigns",
+    (
+        "GET",
+        "/api/v1/outreach/campaigns/{campaign_id}",
+    ): "getOutreachCampaign",
+    (
+        "GET",
+        "/api/v1/outreach/deliveries/{delivery_id}",
+    ): "getOutreachDelivery",
 }
 HTTP_METHODS = frozenset(
     {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
@@ -368,6 +377,129 @@ def test_openapi_send_batch_requests_and_responses_are_closed_and_secret_free(
             "rendered_html",
             "rendered_markdown",
         }
+    )
+
+
+def test_openapi_campaign_history_responses_are_closed_and_secret_free(client) -> None:
+    schema = client.app.openapi()
+    components = schema["components"]["schemas"]
+
+    expected_properties = {
+        "OutreachCampaignMetrics": {
+            "sent_creators",
+            "accepted",
+            "declined",
+            "no_response",
+            "failed",
+            "response_rate",
+        },
+        "OutreachCampaignGame": {
+            "id",
+            "name",
+            "steam_app_id",
+            "steam_url",
+            "cover_url",
+        },
+        "OutreachCampaignSummary": {
+            "id",
+            "match_task_id",
+            "game",
+            "state",
+            "send_batch_count",
+            "metrics",
+            "created_at",
+            "latest_activity_at",
+        },
+        "OutreachCampaignPage": {"items", "cursor", "has_more"},
+        "OutreachCreatorIdentity": {
+            "id",
+            "name",
+            "youtube_channel_id",
+            "canonical_url",
+            "avatar_url",
+        },
+        "OutreachDeliveryDetail": {
+            "id",
+            "campaign_id",
+            "send_batch_id",
+            "creator",
+            "recipient_email",
+            "rendered_subject",
+            "rendered_markdown",
+            "rendered_html",
+            "template_name",
+            "template_version",
+            "accepted_label",
+            "declined_label",
+            "sender_name",
+            "sender_address",
+            "reply_to",
+            "send_state",
+            "response_state",
+            "resends_delivery_id",
+            "superseded_by_delivery_id",
+            "is_current",
+            "can_resend",
+            "smtp_error",
+            "created_at",
+            "sending_at",
+            "sent_at",
+            "failed_at",
+            "responded_at",
+            "superseded_at",
+        },
+        "OutreachSendBatchDetail": {
+            "id",
+            "campaign_id",
+            "template_id",
+            "template_name",
+            "template_version",
+            "requested_creator_ids",
+            "requested_at",
+            "state",
+            "deliveries",
+        },
+        "OutreachSMTPError": {"code", "message", "retryable"},
+    }
+    for component_name, properties in expected_properties.items():
+        assert set(components[component_name]["properties"]) == properties
+        assert components[component_name]["additionalProperties"] is False
+    assert set(components["OutreachCampaignDetail"]["properties"]) == {
+        *expected_properties["OutreachCampaignSummary"],
+        "send_batches",
+    }
+    assert components["OutreachCampaignDetail"]["additionalProperties"] is False
+
+    forbidden = {
+        "response_token",
+        "response_token_digest",
+        "ciphertext",
+        "nonce",
+        "password",
+        "backend_order",
+        "rank",
+        "total_score",
+        "dimension_scores",
+    }
+    exposed = {
+        property_name.casefold()
+        for component_name in set(expected_properties) | {"OutreachCampaignDetail"}
+        for property_name in components[component_name]["properties"]
+    }
+    assert exposed.isdisjoint(forbidden)
+
+    assert _operation(schema, "GET", "/api/v1/outreach/campaigns")["responses"]["200"][
+        "content"
+    ]["application/json"]["schema"]["$ref"].endswith("/OutreachCampaignPage")
+    assert _operation(schema, "GET", "/api/v1/outreach/campaigns/{campaign_id}")[
+        "responses"
+    ]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/OutreachCampaignDetail"
+    )
+    assert _operation(schema, "GET", "/api/v1/outreach/deliveries/{delivery_id}")[
+        "responses"
+    ]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "/OutreachDeliveryDetail"
     )
 
 

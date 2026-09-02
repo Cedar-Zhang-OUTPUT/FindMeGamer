@@ -3,12 +3,21 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.db.models.outreach import Template
+from app.db.models.match import MatchTask
+from app.db.models.outreach import (
+    CampaignCreatorResponse,
+    Delivery,
+    OutreachCampaign,
+    SendBatch,
+    Template,
+)
+from app.db.models.profiles import CreatorProfile, GameProfile
 from app.schemas.outreach import TemplateData
 
 
@@ -57,6 +66,106 @@ class OutreachRepository:
 
     def get_template(self, template_id: UUID) -> Template | None:
         return self._session.get(Template, template_id)
+
+    def list_campaign_roots(
+        self,
+        *,
+        cursor: tuple[datetime, UUID] | None,
+        limit: int,
+    ) -> list[tuple[OutreachCampaign, MatchTask, GameProfile]]:
+        statement = (
+            select(OutreachCampaign, MatchTask, GameProfile)
+            .join(MatchTask, MatchTask.id == OutreachCampaign.match_task_id)
+            .join(GameProfile, GameProfile.id == MatchTask.game_id)
+        )
+        if cursor is not None:
+            statement = statement.where(
+                (OutreachCampaign.created_at < cursor[0])
+                | (
+                    (OutreachCampaign.created_at == cursor[0])
+                    & (OutreachCampaign.id < cursor[1])
+                )
+            )
+        return list(
+            self._session.execute(
+                statement.order_by(
+                    OutreachCampaign.created_at.desc(), OutreachCampaign.id.desc()
+                ).limit(limit)
+            )
+            .tuples()
+            .all()
+        )
+
+    def get_campaign_root(
+        self, campaign_id: UUID
+    ) -> tuple[OutreachCampaign, MatchTask, GameProfile] | None:
+        return self._session.execute(
+            select(OutreachCampaign, MatchTask, GameProfile)
+            .join(MatchTask, MatchTask.id == OutreachCampaign.match_task_id)
+            .join(GameProfile, GameProfile.id == MatchTask.game_id)
+            .where(OutreachCampaign.id == campaign_id)
+        ).one_or_none()
+
+    def list_send_batches(self, campaign_ids: set[UUID]) -> list[SendBatch]:
+        if not campaign_ids:
+            return []
+        return list(
+            self._session.scalars(
+                select(SendBatch)
+                .where(SendBatch.campaign_id.in_(campaign_ids))
+                .order_by(
+                    SendBatch.campaign_id,
+                    SendBatch.requested_at.desc(),
+                    SendBatch.id.desc(),
+                )
+            ).all()
+        )
+
+    def list_deliveries(self, campaign_ids: set[UUID]) -> list[Delivery]:
+        if not campaign_ids:
+            return []
+        return list(
+            self._session.scalars(
+                select(Delivery)
+                .where(Delivery.campaign_id.in_(campaign_ids))
+                .order_by(
+                    Delivery.campaign_id,
+                    Delivery.send_batch_id,
+                    Delivery.created_at,
+                    Delivery.id,
+                )
+            ).all()
+        )
+
+    def list_campaign_responses(
+        self, campaign_ids: set[UUID]
+    ) -> list[CampaignCreatorResponse]:
+        if not campaign_ids:
+            return []
+        return list(
+            self._session.scalars(
+                select(CampaignCreatorResponse)
+                .where(CampaignCreatorResponse.campaign_id.in_(campaign_ids))
+                .order_by(
+                    CampaignCreatorResponse.campaign_id,
+                    CampaignCreatorResponse.creator_id,
+                )
+            ).all()
+        )
+
+    def list_creators(self, creator_ids: set[UUID]) -> list[CreatorProfile]:
+        if not creator_ids:
+            return []
+        return list(
+            self._session.scalars(
+                select(CreatorProfile)
+                .where(CreatorProfile.id.in_(creator_ids))
+                .order_by(CreatorProfile.id)
+            ).all()
+        )
+
+    def get_delivery(self, delivery_id: UUID) -> Delivery | None:
+        return self._session.get(Delivery, delivery_id)
 
     def get_template_for_mutation(self, template_id: UUID) -> Template | None:
         self.lock_template_mutations()

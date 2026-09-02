@@ -210,6 +210,7 @@ def create_app(
             smtp_gateway=effective_smtp_gateway,
             smtp_rate_limiter=smtp_rate_limiter,
             batch_dispatcher=outreach_batch_dispatcher,
+            cursor_signing_secret=effective_workspace_key_hash,
         )
     )
     return app

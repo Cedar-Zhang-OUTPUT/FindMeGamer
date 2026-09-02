@@ -394,11 +394,121 @@ class OutreachSendBatchResponse(OutreachValue):
     deliveries: list[OutreachDeliverySummary]
 
 
+class OutreachCampaignMetrics(OutreachValue):
+    sent_creators: int = Field(ge=0)
+    accepted: int = Field(ge=0)
+    declined: int = Field(ge=0)
+    no_response: int = Field(ge=0)
+    failed: int = Field(ge=0)
+    response_rate: float = Field(ge=0, le=1)
+
+
+class OutreachCampaignGame(OutreachValue):
+    id: UUID
+    name: str
+    steam_app_id: str
+    steam_url: str
+    cover_url: str | None
+
+
+class OutreachCampaignSummary(OutreachValue):
+    id: UUID
+    match_task_id: UUID
+    game: OutreachCampaignGame
+    state: Literal["not_started", "queued", "sending", "completed", "failed"]
+    send_batch_count: int = Field(ge=0)
+    metrics: OutreachCampaignMetrics
+    created_at: datetime
+    latest_activity_at: datetime
+
+
+class OutreachCampaignPage(OutreachValue):
+    items: list[OutreachCampaignSummary]
+    cursor: str | None
+    has_more: bool
+
+
+class OutreachCreatorIdentity(OutreachValue):
+    id: UUID
+    name: str
+    youtube_channel_id: str
+    canonical_url: str
+    avatar_url: str | None
+
+
+class OutreachSMTPError(OutreachValue):
+    code: Literal[
+        "smtp_rejected",
+        "smtp_temporarily_unavailable",
+        "outreach_delivery_invalid",
+    ]
+    message: Literal[
+        "SMTP rejected the request.",
+        "SMTP is temporarily unavailable.",
+        "Outreach delivery could not be prepared.",
+    ]
+    retryable: bool
+
+
+class OutreachDeliveryDetail(OutreachValue):
+    id: UUID
+    campaign_id: UUID
+    send_batch_id: UUID
+    creator: OutreachCreatorIdentity
+    recipient_email: EmailStr
+    rendered_subject: str
+    rendered_markdown: str
+    rendered_html: str
+    template_name: str
+    template_version: int = Field(gt=0)
+    accepted_label: str
+    declined_label: str
+    sender_name: str
+    sender_address: EmailStr
+    reply_to: EmailStr
+    send_state: Literal["queued", "sending", "sent", "failed"]
+    response_state: Literal["no_response", "accepted", "declined"]
+    resends_delivery_id: UUID | None
+    superseded_by_delivery_id: UUID | None
+    is_current: bool
+    can_resend: bool
+    smtp_error: OutreachSMTPError | None
+    created_at: datetime
+    sending_at: datetime | None
+    sent_at: datetime | None
+    failed_at: datetime | None
+    responded_at: datetime | None
+    superseded_at: datetime | None
+
+
+class OutreachSendBatchDetail(OutreachValue):
+    id: UUID
+    campaign_id: UUID
+    template_id: UUID | None
+    template_name: str
+    template_version: int = Field(gt=0)
+    requested_creator_ids: list[UUID]
+    requested_at: datetime
+    state: Literal["queued", "sending", "sent", "partially_failed", "failed"]
+    deliveries: list[OutreachDeliveryDetail]
+
+
+class OutreachCampaignDetail(OutreachCampaignSummary):
+    send_batches: list[OutreachSendBatchDetail]
+
+
 __all__ = [
     "ACCEPTED_RESPONSE_URL_PLACEHOLDER",
     "DEFAULT_ACCEPTED_LABEL",
     "DEFAULT_DECLINED_LABEL",
     "DECLINED_RESPONSE_URL_PLACEHOLDER",
+    "OutreachCampaignDetail",
+    "OutreachCampaignGame",
+    "OutreachCampaignMetrics",
+    "OutreachCampaignPage",
+    "OutreachCampaignSummary",
+    "OutreachCreatorIdentity",
+    "OutreachDeliveryDetail",
     "OutreachTemplateCreate",
     "OutreachTemplateList",
     "OutreachTemplatePreviewDraft",
@@ -409,6 +519,8 @@ __all__ = [
     "OutreachSendBatchPreviewItem",
     "OutreachSendBatchRequest",
     "OutreachSendBatchResponse",
+    "OutreachSendBatchDetail",
+    "OutreachSMTPError",
     "RESPONSE_URL_PLACEHOLDERS",
     "RenderedDelivery",
     "ResponseURLs",

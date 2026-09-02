@@ -1998,6 +1998,525 @@
         "title": "MatchSummary",
         "type": "object"
       },
+      "OutreachCampaignDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "game": {
+            "$ref": "#/components/schemas/OutreachCampaignGame"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "latest_activity_at": {
+            "format": "date-time",
+            "title": "Latest Activity At",
+            "type": "string"
+          },
+          "match_task_id": {
+            "format": "uuid",
+            "title": "Match Task Id",
+            "type": "string"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/OutreachCampaignMetrics"
+          },
+          "send_batch_count": {
+            "minimum": 0.0,
+            "title": "Send Batch Count",
+            "type": "integer"
+          },
+          "send_batches": {
+            "items": {
+              "$ref": "#/components/schemas/OutreachSendBatchDetail"
+            },
+            "title": "Send Batches",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "not_started",
+              "queued",
+              "sending",
+              "completed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "match_task_id",
+          "game",
+          "state",
+          "send_batch_count",
+          "metrics",
+          "created_at",
+          "latest_activity_at",
+          "send_batches"
+        ],
+        "title": "OutreachCampaignDetail",
+        "type": "object"
+      },
+      "OutreachCampaignGame": {
+        "additionalProperties": false,
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "steam_app_id": {
+            "title": "Steam App Id",
+            "type": "string"
+          },
+          "steam_url": {
+            "title": "Steam Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "steam_app_id",
+          "steam_url",
+          "cover_url"
+        ],
+        "title": "OutreachCampaignGame",
+        "type": "object"
+      },
+      "OutreachCampaignMetrics": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted": {
+            "minimum": 0.0,
+            "title": "Accepted",
+            "type": "integer"
+          },
+          "declined": {
+            "minimum": 0.0,
+            "title": "Declined",
+            "type": "integer"
+          },
+          "failed": {
+            "minimum": 0.0,
+            "title": "Failed",
+            "type": "integer"
+          },
+          "no_response": {
+            "minimum": 0.0,
+            "title": "No Response",
+            "type": "integer"
+          },
+          "response_rate": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Response Rate",
+            "type": "number"
+          },
+          "sent_creators": {
+            "minimum": 0.0,
+            "title": "Sent Creators",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sent_creators",
+          "accepted",
+          "declined",
+          "no_response",
+          "failed",
+          "response_rate"
+        ],
+        "title": "OutreachCampaignMetrics",
+        "type": "object"
+      },
+      "OutreachCampaignPage": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OutreachCampaignSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "cursor",
+          "has_more"
+        ],
+        "title": "OutreachCampaignPage",
+        "type": "object"
+      },
+      "OutreachCampaignSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "game": {
+            "$ref": "#/components/schemas/OutreachCampaignGame"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "latest_activity_at": {
+            "format": "date-time",
+            "title": "Latest Activity At",
+            "type": "string"
+          },
+          "match_task_id": {
+            "format": "uuid",
+            "title": "Match Task Id",
+            "type": "string"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/OutreachCampaignMetrics"
+          },
+          "send_batch_count": {
+            "minimum": 0.0,
+            "title": "Send Batch Count",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "not_started",
+              "queued",
+              "sending",
+              "completed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "match_task_id",
+          "game",
+          "state",
+          "send_batch_count",
+          "metrics",
+          "created_at",
+          "latest_activity_at"
+        ],
+        "title": "OutreachCampaignSummary",
+        "type": "object"
+      },
+      "OutreachCreatorIdentity": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "youtube_channel_id": {
+            "title": "Youtube Channel Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "youtube_channel_id",
+          "canonical_url",
+          "avatar_url"
+        ],
+        "title": "OutreachCreatorIdentity",
+        "type": "object"
+      },
+      "OutreachDeliveryDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_label": {
+            "title": "Accepted Label",
+            "type": "string"
+          },
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "can_resend": {
+            "title": "Can Resend",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "creator": {
+            "$ref": "#/components/schemas/OutreachCreatorIdentity"
+          },
+          "declined_label": {
+            "title": "Declined Label",
+            "type": "string"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "recipient_email": {
+            "format": "email",
+            "title": "Recipient Email",
+            "type": "string"
+          },
+          "rendered_html": {
+            "title": "Rendered Html",
+            "type": "string"
+          },
+          "rendered_markdown": {
+            "title": "Rendered Markdown",
+            "type": "string"
+          },
+          "rendered_subject": {
+            "title": "Rendered Subject",
+            "type": "string"
+          },
+          "reply_to": {
+            "format": "email",
+            "title": "Reply To",
+            "type": "string"
+          },
+          "resends_delivery_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resends Delivery Id"
+          },
+          "responded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Responded At"
+          },
+          "response_state": {
+            "enum": [
+              "no_response",
+              "accepted",
+              "declined"
+            ],
+            "title": "Response State",
+            "type": "string"
+          },
+          "send_batch_id": {
+            "format": "uuid",
+            "title": "Send Batch Id",
+            "type": "string"
+          },
+          "send_state": {
+            "enum": [
+              "queued",
+              "sending",
+              "sent",
+              "failed"
+            ],
+            "title": "Send State",
+            "type": "string"
+          },
+          "sender_address": {
+            "format": "email",
+            "title": "Sender Address",
+            "type": "string"
+          },
+          "sender_name": {
+            "title": "Sender Name",
+            "type": "string"
+          },
+          "sending_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sending At"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "smtp_error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OutreachSMTPError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "superseded_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded At"
+          },
+          "superseded_by_delivery_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Delivery Id"
+          },
+          "template_name": {
+            "title": "Template Name",
+            "type": "string"
+          },
+          "template_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Template Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "campaign_id",
+          "send_batch_id",
+          "creator",
+          "recipient_email",
+          "rendered_subject",
+          "rendered_markdown",
+          "rendered_html",
+          "template_name",
+          "template_version",
+          "accepted_label",
+          "declined_label",
+          "sender_name",
+          "sender_address",
+          "reply_to",
+          "send_state",
+          "response_state",
+          "resends_delivery_id",
+          "superseded_by_delivery_id",
+          "is_current",
+          "can_resend",
+          "smtp_error",
+          "created_at",
+          "sending_at",
+          "sent_at",
+          "failed_at",
+          "responded_at",
+          "superseded_at"
+        ],
+        "title": "OutreachDeliveryDetail",
+        "type": "object"
+      },
       "OutreachDeliverySummary": {
         "additionalProperties": false,
         "properties": {
@@ -2048,6 +2567,120 @@
           "resends_delivery_id"
         ],
         "title": "OutreachDeliverySummary",
+        "type": "object"
+      },
+      "OutreachSMTPError": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "smtp_rejected",
+              "smtp_temporarily_unavailable",
+              "outreach_delivery_invalid"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "enum": [
+              "SMTP rejected the request.",
+              "SMTP is temporarily unavailable.",
+              "Outreach delivery could not be prepared."
+            ],
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "OutreachSMTPError",
+        "type": "object"
+      },
+      "OutreachSendBatchDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "campaign_id": {
+            "format": "uuid",
+            "title": "Campaign Id",
+            "type": "string"
+          },
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/OutreachDeliveryDetail"
+            },
+            "title": "Deliveries",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "requested_at": {
+            "format": "date-time",
+            "title": "Requested At",
+            "type": "string"
+          },
+          "requested_creator_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Requested Creator Ids",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "sending",
+              "sent",
+              "partially_failed",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "template_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Template Id"
+          },
+          "template_name": {
+            "title": "Template Name",
+            "type": "string"
+          },
+          "template_version": {
+            "exclusiveMinimum": 0.0,
+            "title": "Template Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "campaign_id",
+          "template_id",
+          "template_name",
+          "template_version",
+          "requested_creator_ids",
+          "requested_at",
+          "state",
+          "deliveries"
+        ],
+        "title": "OutreachSendBatchDetail",
         "type": "object"
       },
       "OutreachSendBatchPreview": {
@@ -3444,6 +4077,168 @@
         "summary": "Retry Match",
         "tags": [
           "matches"
+        ]
+      }
+    },
+    "/api/v1/outreach/campaigns": {
+      "get": {
+        "operationId": "listOutreachCampaigns",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachCampaignPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Campaigns",
+        "tags": [
+          "outreach"
+        ]
+      }
+    },
+    "/api/v1/outreach/campaigns/{campaign_id}": {
+      "get": {
+        "operationId": "getOutreachCampaign",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "campaign_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Campaign Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachCampaignDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Campaign",
+        "tags": [
+          "outreach"
+        ]
+      }
+    },
+    "/api/v1/outreach/deliveries/{delivery_id}": {
+      "get": {
+        "operationId": "getOutreachDelivery",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Delivery Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutreachDeliveryDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Delivery",
+        "tags": [
+          "outreach"
         ]
       }
     },

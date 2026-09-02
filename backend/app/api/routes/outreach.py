@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from email.message import EmailMessage
 from email.utils import formataddr
+import hashlib
+import hmac
 import json
 from typing import Annotated, Protocol
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Header, Request, Response
+from fastapi import APIRouter, Body, Depends, Header, Query, Request, Response
 from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -27,12 +31,27 @@ from app.core.idempotency import (
     validate_idempotency_key,
 )
 from app.db.models.idempotency import IdempotencyRecord
-from app.db.models.outreach import Template
+from app.db.models.outreach import (
+    CampaignCreatorResponse,
+    Delivery,
+    DeliverySendState,
+    OutreachCampaign,
+    ResponseState,
+    SendBatch,
+    Template,
+)
+from app.db.models.profiles import CreatorProfile, GameProfile
 from app.db.models.settings import ServiceSecret
 from app.outreach.batches import (
     create_send_batch,
     preview_send_batch,
     resend_delivery,
+)
+from app.outreach.metrics import (
+    CampaignMetrics,
+    DeliveryProjection,
+    calculate_campaign_metrics,
+    derive_campaign_state,
 )
 from app.outreach.rate_limit import SMTPRateLimitError, SMTPRateLimiter
 from app.outreach.smtp import SMTPConfig, SMTPError, SMTPGateway
@@ -50,6 +69,15 @@ from app.repositories.settings import (
     SettingsRepository,
 )
 from app.schemas.outreach import (
+    OutreachCampaignDetail,
+    OutreachCampaignGame,
+    OutreachCampaignMetrics,
+    OutreachCampaignPage,
+    OutreachCampaignSummary,
+    OutreachCreatorIdentity,
+    OutreachDeliveryDetail,
+    OutreachSendBatchDetail,
+    OutreachSMTPError,
     OutreachTemplateCreate,
     OutreachTemplateList,
     OutreachTemplatePreviewDraft,
@@ -81,6 +109,18 @@ _PREVIEW_CONTEXT = TemplateContext(
 _PREVIEW_URLS = ResponseURLs(
     accepted_url="https://example.invalid/r/preview-accepted",
     declined_url="https://example.invalid/r/preview-declined",
+)
+_CURSOR_LIMIT = 2048
+_SAFE_SMTP_ERRORS = frozenset(
+    {
+        ("smtp_rejected", "SMTP rejected the request.", False),
+        ("smtp_temporarily_unavailable", "SMTP is temporarily unavailable.", True),
+        (
+            "outreach_delivery_invalid",
+            "Outreach delivery could not be prepared.",
+            False,
+        ),
+    }
 )
 
 
@@ -415,6 +455,291 @@ def _redact_config(config: SMTPConfig) -> SMTPConfig:
     )
 
 
+def _cursor_timestamp(value: datetime) -> str:
+    return (
+        value.astimezone(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
+    )
+
+
+def _cursor_signature(payload: dict[str, object], key: bytes) -> str:
+    return hmac.new(
+        key,
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _encode_campaign_cursor(value: tuple[datetime, UUID], key: bytes) -> str:
+    signed: dict[str, object] = {
+        "v": 1,
+        "key": [_cursor_timestamp(value[0]), str(value[1])],
+        "scope": "outreach-campaigns",
+    }
+    payload = {**signed, "signature": _cursor_signature(signed, key)}
+    return (
+        base64.urlsafe_b64encode(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        )
+        .decode()
+        .rstrip("=")
+    )
+
+
+def _invalid_campaign_cursor() -> APIError:
+    return APIError(
+        status_code=400,
+        code="outreach_campaign_cursor_invalid",
+        message="The Outreach Campaign cursor is invalid.",
+    )
+
+
+def _decode_campaign_cursor(
+    raw: str | None, key: bytes
+) -> tuple[datetime, UUID] | None:
+    if raw is None:
+        return None
+    if not raw or len(raw) > _CURSOR_LIMIT:
+        raise _invalid_campaign_cursor()
+    try:
+        decoded = base64.b64decode(
+            raw + "=" * (-len(raw) % 4), altchars=b"-_", validate=True
+        )
+        if base64.urlsafe_b64encode(decoded).decode().rstrip("=") != raw:
+            raise ValueError
+        value = json.loads(decoded)
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"v", "key", "scope", "signature"}
+            or value["v"] != 1
+            or value["scope"] != "outreach-campaigns"
+            or not isinstance(value["key"], list)
+            or len(value["key"]) != 2
+        ):
+            raise ValueError
+        signed = {"v": value["v"], "key": value["key"], "scope": value["scope"]}
+        signature = value["signature"]
+        if not isinstance(signature, str) or not hmac.compare_digest(
+            signature, _cursor_signature(signed, key)
+        ):
+            raise ValueError
+        timestamp_text, id_text = value["key"]
+        if (
+            not isinstance(timestamp_text, str)
+            or not timestamp_text.endswith("Z")
+            or not isinstance(id_text, str)
+        ):
+            raise ValueError
+        timestamp = datetime.fromisoformat(timestamp_text[:-1] + "+00:00")
+        campaign_id = UUID(id_text)
+        if (
+            _cursor_timestamp(timestamp) != timestamp_text
+            or str(campaign_id) != id_text
+        ):
+            raise ValueError
+        return timestamp, campaign_id
+    except (
+        binascii.Error,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+    ):
+        raise _invalid_campaign_cursor() from None
+
+
+def _game_identity(game: GameProfile) -> OutreachCampaignGame:
+    facts = game.current_facts if isinstance(game.current_facts, dict) else {}
+    cover = next(
+        (
+            value
+            for name in (
+                "cover_image_url",
+                "cover_url",
+                "header_image",
+                "header_image_url",
+                "image_url",
+            )
+            if isinstance((value := facts.get(name)), str) and value
+        ),
+        None,
+    )
+    return OutreachCampaignGame(
+        id=game.id,
+        name=game.sort_name,
+        steam_app_id=game.steam_app_id,
+        steam_url=game.canonical_url,
+        cover_url=cover,
+    )
+
+
+def _creator_identity(creator: CreatorProfile) -> OutreachCreatorIdentity:
+    facts = creator.current_facts if isinstance(creator.current_facts, dict) else {}
+    title = facts.get("title")
+    avatar = facts.get("avatar_url")
+    return OutreachCreatorIdentity(
+        id=creator.id,
+        name=title if isinstance(title, str) and title else creator.sort_name,
+        youtube_channel_id=creator.youtube_channel_id,
+        canonical_url=creator.canonical_url,
+        avatar_url=avatar if isinstance(avatar, str) and avatar else None,
+    )
+
+
+def _metric_rows(
+    deliveries: list[Delivery], responses: list[CampaignCreatorResponse]
+) -> list[DeliveryProjection]:
+    final_states = {row.creator_id: row.state.value for row in responses}
+    return [
+        DeliveryProjection(
+            creator_id=row.creator_id,
+            send_state=row.send_state.value,
+            response_state=final_states.get(row.creator_id, "no_response"),
+            is_current=row.superseded_at is None,
+        )
+        for row in deliveries
+    ]
+
+
+def _public_metrics(metrics: CampaignMetrics) -> OutreachCampaignMetrics:
+    return OutreachCampaignMetrics(
+        sent_creators=metrics.sent_creators,
+        accepted=metrics.accepted,
+        declined=metrics.declined,
+        no_response=metrics.no_response,
+        failed=metrics.failed,
+        response_rate=float(metrics.response_rate),
+    )
+
+
+def _latest_activity(
+    campaign: OutreachCampaign,
+    batches: list[SendBatch],
+    deliveries: list[Delivery],
+    responses: list[CampaignCreatorResponse],
+) -> datetime:
+    values = [campaign.created_at, campaign.updated_at]
+    for batch in batches:
+        values.extend((batch.created_at, batch.updated_at, batch.requested_at))
+    for delivery in deliveries:
+        values.extend(
+            value
+            for value in (
+                delivery.created_at,
+                delivery.updated_at,
+                delivery.sending_at,
+                delivery.sent_at,
+                delivery.failed_at,
+                delivery.responded_at,
+                delivery.superseded_at,
+            )
+            if value is not None
+        )
+    for response in responses:
+        values.extend(
+            value
+            for value in (
+                response.created_at,
+                response.updated_at,
+                response.responded_at,
+            )
+            if value is not None
+        )
+    return max(values)
+
+
+def _project_campaign_summary(
+    campaign: OutreachCampaign,
+    game: GameProfile,
+    batches: list[SendBatch],
+    deliveries: list[Delivery],
+    responses: list[CampaignCreatorResponse],
+) -> OutreachCampaignSummary:
+    rows = _metric_rows(deliveries, responses)
+    return OutreachCampaignSummary(
+        id=campaign.id,
+        match_task_id=campaign.match_task_id,
+        game=_game_identity(game),
+        state=derive_campaign_state(rows),
+        send_batch_count=len(batches),
+        metrics=_public_metrics(calculate_campaign_metrics(rows)),
+        created_at=campaign.created_at,
+        latest_activity_at=_latest_activity(campaign, batches, deliveries, responses),
+    )
+
+
+def _smtp_error(delivery: Delivery) -> OutreachSMTPError | None:
+    value = (
+        delivery.smtp_error_code,
+        delivery.smtp_error_message,
+        delivery.smtp_retryable,
+    )
+    if (
+        delivery.send_state is not DeliverySendState.FAILED
+        or value not in _SAFE_SMTP_ERRORS
+    ):
+        return None
+    code, message, retryable = value
+    return OutreachSMTPError(code=code, message=message, retryable=retryable)
+
+
+def _project_delivery(
+    delivery: Delivery,
+    creator: CreatorProfile,
+    *,
+    final_response: CampaignCreatorResponse | None,
+    superseded_by_delivery_id: UUID | None,
+) -> OutreachDeliveryDetail:
+    has_final_response = final_response is not None and final_response.state in {
+        ResponseState.ACCEPTED,
+        ResponseState.DECLINED,
+    }
+    is_current = delivery.superseded_at is None
+    return OutreachDeliveryDetail(
+        id=delivery.id,
+        campaign_id=delivery.campaign_id,
+        send_batch_id=delivery.send_batch_id,
+        creator=_creator_identity(creator),
+        recipient_email=delivery.recipient_email,
+        rendered_subject=delivery.rendered_subject,
+        rendered_markdown=delivery.rendered_markdown,
+        rendered_html=delivery.rendered_html,
+        template_name=delivery.template_name,
+        template_version=delivery.template_version,
+        accepted_label=delivery.accepted_label,
+        declined_label=delivery.declined_label,
+        sender_name=delivery.sender_name,
+        sender_address=delivery.sender_address,
+        reply_to=delivery.reply_to,
+        send_state=delivery.send_state.value,
+        response_state=delivery.response_state.value,
+        resends_delivery_id=delivery.resends_delivery_id,
+        superseded_by_delivery_id=superseded_by_delivery_id,
+        is_current=is_current,
+        can_resend=(
+            is_current
+            and delivery.send_state
+            in {DeliverySendState.SENT, DeliverySendState.FAILED}
+            and delivery.response_state is ResponseState.NO_RESPONSE
+            and not has_final_response
+        ),
+        smtp_error=_smtp_error(delivery),
+        created_at=delivery.created_at,
+        sending_at=delivery.sending_at,
+        sent_at=delivery.sent_at,
+        failed_at=delivery.failed_at,
+        responded_at=delivery.responded_at,
+        superseded_at=delivery.superseded_at,
+    )
+
+
+def _outreach_state_invalid() -> APIError:
+    return APIError(
+        status_code=500,
+        code="outreach_state_invalid",
+        message="The Outreach state is invalid.",
+    )
+
+
 def create_router(
     authenticate_workspace: Callable,
     *,
@@ -422,13 +747,171 @@ def create_router(
     smtp_gateway: SMTPGateway,
     smtp_rate_limiter: SMTPRateLimiter,
     batch_dispatcher: OutreachBatchDispatcher | None = None,
+    cursor_signing_secret: str,
 ) -> APIRouter:
     effective_batch_dispatcher = batch_dispatcher or CeleryOutreachBatchDispatcher()
+    cursor_key = hashlib.sha256(
+        b"find-me-gamer/outreach-campaign-cursor/v1\0" + cursor_signing_secret.encode()
+    ).digest()
     router = APIRouter(
         prefix="/api/v1/outreach",
         tags=["outreach"],
         dependencies=[Depends(authenticate_workspace)],
     )
+
+    @router.get(
+        "/campaigns",
+        response_model=OutreachCampaignPage,
+        operation_id="listOutreachCampaigns",
+    )
+    def list_campaigns(
+        cursor: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=200)] = 100,
+        database_session: Session = Depends(get_session),
+    ) -> OutreachCampaignPage:
+        decoded = _decode_campaign_cursor(cursor, cursor_key)
+        repository = OutreachRepository(database_session)
+        roots = repository.list_campaign_roots(cursor=decoded, limit=limit + 1)
+        page = roots[:limit]
+        campaign_ids = {campaign.id for campaign, _task, _game in page}
+        batches = repository.list_send_batches(campaign_ids)
+        deliveries = repository.list_deliveries(campaign_ids)
+        responses = repository.list_campaign_responses(campaign_ids)
+        items = [
+            _project_campaign_summary(
+                campaign,
+                game,
+                [row for row in batches if row.campaign_id == campaign.id],
+                [row for row in deliveries if row.campaign_id == campaign.id],
+                [row for row in responses if row.campaign_id == campaign.id],
+            )
+            for campaign, _task, game in page
+        ]
+        next_cursor = (
+            _encode_campaign_cursor(
+                (page[-1][0].created_at, page[-1][0].id), cursor_key
+            )
+            if len(roots) > limit
+            else None
+        )
+        return OutreachCampaignPage(
+            items=items,
+            cursor=next_cursor,
+            has_more=len(roots) > limit,
+        )
+
+    @router.get(
+        "/campaigns/{campaign_id}",
+        response_model=OutreachCampaignDetail,
+        operation_id="getOutreachCampaign",
+    )
+    def get_campaign(
+        campaign_id: UUID,
+        database_session: Session = Depends(get_session),
+    ) -> OutreachCampaignDetail:
+        repository = OutreachRepository(database_session)
+        root = repository.get_campaign_root(campaign_id)
+        if root is None:
+            raise APIError(
+                status_code=404,
+                code="outreach_campaign_not_found",
+                message="The Outreach Campaign was not found.",
+            )
+        campaign, _task, game = root
+        batches = repository.list_send_batches({campaign_id})
+        deliveries = repository.list_deliveries({campaign_id})
+        responses = repository.list_campaign_responses({campaign_id})
+        creators = {
+            row.id: row
+            for row in repository.list_creators(
+                {delivery.creator_id for delivery in deliveries}
+            )
+        }
+        final_responses = {row.creator_id: row for row in responses}
+        superseded_by = {
+            row.resends_delivery_id: row.id
+            for row in deliveries
+            if row.resends_delivery_id is not None
+        }
+        delivery_projections: dict[UUID, OutreachDeliveryDetail] = {}
+        for delivery in deliveries:
+            creator = creators.get(delivery.creator_id)
+            if creator is None:
+                raise _outreach_state_invalid()
+            delivery_projections[delivery.id] = _project_delivery(
+                delivery,
+                creator,
+                final_response=final_responses.get(delivery.creator_id),
+                superseded_by_delivery_id=superseded_by.get(delivery.id),
+            )
+        batch_projections: list[OutreachSendBatchDetail] = []
+        for batch in batches:
+            batch_deliveries = [
+                row for row in deliveries if row.send_batch_id == batch.id
+            ]
+            if not batch_deliveries:
+                raise _outreach_state_invalid()
+            snapshot = batch_deliveries[0]
+            batch_projections.append(
+                OutreachSendBatchDetail(
+                    id=batch.id,
+                    campaign_id=batch.campaign_id,
+                    template_id=batch.template_id,
+                    template_name=snapshot.template_name,
+                    template_version=snapshot.template_version,
+                    requested_creator_ids=[
+                        UUID(value) for value in batch.requested_creator_ids
+                    ],
+                    requested_at=batch.requested_at,
+                    state=batch.state.value,
+                    deliveries=[
+                        delivery_projections[row.id] for row in batch_deliveries
+                    ],
+                )
+            )
+        summary = _project_campaign_summary(
+            campaign, game, batches, deliveries, responses
+        )
+        return OutreachCampaignDetail(
+            **summary.model_dump(), send_batches=batch_projections
+        )
+
+    @router.get(
+        "/deliveries/{delivery_id}",
+        response_model=OutreachDeliveryDetail,
+        operation_id="getOutreachDelivery",
+    )
+    def get_delivery(
+        delivery_id: UUID,
+        database_session: Session = Depends(get_session),
+    ) -> OutreachDeliveryDetail:
+        repository = OutreachRepository(database_session)
+        delivery = repository.get_delivery(delivery_id)
+        if delivery is None:
+            raise APIError(
+                status_code=404,
+                code="delivery_not_found",
+                message="The Delivery was not found.",
+            )
+        creators = repository.list_creators({delivery.creator_id})
+        responses = repository.list_campaign_responses({delivery.campaign_id})
+        history = repository.list_deliveries({delivery.campaign_id})
+        creator = creators[0] if creators else None
+        if creator is None:
+            raise _outreach_state_invalid()
+        final_response = next(
+            (row for row in responses if row.creator_id == delivery.creator_id), None
+        )
+        superseded_by = next(
+            (row.id for row in history if row.resends_delivery_id == delivery.id),
+            None,
+        )
+        return _project_delivery(
+            delivery,
+            creator,
+            final_response=final_response,
+            superseded_by_delivery_id=superseded_by,
+        )
 
     @router.post(
         "/send-batches/preview",
