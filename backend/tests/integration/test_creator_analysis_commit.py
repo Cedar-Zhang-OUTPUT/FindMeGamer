@@ -37,6 +37,7 @@ from tests.unit.analysis.test_creator_pipeline import FakePages, Page, _source
 
 
 NOW = datetime(2026, 9, 4, 9, 15, tzinfo=UTC)
+JOB_CREATED_AT = datetime(2000, 1, 1, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -101,6 +102,7 @@ def _job(
                 ),
                 retryable=status is JobStatus.FAILED,
                 profile_id=effective_profile_id,
+                created_at=JOB_CREATED_AT,
                 result_payload=(
                     {"profile_id": str(effective_profile_id)}
                     if effective_profile_id is not None

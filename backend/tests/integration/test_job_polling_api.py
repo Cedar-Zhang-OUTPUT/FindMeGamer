@@ -26,6 +26,7 @@ from app.schemas.jobs import AnalysisJobError, AnalysisJobResponse
 
 
 NOW = datetime(2026, 9, 2, 9, 0, tzinfo=UTC)
+JOB_CREATED_AT = datetime(2000, 1, 1, tzinfo=UTC)
 
 
 def _job(
@@ -66,6 +67,7 @@ def _job(
         retryable=status is JobStatus.FAILED,
         correlation_id=str(uuid4()),
         profile_id=profile_id,
+        created_at=JOB_CREATED_AT,
         started_at=None if status is JobStatus.QUEUED else NOW,
         completed_at=NOW if status in {JobStatus.SUCCEEDED, JobStatus.FAILED} else None,
     )

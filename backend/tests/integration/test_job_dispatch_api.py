@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -21,6 +21,7 @@ from app.workers.celery_app import create_celery_app
 
 
 NOW = datetime(2026, 9, 2, 10, 0, tzinfo=UTC)
+JOB_CREATED_AT = datetime(2000, 1, 1, tzinfo=UTC)
 
 
 class AllowAllRateLimiter:
@@ -72,8 +73,8 @@ class CorruptSuccessThenFailDispatcher(ObservingDispatcher):
                 job.total_units = 5
                 job.profile_id = profile.id
                 job.result_payload = {"profile_id": str(uuid4())}
-                job.started_at = NOW
-                job.completed_at = NOW
+                job.started_at = job.created_at
+                job.completed_at = job.created_at
         raise RuntimeError("redis://unsafe@broker")
 
 
@@ -101,8 +102,8 @@ class MalformedSuccessThenFailDispatcher(ObservingDispatcher):
                 job.total_units = 5
                 job.profile_id = profile.id
                 job.result_payload = {"profile_id": str(profile.id)}
-                job.started_at = NOW
-                job.completed_at = NOW
+                job.started_at = job.created_at
+                job.completed_at = job.created_at
         raise RuntimeError("redis://unsafe@broker")
 
 
@@ -116,7 +117,7 @@ class ClaimThenFailDispatcher(ObservingDispatcher):
             job.stage = AnalysisStage.FETCHING_DATA
             job.completed_units = 0
             job.total_units = 5
-            job.started_at = NOW
+            job.started_at = job.created_at
         raise RuntimeError("redis://unsafe@broker")
 
 
@@ -145,13 +146,19 @@ def _client(
                 session.rollback()
                 raise
 
+    def database_clock() -> datetime:
+        with Session(engine) as session:
+            value = session.scalar(select(func.clock_timestamp()))
+            assert isinstance(value, datetime)
+            return value
+
     app = create_app(
         workspace_key_hash=hash_workspace_key(workspace_access_key),
         rate_limiter=AllowAllRateLimiter(),
         secret_cipher=SecretCipher(bytes(range(32))),
         job_session_factory=factory,
         job_dispatcher=dispatcher,
-        analysis_failure_clock=lambda: NOW,
+        analysis_failure_clock=database_clock,
     )
     with TestClient(app) as client:
         client.headers["Authorization"] = f"Bearer {workspace_access_key}"
@@ -257,7 +264,7 @@ def test_stale_queued_replay_reconciles_from_postgres_before_dispatch(
                 job.error_code = "analysis_internal_error"
                 job.error_message = "Analysis failed unexpectedly. Please retry."
                 job.retryable = True
-                job.completed_at = NOW
+                job.completed_at = job.created_at
             replay = client.post(
                 "/api/v1/jobs/analysis",
                 headers={"Idempotency-Key": key},
@@ -362,8 +369,8 @@ def test_stale_queued_replay_cannot_persist_corrupt_succeeded_result(
                     job.total_units = 5
                     job.profile_id = profile.id
                     job.result_payload = {"profile_id": str(uuid4())}
-                    job.started_at = NOW
-                    job.completed_at = NOW
+                    job.started_at = job.created_at
+                    job.completed_at = job.created_at
             replay = client.post(
                 "/api/v1/jobs/analysis",
                 headers={"Idempotency-Key": key},
@@ -431,8 +438,8 @@ def test_stale_replay_cannot_persist_coordinated_malformed_success_identity(
                     job.total_units = 5
                     job.profile_id = profile.id
                     job.result_payload = {"profile_id": str(profile.id)}
-                    job.started_at = NOW
-                    job.completed_at = NOW
+                    job.started_at = job.created_at
+                    job.completed_at = job.created_at
             replay = client.post(
                 "/api/v1/jobs/analysis",
                 headers={"Idempotency-Key": key},
@@ -487,8 +494,8 @@ def test_cached_succeeded_replay_revalidates_postgres_result_identity(
                 job.total_units = 5
                 job.profile_id = profile.id
                 job.result_payload = {"profile_id": str(profile.id)}
-                job.started_at = NOW
-                job.completed_at = NOW
+                job.started_at = job.created_at
+                job.completed_at = job.created_at
             valid_replay = client.post(
                 "/api/v1/jobs/analysis",
                 headers={"Idempotency-Key": key},
@@ -565,7 +572,7 @@ def test_broker_failure_converges_job_and_stored_replay_to_safe_failed_resource(
             assert job.status is JobStatus.FAILED
             assert job.error_code == "analysis_queue_unavailable"
             assert job.retryable is True
-            assert job.completed_at == NOW
+            assert job.completed_at >= job.created_at
             assert record.response_body == first.json()
     finally:
         _cleanup(database_engine, app_ids={app_id}, keys={key})
@@ -714,6 +721,7 @@ def test_existing_profile_and_running_active_job_are_not_dispatched(
             stage=AnalysisStage.FETCHING_DATA,
             completed_units=0,
             total_units=5,
+            created_at=JOB_CREATED_AT,
             started_at=NOW,
         )
         seed.add(running)

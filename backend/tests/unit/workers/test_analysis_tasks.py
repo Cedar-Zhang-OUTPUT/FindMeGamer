@@ -33,6 +33,7 @@ from app.workers.celery_app import celery_app
 
 
 NOW = datetime(2026, 9, 4, 8, 30, tzinfo=UTC)
+JOB_CREATED_AT = datetime(2000, 1, 1, tzinfo=UTC)
 BACKEND_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -116,6 +117,7 @@ def _job(
         ),
         retryable=status is JobStatus.FAILED,
         profile_id=profile_id,
+        created_at=JOB_CREATED_AT,
         result_payload=(
             {"profile_id": str(profile_id)} if profile_id is not None else None
         ),
@@ -668,6 +670,7 @@ def test_coordinated_malformed_success_is_rejected_and_never_overwritten(
         total_units=5,
         profile_id=profile_id,
         result_payload={"profile_id": str(profile_id)},
+        created_at=JOB_CREATED_AT,
         started_at=NOW,
         completed_at=NOW,
     )
