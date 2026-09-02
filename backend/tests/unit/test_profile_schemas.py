@@ -29,6 +29,17 @@ class ErrorCanaryObject:
         return f"ErrorCanaryObject(api_secret='{ERROR_REPR_CANARY}')"
 
 
+def test_public_json_schema_uses_generator_supported_untyped_container() -> None:
+    schema = GameProfileDetail.model_json_schema()
+    definitions = schema["$defs"]
+
+    assert definitions["PublicJSONObject"] == {
+        "additionalProperties": True,
+        "type": "object",
+    }
+    assert "PublicJSONValue" not in definitions
+
+
 def test_profile_response_schema_sanitizes_json_without_route_helpers() -> None:
     detail = GameProfileDetail(
         id=uuid4(),

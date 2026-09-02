@@ -8,10 +8,35 @@ let package = Package(
     .macOS(.v14)
   ],
   products: [
+    .library(name: "FindMeGamerAPI", targets: ["FindMeGamerAPI"]),
     .library(name: "FindMeGamerCore", targets: ["FindMeGamerCore"]),
     .executable(name: "FindMeGamer", targets: ["FindMeGamer"]),
   ],
+  dependencies: [
+    .package(
+      url: "https://github.com/apple/swift-openapi-generator",
+      from: "1.13.0"
+    ),
+    .package(
+      url: "https://github.com/apple/swift-openapi-runtime",
+      from: "1.12.0"
+    ),
+    .package(
+      url: "https://github.com/apple/swift-openapi-urlsession",
+      from: "1.3.0"
+    ),
+  ],
   targets: [
+    .target(
+      name: "FindMeGamerAPI",
+      dependencies: [
+        .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
+        .product(name: "OpenAPIURLSession", package: "swift-openapi-urlsession"),
+      ],
+      plugins: [
+        .plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")
+      ]
+    ),
     .target(name: "FindMeGamerCore"),
     .executableTarget(
       name: "FindMeGamer",
@@ -19,7 +44,7 @@ let package = Package(
     ),
     .testTarget(
       name: "FindMeGamerCoreTests",
-      dependencies: ["FindMeGamerCore"]
+      dependencies: ["FindMeGamerAPI", "FindMeGamerCore"]
     ),
   ]
 )

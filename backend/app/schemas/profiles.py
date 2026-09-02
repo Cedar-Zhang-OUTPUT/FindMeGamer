@@ -10,6 +10,7 @@ from pydantic import (
     Field,
     StrictBool,
     StrictStr,
+    WithJsonSchema,
     model_validator,
 )
 
@@ -23,7 +24,10 @@ type PublicJSONValue = (
     | list[PublicJSONValue]
     | dict[str, PublicJSONValue]
 )
-type PublicJSONObject = dict[str, PublicJSONValue]
+type PublicJSONObject = Annotated[
+    dict[str, PublicJSONValue],
+    WithJsonSchema({"type": "object", "additionalProperties": True}),
+]
 
 
 # Public profile JSON is deliberately smaller than arbitrary JSON so response
