@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 import json
-from threading import Event
+from threading import Barrier, Event, Lock
 from uuid import UUID, uuid4
 
 import pytest
@@ -1254,6 +1254,100 @@ def test_queue_compensation_and_late_pair_success_use_the_same_lock_order(
         )
         assert task is not None and task.status is MatchStatus.FAILED
         assert pair is not None and pair.state is PairwiseState.SUCCEEDED
+
+
+def test_concurrent_same_key_unexpired_retries_replay_the_accepted_response(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+    request,
+) -> None:
+    task_id, game_id, creator_id = _committed_retryable_pair(database_engine)
+    idempotency_key = f"retry-same-key-{task_id}"
+    request.addfinalizer(
+        lambda: _cleanup_committed_match(
+            database_engine,
+            task_id=task_id,
+            game_id=game_id,
+            creator_id=creator_id,
+            idempotency_key=idempotency_key,
+        )
+    )
+    initial_reads = Barrier(2)
+    synchronized_connections: set[int] = set()
+    synchronization_lock = Lock()
+
+    def synchronize_initial_idempotency_reads(
+        connection, _cursor, statement, parameters, _context, _executemany
+    ) -> None:
+        normalized = " ".join(statement.casefold().split())
+        if (
+            "from idempotency_records" not in normalized
+            or "for update" not in normalized
+            or idempotency_key not in parameters.values()
+        ):
+            return
+        connection_id = id(connection)
+        with synchronization_lock:
+            if connection_id in synchronized_connections:
+                return
+            synchronized_connections.add(connection_id)
+        initial_reads.wait(timeout=10)
+
+    event.listen(
+        database_engine,
+        "after_cursor_execute",
+        synchronize_initial_idempotency_reads,
+    )
+    request.addfinalizer(
+        lambda: event.remove(
+            database_engine,
+            "after_cursor_execute",
+            synchronize_initial_idempotency_reads,
+        )
+    )
+    dispatcher = _ConcurrentDispatcher()
+
+    def retry():
+        try:
+            with _concurrent_client(
+                database_engine, workspace_access_key, dispatcher
+            ) as client:
+                response = client.post(
+                    f"/api/v1/matches/{task_id}/retry",
+                    headers={"Idempotency-Key": idempotency_key},
+                )
+                return response.status_code, response.json()
+        except Exception as error:
+            return error
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _value: retry(), range(2)))
+
+    assert all(not isinstance(result, Exception) for result in results)
+    responses = [result for result in results if not isinstance(result, Exception)]
+    assert [status for status, _body in responses] == [202, 202]
+    assert responses[0][1] == responses[1][1]
+    assert responses[0][1]["id"] == str(task_id)
+    assert responses[0][1]["status"] == "running"
+    assert dispatcher.calls == [(START_MATCH_TASK_NAME, task_id)]
+    with Session(database_engine) as verify:
+        assert (
+            verify.scalar(
+                select(func.count())
+                .select_from(IdempotencyRecord)
+                .where(IdempotencyRecord.key == idempotency_key)
+            )
+            == 1
+        )
+        assert (
+            verify.scalar(
+                select(func.count())
+                .select_from(MatchTask)
+                .where(MatchTask.game_id == game_id)
+            )
+            == 1
+        )
 
 
 def test_concurrent_same_key_creation_commits_one_task_and_dispatch(

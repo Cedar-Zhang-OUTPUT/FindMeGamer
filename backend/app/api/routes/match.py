@@ -937,6 +937,13 @@ def create_router(
                             code="match_not_found",
                             message="The failed Match was not found.",
                         )
+                    replay_id, _record = _existing_replay(
+                        session, key=key, digest=digest, now=now
+                    )
+                    if replay_id is not None:
+                        body = _safe_response(session, replay_id)
+                        session.commit()
+                        return JSONResponse(status_code=202, content=body)
                     successor = session.scalar(
                         select(MatchTask)
                         .where(MatchTask.supersedes_id == source.id)
