@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from contextlib import AbstractContextManager, ExitStack, contextmanager
+import sys
 from typing import Protocol
 
 from sqlalchemy import select
@@ -22,7 +23,10 @@ from app.core.database import session_scope
 from app.db.models.enums import TargetType
 from app.db.models.settings import ServiceSecret
 from app.integrations.deepseek import DeepSeekGateway
-from app.integrations.errors import PermanentIntegrationError
+from app.integrations.errors import (
+    PermanentIntegrationError,
+    TransientIntegrationError,
+)
 from app.integrations.public_pages import PublicPageGateway
 from app.integrations.s3 import S3ArtifactStore
 from app.integrations.steam import SteamGateway
@@ -31,6 +35,25 @@ from app.integrations.youtube import YouTubeGateway
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
 CipherFactory = Callable[[], SecretCipher]
+
+
+@contextmanager
+def _owned_resources():
+    stack = ExitStack()
+    try:
+        yield stack
+    except BaseException:
+        primary = sys.exc_info()
+        try:
+            stack.__exit__(*primary)
+        except BaseException:
+            pass
+        raise
+    else:
+        try:
+            stack.close()
+        except Exception:
+            raise PermanentIntegrationError("analysis_cleanup_failed") from None
 
 
 class SecretProvider(Protocol):
@@ -89,9 +112,9 @@ class ProductionAnalysisRuntime:
 
     @contextmanager
     def pipeline_for(self, target_type: TargetType):
-        with ExitStack() as stack:
-            secrets_by_service: dict[str, str] = {}
-            try:
+        secrets_by_service: dict[str, str] = {}
+        try:
+            with _owned_resources() as stack:
                 if target_type is TargetType.GAME:
                     secrets_by_service = self._secret_provider.load(("deepseek",))
                     steam = stack.enter_context(
@@ -118,8 +141,7 @@ class ProductionAnalysisRuntime:
                         artifacts=artifacts,
                         deepseek=deepseek,
                     )
-                    return
-                if target_type is TargetType.CREATOR:
+                elif target_type is TargetType.CREATOR:
                     secrets_by_service = self._secret_provider.load(
                         ("youtube", "deepseek")
                     )
@@ -151,10 +173,10 @@ class ProductionAnalysisRuntime:
                         public_pages=PublicPageGateway(),
                         deepseek=deepseek,
                     )
-                    return
-                raise PermanentIntegrationError("analysis_job_target_invalid")
-            finally:
-                secrets_by_service.clear()
+                else:
+                    raise PermanentIntegrationError("analysis_job_target_invalid")
+        finally:
+            secrets_by_service.clear()
 
 
 class ProductionChannelResolver:
@@ -163,18 +185,21 @@ class ProductionChannelResolver:
         self._secret_provider = secret_provider
 
     def resolve_channel(self, target: CanonicalTarget) -> str:
+        secrets_by_service: dict[str, str] = {}
         try:
             secrets_by_service = self._secret_provider.load(("youtube",))
-            try:
-                with YouTubeGateway(
-                    api_key=secrets_by_service["youtube"],
-                    base_url=self._settings.youtube_api_base_url,
-                ) as youtube:
-                    return youtube.resolve_channel(target)
-            finally:
-                secrets_by_service.clear()
-        except Exception:
+            with _owned_resources() as stack:
+                youtube = stack.enter_context(
+                    YouTubeGateway(
+                        api_key=secrets_by_service["youtube"],
+                        base_url=self._settings.youtube_api_base_url,
+                    )
+                )
+                return youtube.resolve_channel(target)
+        except TransientIntegrationError:
             raise ChannelResolutionUnavailable() from None
+        finally:
+            secrets_by_service.clear()
 
 
 def build_secret_provider(

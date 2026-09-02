@@ -51,6 +51,26 @@ class ObservingDispatcher:
             raise self.error
 
 
+class CorruptSuccessThenFailDispatcher(ObservingDispatcher):
+    def dispatch(self, job_id: UUID) -> None:
+        super().dispatch(job_id)
+        with Session(self.engine) as mutate, mutate.begin():
+            job = mutate.get(AnalysisJob, job_id)
+            assert job is not None
+            profile = GameProfile(
+                steam_app_id=job.canonical_target_id,
+                canonical_url=job.canonical_url,
+                sort_name="Concurrent corrupt success",
+            )
+            mutate.add(profile)
+            mutate.flush()
+            job.status = JobStatus.SUCCEEDED
+            job.profile_id = profile.id
+            job.result_payload = {"profile_id": str(uuid4())}
+            job.completed_at = NOW
+        raise RuntimeError("redis://unsafe@broker")
+
+
 @contextmanager
 def _client(
     engine: Engine,
@@ -198,6 +218,115 @@ def test_stale_queued_replay_reconciles_from_postgres_before_dispatch(
         _cleanup(database_engine, app_ids={app_id}, keys={key})
 
 
+def test_stale_queued_replay_rejects_corrupt_succeeded_result(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+) -> None:
+    app_id = str(1_500_000_000 + uuid4().int % 100_000_000)
+    key = f"dispatch-corrupt-replay-{uuid4().hex}"
+    dispatcher = ObservingDispatcher(database_engine)
+    try:
+        with _client(database_engine, workspace_access_key, dispatcher) as client:
+            created = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+            dispatcher.calls.clear()
+            with Session(database_engine) as mutate, mutate.begin():
+                job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
+                assert job is not None
+                profile = GameProfile(
+                    steam_app_id=job.canonical_target_id,
+                    canonical_url=job.canonical_url,
+                    sort_name="Corrupt replay",
+                )
+                mutate.add(profile)
+                mutate.flush()
+                job.status = JobStatus.SUCCEEDED
+                job.profile_id = profile.id
+                job.result_payload = {"profile_id": str(uuid4())}
+                job.completed_at = NOW
+            replay = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+        assert replay.status_code == 500
+        assert replay.json()["error"]["code"] == "analysis_job_result_invalid"
+        assert dispatcher.calls == []
+    finally:
+        _cleanup(database_engine, app_ids={app_id}, keys={key})
+
+
+def test_cached_succeeded_replay_revalidates_postgres_result_identity(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+) -> None:
+    app_id = str(1_500_000_000 + uuid4().int % 100_000_000)
+    key = f"dispatch-cached-success-{uuid4().hex}"
+    dispatcher = ObservingDispatcher(database_engine)
+    try:
+        with _client(database_engine, workspace_access_key, dispatcher) as client:
+            created = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+            dispatcher.calls.clear()
+            with Session(database_engine) as mutate, mutate.begin():
+                job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
+                assert job is not None
+                profile = GameProfile(
+                    steam_app_id=job.canonical_target_id,
+                    canonical_url=job.canonical_url,
+                    sort_name="Initially valid success",
+                )
+                mutate.add(profile)
+                mutate.flush()
+                job.status = JobStatus.SUCCEEDED
+                job.profile_id = profile.id
+                job.result_payload = {"profile_id": str(profile.id)}
+                job.completed_at = NOW
+            valid_replay = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+            assert valid_replay.json()["status"] == "succeeded"
+            with Session(database_engine) as mutate, mutate.begin():
+                job = mutate.get(AnalysisJob, UUID(created.json()["id"]))
+                assert job is not None
+                job.result_payload = {"profile_id": str(uuid4())}
+            corrupt_replay = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+        assert corrupt_replay.status_code == 500
+        assert corrupt_replay.json()["error"]["code"] == "analysis_job_result_invalid"
+        assert dispatcher.calls == []
+    finally:
+        _cleanup(database_engine, app_ids={app_id}, keys={key})
+
+
 def test_broker_failure_converges_job_and_stored_replay_to_safe_failed_resource(
     migrated_database: None,
     database_engine: Engine,
@@ -247,6 +376,31 @@ def test_broker_failure_converges_job_and_stored_replay_to_safe_failed_resource(
             assert job.retryable is True
             assert job.completed_at == NOW
             assert record.response_body == first.json()
+    finally:
+        _cleanup(database_engine, app_ids={app_id}, keys={key})
+
+
+def test_broker_failure_preserves_concurrent_corrupt_success_error(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+) -> None:
+    app_id = str(1_500_000_000 + uuid4().int % 100_000_000)
+    key = f"dispatch-corrupt-race-{uuid4().hex}"
+    dispatcher = CorruptSuccessThenFailDispatcher(database_engine)
+    try:
+        with _client(database_engine, workspace_access_key, dispatcher) as client:
+            response = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+        assert response.status_code == 500
+        assert response.json()["error"]["code"] == "analysis_job_result_invalid"
+        assert "redis://" not in str(response.json())
     finally:
         _cleanup(database_engine, app_ids={app_id}, keys={key})
 

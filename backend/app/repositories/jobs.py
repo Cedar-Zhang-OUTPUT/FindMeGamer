@@ -10,6 +10,36 @@ from app.db.models.enums import JobMode, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
 from app.db.models.profiles import CreatorProfile, GameProfile
+from app.integrations.errors import PermanentIntegrationError
+
+
+def require_valid_succeeded_job_result(session: Session, job: AnalysisJob) -> None:
+    if job.status is not JobStatus.SUCCEEDED:
+        return
+    if job.profile_id is None or not isinstance(job.result_payload, dict):
+        raise PermanentIntegrationError("analysis_job_result_invalid")
+    if set(job.result_payload) != {"profile_id"}:
+        raise PermanentIntegrationError("analysis_job_result_invalid")
+    if job.result_payload.get("profile_id") != str(job.profile_id):
+        raise PermanentIntegrationError("analysis_job_result_invalid")
+    if job.target_type is TargetType.GAME:
+        profile = session.get(GameProfile, job.profile_id)
+        valid = bool(
+            profile is not None
+            and profile.steam_app_id == job.canonical_target_id
+            and profile.canonical_url.rstrip("/") == job.canonical_url.rstrip("/")
+        )
+    elif job.target_type is TargetType.CREATOR:
+        profile = session.get(CreatorProfile, job.profile_id)
+        valid = bool(
+            profile is not None
+            and profile.youtube_channel_id == job.canonical_target_id
+            and profile.canonical_url.rstrip("/") == job.canonical_url.rstrip("/")
+        )
+    else:
+        valid = False
+    if not valid:
+        raise PermanentIntegrationError("analysis_job_result_invalid")
 
 
 @dataclass(frozen=True)

@@ -1,4 +1,5 @@
 import base64
+from collections.abc import Callable
 from contextlib import contextmanager
 import json
 from datetime import UTC, datetime, timedelta
@@ -28,11 +29,21 @@ def _job(
     updated_at: datetime | None = None,
     profile_id: UUID | None = None,
 ) -> AnalysisJob:
-    app_id = str(2_000_000 + uuid4().int % 1_000_000)
+    profile = session.get(GameProfile, profile_id) if profile_id is not None else None
+    app_id = (
+        profile.steam_app_id
+        if profile is not None
+        else str(2_000_000 + uuid4().int % 1_000_000)
+    )
+    canonical_url = (
+        profile.canonical_url
+        if profile is not None
+        else f"https://store.steampowered.com/app/{app_id}"
+    )
     job = AnalysisJob(
         target_type=TargetType.GAME,
         canonical_target_id=app_id,
-        canonical_url=f"https://store.steampowered.com/app/{app_id}",
+        canonical_url=canonical_url,
         mode=JobMode.CREATE,
         status=status,
         stage=(
@@ -74,6 +85,10 @@ def _decode(cursor: str) -> dict:
 
 def _encode(payload: dict) -> str:
     raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def _encode_raw(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
@@ -176,6 +191,32 @@ def test_job_read_uses_one_safe_projection_and_never_reflects_internal_fields(
     assert "error_message" not in serialized
 
 
+@pytest.mark.parametrize("path", ["/api/v1/jobs/{job_id}", "/api/v1/jobs"])
+def test_corrupt_succeeded_job_is_rejected_before_every_public_projection(
+    auth_client: TestClient, session: Session, path: str
+) -> None:
+    profile = GameProfile(
+        steam_app_id=str(3_100_000 + uuid4().int % 1_000_000),
+        canonical_url="https://store.steampowered.com/app/3100000",
+        sort_name="Corrupt success",
+    )
+    session.add(profile)
+    session.flush()
+    job = _job(session, status=JobStatus.SUCCEEDED, profile_id=profile.id)
+    job.result_payload = {"profile_id": str(uuid4())}
+    session.flush()
+
+    response = auth_client.get(path.format(job_id=job.id))
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "analysis_job_result_invalid"
+    assert response.json()["error"]["message"] == (
+        "The Analysis Job result is invalid."
+    )
+    assert response.json()["error"]["retryable"] is False
+    assert str(profile.id) not in str(response.json())
+
+
 def test_unknown_stored_error_degrades_to_generic_safe_failure(
     auth_client: TestClient, session: Session
 ) -> None:
@@ -253,10 +294,22 @@ def test_status_cursor_is_scope_bound_and_later_transition_appears(
     assert wrong_scope.status_code == 400
     assert wrong_scope.json()["error"]["code"] == "analysis_job_cursor_invalid"
 
+    profile = GameProfile(
+        steam_app_id=job.canonical_target_id,
+        canonical_url=job.canonical_url,
+        sort_name="Transitioned",
+    )
+    session.add(profile)
+    session.flush()
     session.execute(
         update(AnalysisJob)
         .where(AnalysisJob.id == job.id)
-        .values(status=JobStatus.SUCCEEDED, updated_at=NOW + timedelta(seconds=2))
+        .values(
+            status=JobStatus.SUCCEEDED,
+            profile_id=profile.id,
+            result_payload={"profile_id": str(profile.id)},
+            updated_at=NOW + timedelta(seconds=2),
+        )
     )
     session.flush()
     succeeded = auth_client.get("/api/v1/jobs", params={"status": "succeeded"}).json()
@@ -313,6 +366,39 @@ def test_tampered_future_shape_naive_time_and_noncanonical_uuid_are_rejected(
     cursor = auth_client.get("/api/v1/jobs").json()["cursor"]
     tampered = _encode(mutate(_decode(cursor)))
     response = auth_client.get("/api/v1/jobs", params={"changed_after": tampered})
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "analysis_job_cursor_invalid"
+
+
+@pytest.mark.parametrize(
+    "reencode",
+    [
+        lambda value, canonical: json.dumps(value, indent=2).encode(),
+        lambda value, canonical: json.dumps(
+            {
+                "signature": value["signature"],
+                "scope": value["scope"],
+                "key": value["key"],
+                "v": value["v"],
+            },
+            separators=(",", ":"),
+        ).encode(),
+        lambda value, canonical: canonical.replace(b'"v":1', b'"v":1,"v":1', 1),
+        lambda value, canonical: canonical.replace(b'"scope"', b'"\\u0073cope"', 1),
+    ],
+    ids=["whitespace", "key-order", "duplicate-key", "escaped-key"],
+)
+def test_signed_cursor_requires_exact_canonical_json_bytes(
+    auth_client: TestClient,
+    reencode: Callable[[dict, bytes], bytes],
+) -> None:
+    cursor = auth_client.get("/api/v1/jobs").json()["cursor"]
+    value = _decode(cursor)
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    noncanonical = _encode_raw(reencode(value, canonical))
+
+    response = auth_client.get("/api/v1/jobs", params={"changed_after": noncanonical})
+
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "analysis_job_cursor_invalid"
 

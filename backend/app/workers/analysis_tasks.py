@@ -20,12 +20,12 @@ from app.core.config import get_settings
 from app.core.database import session_scope
 from app.db.models.enums import AnalysisStage, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob
-from app.db.models.profiles import CreatorProfile, GameProfile
 from app.integrations.errors import (
     InvalidModelOutput,
     PermanentIntegrationError,
     TransientIntegrationError,
 )
+from app.repositories.jobs import require_valid_succeeded_job_result
 from app.workers.celery_app import celery_app
 
 
@@ -41,6 +41,7 @@ QUEUE_FAILURE_MESSAGE = "Analysis could not be queued. Please retry."
 _INTEGRATION_CODES = frozenset(
     {
         "analysis_clock_invalid",
+        "analysis_cleanup_failed",
         "analysis_configuration_invalid",
         "analysis_job_identity_changed",
         "analysis_job_not_found",
@@ -207,30 +208,6 @@ def _parse_job_id(raw_job_id: object) -> UUID | None:
     return value
 
 
-def _valid_succeeded_result(session: Session, job: AnalysisJob) -> bool:
-    if job.profile_id is None or not isinstance(job.result_payload, dict):
-        return False
-    if set(job.result_payload) != {"profile_id"}:
-        return False
-    if job.result_payload.get("profile_id") != str(job.profile_id):
-        return False
-    if job.target_type is TargetType.GAME:
-        profile = session.get(GameProfile, job.profile_id)
-        return bool(
-            profile is not None
-            and profile.steam_app_id == job.canonical_target_id
-            and profile.canonical_url.rstrip("/") == job.canonical_url.rstrip("/")
-        )
-    if job.target_type is TargetType.CREATOR:
-        profile = session.get(CreatorProfile, job.profile_id)
-        return bool(
-            profile is not None
-            and profile.youtube_channel_id == job.canonical_target_id
-            and profile.canonical_url.rstrip("/") == job.canonical_url.rstrip("/")
-        )
-    return False
-
-
 def write_terminal_failure(
     job_id: UUID,
     failure: TerminalFailure,
@@ -248,8 +225,7 @@ def write_terminal_failure(
                 session.commit()
                 return False
             if job.status is JobStatus.SUCCEEDED:
-                if not _valid_succeeded_result(session, job):
-                    raise PermanentIntegrationError("analysis_job_result_invalid")
+                require_valid_succeeded_job_result(session, job)
                 session.commit()
                 return False
             if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
@@ -306,8 +282,7 @@ class AnalysisJobExecutor:
                     session.commit()
                     return None
                 if job.status is JobStatus.SUCCEEDED:
-                    if not _valid_succeeded_result(session, job):
-                        raise PermanentIntegrationError("analysis_job_result_invalid")
+                    require_valid_succeeded_job_result(session, job)
                     session.commit()
                     return None
                 if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):

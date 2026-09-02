@@ -34,7 +34,12 @@ from app.core.idempotency import (
 from app.db.models.enums import JobStatus
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
-from app.repositories.jobs import JobCreationResult, JobsRepository
+from app.integrations.errors import PermanentIntegrationError
+from app.repositories.jobs import (
+    JobCreationResult,
+    JobsRepository,
+    require_valid_succeeded_job_result,
+)
 from app.schemas.jobs import (
     AnalysisJobCreate,
     AnalysisJobError,
@@ -65,6 +70,7 @@ _SPECIAL_ERRORS = {
 _KNOWN_INTEGRATION_CODES = frozenset(
     {
         "analysis_clock_invalid",
+        "analysis_cleanup_failed",
         "analysis_configuration_invalid",
         "analysis_job_identity_changed",
         "analysis_job_not_found",
@@ -178,7 +184,23 @@ def _safe_error(job: AnalysisJob) -> AnalysisJobError | None:
     return _GENERIC_FAILURE
 
 
-def project_analysis_job(job: AnalysisJob) -> AnalysisJobResponse:
+def _invalid_job_result() -> APIError:
+    return APIError(
+        status_code=500,
+        code="analysis_job_result_invalid",
+        message="The Analysis Job result is invalid.",
+    )
+
+
+def project_analysis_job(
+    database_session: Session, job: AnalysisJob
+) -> AnalysisJobResponse:
+    try:
+        require_valid_succeeded_job_result(database_session, job)
+    except PermanentIntegrationError as error:
+        if error.code == "analysis_job_result_invalid":
+            raise _invalid_job_result() from None
+        raise
     return AnalysisJobResponse(
         id=job.id,
         target_type=job.target_type,
@@ -200,9 +222,11 @@ def project_analysis_job(job: AnalysisJob) -> AnalysisJobResponse:
     )
 
 
-def _public_result(result: JobCreationResult, target) -> tuple[int, dict[str, Any]]:
+def _public_result(
+    database_session: Session, result: JobCreationResult, target
+) -> tuple[int, dict[str, Any]]:
     if result.job is not None:
-        response = project_analysis_job(result.job)
+        response = project_analysis_job(database_session, result.job)
         return (201 if result.created else 200), response.model_dump(mode="json")
     response = ExistingProfileResponse(
         existing_profile_id=result.existing_profile_id,
@@ -268,7 +292,7 @@ def _execute_idempotent(
                 return stored
             try:
                 result, target = build_result(repository)
-                status, body = _public_result(result, target)
+                status, body = _public_result(database_session, result, target)
                 if expired_record is not None:
                     repository.delete_idempotency_record(expired_record)
                 repository.add_idempotency_record(
@@ -309,7 +333,7 @@ def _dispatch_committed_job(
     failure_clock: FailureClock,
 ) -> JSONResponse:
     body = committed.body
-    if body.get("outcome") != "job" or body.get("status") != JobStatus.QUEUED.value:
+    if body.get("outcome") != "job":
         return _json_response(committed)
     try:
         job_id = UUID(body["id"])
@@ -330,18 +354,21 @@ def _dispatch_committed_job(
                 code="analysis_job_result_invalid",
                 message="The Analysis Job result is invalid.",
             )
+        current_body = project_analysis_job(database_session, persisted).model_dump(
+            mode="json"
+        )
+        repository.update_idempotency_response(
+            key=key,
+            job_id=job_id,
+            response_body=current_body,
+        )
         if persisted.status is not JobStatus.QUEUED:
-            current_body = project_analysis_job(persisted).model_dump(mode="json")
-            repository.update_idempotency_response(
-                key=key,
-                job_id=job_id,
-                response_body=current_body,
-            )
             database_session.commit()
             return _json_response(
                 CommittedResponse(committed.status_code, current_body)
             )
         database_session.commit()
+        committed = CommittedResponse(committed.status_code, current_body)
     try:
         dispatcher.dispatch(job_id)
         return _json_response(committed)
@@ -372,13 +399,19 @@ def _dispatch_committed_job(
                         code="analysis_job_result_invalid",
                         message="The Analysis Job result is invalid.",
                     )
-                failed_body = project_analysis_job(job).model_dump(mode="json")
+                failed_body = project_analysis_job(database_session, job).model_dump(
+                    mode="json"
+                )
                 repository.update_idempotency_response(
                     key=key, job_id=job_id, response_body=failed_body
                 )
                 database_session.commit()
             return _json_response(CommittedResponse(committed.status_code, failed_body))
         except APIError:
+            raise
+        except PermanentIntegrationError as error:
+            if error.code == "analysis_job_result_invalid":
+                raise _invalid_job_result() from None
             raise
         except Exception:
             raise APIError(
@@ -459,6 +492,9 @@ def _decode_cursor(
             or len(value["signature"]) != 64
         ):
             raise ValueError("invalid cursor shape")
+        canonical = json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+        if raw != canonical:
+            raise ValueError("noncanonical JSON")
         signed = {"v": value["v"], "key": value["key"], "scope": value["scope"]}
         expected = _cursor_signature(signed, signing_key=signing_key)
         if not hmac.compare_digest(value["signature"], expected):
@@ -531,7 +567,7 @@ def create_router(
                     status=status,
                     signing_key=cursor_signing_key,
                 )
-            items = [project_analysis_job(job) for job in jobs]
+            items = [project_analysis_job(database_session, job) for job in jobs]
             affected_profile_ids = list(
                 dict.fromkeys(
                     job.profile_id
@@ -557,7 +593,7 @@ def create_router(
                     code="analysis_job_not_found",
                     message="The Analysis Job was not found.",
                 )
-            response = project_analysis_job(job)
+            response = project_analysis_job(database_session, job)
             database_session.commit()
             return response
 
@@ -586,6 +622,47 @@ def create_router(
                 code="channel_resolution_unavailable",
                 message="YouTube Handle resolution is temporarily unavailable.",
                 retryable=True,
+            ) from None
+        except PermanentIntegrationError as error:
+            if error.code in {
+                "youtube_channel_not_found",
+                "youtube_target_invalid",
+                "youtube_channel_id_invalid",
+            }:
+                raise APIError(
+                    status_code=422,
+                    code="analysis_target_invalid",
+                    message="The analysis target URL is invalid or unsupported.",
+                ) from None
+            if error.code in {
+                "analysis_configuration_invalid",
+                "youtube_configuration_invalid",
+            }:
+                raise APIError(
+                    status_code=503,
+                    code="analysis_configuration_invalid",
+                    message="Analysis service configuration is unavailable.",
+                    retryable=False,
+                ) from None
+            if error.code == "analysis_cleanup_failed":
+                raise APIError(
+                    status_code=500,
+                    code="analysis_cleanup_failed",
+                    message="Analysis resources could not be closed safely.",
+                    retryable=False,
+                ) from None
+            if error.code in _KNOWN_INTEGRATION_CODES:
+                raise APIError(
+                    status_code=502,
+                    code=error.code,
+                    message="YouTube Handle resolution could not be completed.",
+                    retryable=False,
+                ) from None
+            raise APIError(
+                status_code=500,
+                code="analysis_internal_error",
+                message="Analysis failed unexpectedly.",
+                retryable=False,
             ) from None
         path = "/api/v1/jobs/analysis"
         digest = request_hash(

@@ -15,6 +15,7 @@ from app.core.crypto import SecretCipher
 from app.db.models.enums import TargetType
 from app.db.models.settings import ServiceSecret
 from app.integrations.errors import PermanentIntegrationError
+from app.integrations.errors import TransientIntegrationError
 
 
 @contextmanager
@@ -104,6 +105,12 @@ class FakePipeline:
         self.dependencies = dependencies
 
 
+class CleanupFailingGateway(ClosableGateway):
+    def __exit__(self, *args) -> None:
+        self.closed = True
+        raise RuntimeError("unsafe cleanup detail")
+
+
 @pytest.mark.parametrize(
     ("target_type", "required_services", "pipeline_name", "closable_count"),
     [
@@ -181,6 +188,63 @@ def test_runtime_closes_gateways_when_pipeline_raises(
     assert all(instance.closed for instance in ClosableGateway.instances)
 
 
+def _cleanup_failing_runtime(monkeypatch: pytest.MonkeyPatch):
+    CleanupFailingGateway.instances = []
+
+    class Secrets:
+        def load(self, services):
+            return {"deepseek": "deepseek-test-key"}
+
+    for name in ("SteamGateway", "DeepSeekGateway", "S3ArtifactStore"):
+        monkeypatch.setattr(f"app.analysis.runtime.{name}", CleanupFailingGateway)
+    monkeypatch.setattr("app.analysis.runtime.GameAnalysisPipeline", FakePipeline)
+    return ProductionAnalysisRuntime(
+        settings=get_settings(),
+        session_factory=lambda: None,
+        secret_provider=Secrets(),
+    )
+
+
+def test_runtime_preserves_primary_transient_error_when_every_cleanup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _cleanup_failing_runtime(monkeypatch)
+
+    with pytest.raises(TransientIntegrationError) as raised:
+        with runtime.pipeline_for(TargetType.GAME):
+            raise TransientIntegrationError("steam_unavailable")
+
+    assert raised.value.code == "steam_unavailable"
+    assert len(CleanupFailingGateway.instances) == 3
+    assert all(instance.closed for instance in CleanupFailingGateway.instances)
+
+
+def test_runtime_maps_standalone_cleanup_error_to_safe_typed_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _cleanup_failing_runtime(monkeypatch)
+
+    with pytest.raises(PermanentIntegrationError) as raised:
+        with runtime.pipeline_for(TargetType.GAME):
+            pass
+
+    assert raised.value.code == "analysis_cleanup_failed"
+    assert "unsafe cleanup detail" not in str(raised.value)
+    assert all(instance.closed for instance in CleanupFailingGateway.instances)
+
+
+def test_runtime_preserves_process_control_error_when_cleanup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = _cleanup_failing_runtime(monkeypatch)
+
+    with pytest.raises(KeyboardInterrupt):
+        with runtime.pipeline_for(TargetType.GAME):
+            raise KeyboardInterrupt
+
+    assert all(instance.closed for instance in CleanupFailingGateway.instances)
+
+
 def test_production_handle_resolver_uses_short_secret_load_and_closes_youtube(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -211,7 +275,77 @@ def test_production_handle_resolver_uses_short_secret_load_and_closes_youtube(
     assert ResolverGateway.instances[0].closed is True
 
 
-def test_production_handle_resolver_sanitizes_unexpected_dependency_failure() -> None:
+def test_production_handle_resolver_preserves_permanent_configuration_failure() -> None:
+    class Secrets:
+        def load(self, services):
+            raise PermanentIntegrationError("analysis_configuration_invalid")
+
+    resolver = ProductionChannelResolver(
+        settings=get_settings(), secret_provider=Secrets()
+    )
+    target = CanonicalTarget(
+        target_type=TargetType.CREATOR,
+        canonical_id="@example",
+        canonical_url="https://www.youtube.com/@example",
+        requires_resolution=True,
+    )
+    with pytest.raises(PermanentIntegrationError) as raised:
+        resolver.resolve_channel(target)
+    assert raised.value.code == "analysis_configuration_invalid"
+
+
+def test_production_handle_resolver_preserves_permanent_target_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Secrets:
+        def load(self, services):
+            return {"youtube": "youtube-test-key"}
+
+    class MissingChannelGateway(ClosableGateway):
+        def resolve_channel(self, target: CanonicalTarget) -> str:
+            raise PermanentIntegrationError("youtube_channel_not_found")
+
+    monkeypatch.setattr("app.analysis.runtime.YouTubeGateway", MissingChannelGateway)
+    resolver = ProductionChannelResolver(
+        settings=get_settings(), secret_provider=Secrets()
+    )
+    target = CanonicalTarget(
+        target_type=TargetType.CREATOR,
+        canonical_id="@missing",
+        canonical_url="https://www.youtube.com/@missing",
+        requires_resolution=True,
+    )
+    with pytest.raises(PermanentIntegrationError) as raised:
+        resolver.resolve_channel(target)
+    assert raised.value.code == "youtube_channel_not_found"
+
+
+def test_production_handle_resolver_maps_only_transient_integration_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Secrets:
+        def load(self, services):
+            return {"youtube": "youtube-test-key"}
+
+    class UnavailableGateway(ClosableGateway):
+        def resolve_channel(self, target: CanonicalTarget) -> str:
+            raise TransientIntegrationError("youtube_unavailable")
+
+    monkeypatch.setattr("app.analysis.runtime.YouTubeGateway", UnavailableGateway)
+    resolver = ProductionChannelResolver(
+        settings=get_settings(), secret_provider=Secrets()
+    )
+    target = CanonicalTarget(
+        target_type=TargetType.CREATOR,
+        canonical_id="@example",
+        canonical_url="https://www.youtube.com/@example",
+        requires_resolution=True,
+    )
+    with pytest.raises(ChannelResolutionUnavailable):
+        resolver.resolve_channel(target)
+
+
+def test_production_handle_resolver_does_not_relabel_unexpected_failure() -> None:
     class Secrets:
         def load(self, services):
             raise RuntimeError("master-key-path=/private/secret")
@@ -225,6 +359,6 @@ def test_production_handle_resolver_sanitizes_unexpected_dependency_failure() ->
         canonical_url="https://www.youtube.com/@example",
         requires_resolution=True,
     )
-    with pytest.raises(ChannelResolutionUnavailable) as raised:
+    with pytest.raises(RuntimeError) as raised:
         resolver.resolve_channel(target)
-    assert "master-key" not in str(raised.value)
+    assert "master-key-path" in str(raised.value)

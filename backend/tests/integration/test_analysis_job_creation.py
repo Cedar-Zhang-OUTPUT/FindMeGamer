@@ -31,6 +31,7 @@ from app.db.models.enums import JobMode, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
 from app.db.models.profiles import CreatorProfile, GameProfile
+from app.integrations.errors import PermanentIntegrationError
 from app.main import create_app
 
 
@@ -1166,6 +1167,112 @@ def test_unavailable_handle_resolver_fails_safely_without_database_work(
     assert session_calls == 0
 
 
+@pytest.mark.parametrize(
+    ("error", "status_code", "code"),
+    [
+        (
+            PermanentIntegrationError("youtube_channel_not_found"),
+            422,
+            "analysis_target_invalid",
+        ),
+        (
+            PermanentIntegrationError("analysis_configuration_invalid"),
+            503,
+            "analysis_configuration_invalid",
+        ),
+        (
+            PermanentIntegrationError("youtube_request_rejected"),
+            502,
+            "youtube_request_rejected",
+        ),
+        (
+            PermanentIntegrationError("youtube_response_invalid"),
+            502,
+            "youtube_response_invalid",
+        ),
+    ],
+)
+def test_handle_permanent_failures_are_nonretryable_and_safely_classified(
+    session: Session,
+    workspace_access_key: str,
+    error: PermanentIntegrationError,
+    status_code: int,
+    code: str,
+) -> None:
+    session_calls = 0
+
+    @contextmanager
+    def forbidden_session_factory() -> Iterator[Session]:
+        nonlocal session_calls
+        session_calls += 1
+        yield session
+
+    app = create_app(
+        workspace_key_hash=hash_workspace_key(workspace_access_key),
+        rate_limiter=AllowAllRateLimiter(),
+        secret_cipher=SecretCipher(bytes(range(32))),
+        channel_resolver=FakeChannelResolver(error=error),
+        job_session_factory=forbidden_session_factory,
+        job_dispatcher=NoopJobDispatcher(),
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/jobs/analysis",
+            headers={
+                "Authorization": f"Bearer {workspace_access_key}",
+                "Idempotency-Key": f"handle-permanent-{code}",
+            },
+            json={
+                "target_type": "creator",
+                "url": "https://youtube.com/@ExampleCreator",
+            },
+        )
+
+    assert response.status_code == status_code
+    assert response.json()["error"]["code"] == code
+    assert response.json()["error"]["retryable"] is False
+    assert session_calls == 0
+
+
+def test_unexpected_handle_failure_stays_internal_and_safe(
+    session: Session, workspace_access_key: str
+) -> None:
+    session_calls = 0
+
+    @contextmanager
+    def session_factory() -> Iterator[Session]:
+        nonlocal session_calls
+        session_calls += 1
+        yield session
+
+    app = create_app(
+        workspace_key_hash=hash_workspace_key(workspace_access_key),
+        rate_limiter=AllowAllRateLimiter(),
+        secret_cipher=SecretCipher(bytes(range(32))),
+        channel_resolver=FakeChannelResolver(
+            error=RuntimeError("master-key-path=/private/secret")
+        ),
+        job_session_factory=session_factory,
+        job_dispatcher=NoopJobDispatcher(),
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/jobs/analysis",
+            headers={
+                "Authorization": f"Bearer {workspace_access_key}",
+                "Idempotency-Key": "handle-unexpected",
+            },
+            json={
+                "target_type": "creator",
+                "url": "https://youtube.com/@ExampleCreator",
+            },
+        )
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
+    assert "master-key" not in str(response.json())
+    assert session_calls == 0
+
+
 def test_default_production_resolver_does_not_treat_handle_as_channel_id(
     session: Session, workspace_access_key: str
 ) -> None:
@@ -1179,7 +1286,11 @@ def test_default_production_resolver_does_not_treat_handle_as_channel_id(
             },
         )
     assert response.status_code == 503
-    assert response.json()["error"]["code"] == "channel_resolution_unavailable"
+    assert response.json()["error"]["code"] == "analysis_configuration_invalid"
+    assert response.json()["error"]["message"] == (
+        "Analysis service configuration is unavailable."
+    )
+    assert response.json()["error"]["retryable"] is False
 
 
 def test_job_response_does_not_leak_internal_fields(
