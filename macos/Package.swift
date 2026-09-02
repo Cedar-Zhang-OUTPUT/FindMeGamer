@@ -33,18 +33,33 @@ let package = Package(
         .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
         .product(name: "OpenAPIURLSession", package: "swift-openapi-urlsession"),
       ],
+      swiftSettings: [
+        // Generator 1.13.1 emits unused public imports in empty split files.
+        .unsafeFlags(["-Xfrontend", "-no-warnings-as-errors"])
+      ],
       plugins: [
         .plugin(name: "OpenAPIGenerator", package: "swift-openapi-generator")
       ]
     ),
-    .target(name: "FindMeGamerCore"),
+    .target(
+      name: "FindMeGamerCore",
+      dependencies: [
+        "FindMeGamerAPI",
+        .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
+        .product(name: "OpenAPIURLSession", package: "swift-openapi-urlsession"),
+      ]
+    ),
     .executableTarget(
       name: "FindMeGamer",
       dependencies: ["FindMeGamerCore"]
     ),
     .testTarget(
       name: "FindMeGamerCoreTests",
-      dependencies: ["FindMeGamerAPI", "FindMeGamerCore"]
+      dependencies: [
+        "FindMeGamerAPI",
+        "FindMeGamerCore",
+        .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
+      ]
     ),
   ]
 )
