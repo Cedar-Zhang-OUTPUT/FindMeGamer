@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta, tzinfo
-from threading import Barrier, Thread
+from threading import Barrier, Event, Lock, Thread
 from uuid import UUID, uuid4
 
 import pytest
@@ -233,9 +233,62 @@ def test_running_job_preserves_first_started_at_and_monotonic_progress(
         assert job is not None
         assert job.started_at == first_started
         assert job.status is JobStatus.RUNNING
-        assert job.stage is AnalysisStage.FETCHING_DATA
+        assert job.stage is AnalysisStage.ANALYZING
         assert job.completed_units == 3
         assert job.total_units == 5
+
+
+def test_advance_never_regresses_finalizing_stage_or_progress(
+    committed_factory,
+) -> None:
+    job_id = _job(committed_factory, status=JobStatus.RUNNING)
+    with committed_factory.begin() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        job.stage = AnalysisStage.FINALIZING
+        job.completed_units = 4
+        job.total_units = 5
+
+    GameAnalysisService(session_factory=committed_factory, clock=lambda: NOW).advance(
+        job_id, completed_units=2
+    )
+
+    with committed_factory() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        assert job.status is JobStatus.RUNNING
+        assert job.stage is AnalysisStage.FINALIZING
+        assert job.completed_units == 4
+        assert job.total_units == 5
+
+
+def test_advance_after_success_converges_without_mutation(committed_factory) -> None:
+    profile_id = _profile(committed_factory)
+    job_id = _job(
+        committed_factory,
+        status=JobStatus.SUCCEEDED,
+        profile_id=profile_id,
+    )
+    with committed_factory.begin() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        job.stage = AnalysisStage.FINALIZING
+        job.completed_units = 5
+        job.total_units = 5
+    before = _snapshot(committed_factory, profile_id)
+
+    GameAnalysisService(session_factory=committed_factory, clock=lambda: NOW).advance(
+        job_id, completed_units=2
+    )
+
+    assert _snapshot(committed_factory, profile_id) == before
+    with committed_factory() as session:
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        assert job.status is JobStatus.SUCCEEDED
+        assert job.stage is AnalysisStage.FINALIZING
+        assert job.completed_units == job.total_units == 5
+        assert job.profile_id == profile_id
 
 
 def test_clock_must_be_aware_utc_before_work_starts(committed_factory) -> None:
@@ -607,3 +660,63 @@ def test_duplicate_and_concurrent_finalization_converges_without_rewrite(
     with committed_factory() as session:
         assert session.scalar(select(GameProfile).where(GameProfile.id == results[0]))
         assert session.query(GameProfile).count() == 1
+
+
+def test_overlapping_full_runs_converge_on_one_profile_publication(
+    committed_factory,
+) -> None:
+    job_id = _job(committed_factory)
+    second_fetch_started = Event()
+    release_second_fetch = Event()
+    publication_lock = Lock()
+    publication_flushes = 0
+    results: list[UUID] = []
+    errors: list[BaseException] = []
+
+    class BlockingSteam(Steam):
+        def fetch_game(self, app_id: str):
+            second_fetch_started.set()
+            if not release_second_fetch.wait(timeout=10):
+                raise AssertionError("concurrent test did not release Steam fetch")
+            return super().fetch_game(app_id)
+
+    def count_profile_publication(session: Session, flush_context) -> None:
+        nonlocal publication_flushes
+        if any(isinstance(item, GameProfile) for item in session.new | session.dirty):
+            with publication_lock:
+                publication_flushes += 1
+
+    second_pipeline = _pipeline(committed_factory, steam=BlockingSteam())
+
+    def run_second() -> None:
+        try:
+            results.append(second_pipeline.run(job_id))
+        except BaseException as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    thread = Thread(target=run_second)
+    publication_listener_registered = False
+    try:
+        thread.start()
+        assert second_fetch_started.wait(timeout=10)
+        event.listen(Session, "after_flush", count_profile_publication)
+        publication_listener_registered = True
+        first_profile_id = _pipeline(committed_factory).run(job_id)
+        release_second_fetch.set()
+        thread.join(timeout=10)
+    finally:
+        release_second_fetch.set()
+        thread.join(timeout=10)
+        if publication_listener_registered:
+            event.remove(Session, "after_flush", count_profile_publication)
+
+    assert not thread.is_alive()
+    assert errors == []
+    assert results == [first_profile_id]
+    assert publication_flushes == 1
+    with committed_factory() as session:
+        assert session.query(GameProfile).count() == 1
+        job = session.get(AnalysisJob, job_id)
+        assert job is not None
+        assert job.status is JobStatus.SUCCEEDED
+        assert job.profile_id == first_profile_id

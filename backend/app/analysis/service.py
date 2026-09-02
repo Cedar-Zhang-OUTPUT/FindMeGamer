@@ -89,8 +89,11 @@ class GameAnalysisService:
             if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
                 raise PermanentIntegrationError("analysis_job_state_invalid")
             now = self._aware_now()
-            job.status = JobStatus.RUNNING
-            job.stage = AnalysisStage.FETCHING_DATA
+            if job.status is JobStatus.QUEUED:
+                job.status = JobStatus.RUNNING
+                job.stage = AnalysisStage.FETCHING_DATA
+            elif job.stage is None:
+                job.stage = AnalysisStage.FETCHING_DATA
             job.completed_units = min(
                 max(job.completed_units, 0), TOTAL_GAME_ANALYSIS_UNITS
             )
@@ -113,16 +116,28 @@ class GameAnalysisService:
             if job is None:
                 raise PermanentIntegrationError("analysis_job_not_found")
             self._require_game_job(job)
+            if job.status is JobStatus.SUCCEEDED:
+                if self._valid_succeeded_profile_id(session, job) is None:
+                    raise PermanentIntegrationError("analysis_job_result_invalid")
+                return
             if job.status is not JobStatus.RUNNING:
                 raise PermanentIntegrationError("analysis_job_state_invalid")
             job.total_units = TOTAL_GAME_ANALYSIS_UNITS
             job.completed_units = max(job.completed_units, completed_units)
             job.completed_units = min(job.completed_units, job.total_units)
-            job.stage = (
+            requested_stage = (
                 AnalysisStage.FINALIZING
                 if completed_units == 4
                 else AnalysisStage.ANALYZING
             )
+            stage_order = {
+                None: 0,
+                AnalysisStage.FETCHING_DATA: 1,
+                AnalysisStage.ANALYZING: 2,
+                AnalysisStage.FINALIZING: 3,
+            }
+            if stage_order[requested_stage] > stage_order[job.stage]:
+                job.stage = requested_stage
 
     def finalize(
         self,
