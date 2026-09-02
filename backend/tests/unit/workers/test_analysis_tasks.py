@@ -4,8 +4,10 @@ from uuid import UUID, uuid4
 
 import pytest
 from celery.exceptions import Retry
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob
 from app.db.models.profiles import CreatorProfile, GameProfile
@@ -19,6 +21,7 @@ from app.workers.analysis_tasks import (
     AnalysisJobExecutor,
     RetryPolicy,
     TerminalFailure,
+    get_retry_policy,
     run_analysis_job,
     write_terminal_failure,
 )
@@ -122,6 +125,19 @@ def test_celery_app_is_broker_only_json_and_registers_stable_task() -> None:
     assert celery_app.conf.worker_prefetch_multiplier == 1
     assert celery_app.conf.broker_connection_retry_on_startup is True
     assert "app.workers.analysis_tasks" in celery_app.conf.include
+
+
+def test_worker_retry_delay_environment_misconfiguration_fails_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANALYSIS_RETRY_BASE_DELAY_SECONDS", "300")
+    monkeypatch.setenv("ANALYSIS_RETRY_MAX_DELAY_SECONDS", "1")
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(ValidationError, match="base delay"):
+            get_retry_policy()
+    finally:
+        get_settings.cache_clear()
 
 
 @pytest.mark.parametrize(
@@ -389,6 +405,50 @@ def test_terminal_failure_is_idempotent_and_preserves_first_outcome(
     saved = session.get(AnalysisJob, job.id)
     assert saved is not None
     assert (saved.error_code, saved.retryable) == ("steam_game_not_found", False)
+
+
+@pytest.mark.parametrize("terminal_state", ["missing", "failed", "succeeded"])
+def test_terminal_noop_never_evaluates_failure_clock(
+    session: Session, terminal_state: str
+) -> None:
+    if terminal_state == "missing":
+        job_id = uuid4()
+    else:
+        job = _job(
+            session,
+            status=(
+                JobStatus.FAILED if terminal_state == "failed" else JobStatus.SUCCEEDED
+            ),
+        )
+        job_id = job.id
+        if terminal_state == "succeeded":
+            profile = GameProfile(
+                steam_app_id=job.canonical_target_id,
+                canonical_url=job.canonical_url,
+                sort_name="Valid terminal success",
+            )
+            session.add(profile)
+            session.flush()
+            job.profile_id = profile.id
+            job.result_payload = {"profile_id": str(profile.id)}
+            session.flush()
+
+    def forbidden_clock() -> datetime:
+        raise AssertionError("terminal no-op must not read the clock")
+
+    assert (
+        write_terminal_failure(
+            job_id,
+            TerminalFailure(
+                code="analysis_internal_error",
+                message="Analysis failed unexpectedly. Please retry.",
+                retryable=True,
+            ),
+            session_factory=lambda: _session_factory(session),
+            clock=forbidden_clock,
+        )
+        is False
+    )
 
 
 @pytest.mark.parametrize("target_type", list(TargetType))

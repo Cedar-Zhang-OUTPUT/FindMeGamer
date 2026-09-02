@@ -71,6 +71,17 @@ class CorruptSuccessThenFailDispatcher(ObservingDispatcher):
         raise RuntimeError("redis://unsafe@broker")
 
 
+class ClaimThenFailDispatcher(ObservingDispatcher):
+    def dispatch(self, job_id: UUID) -> None:
+        super().dispatch(job_id)
+        with Session(self.engine) as mutate, mutate.begin():
+            job = mutate.get(AnalysisJob, job_id)
+            assert job is not None
+            job.status = JobStatus.RUNNING
+            job.started_at = NOW
+        raise RuntimeError("redis://unsafe@broker")
+
+
 @contextmanager
 def _client(
     engine: Engine,
@@ -401,6 +412,37 @@ def test_broker_failure_preserves_concurrent_corrupt_success_error(
         assert response.status_code == 500
         assert response.json()["error"]["code"] == "analysis_job_result_invalid"
         assert "redis://" not in str(response.json())
+    finally:
+        _cleanup(database_engine, app_ids={app_id}, keys={key})
+
+
+def test_failing_replay_publisher_never_overwrites_successfully_claimed_job(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+) -> None:
+    app_id = str(1_500_000_000 + uuid4().int % 100_000_000)
+    key = f"dispatch-running-race-{uuid4().hex}"
+    dispatcher = ClaimThenFailDispatcher(database_engine)
+    try:
+        with _client(database_engine, workspace_access_key, dispatcher) as client:
+            response = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": key},
+                json={
+                    "target_type": "game",
+                    "url": f"https://store.steampowered.com/app/{app_id}",
+                },
+            )
+
+        assert response.status_code == 201
+        assert response.json()["status"] == "running"
+        assert response.json()["error"] is None
+        with Session(database_engine) as verification:
+            job = verification.get(AnalysisJob, UUID(response.json()["id"]))
+            assert job is not None
+            assert job.status is JobStatus.RUNNING
+            assert job.error_code is None
     finally:
         _cleanup(database_engine, app_ids={app_id}, keys={key})
 

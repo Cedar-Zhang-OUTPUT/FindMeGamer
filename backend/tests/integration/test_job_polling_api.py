@@ -3,6 +3,7 @@ from collections.abc import Callable
 from contextlib import contextmanager
 import json
 from datetime import UTC, datetime, timedelta
+from threading import Event, Thread
 from uuid import UUID, uuid4
 
 import pytest
@@ -92,6 +93,35 @@ def _encode_raw(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
+class AllowAllRateLimiter:
+    def allow(self, workspace_key_hash: str, client_address: str) -> bool:
+        return True
+
+
+@contextmanager
+def _engine_client(engine: Engine, workspace_access_key: str):
+    @contextmanager
+    def session_factory():
+        with Session(engine, expire_on_commit=False) as database_session:
+            try:
+                yield database_session
+            except Exception:
+                database_session.rollback()
+                raise
+
+    app = create_app(
+        workspace_key_hash=hash_workspace_key(workspace_access_key),
+        rate_limiter=AllowAllRateLimiter(),
+        secret_cipher=SecretCipher(bytes(range(32))),
+        job_session_factory=session_factory,
+    )
+    with TestClient(
+        app,
+        headers={"Authorization": f"Bearer {workspace_access_key}"},
+    ) as client:
+        yield client
+
+
 def test_changed_jobs_endpoint_returns_authenticated_empty_page_with_cursor(
     auth_client: TestClient,
 ) -> None:
@@ -113,56 +143,143 @@ def test_initial_empty_cursor_cannot_skip_a_job_committed_between_poll_statement
     workspace_access_key: str,
 ) -> None:
     app_id = str(1_700_000_000 + uuid4().int % 100_000_000)
-    inserted_id: UUID | None = None
-
-    class AllowAllRateLimiter:
-        def allow(self, workspace_key_hash: str, client_address: str) -> bool:
-            return True
-
-    class InsertingSession(Session):
-        def scalars(self, statement, *args, **kwargs):
-            nonlocal inserted_id
-            result = super().scalars(statement, *args, **kwargs)
-            entities = {
-                description.get("entity")
-                for description in getattr(statement, "column_descriptions", ())
-            }
-            if AnalysisJob in entities and inserted_id is None:
-                with Session(database_engine) as seed, seed.begin():
-                    inserted = AnalysisJob(
-                        target_type=TargetType.GAME,
-                        canonical_target_id=app_id,
-                        canonical_url=(f"https://store.steampowered.com/app/{app_id}"),
-                        mode=JobMode.CREATE,
-                        status=JobStatus.QUEUED,
-                    )
-                    seed.add(inserted)
-                    seed.flush()
-                    inserted_id = inserted.id
-            return result
-
-    @contextmanager
-    def session_factory():
-        with InsertingSession(database_engine) as database_session:
-            yield database_session
-
-    app = create_app(
-        workspace_key_hash=hash_workspace_key(workspace_access_key),
-        rate_limiter=AllowAllRateLimiter(),
-        secret_cipher=SecretCipher(bytes(range(32))),
-        job_session_factory=session_factory,
-    )
+    completed = Event()
+    responses = []
     try:
-        with TestClient(
-            app,
-            headers={"Authorization": f"Bearer {workspace_access_key}"},
-        ) as client:
-            first = client.get("/api/v1/jobs").json()
-            second = client.get(
-                "/api/v1/jobs", params={"changed_after": first["cursor"]}
-            ).json()
-        assert first["items"] == []
-        assert [item["id"] for item in second["items"]] == [str(inserted_id)]
+        with _engine_client(database_engine, workspace_access_key) as client:
+            with Session(database_engine, expire_on_commit=False) as delayed:
+                transaction = delayed.begin()
+                inserted = AnalysisJob(
+                    target_type=TargetType.GAME,
+                    canonical_target_id=app_id,
+                    canonical_url=f"https://store.steampowered.com/app/{app_id}",
+                    mode=JobMode.CREATE,
+                    status=JobStatus.QUEUED,
+                )
+                delayed.add(inserted)
+                delayed.flush()
+
+                def poll() -> None:
+                    try:
+                        responses.append(client.get("/api/v1/jobs"))
+                    finally:
+                        completed.set()
+
+                poll_thread = Thread(target=poll)
+                poll_thread.start()
+                completed_before_commit = completed.wait(0.5)
+                transaction.commit()
+                assert completed.wait(5)
+                poll_thread.join()
+
+            response = responses[0]
+            assert completed_before_commit is False
+            assert response.status_code == 200
+            assert [item["id"] for item in response.json()["items"]] == [
+                str(inserted.id)
+            ]
+    finally:
+        with Session(database_engine) as cleanup, cleanup.begin():
+            cleanup.query(AnalysisJob).filter_by(canonical_target_id=app_id).delete()
+
+
+def test_subsequent_poll_waits_for_invisible_update_before_advancing(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+) -> None:
+    app_id = str(1_800_000_000 + uuid4().int % 100_000_000)
+    completed = Event()
+    responses = []
+    try:
+        with Session(database_engine) as seed, seed.begin():
+            job = AnalysisJob(
+                target_type=TargetType.GAME,
+                canonical_target_id=app_id,
+                canonical_url=f"https://store.steampowered.com/app/{app_id}",
+                mode=JobMode.CREATE,
+                status=JobStatus.QUEUED,
+            )
+            seed.add(job)
+            seed.flush()
+            job_id = job.id
+
+        with _engine_client(database_engine, workspace_access_key) as client:
+            baseline = client.get("/api/v1/jobs").json()["cursor"]
+            with Session(database_engine) as delayed:
+                transaction = delayed.begin()
+                job = delayed.get(AnalysisJob, job_id)
+                assert job is not None
+                job.status = JobStatus.RUNNING
+                delayed.flush()
+
+                def poll() -> None:
+                    try:
+                        responses.append(
+                            client.get(
+                                "/api/v1/jobs",
+                                params={"changed_after": baseline},
+                            )
+                        )
+                    finally:
+                        completed.set()
+
+                poll_thread = Thread(target=poll)
+                poll_thread.start()
+                completed_before_commit = completed.wait(0.5)
+                transaction.commit()
+                assert completed.wait(5)
+                poll_thread.join()
+
+            response = responses[0]
+            assert completed_before_commit is False
+            assert response.status_code == 200
+            assert [
+                (item["id"], item["status"]) for item in response.json()["items"]
+            ] == [(str(job_id), "running")]
+    finally:
+        with Session(database_engine) as cleanup, cleanup.begin():
+            cleanup.query(AnalysisJob).filter_by(canonical_target_id=app_id).delete()
+
+
+def test_change_arriving_after_cursor_advances_past_regressed_database_clock(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+) -> None:
+    app_id = str(1_900_000_000 + uuid4().int % 100_000_000)
+    future_timestamp = datetime.now(UTC) + timedelta(days=1)
+    try:
+        with Session(database_engine) as seed, seed.begin():
+            job = AnalysisJob(
+                target_type=TargetType.GAME,
+                canonical_target_id=app_id,
+                canonical_url=f"https://store.steampowered.com/app/{app_id}",
+                mode=JobMode.CREATE,
+                status=JobStatus.QUEUED,
+            )
+            seed.add(job)
+            seed.flush()
+            job_id = job.id
+        with Session(database_engine) as force_future, force_future.begin():
+            force_future.execute(
+                update(AnalysisJob)
+                .where(AnalysisJob.id == job_id)
+                .values(updated_at=future_timestamp)
+            )
+
+        with _engine_client(database_engine, workspace_access_key) as client:
+            baseline = client.get("/api/v1/jobs").json()["cursor"]
+            with Session(database_engine) as mutate, mutate.begin():
+                job = mutate.get(AnalysisJob, job_id)
+                assert job is not None
+                job.status = JobStatus.RUNNING
+            changed = client.get("/api/v1/jobs", params={"changed_after": baseline})
+
+        assert changed.status_code == 200
+        assert [(item["id"], item["status"]) for item in changed.json()["items"]] == [
+            (str(job_id), "running")
+        ]
     finally:
         with Session(database_engine) as cleanup, cleanup.begin():
             cleanup.query(AnalysisJob).filter_by(canonical_target_id=app_id).delete()

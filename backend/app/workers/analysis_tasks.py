@@ -215,7 +215,39 @@ def write_terminal_failure(
     session_factory: SessionFactory,
     clock: Callable[[], datetime],
 ) -> bool:
-    completed_at = _aware_utc(clock)
+    return _write_terminal_failure(
+        job_id,
+        failure,
+        session_factory=session_factory,
+        clock=clock,
+        preserve_running=False,
+    )
+
+
+def write_queued_publication_failure(
+    job_id: UUID,
+    failure: TerminalFailure,
+    *,
+    session_factory: SessionFactory,
+    clock: Callable[[], datetime],
+) -> bool:
+    return _write_terminal_failure(
+        job_id,
+        failure,
+        session_factory=session_factory,
+        clock=clock,
+        preserve_running=True,
+    )
+
+
+def _write_terminal_failure(
+    job_id: UUID,
+    failure: TerminalFailure,
+    *,
+    session_factory: SessionFactory,
+    clock: Callable[[], datetime],
+    preserve_running: bool,
+) -> bool:
     with session_factory() as session:
         try:
             job = session.scalar(
@@ -228,8 +260,12 @@ def write_terminal_failure(
                 require_valid_succeeded_job_result(session, job)
                 session.commit()
                 return False
+            if job.status is JobStatus.RUNNING and preserve_running:
+                session.commit()
+                return False
             if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
                 raise PermanentIntegrationError("analysis_job_state_invalid")
+            completed_at = _aware_utc(clock)
             job.status = JobStatus.FAILED
             job.error_code = failure.code
             job.error_message = failure.message

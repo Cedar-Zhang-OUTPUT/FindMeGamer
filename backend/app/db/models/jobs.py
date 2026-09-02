@@ -9,6 +9,9 @@ from sqlalchemy import (
     Enum,
     Index,
     Integer,
+    event,
+    func,
+    select,
     String,
     Text,
     text,
@@ -18,6 +21,54 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin
 from app.db.models.enums import AnalysisStage, JobMode, JobStatus, TargetType
+
+
+JOB_CHANGE_ADVISORY_LOCK_ID = 4_604_199_987_260_753_489
+_NEXT_JOB_CHANGE_TIMESTAMP = text(
+    """
+    INSERT INTO analysis_job_change_watermark AS watermark (
+        singleton,
+        last_changed_at
+    )
+    VALUES (
+        true,
+        GREATEST(
+            clock_timestamp(),
+            COALESCE(
+                (
+                    SELECT max(updated_at) + INTERVAL '1 microsecond'
+                    FROM analysis_jobs
+                ),
+                '-infinity'::timestamptz
+            )
+        )
+    )
+    ON CONFLICT (singleton) DO UPDATE
+    SET last_changed_at = GREATEST(
+        clock_timestamp(),
+        watermark.last_changed_at + INTERVAL '1 microsecond',
+        COALESCE(
+            (
+                SELECT max(updated_at) + INTERVAL '1 microsecond'
+                FROM analysis_jobs
+            ),
+            '-infinity'::timestamptz
+        )
+    )
+    RETURNING last_changed_at
+    """
+)
+
+
+def next_job_change_timestamp(executor) -> datetime:
+    changed_at = executor.scalar(_NEXT_JOB_CHANGE_TIMESTAMP)
+    if (
+        not isinstance(changed_at, datetime)
+        or changed_at.tzinfo is None
+        or changed_at.utcoffset() is None
+    ):
+        raise RuntimeError("database clock is unavailable")
+    return changed_at
 
 
 def string_enum(enum_type, name: str, length: int) -> Enum:
@@ -53,7 +104,9 @@ class AnalysisJob(TimestampMixin, Base):
         ),
     )
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid4
+    )
     target_type: Mapped[TargetType] = mapped_column(
         string_enum(TargetType, "target_type", 16), nullable=False
     )
@@ -80,3 +133,12 @@ class AnalysisJob(TimestampMixin, Base):
     result_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+def _serialize_and_timestamp_job_change(_mapper, connection, target) -> None:
+    connection.execute(select(func.pg_advisory_xact_lock(JOB_CHANGE_ADVISORY_LOCK_ID)))
+    target.updated_at = next_job_change_timestamp(connection)
+
+
+event.listen(AnalysisJob, "before_insert", _serialize_and_timestamp_job_change)
+event.listen(AnalysisJob, "before_update", _serialize_and_timestamp_job_change)

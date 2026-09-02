@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 from app.analysis.targets import CanonicalTarget
 from app.db.models.enums import JobMode, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
-from app.db.models.jobs import AnalysisJob
+from app.db.models.jobs import (
+    AnalysisJob,
+    JOB_CHANGE_ADVISORY_LOCK_ID,
+    next_job_change_timestamp,
+)
 from app.db.models.profiles import CreatorProfile, GameProfile
 from app.integrations.errors import PermanentIntegrationError
 
@@ -111,6 +115,9 @@ class JobsRepository:
         status: JobStatus | None,
         limit: int,
     ) -> tuple[list[AnalysisJob], bool]:
+        self._session.execute(
+            select(func.pg_advisory_xact_lock(JOB_CHANGE_ADVISORY_LOCK_ID))
+        )
         statement = select(AnalysisJob)
         if status is not None:
             statement = statement.where(AnalysisJob.status == status)
@@ -125,10 +132,7 @@ class JobsRepository:
         return list(rows[:limit]), len(rows) > limit
 
     def database_now(self) -> datetime:
-        value = self._session.scalar(select(func.now()))
-        if not isinstance(value, datetime):
-            raise RuntimeError("database clock is unavailable")
-        return value
+        return next_job_change_timestamp(self._session)
 
     def update_idempotency_response(
         self,

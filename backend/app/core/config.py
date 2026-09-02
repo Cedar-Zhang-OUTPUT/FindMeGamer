@@ -5,7 +5,7 @@ import re
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.security import validate_workspace_key_hash
@@ -92,6 +92,17 @@ class Settings(BaseSettings):
     @classmethod
     def require_argon2id_hash(cls, value: str) -> str:
         return validate_workspace_key_hash(value)
+
+    @model_validator(mode="after")
+    def require_ordered_analysis_retry_delays(self) -> "Settings":
+        if (
+            self.analysis_retry_base_delay_seconds
+            > self.analysis_retry_max_delay_seconds
+        ):
+            raise ValueError(
+                "Analysis retry base delay must not exceed its maximum delay."
+            )
+        return self
 
     @field_validator("trusted_proxy_cidrs")
     @classmethod

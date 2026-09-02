@@ -376,11 +376,11 @@ def _dispatch_committed_job(
         from app.workers.analysis_tasks import (
             QUEUE_FAILURE_MESSAGE,
             TerminalFailure,
-            write_terminal_failure,
+            write_queued_publication_failure,
         )
 
         try:
-            write_terminal_failure(
+            write_queued_publication_failure(
                 job_id,
                 TerminalFailure(
                     code="analysis_queue_unavailable",
