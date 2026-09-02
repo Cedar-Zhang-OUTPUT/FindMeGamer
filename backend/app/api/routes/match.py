@@ -634,7 +634,6 @@ def _mark_queue_failure(
     session_factory: SessionFactory, task_id: UUID, key: str, now: datetime
 ) -> dict:
     with session_factory() as session:
-        acquire_job_change_lock(session)
         task, game = _task_and_game(session, task_id, lock=True)
         if task is None or game is None:
             raise APIError(
@@ -924,7 +923,6 @@ def create_router(
         for _attempt in range(3):
             with session_factory() as session:
                 try:
-                    acquire_job_change_lock(session)
                     replay_id, _record = _existing_replay(
                         session, key=key, digest=digest, now=now
                     )

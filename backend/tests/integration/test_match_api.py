@@ -6,11 +6,12 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 import json
+from threading import Event
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import event, func, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.engine import Engine
 
@@ -41,6 +42,7 @@ from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 from app.db.models.settings import SharedSettings
 from app.repositories.match import MatchRepository
 from app.repositories.settings import SHARED_SETTINGS_ID
+from app.matching.pairwise import SQLPairwiseRepository
 from app.schemas.ai_creator import CreatorBrief
 from app.schemas.ai_game import GameBrief
 from app.schemas.ai_match import PairwiseMatchBrief
@@ -886,6 +888,18 @@ class _ConcurrentDispatcher:
             self.calls.append((task_name, task_id))
 
 
+class _BlockingFailureDispatcher:
+    def __init__(self) -> None:
+        self.called = Event()
+        self.failure_released = Event()
+
+    def dispatch(self, _task_name: str, _task_id: UUID) -> None:
+        self.called.set()
+        if not self.failure_released.wait(timeout=10):
+            raise AssertionError("dispatcher failure was not released")
+        raise RuntimeError("broker unavailable")
+
+
 def _committing_factory(engine: Engine):
     @contextmanager
     def factory():
@@ -910,6 +924,336 @@ def _concurrent_client(engine: Engine, workspace_key: str, dispatcher):
         match_seed_factory=lambda: 77,
     )
     return TestClient(app, headers={"Authorization": f"Bearer {workspace_key}"})
+
+
+def _committed_retryable_pair(
+    engine: Engine,
+) -> tuple[UUID, UUID, UUID]:
+    with Session(engine) as setup:
+        game, creator = _profiles(setup)
+        task = _task(
+            setup,
+            game,
+            status=MatchStatus.FAILED,
+            stage=MatchStage.PAIRWISE,
+        )
+        task.total_units = 3
+        task.completed_units = 1
+        task.error_code = "deepseek_unavailable"
+        task.error_message = "Match is temporarily unavailable. Please retry."
+        setup.add(
+            MatchScreeningRecord(
+                match_task_id=task.id,
+                creator_id=creator.id,
+                screening_order=0,
+                locked_creator_brief=_creator_brief(),
+                selected=True,
+                expires_at=task.input_expires_at,
+                created_at=NOW,
+                updated_at=NOW,
+            )
+        )
+        setup.flush()
+        setup.add(
+            MatchCandidateInput(
+                match_task_id=task.id,
+                creator_id=creator.id,
+                locked_creator_profile={"id": str(creator.id)},
+                input_model_metadata={},
+                input_prompt_metadata={},
+                expires_at=task.input_expires_at,
+                created_at=NOW,
+                updated_at=NOW,
+            )
+        )
+        setup.flush()
+        setup.add(
+            MatchPairwiseRecord(
+                match_task_id=task.id,
+                creator_id=creator.id,
+                state=PairwiseState.FAILED,
+                attempt_count=1,
+                error_code=task.error_code,
+                error_message=task.error_message,
+                retryable=True,
+                started_at=NOW,
+                completed_at=NOW,
+                created_at=NOW,
+                updated_at=NOW,
+            )
+        )
+        setup.commit()
+        return task.id, game.id, creator.id
+
+
+def _match_task_row_lock(statement: str) -> bool:
+    normalized = " ".join(statement.casefold().split())
+    return "from match_tasks" in normalized and "for update" in normalized
+
+
+def _cleanup_committed_match(
+    engine: Engine,
+    *,
+    task_id: UUID,
+    game_id: UUID,
+    creator_id: UUID,
+    idempotency_key: str,
+) -> None:
+    with Session(engine) as value, value.begin():
+        value.query(IdempotencyRecord).filter_by(key=idempotency_key).delete()
+        value.query(MatchTask).filter_by(id=task_id).delete()
+        value.query(CreatorProfile).filter_by(id=creator_id).delete()
+        value.query(GameProfile).filter_by(id=game_id).delete()
+
+
+def test_late_pair_success_and_retry_share_row_then_feed_lock_order(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+    request,
+) -> None:
+    task_id, game_id, creator_id = _committed_retryable_pair(database_engine)
+    idempotency_key = f"retry-lock-order-{task_id}"
+    request.addfinalizer(
+        lambda: _cleanup_committed_match(
+            database_engine,
+            task_id=task_id,
+            game_id=game_id,
+            creator_id=creator_id,
+            idempotency_key=idempotency_key,
+        )
+    )
+    worker_has_row = Event()
+    retry_attempted_row = Event()
+    release_worker = Event()
+
+    def after_cursor_execute(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ) -> None:
+        if (
+            _connection.info.get("lock_order_actor") == "worker"
+            and _match_task_row_lock(statement)
+            and not worker_has_row.is_set()
+        ):
+            worker_has_row.set()
+            assert release_worker.wait(timeout=10)
+
+    def before_cursor_execute(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ) -> None:
+        if (
+            worker_has_row.is_set()
+            and _connection.info.get("lock_order_actor") != "worker"
+            and _match_task_row_lock(statement)
+        ):
+            retry_attempted_row.set()
+
+    event.listen(database_engine, "after_cursor_execute", after_cursor_execute)
+    event.listen(database_engine, "before_cursor_execute", before_cursor_execute)
+    request.addfinalizer(
+        lambda: event.remove(
+            database_engine, "before_cursor_execute", before_cursor_execute
+        )
+    )
+    request.addfinalizer(
+        lambda: event.remove(
+            database_engine, "after_cursor_execute", after_cursor_execute
+        )
+    )
+    dispatcher = _ConcurrentDispatcher()
+
+    def late_success():
+        try:
+            with Session(database_engine) as value, value.begin():
+                connection = value.connection()
+                connection.info["lock_order_actor"] = "worker"
+                try:
+                    return SQLPairwiseRepository(
+                        value, clock=lambda: NOW
+                    ).apply_success(
+                        task_id,
+                        creator_id,
+                        PairwiseMatchBrief.model_validate(
+                            {**_pairwise(creator_id), "creator_id": creator_id}
+                        ),
+                    )
+                finally:
+                    connection.info.pop("lock_order_actor", None)
+        except Exception as error:
+            return error
+
+    def retry():
+        try:
+            with _concurrent_client(
+                database_engine, workspace_access_key, dispatcher
+            ) as client:
+                return client.post(
+                    f"/api/v1/matches/{task_id}/retry",
+                    headers={"Idempotency-Key": idempotency_key},
+                )
+        except Exception as error:
+            return error
+
+    try:
+        with (
+            ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="late-worker"
+            ) as worker_pool,
+            ThreadPoolExecutor(max_workers=1) as api_pool,
+        ):
+            worker_result = worker_pool.submit(late_success)
+            if not worker_has_row.wait(timeout=5):
+                pytest.fail(
+                    f"worker did not lock Match row: {worker_result.result()!r}"
+                )
+            retry_result = api_pool.submit(retry)
+            assert retry_attempted_row.wait(timeout=5)
+            release_worker.set()
+            worker_value = worker_result.result(timeout=10)
+            retry_value = retry_result.result(timeout=10)
+    finally:
+        release_worker.set()
+
+    assert not isinstance(worker_value, Exception)
+    assert not isinstance(retry_value, Exception)
+    assert retry_value.status_code == 409
+    assert retry_value.json()["error"]["code"] == "match_not_retryable"
+    assert dispatcher.calls == []
+    with Session(database_engine) as verify:
+        task = verify.get(MatchTask, task_id)
+        pair = verify.scalar(
+            select(MatchPairwiseRecord).where(
+                MatchPairwiseRecord.match_task_id == task_id,
+                MatchPairwiseRecord.creator_id == creator_id,
+            )
+        )
+        assert task is not None and task.status is MatchStatus.RUNNING
+        assert pair is not None and pair.state is PairwiseState.SUCCEEDED
+
+
+def test_queue_compensation_and_late_pair_success_use_the_same_lock_order(
+    migrated_database: None,
+    database_engine: Engine,
+    workspace_access_key: str,
+    request,
+) -> None:
+    task_id, game_id, creator_id = _committed_retryable_pair(database_engine)
+    idempotency_key = f"queue-lock-order-{task_id}"
+    request.addfinalizer(
+        lambda: _cleanup_committed_match(
+            database_engine,
+            task_id=task_id,
+            game_id=game_id,
+            creator_id=creator_id,
+            idempotency_key=idempotency_key,
+        )
+    )
+    dispatcher = _BlockingFailureDispatcher()
+    worker_has_row = Event()
+    compensation_attempted_row = Event()
+    release_worker = Event()
+
+    def after_cursor_execute(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ) -> None:
+        if (
+            _connection.info.get("lock_order_actor") == "worker"
+            and _match_task_row_lock(statement)
+            and not worker_has_row.is_set()
+        ):
+            worker_has_row.set()
+            assert release_worker.wait(timeout=10)
+
+    def before_cursor_execute(
+        _connection, _cursor, statement, _parameters, _context, _executemany
+    ) -> None:
+        if dispatcher.failure_released.is_set() and _match_task_row_lock(statement):
+            compensation_attempted_row.set()
+
+    event.listen(database_engine, "after_cursor_execute", after_cursor_execute)
+    event.listen(database_engine, "before_cursor_execute", before_cursor_execute)
+    request.addfinalizer(
+        lambda: event.remove(
+            database_engine, "before_cursor_execute", before_cursor_execute
+        )
+    )
+    request.addfinalizer(
+        lambda: event.remove(
+            database_engine, "after_cursor_execute", after_cursor_execute
+        )
+    )
+
+    def late_success():
+        try:
+            with Session(database_engine) as value, value.begin():
+                connection = value.connection()
+                connection.info["lock_order_actor"] = "worker"
+                try:
+                    return SQLPairwiseRepository(
+                        value, clock=lambda: NOW
+                    ).apply_success(
+                        task_id,
+                        creator_id,
+                        PairwiseMatchBrief.model_validate(
+                            {**_pairwise(creator_id), "creator_id": creator_id}
+                        ),
+                    )
+                finally:
+                    connection.info.pop("lock_order_actor", None)
+        except Exception as error:
+            return error
+
+    def retry():
+        try:
+            with _concurrent_client(
+                database_engine, workspace_access_key, dispatcher
+            ) as client:
+                return client.post(
+                    f"/api/v1/matches/{task_id}/retry",
+                    headers={"Idempotency-Key": idempotency_key},
+                )
+        except Exception as error:
+            return error
+
+    try:
+        with (
+            ThreadPoolExecutor(max_workers=1) as api_pool,
+            ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="queue-worker"
+            ) as worker_pool,
+        ):
+            retry_result = api_pool.submit(retry)
+            assert dispatcher.called.wait(timeout=5)
+            worker_result = worker_pool.submit(late_success)
+            if not worker_has_row.wait(timeout=5):
+                pytest.fail(
+                    f"worker did not lock Match row: {worker_result.result()!r}"
+                )
+            dispatcher.failure_released.set()
+            assert compensation_attempted_row.wait(timeout=5)
+            release_worker.set()
+            worker_value = worker_result.result(timeout=10)
+            retry_value = retry_result.result(timeout=10)
+    finally:
+        dispatcher.failure_released.set()
+        release_worker.set()
+
+    assert not isinstance(worker_value, Exception)
+    assert not isinstance(retry_value, Exception)
+    assert retry_value.status_code == 202
+    body = retry_value.json()
+    assert body["status"] == "failed"
+    assert body["error"]["code"] == "match_queue_unavailable"
+    with Session(database_engine) as verify:
+        task = verify.get(MatchTask, task_id)
+        pair = verify.scalar(
+            select(MatchPairwiseRecord).where(
+                MatchPairwiseRecord.match_task_id == task_id,
+                MatchPairwiseRecord.creator_id == creator_id,
+            )
+        )
+        assert task is not None and task.status is MatchStatus.FAILED
+        assert pair is not None and pair.state is PairwiseState.SUCCEEDED
 
 
 def test_concurrent_same_key_creation_commits_one_task_and_dispatch(
