@@ -27,6 +27,7 @@ from app.matching.ranking import RankingService, SQLRankingRepository
 from app.schemas.ai_creator import CreatorBrief
 from app.schemas.ai_game import GameBrief
 from app.schemas.ai_match import FinalRankingOutput, PairwiseMatchBrief
+from app.workers.match_tasks import MatchTaskStore, PairwiseTerminalFailure
 
 
 NOW = datetime(2026, 9, 2, 18, 0, tzinfo=UTC)
@@ -494,3 +495,156 @@ def test_two_publishers_keep_first_committed_result_byte_for_byte(
             )
             == 1
         )
+
+
+def _terminal_failure() -> PairwiseTerminalFailure:
+    return PairwiseTerminalFailure(
+        code="deepseek_model_output_invalid",
+        message="Match is temporarily unavailable. Please retry.",
+        retryable=True,
+    )
+
+
+def test_failure_first_finalizer_cannot_discard_already_validated_publication(
+    database_engine: Engine, request: pytest.FixtureRequest
+) -> None:
+    with Session(database_engine) as setup:
+        task, creators = _ready_task(setup)
+        setup.commit()
+        task_id, game_id = task.id, task.game_id
+        creator_ids = [creator.id for creator in creators]
+
+    def cleanup() -> None:
+        with Session(database_engine) as cleanup_session:
+            cleanup_session.execute(delete(MatchTask).where(MatchTask.id == task_id))
+            cleanup_session.execute(
+                delete(CreatorProfile).where(CreatorProfile.id.in_(creator_ids))
+            )
+            cleanup_session.execute(
+                delete(GameProfile).where(GameProfile.id == game_id)
+            )
+            cleanup_session.commit()
+
+    request.addfinalizer(cleanup)
+    factory = _committing_factory(database_engine)
+
+    # The failing finalizer loaded the same exact input before its provider failed.
+    with factory() as failed_worker_session:
+        failed_input = SQLRankingRepository(failed_worker_session).load(task_id)
+    assert [brief.creator_id for brief in failed_input.match_briefs] == creator_ids
+
+    valid_provider_entered = threading.Event()
+    release_valid_provider = threading.Event()
+
+    def hold_valid_publication() -> None:
+        valid_provider_entered.set()
+        assert release_valid_provider.wait(timeout=5)
+
+    valid_service = RankingService(
+        session_factory=factory,
+        ai=FakeAI(_ranking(creator_ids), before_return=hold_valid_publication),
+        clock=lambda: NOW + timedelta(minutes=1),
+    )
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(valid_service.run, task_id)
+        assert valid_provider_entered.wait(timeout=5)
+        store = MatchTaskStore(
+            session_factory=factory, clock=lambda: NOW + timedelta(seconds=30)
+        )
+        assert store.fail_task(task_id, _terminal_failure()) is True
+        with Session(database_engine) as failed_state:
+            assert failed_state.get(MatchTask, task_id).status is MatchStatus.FAILED
+        release_valid_provider.set()
+        assert future.result(timeout=5) == 2
+
+    with Session(database_engine) as verify:
+        saved = verify.get(MatchTask, task_id)
+        assert saved is not None
+        assert saved.status is MatchStatus.SUCCEEDED
+        assert saved.result_count == 2
+        assert saved.error_code is saved.error_message is None
+        assert saved.retryable is False
+        assert saved.completed_at == NOW + timedelta(minutes=1)
+        assert (
+            verify.scalar(
+                select(func.count())
+                .select_from(MatchResultItem)
+                .where(MatchResultItem.match_task_id == task_id)
+            )
+            == 2
+        )
+        assert (
+            verify.scalar(
+                select(func.count())
+                .select_from(OutreachCampaign)
+                .where(OutreachCampaign.match_task_id == task_id)
+            )
+            == 1
+        )
+
+
+def test_success_first_publication_is_unchanged_by_late_failure(
+    session: Session,
+) -> None:
+    task, creators = _ready_task(session)
+    assert (
+        _service(session, FakeAI(_ranking([creator.id for creator in creators]))).run(
+            task.id
+        )
+        == 2
+    )
+    rows_before = [
+        (row.creator_id, row.backend_order, row.total_score, row.match_brief)
+        for row in session.scalars(
+            select(MatchResultItem)
+            .where(MatchResultItem.match_task_id == task.id)
+            .order_by(MatchResultItem.backend_order)
+        )
+    ]
+    store = MatchTaskStore(
+        session_factory=lambda: _nested_factory(session),
+        clock=lambda: NOW + timedelta(minutes=2),
+    )
+    assert store.fail_task(task.id, _terminal_failure()) is False
+    session.expire_all()
+    assert session.get(MatchTask, task.id).status is MatchStatus.SUCCEEDED
+    assert rows_before == [
+        (row.creator_id, row.backend_order, row.total_score, row.match_brief)
+        for row in session.scalars(
+            select(MatchResultItem)
+            .where(MatchResultItem.match_task_id == task.id)
+            .order_by(MatchResultItem.backend_order)
+        )
+    ]
+
+
+def test_terminal_failure_remains_failed_without_a_valid_publication(
+    session: Session,
+) -> None:
+    task, _creators = _ready_task(session)
+    store = MatchTaskStore(
+        session_factory=lambda: _nested_factory(session),
+        clock=lambda: NOW + timedelta(seconds=30),
+    )
+    assert store.fail_task(task.id, _terminal_failure()) is True
+    session.expire_all()
+    saved = session.get(MatchTask, task.id)
+    assert saved is not None
+    assert saved.status is MatchStatus.FAILED
+    assert saved.result_count == 0
+    assert (
+        session.scalar(
+            select(func.count())
+            .select_from(MatchResultItem)
+            .where(MatchResultItem.match_task_id == task.id)
+        )
+        == 0
+    )
+    assert (
+        session.scalar(
+            select(func.count())
+            .select_from(OutreachCampaign)
+            .where(OutreachCampaign.match_task_id == task.id)
+        )
+        == 0
+    )

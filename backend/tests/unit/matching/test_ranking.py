@@ -9,6 +9,8 @@ from uuid import UUID
 
 import pytest
 from celery.exceptions import Retry
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app.analysis.prompts.common import parse_prompt_payload
@@ -21,7 +23,6 @@ from app.matching.ranking import (
 )
 from app.schemas.ai_match import FinalRankingOutput, PairwiseMatchBrief
 from app.schemas.match import MatchResultItem
-from app.schemas.profiles import CreatorProfileCard
 from app.workers.match_tasks import FINALIZE_MATCH_TASK_NAME, finalize_match_ranking
 
 
@@ -228,25 +229,26 @@ def test_valid_existing_publication_is_authoritative_and_skips_ai() -> None:
     assert repository.publications == []
 
 
-def _creator_card() -> CreatorProfileCard:
-    return CreatorProfileCard(
-        id=CREATOR_A,
-        name="Current Creator",
-        youtube_channel_id="UC0000000000000000000000",
-        canonical_url="https://www.youtube.com/channel/UC0000000000000000000000",
-        favorite=True,
-        current_facts={"subscriber_count": 1234},
-        brief={"positioning": "Current public card"},
-        source_status={"youtube": "current"},
-        last_analyzed_at=NOW,
-        next_analysis_at=NOW,
-        contact={
+def _creator_card() -> dict[str, object]:
+    return {
+        "id": CREATOR_A,
+        "name": "Current Creator",
+        "youtube_channel_id": "UC0000000000000000000000",
+        "canonical_url": "https://www.youtube.com/channel/UC0000000000000000000000",
+        "avatar_url": "https://images.example.invalid/current-creator.jpg",
+        "favorite": True,
+        "subscriber_count": 1234,
+        "recent_average_views": 456,
+        "recent_median_views": 321,
+        "performance_summary": "Current public performance context.",
+        "contact_available": True,
+        "contact": {
             "email": "creator@example.com",
             "source": "manual",
             "source_url": None,
             "validation_state": "verified",
         },
-    )
+    }
 
 
 def _public_payload() -> dict[str, object]:
@@ -298,10 +300,26 @@ def test_public_match_item_is_closed_and_contains_no_hidden_numeric_or_model_fie
         "backend_order",
         "english_language_check",
         "creator_id",
+        "current_facts",
+        "brief",
+        "source_status",
+        "model_metadata",
+        "prompt_metadata",
     }
     assert forbidden.isdisjoint(
         _schema_property_names(MatchResultItem.model_json_schema())
     )
+    creator_properties = MatchResultItem.model_json_schema()["$defs"][
+        "MatchCreatorCard"
+    ]["properties"]
+    assert {
+        "current_facts",
+        "brief",
+        "source_status",
+        "analysis",
+        "model_metadata",
+        "prompt_metadata",
+    }.isdisjoint(creator_properties)
     assert not any(
         key in str(dumped)
         for key in ("total_score", "dimension_scores", "backend_order")
@@ -319,6 +337,76 @@ def test_public_match_item_is_closed_and_contains_no_hidden_numeric_or_model_fie
         "match_reasons",
     }
     assert "0.987654321-secret-score" not in repr(item)
+
+
+def test_creator_projection_rejects_open_json_canaries_without_echoing_values() -> None:
+    payload = _public_payload()
+    creator = payload["creator"]
+    assert isinstance(creator, dict)
+    creator["current_facts"] = {
+        "rank": "rank-value-must-not-escape",
+        "score": "score-value-must-not-escape",
+        "total_score": "total-value-must-not-escape",
+        "dimension_scores": "dimension-value-must-not-escape",
+        "backend_order": "order-value-must-not-escape",
+    }
+    with pytest.raises(ValidationError) as raised:
+        MatchResultItem.model_validate(payload)
+    rendered = str(raised.value)
+    assert "current_facts" in rendered
+    assert "must-not-escape" not in rendered
+
+
+def test_nested_creator_and_contact_extras_are_rejected_without_input_values() -> None:
+    for path in ("creator", "contact"):
+        payload = _public_payload()
+        creator = payload["creator"]
+        assert isinstance(creator, dict)
+        target = creator if path == "creator" else creator["contact"]
+        assert isinstance(target, dict)
+        target["backend_order"] = "nested-value-must-not-escape"
+        with pytest.raises(ValidationError) as raised:
+            MatchResultItem.model_validate(payload)
+        assert "backend_order" in str(raised.value)
+        assert "nested-value-must-not-escape" not in str(raised.value)
+
+
+def test_fastapi_match_response_contains_only_explicit_closed_fields() -> None:
+    application = FastAPI()
+
+    @application.get("/result", response_model=MatchResultItem)
+    def result() -> MatchResultItem:
+        return MatchResultItem.model_validate(_public_payload())
+
+    response = TestClient(application).get("/result")
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body["creator"]) == {
+        "id",
+        "name",
+        "youtube_channel_id",
+        "canonical_url",
+        "avatar_url",
+        "favorite",
+        "subscriber_count",
+        "recent_average_views",
+        "recent_median_views",
+        "performance_summary",
+        "contact_available",
+        "contact",
+    }
+    rendered = response.text
+    assert all(
+        forbidden not in rendered
+        for forbidden in (
+            "rank-value-must-not-escape",
+            "score-value-must-not-escape",
+            "order-value-must-not-escape",
+            "current_facts",
+            "source_status",
+            "model_metadata",
+        )
+    )
 
 
 @pytest.mark.parametrize(

@@ -139,7 +139,7 @@ class SQLRankingRepository:
         if task.status == MatchStatus.SUCCEEDED:
             return self._validated_publication(task, selected)
         if (
-            task.status != MatchStatus.RUNNING
+            task.status not in (MatchStatus.RUNNING, MatchStatus.FAILED)
             or task.stage != MatchStage.RANKING
             or task.ranking_enqueued_at is None
         ):
