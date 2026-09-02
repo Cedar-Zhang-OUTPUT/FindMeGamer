@@ -553,6 +553,7 @@ def test_contact_evidence_is_strict_frozen_bounded_and_validated() -> None:
         "https://%65xample.com/contact",
         "https://example.com\\@evil.example/contact",
         "https://example.com/%0a",
+        "https://example.com/%80",
         "https://example.com/%2525250a",
         "https://example.com/%E2%80%AEhidden",
         "https://example.com/contact#fragment",

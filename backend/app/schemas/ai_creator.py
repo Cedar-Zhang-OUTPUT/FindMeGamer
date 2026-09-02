@@ -198,27 +198,36 @@ def _has_unsafe_url_characters(value: str) -> bool:
     )
 
 
+def _validate_percent_escape_syntax(component: str) -> None:
+    position = 0
+    while position < len(component):
+        if component[position] != "%":
+            position += 1
+            continue
+        if position + 2 >= len(component) or not _HEX_PAIR.fullmatch(
+            component[position + 1 : position + 3]
+        ):
+            raise ValueError("invalid public URL")
+        position += 3
+
+
 def _decode_url_component_until_stable(component: str) -> str:
-    current = component
+    _validate_percent_escape_syntax(component)
+    current = component.encode("utf-8")
     for _ in range(len(component) + 1):
-        position = 0
-        while position < len(current):
-            if current[position] != "%":
-                position += 1
-                continue
-            if position + 2 >= len(current) or not _HEX_PAIR.fullmatch(
-                current[position + 1 : position + 3]
-            ):
-                raise ValueError("invalid public URL")
-            position += 3
-        try:
-            decoded = unquote_to_bytes(current).decode("utf-8")
-        except UnicodeDecodeError:
-            raise ValueError("invalid public URL") from None
-        if _has_unsafe_url_characters(decoded) or "\\" in decoded:
+        decoded = unquote_to_bytes(current)
+        decoded_text = decoded.decode("utf-8", errors="ignore")
+        if (
+            any(byte < 32 or 127 <= byte <= 159 for byte in decoded)
+            or b"\\" in decoded
+            or any(
+                unicodedata.category(character) in {"Cc", "Cf", "Cs"}
+                for character in decoded_text
+            )
+        ):
             raise ValueError("invalid public URL")
         if decoded == current:
-            return decoded
+            return component
         current = decoded
     raise ValueError("invalid public URL")
 

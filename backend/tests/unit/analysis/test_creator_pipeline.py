@@ -352,6 +352,25 @@ def test_contact_urls_are_canonically_deduplicated_before_page_fetch() -> None:
     assert pages.calls == ["https://CREATOR.example:443/%7Eabout"]
 
 
+def test_percent_encoded_linked_urls_are_preserved_and_fetched_end_to_end() -> None:
+    urls = (
+        "https://creator.example/team%20contact",
+        "https://creator.example/discount%25",
+        "https://creator.example/octet%FF",
+    )
+    source = _source().model_copy(update={"description": " ".join(urls)})
+    pages = FakePages({url: Page(url, "No contact.") for url in urls})
+
+    evidence = build_creator_contact_evidence(source, pages=pages)
+
+    assert pages.calls == list(urls)
+    assert [
+        candidate.value
+        for candidate in evidence.candidates
+        if candidate.kind == "linked_site"
+    ] == list(urls)
+
+
 def test_idna_normalized_social_host_is_never_fetched_as_linked_page() -> None:
     source = _source().model_copy(
         update={"description": "https://ｙｏｕｔｕｂｅ.com/@creator"}

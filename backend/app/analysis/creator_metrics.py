@@ -74,11 +74,12 @@ def compute_creator_metrics(
         oldest = min(timestamps)
         span_days = (newest - oldest).total_seconds() / 86_400
         if len(timestamps) >= 2 and isfinite(span_days) and span_days > 0:
+            rounded_span_days = round(span_days, 6)
             rate = len(timestamps) * 30 / span_days
-            if isfinite(rate) and rate > 0:
+            if rounded_span_days > 0 and isfinite(rate) and rate > 0:
                 frequency = PublishingFrequency(
                     sample_count=len(timestamps),
-                    span_days=round(span_days, 6),
+                    span_days=rounded_span_days,
                     uploads_per_30_days=round(rate, 6),
                 )
     return CreatorComputedMetrics(
@@ -147,7 +148,55 @@ def _unique_videos(videos: Sequence[VideoSource]) -> list[VideoSource]:
 
 
 def _canonical_record_key(video: VideoSource) -> tuple[object, ...]:
-    return (*_recency_key(video), *_performance_key(video), video.title)
+    return (
+        *_recency_key(video),
+        *_performance_key(video),
+        video.title,
+        video.description,
+        _stable_datetime_key(video.published_at),
+        _stable_optional_text_key(video.channel_id),
+        video.tags,
+        _stable_optional_text_key(video.category_id),
+        _stable_optional_int_key(video.duration_seconds),
+        _stable_optional_text_key(video.definition),
+        _stable_optional_bool_key(video.caption_available),
+        _stable_optional_int_key(video.view_count),
+        _stable_optional_int_key(video.like_count),
+        _stable_optional_int_key(video.comment_count),
+        video.thumbnail_urls,
+    )
+
+
+def _stable_datetime_key(value: object) -> tuple[int, str]:
+    if isinstance(value, datetime):
+        return (0, value.isoformat())
+    if value is None:
+        return (1, "")
+    return (2, f"{type(value).__qualname__}:{value!r}")
+
+
+def _stable_optional_text_key(value: object) -> tuple[int, str]:
+    if isinstance(value, str):
+        return (0, value)
+    if value is None:
+        return (1, "")
+    return (2, f"{type(value).__qualname__}:{value!r}")
+
+
+def _stable_optional_int_key(value: object) -> tuple[int, int, str]:
+    if type(value) is int:
+        return (0, value, "")
+    if value is None:
+        return (1, 0, "")
+    return (2, 0, f"{type(value).__qualname__}:{value!r}")
+
+
+def _stable_optional_bool_key(value: object) -> tuple[int, int, str]:
+    if type(value) is bool:
+        return (0, int(value), "")
+    if value is None:
+        return (1, 0, "")
+    return (2, 0, f"{type(value).__qualname__}:{value!r}")
 
 
 def _recency_key(video: VideoSource) -> tuple[int, float, str]:
@@ -192,7 +241,11 @@ def _bounded_metric_number(value: Decimal) -> int | float | None:
         return int(value)
     rounded = value.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
     candidate = float(rounded)
-    if isfinite(candidate) and 0 <= candidate <= MAX_PUBLIC_COUNT:
+    if (
+        isfinite(candidate)
+        and 0 <= candidate <= MAX_PUBLIC_COUNT
+        and Decimal.from_float(candidate) == rounded
+    ):
         return candidate
     bounded_integer = int(value.to_integral_value(rounding=ROUND_HALF_UP))
     return min(bounded_integer, MAX_PUBLIC_COUNT)
