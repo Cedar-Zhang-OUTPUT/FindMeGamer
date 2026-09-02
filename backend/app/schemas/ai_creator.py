@@ -289,7 +289,7 @@ def _parse_public_url(value: str) -> tuple[SplitResult, str]:
         parsed.port
     except ValueError:
         raise ValueError("invalid public URL") from None
-    canonical_host = _canonical_host(parsed.hostname.casefold())
+    canonical_host = _canonical_host(parsed.hostname)
     _decode_url_component_until_stable(parsed.path)
     _decode_url_component_until_stable(parsed.query)
     return parsed, canonical_host

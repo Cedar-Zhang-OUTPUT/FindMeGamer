@@ -214,6 +214,25 @@ def test_unicode_host_uses_ascii_idna_for_policy_dns_host_and_sni() -> None:
     assert transport.calls[0]["server_hostname"] == ascii_host
 
 
+def test_idna_deviation_character_is_normalized_before_ascii_case_folding() -> None:
+    url = "https://faß.de/contact"
+    ascii_host = "xn--fa-hia.de"
+    resolver = Resolver(
+        {
+            ascii_host: ("93.184.216.34",),
+            "fass.de": ("93.184.216.34",),
+        }
+    )
+    transport = Transport([_response()])
+
+    page = PublicPageGateway(resolver=resolver, transport=transport).fetch_page(url)
+
+    assert page.url == url
+    assert resolver.calls == [(ascii_host, 443)]
+    assert transport.calls[0]["host_header"] == ascii_host
+    assert transport.calls[0]["server_hostname"] == ascii_host
+
+
 def test_absolute_deadline_is_passed_to_resolver_and_transport() -> None:
     clock = Clock()
 
@@ -310,6 +329,67 @@ class _Connection:
 
     def close(self) -> None:
         self.closed = True
+
+
+def test_unicode_request_target_is_ascii_encoded_without_double_encoding(
+    monkeypatch,
+) -> None:
+    class Connection(_Connection):
+        instances = []
+
+        def request(self, method, target, *, headers) -> None:
+            target.encode("ascii")
+            self.target = target
+
+        def getresponse(self) -> _HeaderResponse:
+            return _HeaderResponse([("Content-Type", "text/html")])
+
+    monkeypatch.setattr(
+        "app.integrations.public_pages._PinnedHTTPConnection", Connection
+    )
+    clock = Clock()
+
+    PinnedHTTPTransport().request(
+        url="http://creator.example/路径?q=雪&keep=%2F",
+        connect_ip="93.184.216.34",
+        port=80,
+        host_header="creator.example",
+        server_hostname="creator.example",
+        connect_timeout=1.0,
+        read_timeout=1.0,
+        max_response_bytes=100,
+        deadline=101.0,
+        clock=clock,
+    )
+
+    assert Connection.instances[0].target == "/%E8%B7%AF%E5%BE%84?q=%E9%9B%AA&keep=%2F"
+
+
+def test_request_target_encoding_failure_is_a_typed_page_error(monkeypatch) -> None:
+    class Connection(_Connection):
+        instances = []
+
+        def request(self, method, target, *, headers) -> None:
+            target.encode("ascii")
+
+    monkeypatch.setattr(
+        "app.integrations.public_pages._PinnedHTTPConnection", Connection
+    )
+    clock = Clock()
+
+    with pytest.raises(PermanentIntegrationError, match="public_page_url_invalid"):
+        PinnedHTTPTransport().request(
+            url="http://creator.example/" + chr(0xD800),
+            connect_ip="93.184.216.34",
+            port=80,
+            host_header="creator.example",
+            server_hostname="creator.example",
+            connect_timeout=1.0,
+            read_timeout=1.0,
+            max_response_bytes=100,
+            deadline=101.0,
+            clock=clock,
+        )
 
 
 @pytest.mark.parametrize(

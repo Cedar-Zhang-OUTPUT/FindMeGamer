@@ -278,31 +278,23 @@ def _curated_video(video: VideoSource) -> dict[str, object]:
     }
 
 
-def _available_creator_visual_assets(
-    source: CreatorSource,
-) -> tuple[VisualAsset, ...]:
-    assets: list[VisualAsset] = []
+def _creator_visual_candidates(source: CreatorSource) -> dict[str, str]:
+    candidates: dict[str, str] = {}
     for video in source.videos:
         for index, url in enumerate(video.thumbnail_urls):
-            assets.append(
-                create_visual_asset(
-                    asset_ref=f"video:{video.id}:thumbnail:{index}",
-                    image_url=url,
-                )
-            )
-    return tuple(assets)
+            candidates[f"video:{video.id}:thumbnail:{index}"] = url
+    return candidates
 
 
 def _default_creator_visual_assets(
     source: CreatorSource,
-    available: tuple[VisualAsset, ...],
-) -> tuple[VisualAsset, ...]:
-    by_ref = {asset.asset_ref: asset for asset in available}
-    selected: list[VisualAsset] = []
+    candidates: dict[str, str],
+) -> tuple[str, ...]:
+    selected: list[str] = []
     for video in source.videos:
         reference = f"video:{video.id}:thumbnail:0"
-        if reference in by_ref:
-            selected.append(by_ref[reference])
+        if reference in candidates:
+            selected.append(reference)
         if len(selected) == 12:
             break
     return tuple(selected)
@@ -312,19 +304,25 @@ def _select_creator_visual_assets(
     source: CreatorSource,
     selected_asset_refs: tuple[str, ...] | None,
 ) -> tuple[tuple[VisualAsset, ...], int]:
-    available = _available_creator_visual_assets(source)
+    candidates = _creator_visual_candidates(source)
     if selected_asset_refs is None:
-        return _default_creator_visual_assets(source, available), len(available)
-    if len(selected_asset_refs) > 12:
-        raise ValueError("vision requests accept at most 12 selected visual assets")
-    if len(selected_asset_refs) != len(set(selected_asset_refs)):
-        raise ValueError("selected visual asset references must be unique")
-    by_ref = {asset.asset_ref: asset for asset in available}
+        selected_asset_refs = _default_creator_visual_assets(source, candidates)
+    else:
+        if len(selected_asset_refs) > 12:
+            raise ValueError("vision requests accept at most 12 selected visual assets")
+        if len(selected_asset_refs) != len(set(selected_asset_refs)):
+            raise ValueError("selected visual asset references must be unique")
     try:
-        selected = tuple(by_ref[reference] for reference in selected_asset_refs)
+        selected = tuple(
+            create_visual_asset(
+                asset_ref=reference,
+                image_url=candidates[reference],
+            )
+            for reference in selected_asset_refs
+        )
     except KeyError as error:
         raise ValueError("selected visual asset is not present in source") from error
-    return selected, len(available)
+    return selected, len(candidates)
 
 
 def _visual_catalog(assets: tuple[VisualAsset, ...]) -> EvidenceCatalog:

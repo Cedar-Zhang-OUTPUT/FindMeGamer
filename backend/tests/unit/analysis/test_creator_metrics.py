@@ -99,6 +99,19 @@ def test_metrics_ignore_oversized_integer_counts_without_float_overflow() -> Non
     assert metrics.median_views is None
 
 
+def test_metrics_round_and_bound_near_limit_fractional_mean_and_median() -> None:
+    maximum = 9_223_372_036_854_775_807
+    videos = (
+        _video("maximum", days_old=None, views=maximum),
+        _video("near-maximum", days_old=None, views=maximum - 1),
+    )
+
+    metrics = compute_creator_metrics(videos)
+
+    assert metrics.average_views == maximum
+    assert metrics.median_views == maximum
+
+
 def test_thumbnail_selection_balances_recency_and_performance_deterministically() -> (
     None
 ):

@@ -28,8 +28,14 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "black==25.1.0",
     "pytest>=8.3",
 ]
+
+[tool.black]
+line-length = 88
+target-version = ["py313"]
+required-version = "25.1.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

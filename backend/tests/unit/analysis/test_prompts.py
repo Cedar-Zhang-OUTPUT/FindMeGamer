@@ -871,6 +871,37 @@ def test_creator_visual_bundle_uses_caller_selected_thumbnail_subset() -> None:
         )
 
 
+def test_creator_visual_bundle_does_not_validate_excluded_thumbnail_urls() -> None:
+    prototype = sample_creator_source().videos[0]
+    source = sample_creator_source().model_copy(
+        update={
+            "videos": (
+                prototype.model_copy(
+                    update={
+                        "id": "v00",
+                        "thumbnail_urls": ("https://cdn.example/selected.jpg",),
+                    }
+                ),
+                prototype.model_copy(
+                    update={
+                        "id": "v06",
+                        "thumbnail_urls": ("https://cdn.example/dynamic",),
+                    }
+                ),
+            )
+        }
+    )
+
+    bundle = build_creator_visual_bundle(
+        source, selected_asset_refs=("video:v00:thumbnail:0",)
+    )
+
+    assert bundle.image_urls == ("https://cdn.example/selected.jpg",)
+    assert tuple(asset.asset_ref for asset in bundle.assets) == (
+        "video:v00:thumbnail:0",
+    )
+
+
 def test_visual_bundles_reject_more_than_gateway_image_limit() -> None:
     with pytest.raises(ValueError, match="at most 12"):
         build_game_visual_bundle(

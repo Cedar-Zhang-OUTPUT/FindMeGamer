@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from decimal import Decimal, ROUND_HALF_UP
 from math import isfinite
-from statistics import median
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -55,9 +55,17 @@ def compute_creator_metrics(
     average: int | float | None = None
     middle: int | float | None = None
     if counts:
-        raw_average = sum(counts) / len(counts)
-        average = _finite_number(raw_average)
-        middle = _finite_number(float(median(counts)))
+        average = _bounded_metric_number(Decimal(sum(counts)) / len(counts))
+        ordered_counts = sorted(counts)
+        midpoint = len(ordered_counts) // 2
+        if len(ordered_counts) % 2:
+            raw_median = Decimal(ordered_counts[midpoint])
+        else:
+            raw_median = (
+                Decimal(ordered_counts[midpoint - 1])
+                + Decimal(ordered_counts[midpoint])
+            ) / 2
+        middle = _bounded_metric_number(raw_median)
     frequency: PublishingFrequency | None = None
     newest: datetime | None = None
     oldest: datetime | None = None
@@ -177,10 +185,17 @@ def _aware_utc(value: object) -> datetime | None:
     return value.astimezone(UTC)
 
 
-def _finite_number(value: float) -> int | float | None:
-    if not isfinite(value):
+def _bounded_metric_number(value: Decimal) -> int | float | None:
+    if not value.is_finite() or not 0 <= value <= MAX_PUBLIC_COUNT:
         return None
-    return int(value) if value.is_integer() else round(value, 6)
+    if value == value.to_integral_value():
+        return int(value)
+    rounded = value.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+    candidate = float(rounded)
+    if isfinite(candidate) and 0 <= candidate <= MAX_PUBLIC_COUNT:
+        return candidate
+    bounded_integer = int(value.to_integral_value(rounding=ROUND_HALF_UP))
+    return min(bounded_integer, MAX_PUBLIC_COUNT)
 
 
 __all__ = [

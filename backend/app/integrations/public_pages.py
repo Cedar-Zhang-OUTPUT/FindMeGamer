@@ -11,7 +11,7 @@ import ssl
 from threading import Thread
 from time import monotonic
 from typing import Callable, Iterable, Protocol
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
 from app.schemas.ai_creator import _parse_public_url
@@ -127,6 +127,7 @@ class PinnedHTTPTransport:
         clock: Callable[[], float],
     ) -> RawPageResponse:
         parsed = urlsplit(url)
+        target = _ascii_request_target(parsed.path, parsed.query)
         bounded_connect_timeout = min(connect_timeout, _remaining(deadline, clock))
         connection: http.client.HTTPConnection
         if parsed.scheme == "https":
@@ -144,9 +145,6 @@ class PinnedHTTPTransport:
                 port=port,
                 timeout=bounded_connect_timeout,
             )
-        target = parsed.path or "/"
-        if parsed.query:
-            target = f"{target}?{parsed.query}"
         try:
             try:
                 _remaining(deadline, clock)
@@ -179,6 +177,8 @@ class PinnedHTTPTransport:
                     received += len(chunk)
                     if received > max_response_bytes:
                         break
+            except UnicodeError:
+                raise PermanentIntegrationError("public_page_url_invalid") from None
             except http.client.HTTPException:
                 raise PermanentIntegrationError(
                     "public_page_response_invalid"
@@ -379,6 +379,27 @@ def _validated_url(url: str):
     except (ValueError, TypeError):
         raise PermanentIntegrationError("public_page_url_invalid") from None
     return parsed, canonical_host
+
+
+def _ascii_request_target(path: str, query: str) -> str:
+    try:
+        encoded_path = quote(
+            path or "/",
+            safe="/:@-._~!$&'()*+,;=%",
+            encoding="utf-8",
+            errors="strict",
+        )
+        if not query:
+            return encoded_path
+        encoded_query = quote(
+            query,
+            safe="/?:@-._~!$&'()*+,;=%",
+            encoding="utf-8",
+            errors="strict",
+        )
+    except UnicodeError:
+        raise PermanentIntegrationError("public_page_url_invalid") from None
+    return f"{encoded_path}?{encoded_query}"
 
 
 def _remaining(deadline: float, clock: Callable[[], float]) -> float:
