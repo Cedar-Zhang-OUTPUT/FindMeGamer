@@ -39,6 +39,11 @@ class AllowAllRateLimiter:
         return True
 
 
+class NoopJobDispatcher:
+    def dispatch(self, job_id: UUID) -> None:
+        pass
+
+
 class FakeChannelResolver:
     def __init__(
         self,
@@ -319,6 +324,7 @@ def _client_with_session(
         secret_cipher=SecretCipher(bytes(range(32))),
         channel_resolver=channel_resolver,
         job_session_factory=job_session_factory,
+        job_dispatcher=NoopJobDispatcher(),
         **optional_dependencies,
     )
     with TestClient(app) as client:
@@ -358,6 +364,7 @@ def _independent_client(
         rate_limiter=AllowAllRateLimiter(),
         secret_cipher=SecretCipher(bytes(range(32))),
         job_session_factory=job_session_factory,
+        job_dispatcher=NoopJobDispatcher(),
         **optional_dependencies,
     )
     with TestClient(app) as client:
@@ -1097,6 +1104,7 @@ def test_handle_resolves_before_session_and_dedupes_by_channel_id(
         secret_cipher=SecretCipher(bytes(range(32))),
         channel_resolver=resolver,
         job_session_factory=ordered_session_factory,
+        job_dispatcher=NoopJobDispatcher(),
     )
     with TestClient(app) as client:
         response = client.post(
@@ -1138,6 +1146,7 @@ def test_unavailable_handle_resolver_fails_safely_without_database_work(
         secret_cipher=SecretCipher(bytes(range(32))),
         channel_resolver=resolver,
         job_session_factory=forbidden_session_factory,
+        job_dispatcher=NoopJobDispatcher(),
     )
     with TestClient(app) as client:
         response = client.post(

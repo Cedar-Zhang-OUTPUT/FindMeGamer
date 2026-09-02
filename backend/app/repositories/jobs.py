@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select, tuple_
 from sqlalchemy.orm import Session
 
 from app.analysis.targets import CanonicalTarget
@@ -68,6 +68,50 @@ class JobsRepository:
 
     def get_job(self, job_id: UUID) -> AnalysisJob | None:
         return self._session.get(AnalysisJob, job_id)
+
+    def get_job_for_update(self, job_id: UUID) -> AnalysisJob | None:
+        return self._session.scalar(
+            select(AnalysisJob).where(AnalysisJob.id == job_id).with_for_update()
+        )
+
+    def list_changed_jobs(
+        self,
+        *,
+        cursor: tuple[datetime, UUID] | None,
+        status: JobStatus | None,
+        limit: int,
+    ) -> tuple[list[AnalysisJob], bool]:
+        statement = select(AnalysisJob)
+        if status is not None:
+            statement = statement.where(AnalysisJob.status == status)
+        if cursor is not None:
+            statement = statement.where(
+                tuple_(AnalysisJob.updated_at, AnalysisJob.id)
+                > tuple_(cursor[0], cursor[1])
+            )
+        rows = self._session.scalars(
+            statement.order_by(AnalysisJob.updated_at, AnalysisJob.id).limit(limit + 1)
+        ).all()
+        return list(rows[:limit]), len(rows) > limit
+
+    def database_now(self) -> datetime:
+        value = self._session.scalar(select(func.now()))
+        if not isinstance(value, datetime):
+            raise RuntimeError("database clock is unavailable")
+        return value
+
+    def update_idempotency_response(
+        self,
+        *,
+        key: str,
+        job_id: UUID,
+        response_body: dict,
+    ) -> None:
+        record = self.get_idempotency_record(key)
+        if record is None or record.response_body.get("id") != str(job_id):
+            return
+        record.response_body = response_body
+        self._session.flush()
 
     def create_or_reuse_job(
         self,

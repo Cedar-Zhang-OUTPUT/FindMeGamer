@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     workspace_rate_limit_window_seconds: int = Field(default=60, gt=0, le=3_600)
     redis_connect_timeout_seconds: float = Field(default=1.0, gt=0, le=10.0)
     redis_read_timeout_seconds: float = Field(default=1.0, gt=0, le=10.0)
+    celery_broker_connect_timeout_seconds: float = Field(default=1.0, gt=0, le=10.0)
+    celery_broker_socket_timeout_seconds: float = Field(default=2.0, gt=0, le=30.0)
+    celery_broker_connection_max_retries: int = Field(default=3, ge=0, le=10)
+    analysis_task_max_retries: int = Field(default=3, ge=0, le=10)
+    analysis_retry_base_delay_seconds: int = Field(default=2, ge=1, le=300)
+    analysis_retry_max_delay_seconds: int = Field(default=60, ge=1, le=3_600)
     trusted_proxy_cidrs: tuple[str, ...] = ()
     master_key_file: Path = Path("/etc/find-me-gamer/master.key")
     steam_store_base_url: str = "https://store.steampowered.com/api"

@@ -6,6 +6,7 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from uuid import UUID
 
 import pytest
 from alembic import command
@@ -63,6 +64,17 @@ class FakeConnectionProbe:
         if self.error is not None:
             raise self.error
         return self.result
+
+
+class FakeJobDispatcher:
+    def __init__(self) -> None:
+        self.calls: list[UUID] = []
+        self.error: Exception | None = None
+
+    def dispatch(self, job_id: UUID) -> None:
+        self.calls.append(job_id)
+        if self.error is not None:
+            raise self.error
 
 
 @pytest.fixture(scope="session")
@@ -129,11 +141,17 @@ def connection_probe() -> FakeConnectionProbe:
 
 
 @pytest.fixture
+def job_dispatcher() -> FakeJobDispatcher:
+    return FakeJobDispatcher()
+
+
+@pytest.fixture
 def client(
     session: Session,
     rate_limit_counter: FakeRateLimitCounter,
     workspace_access_key: str,
     connection_probe: FakeConnectionProbe,
+    job_dispatcher: FakeJobDispatcher,
 ) -> Iterator[TestClient]:
     @contextmanager
     def job_session_factory() -> Iterator[Session]:
@@ -150,6 +168,7 @@ def client(
         secret_cipher=SecretCipher(bytes(range(32))),
         connection_probe=connection_probe,
         job_session_factory=job_session_factory,
+        job_dispatcher=job_dispatcher,
     )
 
     def override_get_session() -> Iterator[Session]:

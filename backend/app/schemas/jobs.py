@@ -29,9 +29,29 @@ class AnalysisJobResponse(BaseModel):
     completed_units: int
     total_units: int
     retryable: bool
+    error: "AnalysisJobError | None" = None
+    correlation_id: str | None
     profile_id: UUID | None
     created_at: datetime
     updated_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+
+class AnalysisJobError(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+    message: str
+
+
+class ChangedJobsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[AnalysisJobResponse]
+    cursor: str
+    has_more: bool
+    affected_profile_ids: list[UUID]
 
 
 class ExistingProfileResponse(BaseModel):

@@ -13,6 +13,7 @@ from app.api.routes import profiles as profile_routes
 from app.api.routes import jobs as job_routes
 from app.api.routes import session, settings as settings_routes
 from app.analysis.targets import ChannelResolver
+from app.analysis.runtime import build_production_channel_resolver
 from app.core.client_address import ClientAddressResolver
 from app.core.config import get_settings
 from app.core.crypto import SecretCipher
@@ -44,6 +45,8 @@ def create_app(
     channel_resolver: ChannelResolver | None = None,
     job_session_factory: job_routes.SessionFactory = session_scope,
     idempotency_clock: job_routes.IdempotencyClock = utc_now,
+    job_dispatcher: job_routes.JobDispatcher | None = None,
+    analysis_failure_clock: job_routes.FailureClock = utc_now,
 ) -> FastAPI:
     configure_request_logging()
     settings = get_settings()
@@ -67,6 +70,10 @@ def create_app(
     )
     effective_connection_probe = (
         connection_probe or settings_routes.UnavailableConnectionProbe()
+    )
+    effective_channel_resolver = channel_resolver or build_production_channel_resolver(
+        settings=settings,
+        session_factory=session_scope,
     )
     owned_redis_client: Redis | None = None
     if rate_limiter is None:
@@ -148,8 +155,11 @@ def create_app(
         job_routes.create_router(
             authenticate_workspace,
             session_factory=job_session_factory,
-            channel_resolver=channel_resolver,
+            channel_resolver=effective_channel_resolver,
             idempotency_clock=idempotency_clock,
+            dispatcher=job_dispatcher,
+            failure_clock=analysis_failure_clock,
+            cursor_signing_secret=effective_workspace_key_hash,
         )
     )
     return app
