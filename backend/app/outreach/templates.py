@@ -35,7 +35,7 @@ ALLOWED_TEMPLATE_VARIABLES = frozenset(
 
 _VARIABLE_PATTERN = re.compile(r"\{\{([^{}]*)\}\}")
 _SINGLE_BRACED_IDENTIFIER_PATTERN = re.compile(
-    r"(?<!\{)\{[A-Za-z_][A-Za-z0-9_]*\}(?!\})"
+    r"(?<!\{)\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}(?!\})"
 )
 _VALID_VARIABLE_NAME_PATTERN = re.compile(r"[a-z_][a-z0-9_]*")
 _MARKDOWN_META_PATTERN = re.compile(r"([\\`*_{}\[\]<>#!|()+\->~])")
@@ -174,6 +174,7 @@ def render_delivery(
         strip=True,
         strip_comments=True,
     )
+    _reject_reserved_markers(sanitized_html)
 
     accepted_url = escape(response_urls.accepted_url, quote=True)
     declined_url = escape(response_urls.declined_url, quote=True)

@@ -148,6 +148,9 @@ def test_all_seven_variables_render_into_subject_and_markdown() -> None:
         ("Hello {{creator_name}", "malformed"),
         ("Hello {creator_name}}", "malformed"),
         ("Hello {creator_name}", "malformed"),
+        ("Hello { creator_name }", "malformed"),
+        ("Hello {creator_name }", "malformed"),
+        ("Hello { creator_name}", "malformed"),
         ("Hello {{}}", "malformed"),
         ("Hello {{{creator_name}}", "malformed"),
         ("Hello {{creator_name}}}", "malformed"),
@@ -338,6 +341,30 @@ def test_reserved_response_placeholders_cannot_be_authored(
 ) -> None:
     with pytest.raises(TemplateValidationError, match="reserved"):
         render_delivery(template(**{field: placeholder}), context(), urls())
+
+
+@pytest.mark.parametrize(
+    "placeholder",
+    [ACCEPTED_RESPONSE_URL_PLACEHOLDER, DECLINED_RESPONSE_URL_PLACEHOLDER],
+)
+@pytest.mark.parametrize("encoding", ["escaped_underscores", "underscore_entities"])
+def test_author_markdown_cannot_recreate_reserved_response_placeholder_links(
+    placeholder: str,
+    encoding: str,
+) -> None:
+    if encoding == "escaped_underscores":
+        encoded_placeholder = placeholder.replace("_", r"\_")
+    else:
+        encoded_placeholder = placeholder.replace("_", "&#95;")
+
+    with pytest.raises(TemplateValidationError, match="reserved"):
+        render_delivery(
+            template(
+                body_markdown=f"[Misleading response]({encoded_placeholder})",
+            ),
+            context(),
+            urls(),
+        )
 
 
 def test_reserved_response_placeholders_are_backend_owned_and_each_occurs_once() -> (
