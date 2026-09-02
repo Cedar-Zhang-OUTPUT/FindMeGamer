@@ -4,6 +4,7 @@ from copy import deepcopy
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 
 from app.analysis.contracts import SteamGameSource
 from app.analysis.game_pipeline import (
@@ -17,14 +18,19 @@ from app.analysis.prompts.game import (
     build_game_synthesis_bundle,
     build_game_visual_bundle,
 )
-from app.analysis.prompts.common import render_vision_prompt
+from app.analysis.prompts.common import PromptBundle, render_vision_prompt
 from app.analysis.service import GameAnalysisPublication, GameJobLease
 from app.integrations.errors import (
     InvalidModelOutput,
     PermanentIntegrationError,
     TransientIntegrationError,
 )
-from app.schemas.ai_game import GameExtraction, GameSynthesis, GameVisualAnalysis
+from app.schemas.ai_game import (
+    EvidenceCatalog,
+    GameExtraction,
+    GameSynthesis,
+    GameVisualAnalysis,
+)
 
 from .test_ai_schemas import game_extraction_payload, game_synthesis_payload
 from .test_prompts import sample_game_source
@@ -411,6 +417,30 @@ def test_visual_bundle_programmer_value_error_propagates_without_publication(
     with pytest.raises(ValueError, match="programmer bug"):
         pipeline.run(service.job_id)
 
+    assert deepseek.vision_calls == []
+    assert service.publication is None
+    assert not any(event[0] == "finalize" for event in events)
+
+
+def test_visual_bundle_unrelated_validation_error_propagates_without_publication(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pipeline, service, _, _, deepseek, events = _pipeline()
+    with pytest.raises(ValidationError) as captured:
+        PromptBundle(messages=(), evidence_catalog=EvidenceCatalog(entries=()))
+
+    def unrelated_bundle_invariant(source: SteamGameSource):
+        raise captured.value
+
+    monkeypatch.setattr(
+        "app.analysis.game_pipeline.build_game_visual_bundle",
+        unrelated_bundle_invariant,
+    )
+
+    with pytest.raises(ValidationError) as raised:
+        pipeline.run(service.job_id)
+
+    assert raised.value is captured.value
     assert deepseek.vision_calls == []
     assert service.publication is None
     assert not any(event[0] == "finalize" for event in events)

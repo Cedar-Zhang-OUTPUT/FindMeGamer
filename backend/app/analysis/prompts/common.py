@@ -10,7 +10,14 @@ import unicodedata
 from urllib.parse import unquote_to_bytes, urlsplit
 
 import idna
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 
 from app.analysis.contracts import Message
 from app.schemas.ai_game import EvidenceCatalog
@@ -188,6 +195,22 @@ class VisualAsset(_StrictPromptModel):
 
     asset_ref: Annotated[str, Field(min_length=1, max_length=256)]
     image_url: StaticImageURL
+
+
+class InvalidVisualAssetInput(ValueError):
+    """A supplied visual asset has an invalid static image URL."""
+
+
+def create_visual_asset(*, asset_ref: str, image_url: str) -> VisualAsset:
+    """Construct an asset while typing only expected static-URL failures."""
+
+    try:
+        return VisualAsset(asset_ref=asset_ref, image_url=image_url)
+    except ValidationError as error:
+        locations = {tuple(item["loc"]) for item in error.errors()}
+        if locations and locations == {("image_url",)}:
+            raise InvalidVisualAssetInput("invalid static image asset") from None
+        raise
 
 
 class PromptBundle(_StrictPromptModel):

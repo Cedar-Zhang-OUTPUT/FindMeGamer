@@ -15,8 +15,10 @@ from app.analysis.contracts import (
     VideoSource,
 )
 from app.analysis.prompts.common import (
+    InvalidVisualAssetInput,
     MAX_PROMPT_BYTES,
     VisualAsset,
+    create_visual_asset,
     render_vision_prompt,
 )
 from app.analysis.prompts.creator import (
@@ -101,6 +103,17 @@ def sample_game_source(*, canary: str = "raw-secret-canary") -> SteamGameSource:
         ),
         raw={"secret": canary, "authorization": "never-serialize"},
     )
+
+
+def test_visual_asset_factory_types_only_static_image_url_validation() -> None:
+    with pytest.raises(InvalidVisualAssetInput):
+        create_visual_asset(
+            asset_ref="cover:0", image_url="https://cdn.example/dynamic"
+        )
+
+    with pytest.raises(ValidationError) as unrelated:
+        create_visual_asset(asset_ref="", image_url="https://cdn.example/cover.jpg")
+    assert {error["loc"] for error in unrelated.value.errors()} == {("asset_ref",)}
 
 
 def sample_creator_source(*, canary: str = "raw-secret-canary") -> CreatorSource:
@@ -892,7 +905,7 @@ def test_game_and_creator_visual_builders_enforce_static_image_urls() -> None:
     )
     creator = sample_creator_source().model_copy(update={"videos": (creator_video,)})
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(InvalidVisualAssetInput):
         build_game_visual_bundle(game)
     with pytest.raises(ValidationError):
         build_creator_visual_bundle(creator)

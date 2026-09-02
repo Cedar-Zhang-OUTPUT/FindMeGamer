@@ -9,6 +9,7 @@ from app.analysis.prompts.common import (
     clip_text,
     clip_values,
     compact_model_payload,
+    create_visual_asset,
 )
 from app.schemas.ai_game import (
     EvidenceCatalog,
@@ -266,18 +267,20 @@ def _available_game_visual_assets(source: SteamGameSource) -> tuple[VisualAsset,
     assets: list[VisualAsset] = []
     if source.cover_image_url:
         assets.append(
-            VisualAsset(asset_ref="cover:0", image_url=source.cover_image_url)
+            create_visual_asset(asset_ref="cover:0", image_url=source.cover_image_url)
         )
     if source.header_image_url:
         assets.append(
-            VisualAsset(asset_ref="header:0", image_url=source.header_image_url)
+            create_visual_asset(asset_ref="header:0", image_url=source.header_image_url)
         )
     assets.extend(
-        VisualAsset(asset_ref=f"screenshot:{index}", image_url=screenshot.full_url)
+        create_visual_asset(
+            asset_ref=f"screenshot:{index}", image_url=screenshot.full_url
+        )
         for index, screenshot in enumerate(source.screenshots)
     )
     assets.extend(
-        VisualAsset(asset_ref=f"movie:{index}", image_url=movie.thumbnail_url)
+        create_visual_asset(asset_ref=f"movie:{index}", image_url=movie.thumbnail_url)
         for index, movie in enumerate(source.movies)
         if movie.thumbnail_url
     )

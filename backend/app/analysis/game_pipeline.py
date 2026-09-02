@@ -5,15 +5,13 @@ from __future__ import annotations
 from typing import Protocol, TypeVar
 from uuid import UUID
 
-from pydantic import ValidationError
-
 from app.analysis.contracts import ArtifactStore, Message, SteamGameSource
 from app.analysis.prompts.game import (
     build_game_extraction_bundle,
     build_game_synthesis_bundle,
     build_game_visual_bundle,
 )
-from app.analysis.prompts.common import render_vision_prompt
+from app.analysis.prompts.common import InvalidVisualAssetInput, render_vision_prompt
 from app.analysis.service import GameAnalysisPublication, GameAnalysisService
 from app.integrations.errors import (
     IntegrationError,
@@ -138,7 +136,7 @@ class GameAnalysisPipeline:
     def _visual_analysis(self, source: SteamGameSource) -> GameVisualAnalysis:
         try:
             bundle = build_game_visual_bundle(source)
-        except ValidationError:
+        except InvalidVisualAssetInput:
             return unavailable_visual_analysis(_VISION_FAILURE_REASON)
         if not bundle.image_urls:
             return unavailable_visual_analysis(_NO_IMAGES_REASON)
