@@ -216,20 +216,49 @@ def _decode_url_component_until_stable(component: str) -> str:
     current = component.encode("utf-8")
     for _ in range(len(component) + 1):
         decoded = unquote_to_bytes(current)
-        decoded_text = decoded.decode("utf-8", errors="ignore")
-        if (
-            any(byte < 32 or 127 <= byte <= 159 for byte in decoded)
-            or b"\\" in decoded
-            or any(
-                unicodedata.category(character) in {"Cc", "Cf", "Cs"}
-                for character in decoded_text
-            )
-        ):
+        if _decoded_url_octets_are_unsafe(decoded):
             raise ValueError("invalid public URL")
         if decoded == current:
             return component
         current = decoded
     raise ValueError("invalid public URL")
+
+
+def _decoded_url_octets_are_unsafe(value: bytes) -> bool:
+    position = 0
+    while position < len(value):
+        first = value[position]
+        if first < 32 or first in {92, 127}:
+            return True
+        sequence_length = _utf8_sequence_length(first)
+        if sequence_length is not None:
+            sequence = value[position : position + sequence_length]
+            try:
+                decoded = sequence.decode("utf-8")
+            except UnicodeDecodeError:
+                pass
+            else:
+                if any(
+                    unicodedata.category(character) in {"Cc", "Cf", "Cs"}
+                    for character in decoded
+                ):
+                    return True
+                position += sequence_length
+                continue
+        if 128 <= first <= 159:
+            return True
+        position += 1
+    return False
+
+
+def _utf8_sequence_length(first: int) -> int | None:
+    if 194 <= first <= 223:
+        return 2
+    if 224 <= first <= 239:
+        return 3
+    if 240 <= first <= 244:
+        return 4
+    return None
 
 
 def _canonical_host(hostname: str) -> str:

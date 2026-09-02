@@ -194,6 +194,18 @@ def test_duplicate_exact_selection_keys_use_stable_thumbnail_tie_break() -> None
     assert reverse[0].thumbnail_urls == ("https://cdn.example/a.jpg",)
 
 
+def test_duplicate_public_ties_canonicalize_provider_raw_data() -> None:
+    prototype = _video("same", days_old=1, views=100)
+    first = prototype.model_copy(update={"raw": {"provider_order": 1}})
+    second = prototype.model_copy(update={"raw": {"provider_order": 2}})
+
+    forward = select_representative_thumbnails((first, second), count=1)
+    reverse = select_representative_thumbnails((second, first), count=1)
+
+    assert forward == reverse
+    assert forward[0].raw == {}
+
+
 @pytest.mark.parametrize("count", [True, False, 0, 13, 1.0, "12", None])
 def test_thumbnail_selection_rejects_invalid_count(count: object) -> None:
     with pytest.raises(ValueError, match="count"):

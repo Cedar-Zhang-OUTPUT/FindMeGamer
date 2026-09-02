@@ -299,7 +299,19 @@ class PublicPageGateway:
                     raise PermanentIntegrationError("public_page_redirect_limit")
                 if not response.location:
                     raise PermanentIntegrationError("public_page_redirect_invalid")
-                current = urljoin(current, response.location)
+                try:
+                    redirect_url = urljoin(current, response.location)
+                except (TypeError, ValueError):
+                    raise PermanentIntegrationError(
+                        "public_page_redirect_invalid"
+                    ) from None
+                try:
+                    _validated_url(redirect_url)
+                except PermanentIntegrationError:
+                    raise PermanentIntegrationError(
+                        "public_page_redirect_invalid"
+                    ) from None
+                current = redirect_url
                 continue
             if response.status_code == 429 or response.status_code >= 500:
                 raise TransientIntegrationError("public_page_unavailable")

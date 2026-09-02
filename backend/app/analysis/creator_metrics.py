@@ -140,10 +140,15 @@ def _unique_videos(videos: Sequence[VideoSource]) -> list[VideoSource]:
         if not isinstance(video, VideoSource) or not video.id:
             continue
         existing = by_id.get(video.id)
-        if existing is None or _canonical_record_key(video) < _canonical_record_key(
-            existing
-        ):
+        if existing is None:
             by_id[video.id] = video
+            continue
+        candidate_key = _canonical_record_key(video)
+        existing_key = _canonical_record_key(existing)
+        if candidate_key < existing_key:
+            by_id[video.id] = video
+        elif candidate_key == existing_key:
+            by_id[video.id] = existing.model_copy(update={"raw": {}})
     return sorted(by_id.values(), key=lambda video: video.id)
 
 

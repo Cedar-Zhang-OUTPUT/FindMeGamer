@@ -356,6 +356,7 @@ def test_percent_encoded_linked_urls_are_preserved_and_fetched_end_to_end() -> N
     urls = (
         "https://creator.example/team%20contact",
         "https://creator.example/discount%25",
+        "https://creator.example/currency%E2%82%AC",
         "https://creator.example/octet%FF",
     )
     source = _source().model_copy(update={"description": " ".join(urls)})

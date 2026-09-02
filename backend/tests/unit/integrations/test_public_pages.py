@@ -134,6 +134,19 @@ def test_dns_rebinding_redirect_is_rejected_before_second_connection() -> None:
     assert len(transport.calls) == 1
 
 
+def test_malformed_redirect_location_is_a_typed_page_failure() -> None:
+    transport = Transport([_response(status=302, body=b"", location="http://[::1")])
+    gateway = PublicPageGateway(
+        resolver=Resolver({"creator.example": ("93.184.216.34",)}),
+        transport=transport,
+    )
+
+    with pytest.raises(PermanentIntegrationError, match="public_page_redirect_invalid"):
+        gateway.fetch_page("https://creator.example/about")
+
+    assert len(transport.calls) == 1
+
+
 def test_redirect_limit_content_type_and_size_are_bounded() -> None:
     resolver = Resolver({"creator.example": ("93.184.216.34",)})
     redirects = Transport(
