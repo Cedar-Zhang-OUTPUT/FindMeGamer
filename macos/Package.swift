@@ -61,5 +61,9 @@ let package = Package(
         .product(name: "OpenAPIRuntime", package: "swift-openapi-runtime"),
       ]
     ),
+    .testTarget(
+      name: "FindMeGamerUITests",
+      dependencies: ["FindMeGamer", "FindMeGamerCore"]
+    ),
   ]
 )
