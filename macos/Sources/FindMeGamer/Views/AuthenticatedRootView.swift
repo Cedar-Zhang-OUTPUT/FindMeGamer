@@ -59,7 +59,14 @@ struct AuthenticatedRootView: View {
       },
       detail: {
         VStack(spacing: 0) {
-          if session.state == .offline {
+          if session.workspaceSession?.workspaceName == "Find Me Gamer Demo" {
+            Label("Local Demo Data · No real email will be sent", systemImage: "testtube.2")
+              .font(.callout.weight(.medium))
+              .foregroundStyle(.blue)
+              .padding(10)
+              .frame(maxWidth: .infinity, alignment: .leading)
+              .background(Color.blue.opacity(0.08))
+          } else if session.state == .offline {
             OfflineBanner(retry: retry)
           } else if session.state == .checking {
             HStack(spacing: 8) {

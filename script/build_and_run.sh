@@ -8,10 +8,10 @@ BUNDLE_ID="com.findmegamer.desktop"
 MIN_SYSTEM_VERSION="14.0"
 
 case "$MODE" in
-  run|--debug|--logs|--telemetry|--verify)
+  run|--demo|--debug|--logs|--telemetry|--verify)
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--demo|--debug|--logs|--telemetry|--verify]" >&2
     exit 2
     ;;
 esac
@@ -24,6 +24,10 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 API_BASE_URL="${SERVICE_BASE_URL:-http://127.0.0.1:8000}"
+DEMO_MODE=false
+if [[ "$MODE" == "--demo" ]]; then
+  DEMO_MODE=true
+fi
 
 xml_escape() {
   printf '%s' "$1" | sed \
@@ -66,6 +70,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>NSApplication</string>
   <key>FMGAPIBaseURL</key>
   <string>$API_BASE_URL_XML</string>
+  <key>FMGDemoMode</key>
+  <$DEMO_MODE/>
 </dict>
 </plist>
 PLIST
@@ -75,7 +81,7 @@ open_app() {
 }
 
 case "$MODE" in
-  run)
+  run|--demo)
     open_app
     ;;
   --debug)

@@ -15,6 +15,16 @@ Run the macOS test suite with:
 swift test --package-path macos
 ```
 
+To browse every client area with deterministic local sample data and no backend, credentials,
+network requests, or real email delivery, run:
+
+```sh
+./script/build_and_run.sh --demo
+```
+
+The app displays a blue Local Demo Data banner for this mode. Demo changes last only until the
+app is closed.
+
 Build, stage, launch, and verify the app bundle with the intended service URL:
 
 ```sh

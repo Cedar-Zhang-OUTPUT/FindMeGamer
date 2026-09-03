@@ -57,6 +57,21 @@ public final class AppSession {
       connectivity: ConnectivityMonitor())
   }
 
+  public static func configured(bundle: Bundle = .main) -> AppSession {
+    let demoFlag = bundle.object(forInfoDictionaryKey: "FMGDemoMode")
+    let isDemo = (demoFlag as? Bool) ?? (demoFlag as? NSNumber)?.boolValue ?? false
+    return isDemo ? demo() : live(bundle: bundle)
+  }
+
+  public static func demo() -> AppSession {
+    let service = DemoAPIService()
+    return AppSession(
+      apiFactory: { _, _ in service },
+      keyStore: DemoWorkspaceKeyStore(),
+      apiBaseURLProvider: { "http://127.0.0.1" },
+      connectivity: DemoConnectivityMonitor())
+  }
+
   public func connect(key: String) async {
     guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       state = .needsKey

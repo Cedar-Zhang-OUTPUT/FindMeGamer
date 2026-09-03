@@ -5,7 +5,7 @@ import SwiftUI
 @MainActor
 struct FindMeGamerApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-  @State private var session = AppSession.live()
+  @State private var session = AppSession.configured()
 
   var body: some Scene {
     WindowGroup("Find Me Gamer", id: "main") {
