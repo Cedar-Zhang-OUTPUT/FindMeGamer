@@ -356,6 +356,16 @@ with tempfile.TemporaryDirectory(prefix="fmg-task9-test.") as temporary:
             "- Environment/device/OS: POSTGRES_PASSWORD=SECRET-CANARY",
             1,
         )),
+        ("Workspace Access Key assignment", completed.replace(
+            "- Actual outcome: Observed the expected safe outcome.",
+            "- Actual outcome: WORKSPACE_ACCESS_KEY=opaque-workspace-credential",
+            1,
+        )),
+        ("case-insensitive FMG Workspace Access Key field", completed.replace(
+            "- Actual outcome: Observed the expected safe outcome.",
+            "- Actual outcome: fmg_workspace_access_key : opaque-workspace-credential",
+            1,
+        )),
         ("scenario operator placeholder", completed.replace("- Responsible operator: Operator One", "- Responsible operator: TBD", 1)),
         ("scenario timestamp placeholder", completed.replace("- UTC timestamp: 2026-09-03T01:30:00Z", "- UTC timestamp: TBD", 1)),
         ("scenario environment placeholder", completed.replace(

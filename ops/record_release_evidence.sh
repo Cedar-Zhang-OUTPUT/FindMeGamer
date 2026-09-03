@@ -266,6 +266,15 @@ fi
 if LC_ALL=C grep -Eiq '[[:cntrl:]]|SECRET-CANARY|BEGIN ([A-Z ]+)?PRIVATE KEY|(^|[^A-Za-z0-9_])[A-Za-z0-9_]*(secret|password|token|database_url|authorization|cookie|api_key|workspace_key|master_key)[A-Za-z0-9_]*[[:space:]]*[:=]' "$checklist"; then
   fail "checklist contains prohibited sensitive content"
 fi
+for sensitive_name in "${sensitive_environment_names[@]}"; do
+  [[ "$sensitive_name" =~ ^[A-Z][A-Z0-9_]*$ ]] || fail "internal sensitive identifier is invalid"
+  if LC_ALL=C grep -Eiq "(^|[^A-Za-z0-9_])${sensitive_name}[[:space:]]*[:=]" "$checklist"; then
+    fail "checklist contains a prohibited credential assignment"
+  fi
+done
+if LC_ALL=C grep -Eiq '(^|[^A-Za-z0-9])workspace[[:space:]]+access[[:space:]]+key[[:space:]]*[:=]' "$checklist"; then
+  fail "checklist contains a prohibited Workspace Access Key field"
+fi
 if grep -Eiq '^- (workspace|api|provider|steam|youtube|deepseek|smtp|master|response|aws).*(key|token|password|secret|credential)[[:space:]]*:' "$checklist"; then
   fail "checklist contains a prohibited credential field"
 fi

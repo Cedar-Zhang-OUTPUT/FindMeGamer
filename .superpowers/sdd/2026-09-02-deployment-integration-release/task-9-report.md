@@ -169,3 +169,53 @@ contract regressions passed. Bash 3.2 syntax, exact three-file fix scope,
 diff, secret/token/email, path, and zero evidence-residue gates passed. No real
 acceptance, SSH, curl, Docker, app, provider, SMTP, AWS, Keychain, or network
 action occurred. No binding concerns remain.
+
+## Fix round 2: reject credential assignments in evidence
+
+### TDD RED
+
+The fake completed checklist added this otherwise-valid Actual outcome before
+production changed:
+
+```text
+WORKSPACE_ACCESS_KEY=opaque-workspace-credential
+```
+
+At base `75ad4fc9da86c24753e33e14d37c90ff914648cf`, the recorder accepted it and
+entered fake external capture. The pre-capture rejection assertion therefore
+failed genuinely:
+
+```text
+AssertionError: Workspace Access Key assignment
+task9_fix2_RED_exit=1
+```
+
+### GREEN and verification
+
+The recorder now reuses its existing finite `sensitive_environment_names`
+allowlist as exact safe identifiers. For each identifier, a case-insensitive
+boundary match rejects `<identifier> :` or `<identifier> =` anywhere in the
+completed checklist before any external command, temporary evidence directory,
+or snapshot copy. A narrowly defined human-readable `Workspace Access Key:`
+field is also rejected. The existing generic assignment guard remains in
+place; there is no entropy-based or guessed-key DLP.
+
+Focused coverage proves both `WORKSPACE_ACCESS_KEY=...` and lower-case
+`fmg_workspace_access_key : ...` leave the fake capture log unchanged and
+create no evidence residue. The ordinary English and Unicode completed paths
+remain successful.
+
+Final focused suite passed twice:
+
+```text
+PASS: exact unchecked 17-scenario checklist contract
+PASS: fake-backed sanitized atomic evidence recorder contracts
+PASS: release checklist and evidence recorder
+```
+
+The safe dry-run again produced only its nine planned paths and PASS with zero
+workspace/evidence mutation. Task 1–8 Compose, bootstrap, backup, S3, deploy,
+operator, release, and integration contract regressions passed. Bash 3.2,
+exact three-file scope, diff, secret/capability, capture-log, and zero-residue
+gates passed. No real acceptance, SSH, curl, Docker, app, provider, SMTP, AWS,
+Keychain, or network action occurred. No binding concerns remain.
