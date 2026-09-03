@@ -46,6 +46,12 @@ struct DemoModeTests {
 
     let templates = try await service.listTemplates()
     let template = try #require(templates.first(where: { $0.isDefault }))
+    do {
+      try await service.deleteTemplate(id: template.id)
+      Issue.record("The local demo must preserve the default Template invariant")
+    } catch let error as APIError {
+      #expect(error.code == "template_default_delete_forbidden")
+    }
     let recipientIDs = Array(result.recommendedMatches.prefix(2).map(\.id))
     let draft = SendBatchDraft(
       matchTaskID: task.id, creatorIDs: recipientIDs, templateID: template.id)

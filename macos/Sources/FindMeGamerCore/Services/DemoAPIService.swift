@@ -290,6 +290,18 @@ actor DemoAPIService: APIService {
     guard let index = templates.firstIndex(where: { $0.id == id }) else {
       throw notFound("Template")
     }
+    guard templates.count > 1 else {
+      throw APIError(
+        code: "template_last_remaining",
+        message: "The only remaining Template cannot be deleted.",
+        retryable: false)
+    }
+    guard !templates[index].isDefault else {
+      throw APIError(
+        code: "template_default_delete_forbidden",
+        message: "Choose another default Template before deleting this one.",
+        retryable: false)
+    }
     templates.remove(at: index)
   }
 
@@ -305,10 +317,16 @@ actor DemoAPIService: APIService {
 
   func previewSendBatch(_ request: SendBatchDraft) async throws -> [RecipientPreview] {
     let result = try await match(id: request.matchTaskID)
-    let template =
-      request.templateID.flatMap { id in templates.first { $0.id == id } }
-      ?? templates.first(where: \.isDefault)
-      ?? templates[0]
+    guard
+      let template = request.templateID.flatMap({ id in templates.first { $0.id == id } })
+        ?? templates.first(where: \.isDefault)
+        ?? templates.first
+    else {
+      throw APIError(
+        code: "template_required",
+        message: "Create an Outreach Template before previewing a send.",
+        retryable: false)
+    }
     return try request.creatorIDs.map { id in
       guard let creator = creators.first(where: { $0.id == id }) else {
         throw notFound("Creator")
