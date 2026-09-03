@@ -4,7 +4,7 @@ import Testing
 @testable import FindMeGamer
 @testable import FindMeGamerCore
 
-@Suite struct LibraryStructureTests {
+@Suite(.serialized) struct LibraryStructureTests {
   @Test func libraryContractUsesExactCopyAccessibilityAndDesktopDimensions() {
     #expect(LibraryLayout.headerRowCount == 2)
     #expect(LibraryLayout.searchMaximumWidth == 360)
@@ -140,4 +140,298 @@ import Testing
     #expect(configuration.urlCache === URLCache.shared)
     #expect(configuration.requestCachePolicy == .useProtocolCachePolicy)
   }
+
+  @MainActor
+  @Test func invalidatedNextPageExitsBeforeOneSameCursorReplacement() async {
+    let firstID = UUID(uuidString: "30000000-0000-4000-8000-000000000001")!
+    let secondID = UUID(uuidString: "30000000-0000-4000-8000-000000000002")!
+    let heldPage = PaginationPageGate()
+    let first = paginationCreator(firstID, name: "First")
+    let favorite = paginationCreator(firstID, name: "First", favorite: true)
+    let second = paginationCreator(secondID, name: "Second")
+    let api = PaginationAPI(
+      outcomes: [
+        .page(ProfileCardPage(items: [first], nextCursor: "cursor-a")),
+        .gated(heldPage),
+        .page(ProfileCardPage(items: [second], nextCursor: "cursor-b")),
+      ],
+      favoriteResult: favorite)
+    let model = LibraryModel(api: api)
+    let pagination = LibraryPaginationCoordinator()
+
+    await model.loadFirstPage()
+    let request = paginationRequest(model)
+    let firstTaskID = pagination.taskID(for: request)
+    let oldLoad = Task { @MainActor in
+      await pagination.run(
+        taskID: firstTaskID,
+        load: { await model.loadNextPage() },
+        current: { paginationObservation(model) })
+    }
+    await heldPage.waitUntilEntered()
+
+    await model.toggleFavorite(id: firstID)
+    pagination.observe(paginationObservation(model))
+    #expect(model.nextCursor == "cursor-a")
+    #expect(model.canLoadNextPage)
+    #expect(await api.listCallCount == 2)
+    #expect(await api.maximumConcurrentListCalls == 1)
+
+    heldPage.resume(ProfileCardPage(items: [], nextCursor: "stale-cursor"))
+    await oldLoad.value
+    #expect(pagination.revision == 1)
+    #expect(await api.listCallCount == 2)
+
+    let replacementRequest = paginationRequest(model)
+    await pagination.run(
+      taskID: pagination.taskID(for: replacementRequest),
+      load: { await model.loadNextPage() },
+      current: { paginationObservation(model) })
+
+    #expect(await api.listCallCount == 3)
+    #expect(await api.maximumConcurrentListCalls == 1)
+    #expect(model.items.map(\.id) == [firstID, secondID])
+    #expect(model.items[0].isFavorite)
+    #expect(model.nextCursor == "cursor-b")
+  }
+
+  @MainActor
+  @Test func failedNextPageWaitsForManualRetryAndPageOneCanRearmSameCursor() async {
+    let firstID = UUID(uuidString: "40000000-0000-4000-8000-000000000001")!
+    let secondID = UUID(uuidString: "40000000-0000-4000-8000-000000000002")!
+    let api = PaginationAPI(
+      outcomes: [
+        .page(
+          ProfileCardPage(
+            items: [paginationCreator(firstID, name: "First")], nextCursor: "cursor-a")),
+        .failure(APIError(code: "offline", message: "offline", retryable: true)),
+        .page(
+          ProfileCardPage(items: [paginationCreator(secondID, name: "Second")], nextCursor: nil)),
+      ])
+    let model = LibraryModel(api: api)
+    let pagination = LibraryPaginationCoordinator()
+
+    await model.loadFirstPage()
+    let request = paginationRequest(model)
+    await pagination.run(
+      taskID: pagination.taskID(for: request),
+      load: { await model.loadNextPage() },
+      current: { paginationObservation(model) })
+
+    #expect(await api.listCallCount == 2)
+    #expect(model.error?.message == "Could not load profiles.")
+    #expect(
+      LibraryRetryPolicy.action(failedRequest: pagination.failedRequest, current: request)
+        == .nextPage)
+    for _ in 0..<20 { await Task.yield() }
+    #expect(await api.listCallCount == 2)
+
+    pagination.retry(request)
+    await pagination.run(
+      taskID: pagination.taskID(for: request),
+      load: { await model.loadNextPage() },
+      current: { paginationObservation(model) })
+    #expect(await api.listCallCount == 3)
+    #expect(model.items.map(\.id) == [firstID, secondID])
+    #expect(model.error == nil)
+    #expect(
+      LibraryRetryPolicy.action(failedRequest: pagination.failedRequest, current: nil)
+        == .firstPage)
+
+    let sameCursor = LibraryPaginationRequest(
+      profileType: .creator, query: "", onlyCollection: false, cursor: "cursor-a")
+    let previousRevision = pagination.revision
+    pagination.observe(
+      LibraryPaginationObservation(
+        request: sameCursor, canLoadNextPage: false, isLoadingFirstPage: true,
+        isLoadingNextPage: false, hasError: false))
+    pagination.observe(
+      LibraryPaginationObservation(
+        request: sameCursor, canLoadNextPage: true, isLoadingFirstPage: false,
+        isLoadingNextPage: false, hasError: false))
+    #expect(pagination.revision == previousRevision + 1)
+
+    let changedCriteria = LibraryPaginationRequest(
+      profileType: .creator, query: "new", onlyCollection: false, cursor: "cursor-a")
+    #expect(pagination.taskID(for: changedCriteria) != pagination.taskID(for: sameCursor))
+  }
+}
+
+private enum PaginationListOutcome: Sendable {
+  case page(ProfileCardPage)
+  case failure(APIError)
+  case gated(PaginationPageGate)
+}
+
+private actor PaginationPageGate {
+  private var entered = false
+  private var continuation: CheckedContinuation<ProfileCardPage, Never>?
+
+  func wait() async -> ProfileCardPage {
+    entered = true
+    return await withCheckedContinuation { continuation = $0 }
+  }
+
+  func waitUntilEntered() async {
+    while !entered { await Task.yield() }
+  }
+
+  nonisolated func resume(_ page: ProfileCardPage) {
+    Task { await resumeOnActor(page) }
+  }
+
+  private func resumeOnActor(_ page: ProfileCardPage) {
+    continuation?.resume(returning: page)
+    continuation = nil
+  }
+}
+
+private actor PaginationAPI: APIService {
+  private var outcomes: [PaginationListOutcome]
+  private let favoriteResult: ProfileCard?
+  private var activeListCalls = 0
+  private(set) var maximumConcurrentListCalls = 0
+  private(set) var listCallCount = 0
+
+  init(outcomes: [PaginationListOutcome], favoriteResult: ProfileCard? = nil) {
+    self.outcomes = outcomes
+    self.favoriteResult = favoriteResult
+  }
+
+  func listProfiles(
+    type: ProfileType, query: String, onlyCollection: Bool, cursor: String?, limit: Int
+  ) async throws -> ProfileCardPage {
+    listCallCount += 1
+    activeListCalls += 1
+    maximumConcurrentListCalls = max(maximumConcurrentListCalls, activeListCalls)
+    defer { activeListCalls -= 1 }
+    switch outcomes.removeFirst() {
+    case .page(let page): return page
+    case .failure(let error): throw error
+    case .gated(let gate): return await gate.wait()
+    }
+  }
+
+  func setFavorite(type: ProfileType, id: UUID, favorite: Bool) async throws -> ProfileCard {
+    guard let favoriteResult else { fatalError("Unexpected Favorite request") }
+    return favoriteResult
+  }
+}
+
+extension APIService {
+  fileprivate func validateSession() async throws -> WorkspaceSession { fatalError("unused") }
+  fileprivate func listJobs(changedAfter: String?, status: JobStatus?) async throws -> JobChangePage
+  {
+    fatalError("unused")
+  }
+  fileprivate func createAnalysisJob(_ request: AnalysisRequest, idempotencyKey: String)
+    async throws
+    -> AnalysisSubmission
+  { fatalError("unused") }
+  fileprivate func retryAnalysisJob(id: UUID, idempotencyKey: String) async throws -> AnalysisJob {
+    fatalError("unused")
+  }
+  fileprivate func profile(type: ProfileType, id: UUID) async throws -> Profile {
+    fatalError("unused")
+  }
+  fileprivate func updateCreatorManual(id: UUID, email: String?, notes: String) async throws
+    -> CreatorProfile
+  {
+    fatalError("unused")
+  }
+  fileprivate func createMatch(gameID: UUID, idempotencyKey: String) async throws -> MatchTask {
+    fatalError("unused")
+  }
+  fileprivate func listMatches(cursor: String?) async throws -> MatchTaskPage {
+    fatalError("unused")
+  }
+  fileprivate func match(id: UUID) async throws -> MatchResult { fatalError("unused") }
+  fileprivate func retryMatch(id: UUID, idempotencyKey: String) async throws -> MatchTask {
+    fatalError("unused")
+  }
+  fileprivate func listCampaigns(cursor: String?) async throws -> CampaignPage {
+    fatalError("unused")
+  }
+  fileprivate func campaign(id: UUID) async throws -> OutreachCampaign { fatalError("unused") }
+  fileprivate func listTemplates() async throws -> [OutreachTemplate] { fatalError("unused") }
+  fileprivate func saveTemplate(_ draft: TemplateDraft) async throws -> OutreachTemplate {
+    fatalError("unused")
+  }
+  fileprivate func duplicateTemplate(id: UUID) async throws -> OutreachTemplate {
+    fatalError("unused")
+  }
+  fileprivate func setDefaultTemplate(id: UUID) async throws -> OutreachTemplate {
+    fatalError("unused")
+  }
+  fileprivate func deleteTemplate(id: UUID) async throws { fatalError("unused") }
+  fileprivate func previewTemplate(_ draft: TemplateDraft) async throws -> RenderedEmail {
+    fatalError("unused")
+  }
+  fileprivate func previewSendBatch(_ request: SendBatchDraft) async throws -> [RecipientPreview] {
+    fatalError("unused")
+  }
+  fileprivate func createSendBatch(_ request: SendBatchDraft, idempotencyKey: String) async throws
+    -> SendBatch
+  {
+    fatalError("unused")
+  }
+  fileprivate func resendDelivery(id: UUID, idempotencyKey: String) async throws -> Delivery {
+    fatalError("unused")
+  }
+  fileprivate func smtpSettings() async throws -> SMTPSettingsStatus { fatalError("unused") }
+  fileprivate func saveSMTPSettings(_ draft: SMTPSettingsDraft) async throws -> SMTPSettingsStatus {
+    fatalError("unused")
+  }
+  fileprivate func testSMTPConnection(_ draft: SMTPSettingsDraft?) async throws
+    -> ConnectionTestResult
+  {
+    fatalError("unused")
+  }
+  fileprivate func sendSMTPTest(to email: String) async throws -> ConnectionTestResult {
+    fatalError("unused")
+  }
+  fileprivate func sharedSettings() async throws -> SharedSettings { fatalError("unused") }
+  fileprivate func saveReanalysis(_ draft: ReanalysisDraft) async throws -> SharedSettings {
+    fatalError("unused")
+  }
+  fileprivate func connection(_ service: ConnectionService) async throws -> ConnectionStatus {
+    fatalError("unused")
+  }
+  fileprivate func replaceConnection(_ service: ConnectionService, secret: String) async throws
+    -> ConnectionStatus
+  { fatalError("unused") }
+  fileprivate func testConnection(_ service: ConnectionService) async throws -> ConnectionTestResult
+  {
+    fatalError("unused")
+  }
+}
+
+@MainActor
+private func paginationRequest(_ model: LibraryModel) -> LibraryPaginationRequest {
+  LibraryPaginationRequest(
+    profileType: model.selectedType, query: model.query, onlyCollection: model.onlyCollection,
+    cursor: model.nextCursor!)
+}
+
+@MainActor
+private func paginationObservation(_ model: LibraryModel) -> LibraryPaginationObservation {
+  LibraryPaginationObservation(
+    request: model.nextCursor.map {
+      LibraryPaginationRequest(
+        profileType: model.selectedType, query: model.query,
+        onlyCollection: model.onlyCollection, cursor: $0)
+    },
+    canLoadNextPage: model.canLoadNextPage, isLoadingFirstPage: model.isLoadingFirstPage,
+    isLoadingNextPage: model.isLoadingNextPage, hasError: model.error != nil)
+}
+
+private func paginationCreator(
+  _ id: UUID, name: String, favorite: Bool = false
+) -> ProfileCard {
+  .creator(
+    CreatorProfileCard(
+      id: id, name: name, youtubeChannelID: "channel-\(id)",
+      canonicalURL: "https://youtube.example/\(id)", favorite: favorite,
+      currentFacts: [:], brief: [:], sourceStatus: [:], lastAnalyzedAt: nil,
+      nextAnalysisAt: nil, contact: nil))
 }

@@ -119,3 +119,77 @@ closures without fake navigation. Pixel tuning, screenshot matrices, extreme
 window sizes or image volumes, malicious image defense, public-scale image
 pipelines, and persistent/offline image caching remain intentionally out of
 scope.
+
+## Independent-review fix round 1
+
+### Finding and regression RED
+
+The review found that the pagination `.task` was attached to the clear
+sentinel branch that disappeared as soon as `isLoadingNextPage` became true.
+That transition could cancel its own awaited model request. Separately, the
+permanent `lastPageRequest` marker suppressed cursor A forever after Task 7
+invalidated an in-flight next page while retaining that cursor, such as a
+Favorite during paging.
+
+Two production-coupled tests were added first against commit
+`b165317eb2c3347f85105f6352c877ad7d9be401`. The focused command discovered the
+existing suite and failed compilation with the intended missing production
+types: `cannot find 'LibraryPaginationCoordinator' in scope`, `cannot find
+'LibraryRetryPolicy' in scope`, and the related request/observation types. This
+was a genuine behavior-first RED rather than a zero-test result.
+
+The primary regression uses the real Task 7 `LibraryModel`, a controlled API
+actor whose page gate deliberately ignores cancellation, and a real Favorite
+mutation. It holds cursor A's next page, invalidates that model generation via
+Favorite, observes the retained cursor, and then releases the stale request.
+It requires maximum list concurrency one, no stale page commit, one replacement
+only after the old await exits, preserved canonical Favorite, and the new page
+and cursor in server order.
+
+The second regression makes cursor A fail normally. It requires the safe shared
+error, no automatic third call after actor yields, manual next-page Try Again
+before the third call, successful append/clear, first-page error routing, same-
+cursor page-one rearming, and natural task-key change when criteria changes.
+
+### Minimal fix
+
+The footer now keeps one stable outer `ZStack` and `.task` identity while its
+inner content changes between the invisible sentinel and small progress state,
+so the loading flag no longer removes and cancels its own task. A small
+`@MainActor @Observable` coordinator owns only UI scheduling state; the model
+continues to own all list data, generation, loading, error, and API behavior.
+
+The coordinator allows one active next-page await. An invalidation returning to
+the same eligible cursor records a replacement intent but cannot start it until
+the old await actually exits; a revision then permits exactly one current-key
+replacement. A task arriving under changed criteria while old work retires is
+similarly queued as the latest request. Request identity includes profile type,
+exact query, collection filter, and byte-preserved opaque cursor.
+
+A normal failed next page records its request and does not change revision, so
+it cannot auto-loop. Shared `Try Again` routes that exact current failure to a
+single next-page retry; all other errors still call `loadFirstPage()`. Starting
+a page-one recovery clears an old next-page failure marker, and completion
+rearms the same cursor only when that cursor was already attempted before the
+recovery, avoiding an initial-load double trigger.
+
+No Task 7 model/API, root, manifest, backend, generated output, artwork/card,
+or later feature changed. The pre-existing transient empty-state flash and
+unused `headerRowCount` constant remain the explicitly nonblocking follow-ups.
+
+### Fix verification
+
+- Focused `LibraryStructureTests`: 7 tests / 1 suite, 0 failures.
+- Full Swift suite: 93 tests / 9 suites, 0 failures, 0.129 s.
+- Strict `-warnings-as-errors` build: exit 0; only the pre-existing generated-
+  target diagnostics remain under its existing scoped exception.
+- Both changed Swift files pass strict `swift-format`; `git diff --check`,
+  manifest/dependency, scope, secret, artifact, and unchanged-resolution checks
+  pass.
+- Safe invalid-URL app verification retained bundle ID
+  `com.findmegamer.desktop`, macOS `14.0`, and the exact invalid URL. It launched
+  PID `89446`; only that PID was terminated and no app process remains.
+
+The fix commit subject is `fix: recover library pagination`. Its exact SHA and
+immutable fix-package byte count/SHA-256 are recorded in the post-commit
+handoff because embedding those values here would change the identifiers.

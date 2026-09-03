@@ -17,11 +17,132 @@ enum LibraryAccessibility {
   static let grid = "library.grid"
 }
 
-private struct PageRequest: Equatable {
+struct LibraryPaginationRequest: Hashable, Sendable {
   let profileType: ProfileType
   let query: String
   let onlyCollection: Bool
   let cursor: String
+}
+
+struct LibraryPaginationObservation: Equatable, Sendable {
+  let request: LibraryPaginationRequest?
+  let canLoadNextPage: Bool
+  let isLoadingFirstPage: Bool
+  let isLoadingNextPage: Bool
+  let hasError: Bool
+}
+
+struct LibraryPaginationTaskID: Hashable, Sendable {
+  let request: LibraryPaginationRequest
+  let revision: UInt64
+}
+
+enum LibraryRetryAction: Equatable {
+  case firstPage
+  case nextPage
+}
+
+enum LibraryRetryPolicy {
+  static func action(
+    failedRequest: LibraryPaginationRequest?, current: LibraryPaginationRequest?
+  ) -> LibraryRetryAction {
+    failedRequest != nil && failedRequest == current ? .nextPage : .firstPage
+  }
+}
+
+@MainActor
+@Observable
+final class LibraryPaginationCoordinator {
+  private(set) var revision: UInt64 = 0
+  private(set) var failedRequest: LibraryPaginationRequest?
+
+  private var activeRequest: LibraryPaginationRequest?
+  private var lastAttemptedTaskID: LibraryPaginationTaskID?
+  private var pendingReplacement: LibraryPaginationRequest?
+  private var queuedRequest: LibraryPaginationRequest?
+  private var wasLoadingFirstPage = false
+  private var requestBeforeFirstPage: LibraryPaginationRequest?
+
+  func taskID(for request: LibraryPaginationRequest) -> LibraryPaginationTaskID {
+    LibraryPaginationTaskID(request: request, revision: revision)
+  }
+
+  func observe(_ observation: LibraryPaginationObservation) {
+    if let activeRequest,
+      observation.request == activeRequest,
+      observation.canLoadNextPage,
+      !observation.isLoadingNextPage,
+      !observation.hasError
+    {
+      pendingReplacement = activeRequest
+    }
+
+    if !wasLoadingFirstPage, observation.isLoadingFirstPage {
+      requestBeforeFirstPage = observation.request
+      failedRequest = nil
+    }
+
+    if wasLoadingFirstPage,
+      !observation.isLoadingFirstPage,
+      requestBeforeFirstPage == observation.request,
+      lastAttemptedTaskID?.request == observation.request,
+      observation.canLoadNextPage,
+      !observation.hasError
+    {
+      failedRequest = nil
+      revision &+= 1
+    }
+    if wasLoadingFirstPage, !observation.isLoadingFirstPage {
+      requestBeforeFirstPage = nil
+    }
+    wasLoadingFirstPage = observation.isLoadingFirstPage
+
+    if failedRequest != observation.request, observation.request != nil {
+      failedRequest = nil
+    }
+  }
+
+  func retry(_ request: LibraryPaginationRequest) {
+    guard failedRequest == request else { return }
+    failedRequest = nil
+    revision &+= 1
+  }
+
+  func run(
+    taskID: LibraryPaginationTaskID,
+    load: @MainActor () async -> Void,
+    current: @MainActor () -> LibraryPaginationObservation
+  ) async {
+    guard activeRequest == nil else {
+      queuedRequest = taskID.request
+      return
+    }
+    guard lastAttemptedTaskID != taskID else { return }
+
+    activeRequest = taskID.request
+    lastAttemptedTaskID = taskID
+    await load()
+
+    let observation = current()
+    activeRequest = nil
+    if observation.hasError, observation.request == taskID.request {
+      failedRequest = taskID.request
+    } else if failedRequest == taskID.request {
+      failedRequest = nil
+    }
+
+    let shouldReplaceInvalidatedRequest = pendingReplacement == taskID.request
+    pendingReplacement = nil
+    let shouldStartQueuedRequest = queuedRequest == observation.request
+    queuedRequest = nil
+    if shouldReplaceInvalidatedRequest || shouldStartQueuedRequest,
+      observation.request != nil,
+      observation.canLoadNextPage,
+      !observation.hasError
+    {
+      revision &+= 1
+    }
+  }
 }
 
 struct LibraryView: View {
@@ -31,7 +152,7 @@ struct LibraryView: View {
   let onOpenProfile: (ProfileCard) -> Void
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
-  @State private var lastPageRequest: PageRequest?
+  @State private var pagination = LibraryPaginationCoordinator()
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -50,6 +171,9 @@ struct LibraryView: View {
     .padding()
     .task {
       model.selectType(model.selectedType)
+    }
+    .onChange(of: paginationObservation, initial: true) { _, observation in
+      pagination.observe(observation)
     }
   }
 
@@ -94,7 +218,17 @@ struct LibraryView: View {
         .lineLimit(2)
       Spacer()
       Button("Try Again") {
-        Task { await model.loadFirstPage() }
+        switch LibraryRetryPolicy.action(
+          failedRequest: pagination.failedRequest,
+          current: paginationObservation.request)
+        {
+        case .nextPage:
+          if let request = paginationObservation.request {
+            pagination.retry(request)
+          }
+        case .firstPage:
+          Task { await model.loadFirstPage() }
+        }
       }
       .help("Reload the current profile library")
     }
@@ -124,28 +258,39 @@ struct LibraryView: View {
   }
 
   @ViewBuilder private var paginationFooter: some View {
-    if model.isLoadingNextPage {
-      ProgressView()
-        .controlSize(.small)
-        .frame(maxWidth: .infinity)
-    } else if model.canLoadNextPage, let cursor = model.nextCursor {
-      Color.clear
-        .frame(height: 1)
-        .task(id: cursor) {
-          await requestNextPage(cursor: cursor)
+    if let request = paginationObservation.request {
+      let taskID = pagination.taskID(for: request)
+      ZStack {
+        if model.isLoadingNextPage {
+          ProgressView()
+            .controlSize(.small)
+        } else {
+          Color.clear
         }
+      }
+      .frame(maxWidth: .infinity, minHeight: 1)
+      .task(id: taskID) {
+        guard model.canLoadNextPage, pagination.failedRequest != request else { return }
+        await pagination.run(
+          taskID: taskID,
+          load: { await model.loadNextPage() },
+          current: { paginationObservation })
+      }
     }
   }
 
-  @MainActor
-  private func requestNextPage(cursor: String) async {
-    let request = PageRequest(
-      profileType: model.selectedType,
-      query: model.query,
-      onlyCollection: model.onlyCollection,
-      cursor: cursor)
-    guard lastPageRequest != request, model.canLoadNextPage else { return }
-    lastPageRequest = request
-    await model.loadNextPage()
+  private var paginationObservation: LibraryPaginationObservation {
+    LibraryPaginationObservation(
+      request: model.nextCursor.map {
+        LibraryPaginationRequest(
+          profileType: model.selectedType,
+          query: model.query,
+          onlyCollection: model.onlyCollection,
+          cursor: $0)
+      },
+      canLoadNextPage: model.canLoadNextPage,
+      isLoadingFirstPage: model.isLoadingFirstPage,
+      isLoadingNextPage: model.isLoadingNextPage,
+      hasError: model.error != nil)
   }
 }
