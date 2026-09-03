@@ -37,41 +37,34 @@ elif [[ -n "${FMG_CURL_BIN:-}" ]]; then
   fail "curl override is allowed only in test mode"
 fi
 
-python3 - "$base_url" "$test_mode" 2>/dev/null <<'PY' || fail "base URL must be one safe HTTPS origin"
-import ipaddress
-import socket
-import sys
-from urllib.parse import urlsplit
-
-raw, test_mode = sys.argv[1:]
-if any(ord(character) < 32 or ord(character) == 127 for character in raw):
-    raise SystemExit(1)
-parsed = urlsplit(raw)
-if (
-    parsed.scheme != "https"
-    or not parsed.hostname
-    or parsed.username is not None
-    or parsed.password is not None
-    or parsed.path
-    or parsed.query
-    or parsed.fragment
-):
-    raise SystemExit(1)
-try:
-    parsed.port
-except ValueError:
-    raise SystemExit(1)
-host = parsed.hostname.rstrip(".").casefold()
-if host == "localhost" or host.endswith(".localhost") or host.endswith(".invalid"):
-    if not (test_mode == "1" and host == "smoke.test"):
-        raise SystemExit(1)
-if test_mode == "0":
-    addresses = {entry[4][0] for entry in socket.getaddrinfo(host, parsed.port or 443)}
-    for address in addresses:
-        value = ipaddress.ip_address(address)
-        if value.is_loopback or value.is_unspecified or value.is_link_local:
-            raise SystemExit(1)
-PY
+[[ ! "$base_url" =~ [[:cntrl:]] ]] || fail "base URL must be one safe HTTPS origin"
+[[ "$base_url" =~ ^https://([A-Za-z0-9.-]+)(:([0-9]{1,5}))?$ ]] ||
+  fail "base URL must be one safe HTTPS origin"
+base_host="${BASH_REMATCH[1]}"
+base_port="${BASH_REMATCH[3]}"
+[[ ${#base_host} -le 253 && "$base_host" != .* && "$base_host" != *. && "$base_host" != *..* ]] ||
+  fail "base URL must be one safe HTTPS origin"
+IFS='.' read -r -a host_labels <<<"$base_host"
+for host_label in "${host_labels[@]}"; do
+  [[ ${#host_label} -ge 1 && ${#host_label} -le 63 ]] || fail "base URL must be one safe HTTPS origin"
+  [[ "$host_label" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$ ]] ||
+    fail "base URL must be one safe HTTPS origin"
+done
+[[ ! "$base_host" =~ ^[0-9.]+$ ]] || fail "base URL must not use a literal IP address"
+if [[ -n "$base_port" ]]; then
+  base_port_value=$((10#$base_port))
+  [[ "$base_port_value" -ge 1 && "$base_port_value" -le 65535 ]] ||
+    fail "base URL port is invalid"
+fi
+base_host_lower="$(printf '%s' "$base_host" | tr '[:upper:]' '[:lower:]')"
+case "$base_host_lower" in
+  localhost | *.localhost | *.invalid)
+    fail "base URL host is not allowed"
+    ;;
+  smoke.test)
+    [[ "$test_mode" == "1" ]] || fail "base URL host is not allowed"
+    ;;
+esac
 
 key_file="${FMG_WORKSPACE_KEY_FILE:-}"
 [[ "$key_file" == /* ]] || fail "Workspace key file must be an absolute path"
@@ -109,28 +102,14 @@ chmod 600 "$response_file"
 unset workspace_key key_line
 
 safe_error_suffix() {
-  python3 - "$response_file" <<'PY'
-import json
-from pathlib import Path
-import re
-import sys
-
-try:
-    payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-    error = payload.get("error") if isinstance(payload, dict) else None
-    code = error.get("code") if isinstance(error, dict) else None
-    message = error.get("message") if isinstance(error, dict) else None
-    if (
-        isinstance(code, str)
-        and isinstance(message, str)
-        and re.fullmatch(r"[a-z0-9_]{1,128}", code)
-        and 1 <= len(message) <= 256
-        and all(character.isprintable() for character in message)
-    ):
-        print(f"; {code}: {message}", end="")
-except Exception:
-    pass
-PY
+  jq -er '
+    select(type == "object")
+    | .error
+    | select(type == "object")
+    | select(.code | type == "string" and test("^[a-z0-9_]{1,128}$"))
+    | select(.message | type == "string" and test("^[[:print:]]{1,256}$"))
+    | "; \(.code): \(.message)"
+  ' "$response_file" 2>/dev/null || true
 }
 
 request() {
@@ -139,7 +118,8 @@ request() {
   local authenticated="$3"
   local expected_status="$4"
   local -a curl_arguments=(
-    --silent --show-error --connect-timeout 3 --max-time 10
+    --disable --silent --show-error --request GET --proto '=https'
+    --proto-redir '=https' --max-redirs 0 --connect-timeout 3 --max-time 10
     --output "$response_file" --write-out '%{http_code}'
   )
   if [[ "$authenticated" == "yes" ]]; then
@@ -155,71 +135,44 @@ request() {
 
 validate_json() {
   local shape="$1"
-  python3 - "$response_file" "$shape" 2>/dev/null <<'PY'
-import hashlib
-import json
-from pathlib import Path
-import sys
-
-payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-shape = sys.argv[2]
-
-def no_secrets(value):
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            assert "secret" not in key.casefold() and "password" not in key.casefold()
-            no_secrets(nested)
-    elif isinstance(value, list):
-        for nested in value:
-            no_secrets(nested)
-
-no_secrets(payload)
-if shape == "health":
-    assert payload == {"status": "ok"}
-    print("ok")
-elif shape == "session":
-    assert isinstance(payload, dict) and payload.get("api_version") == "v1"
-    assert isinstance(payload.get("service_connections"), dict)
-    print("ok")
-elif shape == "reanalysis":
-    assert set(payload) == {"creator_interval_days", "game_interval_days"}
-    assert all(isinstance(payload[key], int) and payload[key] > 0 for key in payload)
-    print("ok")
-elif shape == "connection":
-    assert set(payload) == {"configured", "last_test_status", "last_tested_at"}
-    assert isinstance(payload["configured"], bool)
-    assert payload["last_test_status"] in (None, "success", "failure")
-    assert payload["last_tested_at"] is None or isinstance(payload["last_tested_at"], str)
-    print(str(payload["configured"]).lower())
-elif shape == "smtp":
-    expected = {"configured", "host", "port", "encryption", "username", "from_name", "reply_to", "emails_per_minute", "last_test_status", "last_tested_at"}
-    assert set(payload) == expected and isinstance(payload["configured"], bool)
-    assert isinstance(payload["emails_per_minute"], int)
-    print(str(payload["configured"]).lower())
-elif shape == "page":
-    assert set(payload) == {"items", "cursor", "has_more"}
-    assert isinstance(payload["items"], list)
-    assert payload["cursor"] is None or isinstance(payload["cursor"], str)
-    assert isinstance(payload["has_more"], bool)
-    print(len(payload["items"]))
-elif shape == "profile-page":
-    assert set(payload) == {"items", "next_cursor"}
-    assert isinstance(payload["items"], list)
-    assert payload["next_cursor"] is None or isinstance(payload["next_cursor"], str)
-    print(len(payload["items"]))
-elif shape == "jobs":
-    assert set(payload) == {"items", "cursor", "has_more", "affected_profile_ids"}
-    assert isinstance(payload["items"], list) and isinstance(payload["affected_profile_ids"], list)
-    assert isinstance(payload["cursor"], str) and payload["cursor"]
-    assert isinstance(payload["has_more"], bool)
-    print(payload["cursor"])
-elif shape == "campaign-hash":
-    assert set(payload) == {"items", "cursor", "has_more"}
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    print(hashlib.sha256(canonical).hexdigest())
-else:
-    raise AssertionError("unknown expected shape")
-PY
+  local base_filter='def safe_keys: [.. | objects | keys[] | ascii_downcase | select(contains("secret") or contains("password"))] | length == 0;'
+  local shape_filter
+  case "$shape" in
+    health)
+      shape_filter='if safe_keys and type == "object" and keys == ["status"] and .status == "ok" then "ok" else error("invalid") end'
+      ;;
+    session)
+      shape_filter='if safe_keys and type == "object" and .api_version == "v1" and (.service_connections | type == "object") then "ok" else error("invalid") end'
+      ;;
+    reanalysis)
+      shape_filter='if safe_keys and type == "object" and keys == ["creator_interval_days", "game_interval_days"] and ([.creator_interval_days, .game_interval_days] | all(type == "number" and floor == . and . > 0)) then "ok" else error("invalid") end'
+      ;;
+    connection)
+      shape_filter='if safe_keys and type == "object" and keys == ["configured", "last_test_status", "last_tested_at"] and (.configured | type == "boolean") and ([null, "success", "failure"] | index($root.last_test_status) != null) and (.last_tested_at == null or (.last_tested_at | type == "string")) then (.configured | tostring) else error("invalid") end'
+      ;;
+    smtp)
+      shape_filter='if safe_keys and type == "object" and keys == ["configured", "emails_per_minute", "encryption", "from_name", "host", "last_test_status", "last_tested_at", "port", "reply_to", "username"] and (.configured | type == "boolean") and (.emails_per_minute | type == "number" and floor == .) then (.configured | tostring) else error("invalid") end'
+      ;;
+    page)
+      shape_filter='if safe_keys and type == "object" and keys == ["cursor", "has_more", "items"] and (.items | type == "array") and (.cursor == null or (.cursor | type == "string")) and (.has_more | type == "boolean") then (.items | length) else error("invalid") end'
+      ;;
+    profile-page)
+      shape_filter='if safe_keys and type == "object" and keys == ["items", "next_cursor"] and (.items | type == "array") and (.next_cursor == null or (.next_cursor | type == "string")) then (.items | length) else error("invalid") end'
+      ;;
+    jobs)
+      shape_filter='if safe_keys and type == "object" and keys == ["affected_profile_ids", "cursor", "has_more", "items"] and (.items | type == "array") and (.affected_profile_ids | type == "array") and (.cursor | type == "string" and length > 0) and (.has_more | type == "boolean") then .cursor else error("invalid") end'
+      ;;
+    campaign-hash)
+      shape_filter='if safe_keys and type == "object" and keys == ["cursor", "has_more", "items"] and (.items | type == "array") and (.cursor == null or (.cursor | type == "string")) and (.has_more | type == "boolean") then . else error("invalid") end'
+      jq -ceS "${base_filter} ${shape_filter}" "$response_file" 2>/dev/null |
+        openssl dgst -sha256 2>/dev/null | awk '{print $NF}'
+      return
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  jq -er "${base_filter} . as \$root | ${shape_filter}" "$response_file" 2>/dev/null
 }
 
 request "health/live" "${base_url}/health/live" no 200
@@ -249,12 +202,7 @@ for profile_type in games creators; do
 done
 request "changed Jobs" "${base_url}/api/v1/jobs" yes 200
 jobs_cursor="$(validate_json jobs)" || fail "changed Jobs payload is invalid"
-encoded_cursor="$(python3 - "$jobs_cursor" <<'PY'
-import sys
-from urllib.parse import quote
-print(quote(sys.argv[1], safe=""))
-PY
-)"
+encoded_cursor="$(jq -nr --arg value "$jobs_cursor" '$value | @uri')" || fail "changed Jobs cursor could not be encoded"
 request "changed Jobs cursor" "${base_url}/api/v1/jobs?changed_after=${encoded_cursor}" yes 200
 validate_json jobs >/dev/null || fail "changed Jobs cursor payload is invalid"
 echo "PASS changed Jobs cursor"

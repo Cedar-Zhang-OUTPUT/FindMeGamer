@@ -69,6 +69,16 @@ arguments = sys.argv[1:]
 log = pathlib.Path(os.environ["FMG_FAKE_CURL_LOG"])
 with log.open("a", encoding="utf-8") as stream:
     stream.write(json.dumps(arguments) + "\n")
+if not arguments or arguments[0] not in ("--disable", "-q"):
+    raise SystemExit(88)
+if "--request" not in arguments or arguments[arguments.index("--request") + 1] != "GET":
+    raise SystemExit(89)
+if "--proto" not in arguments or arguments[arguments.index("--proto") + 1] != "=https":
+    raise SystemExit(90)
+if "--max-redirs" not in arguments or arguments[arguments.index("--max-redirs") + 1] != "0":
+    raise SystemExit(91)
+if "--location" in arguments or "-L" in arguments or "POST" in arguments:
+    raise SystemExit(92)
 output = pathlib.Path(arguments[arguments.index("--output") + 1])
 url = arguments[-1]
 path = url.split("smoke.test", 1)[-1]
@@ -106,7 +116,7 @@ sys.stdout.write(str(status))
 '''
 
 fake_docker_source = r'''#!/usr/bin/env python3
-import csv, hashlib, json, os, pathlib, shutil, sys
+import csv, hashlib, json, os, pathlib, shutil, subprocess, sys
 arguments = sys.argv[1:]
 state = pathlib.Path(os.environ["FMG_FAKE_DOCKER_STATE"])
 state.mkdir(parents=True, exist_ok=True)
@@ -133,7 +143,11 @@ if "cp" in arguments:
         raise SystemExit(9)
     raise SystemExit(0)
 if "exec" in arguments:
-    if "mkdir" in arguments or "rm" in arguments or "rmdir" in arguments:
+    if "mkdir" in arguments:
+        raise SystemExit(0)
+    if "rm" in arguments or "rmdir" in arguments:
+        if mode == "cleanup-failure" and any(value.endswith("creators.csv") for value in arguments):
+            raise SystemExit(13)
         raise SystemExit(0)
     if "-m" in arguments and "app.cli.seed_creators" in arguments:
         csv_name = pathlib.Path(arguments[arguments.index("app.cli.seed_creators") + 1]).name
@@ -168,17 +182,14 @@ if "exec" in arguments:
             raise SystemExit(10)
     if "seed CSV must contain exactly 100 rows" in " ".join(arguments):
         csv_name = pathlib.Path(arguments[-1]).name
-        try:
-            with (state / csv_name).open(encoding="utf-8", newline="") as stream:
-                rows = list(csv.reader(stream))
-            assert rows[0] == ["youtube_url", "contact_email", "notes"]
-            assert len(rows[1:]) == 100
-            urls = [row[0] for row in rows[1:]]
-            assert all(len(row) == 3 and row[0] for row in rows[1:])
-            assert len(set(urls)) == 100
-            raise SystemExit(0)
-        except Exception:
-            raise SystemExit(11)
+        program = arguments[arguments.index("-c") + 1]
+        completed = subprocess.run(
+            [sys.executable, "-c", program, str(state / csv_name)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        raise SystemExit(completed.returncode)
 raise SystemExit(12)
 '''
 
@@ -196,6 +207,10 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
     key_file = test_root / "workspace.key"
     key_file.write_text(key + "\n", encoding="utf-8")
     key_file.chmod(0o600)
+    (test_root / ".curlrc").write_text(
+        'fail\nrequest = "POST"\nheader = "Authorization: Bearer CURLRC-CANARY"\n',
+        encoding="utf-8",
+    )
     curl_log = test_root / "curl.log"
     smoke_environment = os.environ.copy()
     smoke_environment.update(
@@ -204,6 +219,7 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
             "FMG_CURL_BIN": str(fake_curl),
             "FMG_FAKE_CURL_LOG": str(curl_log),
             "FMG_WORKSPACE_KEY_FILE": str(key_file),
+            "HOME": str(test_root),
         }
     )
     smoke = run([str(smoke_script), "https://smoke.test"], smoke_environment)
@@ -211,9 +227,15 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
     observable = smoke.stdout + smoke.stderr + curl_log.read_text(encoding="utf-8")
     assert key not in observable
     calls = [json.loads(line) for line in curl_log.read_text().splitlines()]
+    assert calls and all(call[0] in ("--disable", "-q") for call in calls)
+    assert all("--request" in call and call[call.index("--request") + 1] == "GET" for call in calls)
+    assert all("--proto" in call and call[call.index("--proto") + 1] == "=https" for call in calls)
+    assert all("--max-redirs" in call and call[call.index("--max-redirs") + 1] == "0" for call in calls)
+    assert all("--location" not in call and "-L" not in call and "POST" not in call for call in calls)
     assert all(key not in argument for call in calls for argument in call)
     public = [call for call in calls if call[-1].endswith("/r/not-a-capability?choice=accepted")]
     assert len(public) == 1 and "--config" not in public[0]
+    assert not any("authorization" in argument.casefold() for argument in public[0])
     authenticated = [call for call in calls if "/api/v1/" in call[-1]]
     assert authenticated and all("--config" in call for call in authenticated)
     header_paths = {call[call.index("--config") + 1] for call in authenticated}
@@ -244,6 +266,11 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
     smoke_failure(smoke_environment | {"FMG_WORKSPACE_KEY_FILE": str(multiline_key)})
     smoke_failure(smoke_environment, "http://smoke.test")
     smoke_failure(smoke_environment, "https://smoke.test/path")
+    smoke_failure(smoke_environment, "https://user@smoke.test")
+    smoke_failure(smoke_environment, "https://127.0.0.1")
+    smoke_failure(smoke_environment, "https://localhost")
+    smoke_failure(smoke_environment, "https://operator.invalid")
+    smoke_failure(smoke_environment, "https://smoke.test:70000")
     smoke_failure(smoke_environment | {"FMG_FAKE_CURL_MODE": "malformed"})
     smoke_failure(smoke_environment | {"FMG_FAKE_CURL_MODE": "unhealthy"})
 
@@ -286,6 +313,29 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
     cleanup_calls = [call for call in calls if "rm" in call or "rmdir" in call]
     assert len(cleanup_calls) == 3
     assert all("/tmp/find-me-gamer-seed-" in " ".join(call) for call in cleanup_calls)
+
+    target_csv = test_root / "supported-targets.csv"
+    target_rows = fixture.read_text(encoding="utf-8").splitlines()
+    target_rows[1] = "https://youtube.com/@Creator.demo_123,,"
+    target_rows[2] = "https://www.youtube.com/@other-handle/,,"
+    target_rows[3] = "https://youtube.com/channel/UCabcdef/,,"
+    target_csv.write_text("\n".join(target_rows) + "\n", encoding="utf-8")
+    target_csv.chmod(0o600)
+    supported_targets = run([str(seed_script), str(target_csv)], seed_environment)
+    assert supported_targets.returncode == 0, supported_targets.stderr
+
+    for invalid_target in (
+        "https://user@youtube.com/@creator",
+        "https://youtube.com:443/@creator",
+        "https://youtube.com/@creator?view=1",
+        "https://youtube.com/@creator#section",
+    ):
+        invalid_target_csv = test_root / ("invalid-target-" + hashlib.sha256(invalid_target.encode()).hexdigest()[:8] + ".csv")
+        invalid_target_rows = target_rows.copy()
+        invalid_target_rows[1] = invalid_target + ",,"
+        invalid_target_csv.write_text("\n".join(invalid_target_rows) + "\n", encoding="utf-8")
+        invalid_target_csv.chmod(0o600)
+        assert run([str(seed_script), str(invalid_target_csv)], seed_environment).returncode != 0
 
     rerun = run([str(seed_script), str(csv_path)], seed_environment)
     assert rerun.returncode == 0, rerun.stderr
@@ -344,6 +394,23 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
     )
     assert docker_failure.returncode != 0
 
+    cleanup_start = len((docker_state / "calls.log").read_text().splitlines())
+    cleanup_failure = run(
+        [str(seed_script), str(csv_path)],
+        seed_environment | {"FMG_FAKE_DOCKER_MODE": "cleanup-failure"},
+    )
+    assert cleanup_failure.returncode != 0
+    assert "queued=100" in cleanup_failure.stdout and report_path.is_file()
+    assert "temporary container cleanup failed" in cleanup_failure.stderr
+    cleanup_failure_calls = [
+        json.loads(line)
+        for line in (docker_state / "calls.log").read_text().splitlines()[cleanup_start:]
+    ]
+    failed_cleanup_calls = [call for call in cleanup_failure_calls if "rm" in call or "rmdir" in call]
+    assert len(failed_cleanup_calls) == 3
+    assert all("/tmp/find-me-gamer-seed-" in " ".join(call) for call in failed_cleanup_calls)
+    assert not any("prune" in call for call in failed_cleanup_calls)
+
     dry_run = run(
         [str(seed_script), str(fixture)],
         os.environ | {"FMG_DRY_RUN": "1"},
@@ -354,3 +421,8 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
 
 print("PASS: fake-backed smoke secrecy and resumable seed workflow")
 PY
+
+if rg -n 'python3' "$smoke_script" "$seed_script"; then
+  echo "production operator scripts must not require host python3" >&2
+  exit 1
+fi

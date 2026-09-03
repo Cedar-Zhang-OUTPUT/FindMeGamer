@@ -123,3 +123,101 @@ paths emit endpoint/status or aggregate counts only and do not dump response
 bodies, Creator rows, contacts, notes, secrets, or upstream diagnostics.
 
 No binding concerns remain within the stable company-internal Demo boundary.
+
+## Fix round 1 — operator portability and cleanup
+
+### TDD RED
+
+All four regression contracts were added to
+`ops/tests/test_operator_scripts.sh` before their production fixes. The first
+focused run against `9b637b9cfa3ce8b5e50de6b271cef2077e44a589` exited nonzero and showed both
+host-Python references and the fake curl rejecting the first request because
+`--disable` was not its first argument:
+
+```text
+$ bash ops/tests/test_operator_scripts.sh
+ops/seed_initial_creators.sh:39:  python3 ...
+ops/smoke_test.sh:40:python3 ...
+AssertionError: smoke: health/live request failed
+```
+
+After only the smoke portability/curl isolation change, the same focused test
+continued to exit `1` on the new production-coupled live target fixture:
+
+```text
+AssertionError: creator-seed: Creator CSV must use the exact header and contain 100 unique supported Channel URLs
+task7_fix1_target_RED_exit=1
+```
+
+The fixture contains valid `youtube.com` and `www.youtube.com` Handle targets,
+an optional trailing slash, and a minimum-length Channel ID. The fake executes
+the exact Python validation program passed to the API container, so the old
+fixed-22-character validator caused this RED.
+
+The cleanup-failure regression was also isolated with the production cleanup
+held at its prior `|| true` behavior. Business/report work succeeded, the fake
+failed one exact remove, and the focused test exited `1` at its cleanup return
+assertion while confirming all three cleanup calls were attempted:
+
+```text
+AssertionError
+task7_fix1_cleanup_RED_exit=1
+```
+
+### GREEN changes
+
+- The live container validator now mirrors the backend Creator target contract:
+  exact HTTPS `youtube.com`/`www.youtube.com` origins without credentials,
+  ports, query, or fragment; Channel IDs use `UC[A-Za-z0-9_-]{6,126}` and
+  Handles use `@[A-Za-z0-9._-]{3,30}`, both with an optional trailing slash.
+  Raw input URLs remain nonempty and unique. The checked-in dry-run fixture
+  remains exactly 100 simple Channel URLs.
+- Both production scripts now have zero host `python3` dependency. Smoke URL
+  validation is conservative Bash, JSON/error/cursor work uses `jq`, and the
+  campaign snapshot uses canonical `jq` plus `openssl sha256`. Seed dry-run
+  validation uses `awk`, health uses `jq`, and live CSV/report Python remains
+  solely inside the existing API container.
+- Seed cleanup records failures, still attempts both exact file removals and
+  the exact directory removal, emits one safe diagnostic, and converts an
+  otherwise successful run to nonzero. Existing failure/signal statuses remain
+  nonzero.
+- Every curl call begins with `--disable`, explicitly selects GET and HTTPS,
+  and disallows redirects. The fake installs a hostile `.curlrc` with a POST
+  method and Authorization header and rejects calls lacking the first-argument
+  disable; the public invalid-capability GET remains free of the private config
+  and all POST behavior.
+
+### Fix verification
+
+Final focused suite, twice:
+
+```text
+$ bash ops/tests/test_operator_scripts.sh
+PASS: exact 100-row synthetic Creator fixture
+PASS: fake-backed smoke secrecy and resumable seed workflow
+$ bash ops/tests/test_operator_scripts.sh
+PASS: exact 100-row synthetic Creator fixture
+PASS: fake-backed smoke secrecy and resumable seed workflow
+```
+
+The final seed dry-run passed without a report, Docker, or provider call.
+Task 1–6 regression scripts and `integration/run.sh --contract` all passed.
+Both new scripts, their focused test, and all existing ops/integration shell
+files passed `bash -n`.
+
+The original related backend selection was rerun unchanged against the
+existing isolated backend test services:
+
+```text
+226 passed in 19.41s
+```
+
+Final checks passed for exact Task 7 scope, executable modes, fixture line
+counts, `git diff --check`, zero host `python3` references in either production
+script, unsafe source/eval, secret/private-key patterns, process arguments,
+GET-only/public-no-auth curl calls, exact cleanup/no prune, external calls, and
+generated artifacts. ShellCheck remains unavailable. No real API, provider,
+production Docker, AWS, SMTP, SSH, public response action, or production file
+was touched.
+
+No binding concerns remain after fix round 1.

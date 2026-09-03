@@ -35,22 +35,23 @@ require_private_file() {
   [[ "$owner_id" == "0" || "$owner_id" == "$(id -u)" ]] || fail "$label has an invalid owner"
 }
 
-validate_csv_on_host() {
-  python3 - "$1" <<'PY'
-import csv
-from pathlib import Path
-import re
-import sys
-
-channel = re.compile(r"https://www\.youtube\.com/channel/UC[A-Za-z0-9_-]{22}")
-with Path(sys.argv[1]).open(encoding="utf-8", newline="") as stream:
-    rows = list(csv.reader(stream, strict=True))
-assert rows and rows[0] == ["youtube_url", "contact_email", "notes"]
-assert len(rows[1:]) == 100
-urls = [row[0] for row in rows[1:]]
-assert all(len(row) == 3 and channel.fullmatch(row[0]) for row in rows[1:])
-assert len(set(urls)) == 100
-PY
+validate_dry_run_fixture() {
+  awk -F, '
+    BEGIN { prefix = "https://www.youtube.com/channel/UC"; failed = 0 }
+    NR == 1 {
+      if ($0 != "youtube_url,contact_email,notes") failed = 1
+      next
+    }
+    {
+      suffix = substr($1, length(prefix) + 1)
+      if (NF != 3 || $2 != "" || $3 != "" || index($1, prefix) != 1 ||
+          length(suffix) != 22 || suffix !~ /^[A-Za-z0-9_-]+$/ || seen[$1]++) failed = 1
+    }
+    END {
+      if (NR != 101) failed = 1
+      exit failed
+    }
+  ' "$1"
 }
 
 print_command() {
@@ -79,7 +80,7 @@ if [[ "$dry_run" == "1" ]]; then
   dry_csv_canonical="$(cd "$(dirname "$csv_path")" && pwd -P)/$(basename "$csv_path")"
   dry_fixture_canonical="$(cd "$(dirname "$fixture_path")" && pwd -P)/$(basename "$fixture_path")"
   [[ "$dry_csv_canonical" == "$dry_fixture_canonical" ]] || fail "dry-run accepts only the checked-in synthetic fixture"
-  validate_csv_on_host "$csv_path" 2>/dev/null || fail "dry-run CSV requires the exact header and 100 unique supported Channel URLs"
+  validate_dry_run_fixture "$csv_path" 2>/dev/null || fail "dry-run CSV requires the exact header and 100 unique supported Channel URLs"
   printf 'DRY RUN: synthetic Creator fixture validation passed; no Docker or provider call was made.\n'
   dry_compose=(docker compose --project-directory /opt/find-me-gamer --env-file /etc/find-me-gamer/app.env)
   dry_dir='/tmp/find-me-gamer-seed-<random-hex>'
@@ -130,13 +131,11 @@ compose=(
 )
 
 service_state="$("${compose[@]}" ps --format json api worker 2>/dev/null)" || fail "API/Worker health could not be checked"
-printf '%s\n' "$service_state" | python3 -c '
-import json, sys
-rows = [json.loads(line) for line in sys.stdin if line.strip()]
-by_service = {row.get("Service"): row for row in rows}
-assert set(by_service) == {"api", "worker"}
-assert all(row.get("State") == "running" and row.get("Health") == "healthy" for row in by_service.values())
-' 2>/dev/null || fail "API and Worker must both be running and healthy"
+printf '%s\n' "$service_state" | jq -se '
+  length == 2 and
+  ([.[].Service] | sort) == ["api", "worker"] and
+  all(.[]; .State == "running" and .Health == "healthy")
+' >/dev/null 2>&1 || fail "API and Worker must both be running and healthy"
 unset service_state
 
 seed_hex="$(openssl rand -hex 16)" || fail "temporary seed identity could not be generated"
@@ -151,15 +150,32 @@ report_captured=0
 host_temporary=""
 report_counts=""
 
-csv_validation_program='import csv,re,sys
+csv_validation_program='import csv,re,sys,unicodedata
 from pathlib import Path
-channel=re.compile(r"https://www\.youtube\.com/channel/UC[A-Za-z0-9_-]{22}")
+from urllib.parse import urlsplit
+channel=re.compile(r"/channel/UC[A-Za-z0-9_-]{6,126}/?")
+handle=re.compile(r"/@[A-Za-z0-9._-]{3,30}/?")
+def supported(raw):
+ if (not raw or len(raw)>2048
+  or any(character.isspace() or unicodedata.category(character).startswith("C") for character in raw)):
+  return False
+ parsed=urlsplit(raw)
+ try:
+  port=parsed.port
+ except ValueError:
+  return False
+ return (parsed.scheme=="https" and parsed.hostname in {"youtube.com","www.youtube.com"}
+  and parsed.username is None and parsed.password is None and port is None
+  and parsed.netloc.casefold()==parsed.hostname.casefold()
+  and not parsed.query and not parsed.fragment
+  and "%" not in parsed.path and "\\" not in parsed.path
+  and (channel.fullmatch(parsed.path) is not None or handle.fullmatch(parsed.path) is not None))
 with Path(sys.argv[1]).open(encoding="utf-8",newline="") as stream:
  rows=list(csv.reader(stream,strict=True))
 assert rows and rows[0]==["youtube_url","contact_email","notes"]
 assert len(rows[1:])==100, "seed CSV must contain exactly 100 rows"
 urls=[row[0] for row in rows[1:]]
-assert all(len(row)==3 and row[0] and channel.fullmatch(row[0]) for row in rows[1:])
+assert all(len(row)==3 and row[0] and supported(row[0]) for row in rows[1:])
 assert len(set(urls))==100'
 
 report_validation_program='import sys
@@ -189,9 +205,17 @@ capture_report() {
 
 cleanup_container() {
   [[ "$container_created" == "1" ]] || return 0
-  "${compose[@]}" exec -T api rm -f -- "$container_csv" >/dev/null 2>&1 || true
-  "${compose[@]}" exec -T api rm -f -- "$container_report" >/dev/null 2>&1 || true
-  "${compose[@]}" exec -T api rmdir -- "$container_dir" >/dev/null 2>&1 || true
+  local cleanup_failed=0
+  if ! "${compose[@]}" exec -T api rm -f -- "$container_csv" >/dev/null 2>&1; then
+    cleanup_failed=1
+  fi
+  if ! "${compose[@]}" exec -T api rm -f -- "$container_report" >/dev/null 2>&1; then
+    cleanup_failed=1
+  fi
+  if ! "${compose[@]}" exec -T api rmdir -- "$container_dir" >/dev/null 2>&1; then
+    cleanup_failed=1
+  fi
+  return "$cleanup_failed"
 }
 
 finish() {
@@ -200,9 +224,16 @@ finish() {
   if [[ "$container_created" == "1" && "$report_captured" == "0" ]]; then
     capture_report >/dev/null 2>&1 || true
   fi
-  cleanup_container
+  cleanup_status=0
+  cleanup_container || cleanup_status=$?
   if [[ -n "$host_temporary" && -f "$host_temporary" && ! -L "$host_temporary" ]]; then
-    rm -f -- "$host_temporary"
+    rm -f -- "$host_temporary" || cleanup_status=1
+  fi
+  if [[ "$cleanup_status" -ne 0 ]]; then
+    echo "creator-seed: temporary container cleanup failed" >&2
+    if [[ "$finish_status" -eq 0 ]]; then
+      finish_status=1
+    fi
   fi
   exit "$finish_status"
 }
