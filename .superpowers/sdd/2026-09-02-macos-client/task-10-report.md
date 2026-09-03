@@ -108,3 +108,39 @@ No binding internal-Demo defect is known. Task 17 intentionally owns Sheet
 attachment/fetching. Rare provider fields, adversarial JSON beyond the server
 projection, extreme content/layout, and pixel-level tuning remain explicitly
 outside Task 10.
+
+## Binding review fix after commit 751122e
+
+Independent review identified one normal data-loss race: the manual Email and
+Notes fields remain editable during a held Save, while successful completion
+unconditionally rebuilt the editor draft from the returned canonical Creator.
+Edits made after request acceptance were therefore silently overwritten.
+
+Two production-coupled `ProfileSheetState` regressions were added before the
+fix. The held-save test records the exact normalized submitted values, changes
+both editor fields while the callback is suspended, then requires the matching
+canonical Creator/contact to update without replacing those newer unsaved
+edits. It failed RED with two literal mismatches: canonical email and notes were
+observed instead of the newer editor values. A companion test requires an
+unchanged submitted draft to continue adopting canonical server normalization.
+
+The minimal fix snapshots the validated submitted draft before invoking the
+callback and sends only that snapshot. A matching canonical Creator and
+Favorite value always apply, but the editor is rebuilt from canonical data only
+when it still equals the submitted snapshot. Save remains one exact
+single-flight mutation; all other action, validation, and view behavior is
+unchanged.
+
+- Focused Profile coverage: 10 tests / 1 suite, 0 failures after formatting.
+- Full Swift: 115 tests / 12 suites, 0 failures, 0.118 seconds.
+- Strict warnings-as-errors build: exit 0; only the existing generated-target
+  diagnostics remain under the package's scoped exception.
+- Both changed Swift files pass strict `swift-format`; diff, scope,
+  manifest/resolution, secret, and artifact checks pass.
+- Safe invalid-URL app verification passed with bundle identifier
+  `com.findmegamer.desktop` and minimum macOS `14.0`. Exact PID `40847` was
+  terminated and no `FindMeGamer` process remained.
+
+The focused fix commit and immutable fix-package byte count/SHA-256 are recorded
+in the post-commit handoff because embedding them here would change those
+identifiers.

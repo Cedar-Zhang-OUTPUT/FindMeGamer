@@ -487,19 +487,23 @@ final class ProfileSheetState {
   func saveManual(using action: ProfileSaveManualAction) async {
     guard !isManualSaveInFlight else { return }
     guard let creator = currentCreator else { return }
-    guard let validationMessage = manualDraft.validationMessage else {
+    let submittedDraft = manualDraft
+    guard let validationMessage = submittedDraft.validationMessage else {
       isManualSaveInFlight = true
       actionMessage = nil
       defer { isManualSaveInFlight = false }
       do {
-        let canonical = try await action(creator.id, manualDraft.normalizedEmail, manualDraft.notes)
+        let canonical = try await action(
+          creator.id, submittedDraft.normalizedEmail, submittedDraft.notes)
         guard canonical.id == creator.id else {
           actionMessage = "The server returned a different profile."
           return
         }
         creatorOverride = canonical
         favorite = canonical.favorite
-        manualDraft = CreatorManualDraft(profile: canonical)
+        if manualDraft == submittedDraft {
+          manualDraft = CreatorManualDraft(profile: canonical)
+        }
       } catch {
         actionMessage = Self.safeMessage(error)
       }

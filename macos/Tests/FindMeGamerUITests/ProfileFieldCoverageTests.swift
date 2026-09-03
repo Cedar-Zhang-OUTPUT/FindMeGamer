@@ -246,6 +246,63 @@ import Testing
     #expect(creatorState.creatorOverride == nil)
     #expect(creatorState.actionMessage == "The server returned a different profile.")
   }
+
+  @MainActor
+  @Test func heldManualSavePreservesPostSubmitEditorChangesWhileApplyingCanonicalCreator() async {
+    let creator = creatorProfile()
+    let canonicalContact = CreatorContact(
+      email: "canonical@studio.example", availability: .manual, source: "manual",
+      sourceURL: nil, validationState: "valid")
+    let canonical = replacingCreator(
+      creator, contact: canonicalContact, manualNotes: "Canonical server note")
+    let recorder = ProfileManualSaveRecorder()
+    let gate = ProfileActionGate()
+    let state = ProfileSheetState(profile: .creator(creator))
+    state.manualDraft.email = " submitted@studio.example "
+    state.manualDraft.notes = "Submitted note"
+
+    let save = Task { @MainActor in
+      await state.saveManual { id, email, notes in
+        await recorder.record(id: id, email: email, notes: notes)
+        await gate.wait()
+        return canonical
+      }
+    }
+    await gate.waitUntilEntered()
+    state.manualDraft.email = "newer@studio.example"
+    state.manualDraft.notes = "Newer unsaved note"
+    await gate.resume()
+    await save.value
+
+    #expect(
+      await recorder.calls == [
+        .init(id: creator.id, email: "submitted@studio.example", notes: "Submitted note")
+      ])
+    #expect(state.creatorOverride?.contact?.email == "canonical@studio.example")
+    #expect(state.creatorOverride?.manualNotes == "Canonical server note")
+    #expect(state.manualDraft.email == "newer@studio.example")
+    #expect(state.manualDraft.notes == "Newer unsaved note")
+  }
+
+  @MainActor
+  @Test func unchangedManualDraftAdoptsCanonicalServerNormalization() async {
+    let creator = creatorProfile()
+    let canonicalContact = CreatorContact(
+      email: "canonical@studio.example", availability: .manual, source: "manual",
+      sourceURL: nil, validationState: "valid")
+    let canonical = replacingCreator(
+      creator, contact: canonicalContact, manualNotes: "Canonical server note")
+    let state = ProfileSheetState(profile: .creator(creator))
+    state.manualDraft.email = " submitted@studio.example "
+    state.manualDraft.notes = "Submitted note"
+
+    await state.saveManual { _, _, _ in canonical }
+
+    #expect(state.creatorOverride?.contact?.email == "canonical@studio.example")
+    #expect(state.creatorOverride?.manualNotes == "Canonical server note")
+    #expect(state.manualDraft.email == "canonical@studio.example")
+    #expect(state.manualDraft.notes == "Canonical server note")
+  }
 }
 
 private func field(_ label: String, in fields: [ProfileDisplayField]) -> ProfileDisplayField? {
@@ -424,7 +481,8 @@ private func replacingCreator(
   id: UUID? = nil,
   currentFacts: JSONObject? = nil,
   sourceStatus: JSONObject? = nil,
-  contact: CreatorContact?? = nil
+  contact: CreatorContact?? = nil,
+  manualNotes: String?? = nil
 ) -> FindMeGamerCore.CreatorProfile {
   FindMeGamerCore.CreatorProfile(
     id: id ?? profile.id, name: profile.name, youtubeChannelID: profile.youtubeChannelID,
@@ -432,7 +490,7 @@ private func replacingCreator(
     currentFacts: currentFacts ?? profile.currentFacts, brief: profile.brief,
     sourceStatus: sourceStatus ?? profile.sourceStatus, lastAnalyzedAt: profile.lastAnalyzedAt,
     nextAnalysisAt: profile.nextAnalysisAt, contact: contact ?? profile.contact,
-    manualNotes: profile.manualNotes, analysis: profile.analysis,
+    manualNotes: manualNotes ?? profile.manualNotes, analysis: profile.analysis,
     modelMetadata: profile.modelMetadata, promptMetadata: profile.promptMetadata)
 }
 
@@ -469,6 +527,20 @@ private actor ProfileReanalyzeRecorder {
 
   func record(type: ProfileType, id: UUID, key: String) {
     calls.append(.init(type: type, id: id, key: key))
+  }
+}
+
+private actor ProfileManualSaveRecorder {
+  struct Call: Equatable, Sendable {
+    let id: UUID
+    let email: String?
+    let notes: String
+  }
+
+  private(set) var calls: [Call] = []
+
+  func record(id: UUID, email: String?, notes: String) {
+    calls.append(.init(id: id, email: email, notes: notes))
   }
 }
 
