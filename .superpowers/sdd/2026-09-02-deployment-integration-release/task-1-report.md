@@ -83,3 +83,55 @@ was fetched through the public Docker mirror, locally tagged with the required
 name, and the exact validation command then passed. This affected only the
 local validation image pull; it did not change repository configuration or
 touch AWS.
+
+## Fix round 1: preserve client identity behind Caddy
+
+### Finding verification and RED
+
+The review finding was verified against the production boundary:
+`ClientAddressResolver` accepts `X-Forwarded-For` only when the immediate peer
+belongs to `TRUSTED_PROXY_CIDRS`; the backend default is empty, while Caddy is
+the API's only Compose-network peer. The topology test was extended before the
+production configuration changed. Its first run exited 1 after the original 6
+checks, with the new trusted-network assertion evaluating `false` because no
+IPAM subnet or API trusted proxy environment existed.
+
+### Minimal fix
+
+- `.env.example` now defines the non-secret, configurable private subnet
+  `BACKEND_SUBNET=172.30.0.0/24`.
+- The same variable drives both the `backend` bridge IPAM subnet and the API's
+  Pydantic-compatible JSON value `TRUSTED_PROXY_CIDRS=["172.30.0.0/24"]`.
+- The shared app environment keeps configuration duplication-free. Only the API
+  consumes the setting; Caddy and API remain on the same private network.
+- `Caddyfile` was left unchanged because Caddy already provides its safe default
+  forwarded-client-address behavior. Public ingress, routes, automatic HTTPS,
+  redirects, headers, and no-store behavior remain unchanged.
+
+### Fix verification
+
+- `bash ops/tests/test_compose_config.sh`: 16/16 assertions passed twice
+  consecutively after the final edit.
+- The new executable assertion proves the rendered IPAM contains exactly one
+  RFC1918 subnet, rejects `0.0.0.0/0` and public prefixes, parses the API value
+  as exactly one JSON CIDR matching that subnet, and proves both proxy and API
+  attach to `backend`.
+- Exact combined gate passed: focused script, Compose quiet render, and official
+  `caddy:2-alpine caddy validate`. Caddy again reported valid configuration,
+  automatic TLS, and HTTP-to-HTTPS redirects.
+- `bash -n`, `git diff --check`, exact scope, secret/certificate pattern,
+  service/port/network, and tracked-artifact checks passed.
+- Self-review confirmed the six-service topology, egress-capable network,
+  proxy-only 80/443 publication, commands, health/dependencies, mounts,
+  restart/logging, safe placeholders, and Caddy configuration did not regress.
+- No stack or service was started, and no AWS operation occurred.
+
+The fix commit subject is exactly `fix: preserve client identity behind caddy`.
+Its immutable hash is supplied in the post-commit handoff because embedding a
+commit's own hash in its contents would change that hash.
+
+### Fix concerns
+
+None within the Task 1 internal-Demo boundary. Task 6 owns the production-shaped
+end-to-end client-IP verification; this round intentionally validates the
+rendered configuration and existing resolver contract only.

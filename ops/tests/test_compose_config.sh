@@ -30,6 +30,15 @@ jq -e '
   ] | all
 ' <<<"$rendered"
 jq -e '.networks.backend.internal != true' <<<"$rendered"
+jq -e '
+  (.networks.backend.ipam.config | length == 1) and
+  (.networks.backend.ipam.config[0].subnet as $subnet |
+    ($subnet != "0.0.0.0/0") and
+    ($subnet | test("^(10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.)")) and
+    (.services.api.environment.TRUSTED_PROXY_CIDRS | fromjson) == [$subnet] and
+    (.services.proxy.networks | has("backend")) and
+    (.services.api.networks | has("backend")))
+' <<<"$rendered"
 
 jq -e '.services.postgres.image == "postgres:17-alpine"' <<<"$rendered"
 jq -e '.services.redis.image == "redis:7-alpine"' <<<"$rendered"

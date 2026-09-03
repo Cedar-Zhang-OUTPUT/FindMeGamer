@@ -4,6 +4,7 @@ x-app-environment: &app-environment
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
   REDIS_URL: redis://redis:6379/0
   WORKSPACE_ACCESS_KEY_HASH: ${WORKSPACE_ACCESS_KEY_HASH}
+  TRUSTED_PROXY_CIDRS: "[\"${BACKEND_SUBNET}\"]"
   EXTERNAL_BASE_URL: https://${SERVICE_DOMAIN}
   S3_REGION: ${FMG_AWS_REGION}
   S3_BUCKET: ${FMG_S3_BUCKET}
@@ -179,6 +180,9 @@ networks:
   backend:
     name: find-me-gamer-backend
     driver: bridge
+    ipam:
+      config:
+        - subnet: ${BACKEND_SUBNET}
 
 volumes:
   postgres_data:
