@@ -1,0 +1,10 @@
+[Unit]
+Description=Run the Find Me Gamer PostgreSQL backup daily
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=find-me-gamer-backup.service
+
+[Install]
+WantedBy=timers.target

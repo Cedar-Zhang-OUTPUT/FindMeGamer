@@ -1,0 +1,14 @@
+[Unit]
+Description=Find Me Gamer daily PostgreSQL backup
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/opt/find-me-gamer
+EnvironmentFile=/etc/find-me-gamer/app.env
+ExecStart=/opt/find-me-gamer/ops/backup_postgres.sh
+UMask=0077
