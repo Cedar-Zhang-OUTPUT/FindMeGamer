@@ -177,9 +177,8 @@ final class LibraryPaginationCoordinator {
 
 struct LibraryView: View {
   @Bindable var model: LibraryModel
-  let activeAnalysisJobCount: Int
-  let onAnalyzeRequest: () -> Void
-  let onOpenProfile: (ProfileCard) -> Void
+  @Bindable var analyzeModel: AnalyzeRequestModel
+  let onOpenProfile: (ProfileType, UUID) -> Void
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
   @State private var pagination = LibraryPaginationCoordinator()
@@ -188,9 +187,9 @@ struct LibraryView: View {
     VStack(alignment: .leading, spacing: 14) {
       LibraryHeader(
         model: model,
-        activeAnalysisJobCount: activeAnalysisJobCount,
+        activeAnalysisJobCount: analyzeModel.activeJobCount,
         writesEnabled: writesEnabled,
-        onAnalyzeRequest: onAnalyzeRequest)
+        onAnalyzeRequest: { analyzeModel.inspectorPresented = true })
 
       if let error = model.error {
         errorBanner(error)
@@ -204,6 +203,14 @@ struct LibraryView: View {
     }
     .onChange(of: paginationObservation, initial: true) { _, observation in
       pagination.observe(observation)
+    }
+    .inspector(isPresented: $analyzeModel.inspectorPresented) {
+      AnalyzeRequestInspector(
+        model: analyzeModel,
+        writesEnabled: writesEnabled,
+        onOpenProfile: onOpenProfile
+      )
+      .inspectorColumnWidth(min: 320, ideal: 380, max: 480)
     }
   }
 
@@ -293,7 +300,7 @@ struct LibraryView: View {
         writesEnabled: writesEnabled,
         isUpdatingFavorite: model.favoriteUpdatingIDs.contains(card.id),
         isHighlighted: model.highlightedProfileID == card.id,
-        onOpen: { onOpenProfile(item) },
+        onOpen: { onOpenProfile(item.profileType, item.id) },
         onFavorite: { Task { await model.toggleFavorite(id: card.id) } })
     case .creator(let card):
       CreatorProfileCard(
@@ -301,7 +308,7 @@ struct LibraryView: View {
         writesEnabled: writesEnabled,
         isUpdatingFavorite: model.favoriteUpdatingIDs.contains(card.id),
         isHighlighted: model.highlightedProfileID == card.id,
-        onOpen: { onOpenProfile(item) },
+        onOpen: { onOpenProfile(item.profileType, item.id) },
         onFavorite: { Task { await model.toggleFavorite(id: card.id) } })
     }
   }
