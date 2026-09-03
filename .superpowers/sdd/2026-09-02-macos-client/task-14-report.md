@@ -93,3 +93,46 @@ Settings view. Pixel tuning, external-resource policy beyond the binding blocked
 navigation requirement, and defensive behavior for corrupt cursor cycles or
 extreme history sizes are deliberately outside the internal-Demo boundary. No
 binding internal-Demo concern is known.
+
+## Fix round 01: preserve unsaved Template edits
+
+Independent review identified that successful Duplicate and Set Default actions
+called `adopt` and silently replaced a normal unsaved Subject/Body draft. The
+fix started from `78ac2b173dd388371db7906d7f50870298ba76d8` and stayed within the
+management model, Template UI, focused tests, and this report.
+
+The first test-only focused run discovered 10 tests and produced four genuine
+behavior failures: Duplicate and Set Default each contacted the API and the
+model replaced the authored draft with returned canonical content. The final
+regression adds observable dirty-state expectations and covers selection,
+Create, Duplicate, Set Default, Delete, dirty refresh, existing/new draft
+discard, and post-discard action eligibility. A second test-driven correction
+captured two failures proving a clean refresh must still adopt its updated
+canonical Template rather than becoming spuriously dirty.
+
+The model now derives `hasUnsavedTemplateChanges` from the independent draft and
+selected canonical Template. State-replacing actions refuse while dirty;
+Template refresh atomically updates canonical data while preserving a draft that
+was dirty or changed during the request; and `discardTemplateChanges()` restores
+the exact selected canonical Template, otherwise the backend default/first or
+ordinary empty state, without server contact. The Template list/Create and
+Duplicate/Default/Delete controls are disabled while dirty. The editor shows an
+unsaved indicator and a native destructive `Discard Changes` confirmation while
+leaving valid Save available.
+
+Fix verification:
+
+- focused GREEN repeated twice: 11 tests / 1 suite, 0 failures each;
+- full Swift suite: 153 tests / 16 suites, 0 failures;
+- `swift build -Xswiftc -warnings-as-errors`: passed, with only the generated
+  target's pre-existing scoped diagnostics;
+- strict `swift-format` on all four touched Swift files and `git diff --check`:
+  passed;
+- safe invalid-URL launch: bundle `com.findmegamer.desktop`, macOS `14.0`, exact
+  PID `23821` terminated, with zero remaining `FindMeGamer` processes.
+
+The separate concurrent different-Delivery resend-feedback attribution Minor is
+explicitly parked under the agreed boundary. Campaign, WebKit, API/DTO, root,
+Package, and backend behavior were not changed. The fix commit SHA and immutable
+review-package hash are reported in the post-commit handoff to avoid
+self-referential package changes.

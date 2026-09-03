@@ -62,6 +62,17 @@ public final class OutreachManagementModel {
     isSavingTemplate || isDuplicatingTemplate || isSettingDefaultTemplate || isDeletingTemplate
   }
 
+  public var hasUnsavedTemplateChanges: Bool {
+    guard let draft = templateDraft else { return false }
+    guard let selectedTemplateID,
+      draft.id == selectedTemplateID,
+      let canonical = templates.first(where: { $0.id == selectedTemplateID })
+    else {
+      return true
+    }
+    return draft != Self.draft(from: canonical)
+  }
+
   public var templateValidationMessages: [String] {
     guard let draft = templateDraft else { return [] }
     var messages: [String] = []
@@ -196,13 +207,19 @@ public final class OutreachManagementModel {
 
   public func loadTemplates() async {
     guard !isLoadingTemplates else { return }
+    let draftAtRequest = templateDraft
+    let selectionAtRequest = selectedTemplateID
+    let wasDirty = hasUnsavedTemplateChanges
     isLoadingTemplates = true
     templatesError = nil
     defer { isLoadingTemplates = false }
 
     do {
       let loaded = try await api.listTemplates()
+      let shouldPreserveDraft =
+        wasDirty || templateDraft != draftAtRequest || selectedTemplateID != selectionAtRequest
       templates = loaded
+      if shouldPreserveDraft { return }
       if let selected = loaded.first(where: \.isDefault) ?? loaded.first {
         adopt(selected)
       } else {
@@ -216,7 +233,9 @@ public final class OutreachManagementModel {
   }
 
   public func selectTemplate(id: UUID) {
-    guard !isTemplateActionInFlight, let selected = templates.first(where: { $0.id == id }) else {
+    guard !isTemplateActionInFlight, !hasUnsavedTemplateChanges,
+      let selected = templates.first(where: { $0.id == id })
+    else {
       return
     }
     adopt(selected)
@@ -224,13 +243,29 @@ public final class OutreachManagementModel {
   }
 
   public func beginCreatingTemplate() {
-    guard !isTemplateActionInFlight else { return }
+    guard !isTemplateActionInFlight, !hasUnsavedTemplateChanges else { return }
     selectedTemplateID = nil
     templateDraft = TemplateDraft(
       name: "", subjectTemplate: "", bodyMarkdown: "", acceptedLabel: "Yes, I'm in",
       declinedLabel: "No, I'm not interested")
     templateActionError = nil
     schedulePreview()
+  }
+
+  public func discardTemplateChanges() {
+    guard !isTemplateActionInFlight else { return }
+    templateActionError = nil
+    if let selectedTemplateID,
+      let canonical = templates.first(where: { $0.id == selectedTemplateID })
+    {
+      adopt(canonical)
+    } else if let fallback = templates.first(where: \.isDefault) ?? templates.first {
+      adopt(fallback)
+    } else {
+      selectedTemplateID = nil
+      templateDraft = nil
+      schedulePreview()
+    }
   }
 
   public func editTemplateName(_ value: String) {
@@ -274,7 +309,9 @@ public final class OutreachManagementModel {
   }
 
   public func duplicateSelectedTemplate() async {
-    guard !isTemplateActionInFlight, let id = selectedTemplateID else { return }
+    guard !isTemplateActionInFlight, !hasUnsavedTemplateChanges, let id = selectedTemplateID else {
+      return
+    }
     isDuplicatingTemplate = true
     templateActionError = nil
     defer { isDuplicatingTemplate = false }
@@ -290,7 +327,9 @@ public final class OutreachManagementModel {
   }
 
   public func setSelectedTemplateDefault() async {
-    guard !isTemplateActionInFlight, let id = selectedTemplateID else { return }
+    guard !isTemplateActionInFlight, !hasUnsavedTemplateChanges, let id = selectedTemplateID else {
+      return
+    }
     isSettingDefaultTemplate = true
     templateActionError = nil
     defer { isSettingDefaultTemplate = false }
@@ -306,7 +345,9 @@ public final class OutreachManagementModel {
   }
 
   public func deleteSelectedTemplate() async {
-    guard !isTemplateActionInFlight, let id = selectedTemplateID else { return }
+    guard !isTemplateActionInFlight, !hasUnsavedTemplateChanges, let id = selectedTemplateID else {
+      return
+    }
     isDeletingTemplate = true
     templateActionError = nil
     defer { isDeletingTemplate = false }
@@ -346,11 +387,15 @@ public final class OutreachManagementModel {
 
   private func adopt(_ template: OutreachTemplate) {
     selectedTemplateID = template.id
-    templateDraft = TemplateDraft(
+    templateDraft = Self.draft(from: template)
+    schedulePreview()
+  }
+
+  private static func draft(from template: OutreachTemplate) -> TemplateDraft {
+    TemplateDraft(
       id: template.id, name: template.name, subjectTemplate: template.subjectTemplate,
       bodyMarkdown: template.bodyMarkdown, acceptedLabel: template.acceptedLabel,
       declinedLabel: template.declinedLabel)
-    schedulePreview()
   }
 
   private func upsert(_ template: OutreachTemplate, enforceDefault: Bool) {

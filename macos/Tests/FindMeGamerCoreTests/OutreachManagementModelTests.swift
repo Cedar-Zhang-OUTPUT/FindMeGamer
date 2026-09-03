@@ -105,6 +105,24 @@ struct OutreachManagementModelTests {
   }
 
   @MainActor
+  @Test func cleanTemplateRefreshAdoptsUpdatedCanonical() async {
+    let source = template(id: id(25), name: "Source", isDefault: true)
+    let updated = template(
+      id: source.id, name: "Updated", subject: "Updated subject", body: "Updated body",
+      isDefault: true, version: 2)
+    let api = ManagementAPI(templateListOutcomes: [.value([source]), .value([updated])])
+    let model = OutreachManagementModel(api: api, clock: ManualClock())
+
+    await model.loadTemplates()
+    #expect(!model.hasUnsavedTemplateChanges)
+    await model.loadTemplates()
+
+    #expect(model.templates == [updated])
+    #expect(model.templateDraft == TemplateDraft(template: updated))
+    #expect(!model.hasUnsavedTemplateChanges)
+  }
+
+  @MainActor
   @Test func savedPreviewDebouncesExactDraftAndFencesStaleFailure() async {
     let clock = ManualClock()
     let oldGate = ManagementGate<RenderedEmail>()
@@ -139,6 +157,7 @@ struct OutreachManagementModelTests {
     #expect(model.previewState == .available(newestPreview))
     #expect(await clock.requestedDurations.allSatisfy { $0 == .milliseconds(300) })
 
+    model.discardTemplateChanges()
     model.beginCreatingTemplate()
     model.editTemplateBody("New unsaved body")
     await clock.advance(by: .milliseconds(300))
@@ -175,6 +194,71 @@ struct OutreachManagementModelTests {
     #expect(model.selectedTemplateID == canonical.id)
     #expect(model.templateDraft == TemplateDraft(template: canonical))
     #expect(!model.isTemplateActionInFlight)
+  }
+
+  @MainActor
+  @Test func dirtyDraftRefusesReplacementUntilExplicitDiscard() async {
+    let source = template(id: id(45), name: "Source", isDefault: false)
+    let updatedSource = template(
+      id: source.id, name: "Updated source", subject: "Updated subject",
+      body: "Updated body", isDefault: false, version: 2)
+    let backendDefault = template(id: id(47), name: "Backend default", isDefault: true)
+    let duplicate = template(id: id(46), name: "Duplicate", isDefault: false)
+    let api = ManagementAPI(
+      templateListOutcomes: [
+        .value([source, backendDefault]), .value([updatedSource, backendDefault]),
+      ],
+      duplicateOutcomes: [.value(duplicate)],
+      defaultOutcomes: [.value(source)],
+      deleteOutcomes: [.success(())])
+    let model = OutreachManagementModel(api: api, clock: ManualClock())
+    await model.loadTemplates()
+    model.selectTemplate(id: source.id)
+    model.editTemplateSubject("Authored subject")
+    model.editTemplateBody("Authored body")
+    let authoredDraft = model.templateDraft
+    #expect(model.hasUnsavedTemplateChanges)
+
+    model.selectTemplate(id: backendDefault.id)
+    model.beginCreatingTemplate()
+    await model.duplicateSelectedTemplate()
+    await model.setSelectedTemplateDefault()
+    await model.deleteSelectedTemplate()
+    #expect(model.selectedTemplateID == source.id)
+    #expect(model.templateDraft == authoredDraft)
+    #expect(await api.duplicateCalls.isEmpty)
+    #expect(await api.defaultCalls.isEmpty)
+    #expect(await api.deleteCalls.isEmpty)
+
+    await model.loadTemplates()
+    #expect(model.templates == [updatedSource, backendDefault])
+    #expect(model.selectedTemplateID == source.id)
+    #expect(model.templateDraft == authoredDraft)
+    #expect(model.hasUnsavedTemplateChanges)
+
+    model.discardTemplateChanges()
+    #expect(model.selectedTemplateID == source.id)
+    #expect(model.templateDraft == TemplateDraft(template: updatedSource))
+    #expect(!model.hasUnsavedTemplateChanges)
+
+    await model.duplicateSelectedTemplate()
+    #expect(await api.duplicateCalls == [source.id])
+    #expect(model.selectedTemplateID == duplicate.id)
+    #expect(!model.hasUnsavedTemplateChanges)
+
+    model.beginCreatingTemplate()
+    model.editTemplateBody("New authored Template")
+    let newDraft = model.templateDraft
+    #expect(model.hasUnsavedTemplateChanges)
+    model.selectTemplate(id: source.id)
+    model.beginCreatingTemplate()
+    #expect(model.selectedTemplateID == nil)
+    #expect(model.templateDraft == newDraft)
+
+    model.discardTemplateChanges()
+    #expect(model.selectedTemplateID == backendDefault.id)
+    #expect(model.templateDraft == TemplateDraft(template: backendDefault))
+    #expect(!model.hasUnsavedTemplateChanges)
   }
 
   @MainActor

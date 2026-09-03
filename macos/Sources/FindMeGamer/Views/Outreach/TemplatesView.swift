@@ -53,7 +53,7 @@ struct TemplatesView: View {
         }
         .labelStyle(.iconOnly)
         .help("Create Template")
-        .disabled(model.isTemplateActionInFlight)
+        .disabled(model.isTemplateActionInFlight || model.hasUnsavedTemplateChanges)
       }
       .padding(12)
 
@@ -74,7 +74,7 @@ struct TemplatesView: View {
           .tag(template.id)
         }
       }
-      .disabled(model.isTemplateActionInFlight)
+      .disabled(model.isTemplateActionInFlight || model.hasUnsavedTemplateChanges)
 
       if let error = model.templatesError {
         VStack(alignment: .leading, spacing: 8) {

@@ -54,6 +54,20 @@ struct TemplateEditor: View {
           }
         }
 
+        if model.hasUnsavedTemplateChanges {
+          HStack {
+            Label("Unsaved changes", systemImage: "pencil.circle")
+              .foregroundStyle(.orange)
+            Spacer()
+            Button("Discard Changes") {
+              confirmation = .discard
+            }
+            .disabled(model.isTemplateActionInFlight)
+          }
+          .padding(10)
+          .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        }
+
         field("Name") {
           TextField("Template Name", text: name)
             .textFieldStyle(.roundedBorder)
@@ -232,6 +246,7 @@ struct TemplateEditor: View {
 
   private var canMutateSavedTemplate: Bool {
     writesEnabled && model.selectedTemplateID != nil && !model.isTemplateActionInFlight
+      && !model.hasUnsavedTemplateChanges
   }
 
   private var confirmationPresented: Binding<Bool> {
@@ -250,6 +265,8 @@ struct TemplateEditor: View {
         await model.setSelectedTemplateDefault()
       case .delete:
         await model.deleteSelectedTemplate()
+      case .discard:
+        model.discardTemplateChanges()
       }
     }
   }
@@ -258,12 +275,14 @@ struct TemplateEditor: View {
     case save
     case setDefault
     case delete
+    case discard
 
     var title: String {
       switch self {
       case .save: "Save shared Template?"
       case .setDefault: "Change the default Template?"
       case .delete: "Delete this shared Template?"
+      case .discard: "Discard unsaved changes?"
       }
     }
 
@@ -272,6 +291,7 @@ struct TemplateEditor: View {
       case .save: "Save"
       case .setDefault: "Set Default"
       case .delete: "Delete"
+      case .discard: "Discard Changes"
       }
     }
 
@@ -280,11 +300,12 @@ struct TemplateEditor: View {
       case .save: "Coworkers will see the saved Template changes."
       case .setDefault: "New outreach will use this Template by default."
       case .delete: "This cannot be undone. The server may refuse deletion of a required Template."
+      case .discard: "Your unsaved Template edits will be replaced by the saved version."
       }
     }
 
     var role: ButtonRole? {
-      self == .delete ? .destructive : nil
+      self == .delete || self == .discard ? .destructive : nil
     }
   }
 }
