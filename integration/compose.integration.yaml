@@ -1,0 +1,109 @@
+services:
+  proxy:
+    environment:
+      SERVICE_DOMAIN: integration.invalid
+    ports: !override
+      - target: 8080
+        published: "${FMG_INTEGRATION_HTTP_PORT}"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: ./integration/Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+      - type: volume
+        source: caddy_data
+        target: /data
+      - type: volume
+        source: caddy_config
+        target: /config
+
+  api:
+    entrypoint: ["/integration/runtime/container_entrypoint.sh"]
+    command: ["python", "-m", "app.run"]
+    environment: &integration-app-environment
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      WORKSPACE_ACCESS_KEY_HASH: ${WORKSPACE_ACCESS_KEY_HASH}
+      TRUSTED_PROXY_CIDRS: '["${BACKEND_SUBNET}"]'
+      EXTERNAL_BASE_URL: http://127.0.0.1:18081
+      S3_REGION: ${FMG_AWS_REGION}
+      S3_BUCKET: ${FMG_S3_BUCKET}
+      S3_ENDPOINT_URL: http://127.0.0.1:18081/s3
+      STEAM_STORE_BASE_URL: http://127.0.0.1:18081/steam
+      YOUTUBE_API_BASE_URL: http://127.0.0.1:18081/youtube/v3
+      DEEPSEEK_API_BASE_URL: http://127.0.0.1:18081/deepseek
+      AWS_REGION: ${FMG_AWS_REGION}
+      AWS_DEFAULT_REGION: ${FMG_AWS_REGION}
+      AWS_ACCESS_KEY_ID: synthetic-integration-access
+      AWS_SECRET_ACCESS_KEY: synthetic-integration-secret
+      AWS_EC2_METADATA_DISABLED: "true"
+      ANALYSIS_RETRY_BASE_DELAY_SECONDS: "1"
+      ANALYSIS_RETRY_MAX_DELAY_SECONDS: "2"
+      WORKSPACE_RATE_LIMIT: "10000"
+      FAKE_STATE_DIR: /integration-state
+    volumes:
+      - type: bind
+        source: ./integration
+        target: /integration
+        read_only: true
+      - type: bind
+        source: ${FMG_INTEGRATION_MASTER_KEY}
+        target: /etc/find-me-gamer/master.key
+        read_only: true
+      - type: volume
+        source: fake_state
+        target: /integration-state
+
+  worker:
+    entrypoint: ["/integration/runtime/container_entrypoint.sh"]
+    command: ["python", "/integration/runtime/worker.py"]
+    stop_signal: SIGQUIT
+    stop_grace_period: 20s
+    environment: *integration-app-environment
+    volumes:
+      - type: bind
+        source: ./integration
+        target: /integration
+        read_only: true
+      - type: bind
+        source: ${FMG_INTEGRATION_MASTER_KEY}
+        target: /etc/find-me-gamer/master.key
+        read_only: true
+      - type: volume
+        source: fake_state
+        target: /integration-state
+
+  beat:
+    entrypoint: ["/integration/runtime/container_entrypoint.sh"]
+    command: ["python", "/integration/runtime/beat.py"]
+    environment: *integration-app-environment
+    volumes:
+      - type: bind
+        source: ./integration
+        target: /integration
+        read_only: true
+      - type: bind
+        source: ${FMG_INTEGRATION_MASTER_KEY}
+        target: /etc/find-me-gamer/master.key
+        read_only: true
+      - type: volume
+        source: fake_state
+        target: /integration-state
+
+networks:
+  backend:
+    name: ${FMG_INTEGRATION_PROJECT}-backend
+
+volumes:
+  postgres_data:
+    name: ${FMG_INTEGRATION_PROJECT}-postgres-data
+  redis_data:
+    name: ${FMG_INTEGRATION_PROJECT}-redis-data
+  caddy_data:
+    name: ${FMG_INTEGRATION_PROJECT}-caddy-data
+  caddy_config:
+    name: ${FMG_INTEGRATION_PROJECT}-caddy-config
+  fake_state:
+    name: ${FMG_INTEGRATION_PROJECT}-fake-state
