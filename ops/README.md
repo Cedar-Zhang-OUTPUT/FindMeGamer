@@ -20,8 +20,9 @@ one-off backend hasher only through standard input. Reruns preserve both files.
 
 Before deployment, set `SERVICE_DOMAIN` to the approved company hostname,
 confirm that `BACKEND_SUBNET` does not overlap a host/VPC route, confirm
-`FMG_AWS_REGION`, and replace every remaining `replace-with-` value in the
-protected environment file:
+`FMG_AWS_REGION`, verify the configured `FMG_BACKUP_PREFIX` and
+`FMG_ACQUISITION_PREFIX`, and replace every remaining `replace-with-` value in
+the protected environment file:
 
 ```bash
 sudoedit /etc/find-me-gamer/app.env

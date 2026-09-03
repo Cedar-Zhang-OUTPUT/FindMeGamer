@@ -4,6 +4,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 backup_script="$repo_root/ops/backup_postgres.sh"
 restore_script="$repo_root/ops/restore_rehearsal.sh"
+bootstrap_script="$repo_root/ops/bootstrap_server.sh"
 service_unit="$repo_root/ops/systemd/find-me-gamer-backup.service"
 timer_unit="$repo_root/ops/systemd/find-me-gamer-backup.timer"
 
@@ -47,6 +48,31 @@ cleanup() {
   rm -rf -- "$test_root"
 }
 trap cleanup EXIT
+
+fresh_etc_dir="$test_root/fresh-etc"
+fresh_app_dir="$test_root/fresh-app"
+FMG_ETC_DIR="$fresh_etc_dir" FMG_APP_DIR="$fresh_app_dir" \
+  "$bootstrap_script" --test-mode >/dev/null
+fresh_env="$fresh_etc_dir/app.env"
+[[ "$(grep -c '^FMG_BACKUP_PREFIX=backups/$' "$fresh_env")" = "1" ]] ||
+  fail "fresh app.env must contain exactly one backups/ prefix"
+[[ "$(grep -c '^FMG_ACQUISITION_PREFIX=acquisition/$' "$fresh_env")" = "1" ]] ||
+  fail "fresh app.env must contain exactly one acquisition/ prefix"
+fresh_backup_plan="$(
+  unset FMG_S3_BUCKET FMG_AWS_REGION FMG_BACKUP_PREFIX FMG_ACQUISITION_PREFIX
+  set -a
+  source "$fresh_env"
+  set +a
+  FMG_DRY_RUN=1 \
+    FMG_DRY_RUN_TIMESTAMP=20260903T010203Z \
+    FMG_DRY_RUN_COMMIT=0123456789ab \
+    "$backup_script"
+)"
+assert_contains "$fresh_backup_plan" \
+  "s3://replace-with-private-artifact-bucket-name/backups/20260903T010203Z-0123456789ab-regular.dump"
+if grep -Fq '/acquisition/' <<<"$fresh_backup_plan"; then
+  fail "backup used the acquisition prefix"
+fi
 
 backup_plan="$(
   env "${common_environment[@]}" \

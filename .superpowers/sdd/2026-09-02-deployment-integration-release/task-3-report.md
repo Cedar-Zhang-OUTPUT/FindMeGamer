@@ -161,3 +161,106 @@ its contents would change that hash.
 ShellCheck is unavailable on this host. Bash syntax, deterministic dry-run,
 fake-backed live control flow, existing operations regressions, and static
 safety gates all pass; no other scoped concern remains.
+
+---
+
+## Fix round 1: protected S3 prefix configuration
+
+### Review finding and scope
+
+The review finding was reproducible on base
+`2203f8f4dfd2195895b7c7422a0830ab758d6a09`: a fresh temp-root bootstrap
+copied `.env.example` byte-for-byte, but that skeleton did not define the
+`FMG_BACKUP_PREFIX` required by `backup_postgres.sh`. Consequently the daily
+systemd service and Task 10 backup command would fail before constructing a
+backup. The controller also required the paired non-secret Task 4 acquisition
+prefix in the unique skeleton.
+
+The fix modifies only `.env.example`, `ops/tests/test_backup_scripts.sh`, the
+small existing operator sentence in `ops/README.md`, and this report. Backup,
+restore, bootstrap, systemd, Compose, application, IAM, and Task 4 production
+files are unchanged.
+
+### Genuine RED
+
+Before changing `.env.example`, the focused regression invoked the real
+`bootstrap_server.sh --test-mode` into a disposable root, cleared any inherited
+S3 configuration, sourced only its generated `app.env`, and then invoked the
+real backup script in dry-run mode. It failed at the new behavioral assertion:
+
+```text
+$ bash -n ops/tests/test_backup_scripts.sh && bash ops/tests/test_backup_scripts.sh
+backup scripts test: fresh app.env must contain exactly one backups/ prefix
+$ echo $?
+1
+```
+
+This is the reviewed defect rather than a missing fixture: bootstrap completed,
+but its actual generated protected environment lacked the required setting.
+
+### Minimal GREEN
+
+The public non-secret skeleton now contains exactly:
+
+```text
+FMG_BACKUP_PREFIX=backups/
+FMG_ACQUISITION_PREFIX=acquisition/
+```
+
+The regression proves each appears exactly once in a fresh protected app.env,
+then sources that file without independently injecting either prefix. The real
+backup dry-run constructs the exact regular object URI under `backups/` and
+does not use `acquisition/`. The existing bootstrap test continues to compare
+the fresh file byte-for-byte with the skeleton and proves that a later operator
+edit remains byte-preserved across rerun. The runbook now explicitly tells the
+operator to verify both configured prefixes alongside the existing Region and
+placeholder checks.
+
+Initial GREEN output:
+
+```text
+$ bash -n ops/tests/test_backup_scripts.sh && bash ops/tests/test_backup_scripts.sh
+backup scripts test: PASS
+```
+
+### Final verification commands and output
+
+The final gate ran Bash syntax for all Task 1–3 scripts/tests, focused twice,
+the complete existing bootstrap and Compose regression scripts, exact prefix
+uniqueness/default checks, `git diff --check`, exact allowed scope, added-line
+credential/private-key scan, generated dump/checksum artifact scan, and
+conditional ShellCheck. No Docker stack, database, S3, AWS, systemd, `/etc`, or
+`/opt` operation was executed.
+
+```text
+$ bash -n ops/bootstrap_server.sh ops/backup_postgres.sh \
+    ops/restore_rehearsal.sh ops/tests/test_compose_config.sh \
+    ops/tests/test_bootstrap_server.sh ops/tests/test_backup_scripts.sh
+$ bash ops/tests/test_backup_scripts.sh
+backup scripts test: PASS
+$ bash ops/tests/test_backup_scripts.sh
+backup scripts test: PASS
+$ bash ops/tests/test_bootstrap_server.sh
+bootstrap server test: PASS
+$ bash ops/tests/test_compose_config.sh
+true  # repeated for all 16 Compose assertions
+$ <exact prefix, diff, scope, secret, and artifact gates>
+$ <conditional ShellCheck gate>
+shellcheck: unavailable
+fix verification: PASS
+```
+
+### Fix self-review and handoff
+
+- Both values are public key prefixes, not credentials or secret material.
+- Exact safe defaults are nonempty and slash-terminated, satisfy Task 3 backup
+  validation, and remain distinct for Task 4 lifecycle/access boundaries.
+- Fresh bootstrap inherits them through its existing unique skeleton copy;
+  no code was added that appends to or rewrites an already-installed app.env.
+- Compose still renders the exact six services and all Task 1–3 regression
+  behavior remains green.
+- The fix commit subject is exactly `fix: provide s3 prefix configuration`;
+  its immutable hash is reported after commit.
+
+ShellCheck remains unavailable on this development host. No other scoped
+concern remains.
