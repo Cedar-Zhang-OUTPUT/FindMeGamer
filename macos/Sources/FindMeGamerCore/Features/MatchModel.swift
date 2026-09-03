@@ -216,7 +216,13 @@ public final class MatchModel {
         continue
       }
 
-      let generation = resultGeneration
+      let selectedResultGeneration: UInt64?
+      if selectedMatchID == id {
+        resultGeneration &+= 1
+        selectedResultGeneration = resultGeneration
+      } else {
+        selectedResultGeneration = nil
+      }
       do {
         let result = try await api.match(id: id)
         guard result.id == id else {
@@ -228,7 +234,9 @@ public final class MatchModel {
         }
         upsert(Self.task(from: result))
         clearRetrySuppressionIfCanonical(taskID: id, updatedAt: result.updatedAt)
-        if selectedMatchID == id, resultGeneration == generation {
+        if let selectedResultGeneration, selectedMatchID == id,
+          resultGeneration == selectedResultGeneration
+        {
           resultState = Self.viewState(for: result)
         }
       } catch {
@@ -285,19 +293,19 @@ public final class MatchModel {
   }
 
   private static func viewState(for result: MatchResult) -> MatchResultViewState {
-    if result.state == .noSuitableCreators
-      || (result.status == .succeeded && result.recommendedMatches.isEmpty
-        && result.otherMatches.isEmpty)
-    {
-      return .empty("No suitable creators found")
-    }
-    if result.status == .queued || result.status == .running || result.state == .pending {
+    switch result.status {
+    case .queued, .running:
       return .loading
+    case .failed, .superseded:
+      return .failed(result.failure?.message ?? "Match result is unavailable.")
+    case .succeeded:
+      if result.state == .noSuitableCreators
+        || (result.recommendedMatches.isEmpty && result.otherMatches.isEmpty)
+      {
+        return .empty("No suitable creators found")
+      }
+      return result.state == .available ? .available(result) : .loading
     }
-    if result.status == .succeeded {
-      return .available(result)
-    }
-    return .failed(result.failure?.message ?? "Match result is unavailable.")
   }
 
   private static func message(from error: Error, fallback: String) -> String {

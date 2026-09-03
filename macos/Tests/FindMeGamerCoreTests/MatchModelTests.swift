@@ -295,6 +295,49 @@ struct MatchModelTests {
   }
 
   @MainActor
+  @Test func newerTerminalRefreshSupersedesHeldExplicitReadForSameSelection() async {
+    let matchID = id(51)
+    let heldRead = MatchGate<MatchResult>()
+    let older = matchResult(
+      id: matchID, gameID: id(5), status: .running, state: .pending,
+      recommended: [], other: [], updated: 51)
+    let newer = matchResult(
+      id: matchID, gameID: id(5), status: .succeeded, state: .available,
+      recommended: [candidate(id: id(511), name: "Current Winner")], other: [], updated: 53)
+    let api = MatchAPI(matchOutcomes: [.gated(heldRead), .value(newer)])
+    let model = MatchModel(api: api)
+
+    let explicitOpen = Task { await model.openResult(id: matchID) }
+    #expect(await heldRead.waitUntilEntered())
+    await model.consume(
+      jobBatch: batch([
+        .match(
+          changedTask(
+            id: matchID, gameID: id(5), status: .succeeded, stage: .ranking, updated: 53))
+      ]))
+    #expect(model.resultState == .available(newer))
+
+    heldRead.resume(.success(older))
+    await explicitOpen.value
+    #expect(model.resultState == .available(newer))
+    #expect(await api.matchCalls == [matchID, matchID])
+  }
+
+  @MainActor
+  @Test func failedTerminalResultTakesPrecedenceOverPendingResultMarker() async {
+    let matchID = id(52)
+    let message = "Creator screening failed safely."
+    let failed = matchResult(
+      id: matchID, gameID: id(5), status: .failed, state: .pending,
+      recommended: [], other: [], failureMessage: message, updated: 54)
+    let model = MatchModel(api: MatchAPI(matchOutcomes: [.value(failed)]))
+
+    await model.openResult(id: matchID)
+
+    #expect(model.resultState == .failed(message))
+  }
+
+  @MainActor
   @Test func retryIsEligibleSingleFlightAmbiguitySafeAndSupportsBothBackendShapes() async {
     let source = matchTask(
       id: id(60), gameID: id(6), status: .failed, retryable: true, created: 60, updated: 60)
@@ -654,13 +697,14 @@ private func matchResult(
   state: MatchResultState,
   recommended: [MatchCandidate],
   other: [MatchCandidate],
+  failureMessage: String = "Safe failure",
   updated: TimeInterval = 100
 ) -> MatchResult {
   MatchResult(
     id: id, game: gameHeader(id: gameID), status: status, stage: .ranking,
     completedUnits: status == .succeeded ? 3 : 1, totalUnits: 3,
     resultCount: recommended.count + other.count, retryable: false,
-    failure: status == .failed ? JobFailure(code: "failed", message: "Safe failure") : nil,
+    failure: status == .failed ? JobFailure(code: "failed", message: failureMessage) : nil,
     correlationID: nil, supersedesID: nil, createdAt: Date(timeIntervalSince1970: 90),
     updatedAt: Date(timeIntervalSince1970: updated), startedAt: nil, completedAt: nil,
     state: state, recommendedMatches: recommended, otherMatches: other)

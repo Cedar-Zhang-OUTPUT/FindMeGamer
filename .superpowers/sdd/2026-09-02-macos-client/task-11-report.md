@@ -102,3 +102,41 @@ No binding internal-Demo defect is known. Task 12 owns Match UI consumption and
 later root wiring. Huge histories, malicious cursors, offline persistence,
 background polling changes, and defense-only hardening remain explicitly outside
 Task 11.
+
+## Binding review fix round 1
+
+Independent review identified two ordinary result-state defects on candidate
+`a3c622c6a94b72ee8f2b7f999277f26ab82a2a50`.
+
+Each regression was added and observed separately before production changed:
+
+- A held explicit read for selected Match A, followed by a newer terminal A
+  targeted refresh, first published the correct newer available result. Releasing
+  the older read then failed the final assertion because state regressed to
+  `.loading` instead of retaining the newer result.
+- An exact detail read returning normal backend shape `status == .failed` and
+  `state == .pending` failed the expected `.failed("Creator screening failed
+  safely.")` assertion because production returned `.loading`.
+
+The minimal fix gives every exact result read that may publish for the current
+selection a shared monotonically increasing request-order token. A selected
+terminal refresh now supersedes an older explicit read, and an explicit open
+started later supersedes that refresh. Exact reads for unrelated IDs do not
+advance the selected-result token. Result presentation now switches on Job status
+first: queued/running remain loading, failed/superseded are failed, and only
+succeeded details proceed to exact empty/available result-state mapping.
+
+Fix verification:
+
+- Focused Match suite passed twice: 11 tests / 1 suite, 0 failures each.
+- Full Swift suite: 126 tests / 13 suites, 0 failures.
+- Warnings-as-errors build passed; only the existing generated-target diagnostics
+  remained under its scoped exception.
+- Both changed Swift files pass strict `swift-format`; diff, scope,
+  manifest/resolution, dependency, secret, and artifact checks pass.
+- Safe invalid-URL app verification passed with bundle identifier
+  `com.findmegamer.desktop`, minimum macOS `14.0`, and the exact invalid URL.
+  Exact PID `61638` was terminated and no `FindMeGamer` process remained.
+
+The fix commit and immutable review-package byte count/SHA-256 are recorded in
+the post-commit handoff because embedding them here would change those values.
