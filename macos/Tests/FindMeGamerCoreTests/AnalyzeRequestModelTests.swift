@@ -262,6 +262,66 @@ struct AnalyzeRequestModelTests {
     #expect(model.jobs == [returned])
     #expect(await wake.count == 1)
   }
+
+  @MainActor
+  @Test func retryFailureReplacesStaleSubmitValidationWithItsOwnFeedback() async {
+    let failed = analysisJob(status: .failed, retryable: true)
+    let api = AnalyzeAPI(
+      retries: [
+        .failure(
+          APIError(
+            code: "retry_failed", message: "Retry is temporarily unavailable.", retryable: true)
+        )
+      ])
+    let model = AnalyzeRequestModel(api: api, idempotencyKey: KeySequence.one.provider)
+
+    model.urlText = "not a supported URL"
+    await model.submit()
+    #expect(model.validationMessage == "Enter a YouTube creator page URL.")
+
+    await model.retry(job: failed)
+
+    #expect(model.validationMessage == nil)
+    #expect(model.actionError == "Retry is temporarily unavailable.")
+    #expect(await api.retryCalls.map(\.id) == [failed.id])
+  }
+
+  @MainActor
+  @Test func reanalysisFailureAndSuccessReplaceStaleSubmitValidation() async {
+    let profile = ExistingProfile(
+      profileID: UUID(uuidString: "61000000-0000-4000-8000-000000000001")!,
+      profileType: .creator, canonicalTargetID: "UC-existing",
+      canonicalURL: "https://youtube.com/channel/UC-existing")
+    let returned = analysisJob(
+      id: UUID(uuidString: "61000000-0000-4000-8000-000000000002")!,
+      url: profile.canonicalURL, mode: .reanalyze)
+    let api = AnalyzeAPI(
+      submissions: [
+        .failure(
+          APIError(
+            code: "reanalyze_failed", message: "Re-analysis is temporarily unavailable.",
+            retryable: true)),
+        .value(.job(returned)),
+      ])
+    let model = AnalyzeRequestModel(api: api, idempotencyKey: KeySequence.two.provider)
+
+    model.urlText = "invalid"
+    await model.submit()
+    #expect(model.validationMessage == "Enter a YouTube creator page URL.")
+
+    await model.reanalyze(.profile(profile))
+    #expect(model.validationMessage == nil)
+    #expect(model.actionError == "Re-analysis is temporarily unavailable.")
+
+    await model.submit()
+    #expect(model.validationMessage == "Enter a YouTube creator page URL.")
+    await model.reanalyze(.profile(profile))
+
+    #expect(model.validationMessage == nil)
+    #expect(model.actionError == nil)
+    #expect(model.jobs == [returned])
+    #expect(model.existingProfile == nil)
+  }
 }
 
 private struct CreateCall: Sendable, Equatable {

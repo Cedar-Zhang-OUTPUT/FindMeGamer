@@ -82,6 +82,7 @@ public final class AnalyzeRequestModel {
 
     guard beginReanalysis(identity) else { return }
     defer { endReanalysis(identity) }
+    validationMessage = nil
     actionError = nil
 
     do {
@@ -98,6 +99,7 @@ public final class AnalyzeRequestModel {
       return
     }
     defer { retryingJobIDs.remove(job.id) }
+    validationMessage = nil
     actionError = nil
 
     do {

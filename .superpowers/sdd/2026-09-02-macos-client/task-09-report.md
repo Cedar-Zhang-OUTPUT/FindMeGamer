@@ -114,3 +114,41 @@ No binding internal-Demo defect is known. Root dependency/lifecycle wiring and
 the destination Profile Sheet are intentionally deferred to Tasks 17 and 10;
 app relaunch history persistence and extreme/adversarial input or Job-history
 scales remain explicitly outside Task 9.
+
+## Binding review fix after commit 866b70a
+
+Independent review identified one normal cross-action feedback defect: an
+invalid Submit left `validationMessage` populated, and a later accepted Retry
+or Re-analyze did not clear it. Because the Inspector intentionally gives local
+validation first display priority, that stale message hid a Retry/Re-analyze
+API failure and remained visible even after successful Re-analyze.
+
+Two behavior-first model regressions were added before production changed. One
+runs invalid Submit followed by failed Retry and requires the Retry error with
+old validation cleared. The other runs invalid Submit followed by failed
+Re-analyze, then repeats invalid Submit followed by successful Re-analyze; it
+requires the current action error or returned Job state and no stale
+validation. The exact focused command failed with three literal expectations:
+all observed the old `Enter a YouTube creator page URL.` instead of `nil`.
+
+The minimal production fix clears `validationMessage` only after Retry or
+Re-analyze has passed eligibility and acquired its existing single-flight
+identity. Unsupported/no-op calls therefore retain current feedback, while an
+accepted cross-action owns the feedback surface. No Inspector hierarchy,
+validation rule, API, polling, root, Task 8, or presentation code changed.
+
+- Exact new regressions: 2 tests / 1 suite GREEN after the three-assertion RED.
+- Complete Analyze model suite: 8 tests / 1 suite, 0 failures.
+- Presentation suite: 4 tests / 1 suite, 0 failures.
+- Full Swift suite: 105 tests / 11 suites, 0 failures, 0.132 seconds.
+- Strict warnings-as-errors build: exit 0; only the package's pre-existing
+  generated-target diagnostics remain under its scoped exception.
+- Both changed Swift files pass strict `swift-format`; diff, scope, manifest,
+  resolution, secret, and artifact checks pass.
+- Safe invalid-URL app verification passed with bundle identifier
+  `com.findmegamer.desktop`, minimum macOS `14.0`, and the exact invalid URL.
+  Exact PID `15956` was terminated and no `FindMeGamer` process remained.
+
+The focused fix commit and immutable fix-package byte count/SHA-256 are
+recorded in the post-commit handoff because embedding them here would change
+those identifiers.
