@@ -40,6 +40,12 @@ extension ProfileCard {
 @MainActor
 @Observable
 public final class LibraryModel {
+  private struct FavoriteOverlay {
+    var revision: UInt64
+    var card: ProfileCard
+    var isUpdating: Bool
+  }
+
   private struct TypeState {
     var items: [ProfileCard] = []
     var query = ""
@@ -53,7 +59,12 @@ public final class LibraryModel {
     var highlightedProfileID: UUID?
     var loaded = false
     var dirty = false
+    var pendingReload = false
+    var criteriaGeneration: UInt64 = 0
     var listGeneration: UInt64 = 0
+    var favoriteRevision: UInt64 = 0
+    var favoriteOverlays: [UUID: FavoriteOverlay] = [:]
+    var errorGeneration: UInt64 = 0
     var highlightGeneration: UInt64 = 0
   }
 
@@ -101,7 +112,10 @@ public final class LibraryModel {
   }
 
   public func clearError() {
-    updateState(for: selectedType) { $0.error = nil }
+    updateState(for: selectedType) {
+      $0.errorGeneration &+= 1
+      $0.error = nil
+    }
   }
 
   public func setOnlyCollection(_ enabled: Bool) {
@@ -110,7 +124,11 @@ public final class LibraryModel {
     debounceTasks[type]?.cancel()
     debounceTasks[type] = nil
     invalidateList(for: type, clearCursor: true)
-    updateState(for: type) { $0.onlyCollection = enabled }
+    updateState(for: type) {
+      $0.onlyCollection = enabled
+      $0.criteriaGeneration &+= 1
+      $0.pendingReload = true
+    }
     scheduleFirstPage(for: type)
   }
 
@@ -119,8 +137,12 @@ public final class LibraryModel {
     guard state(for: type).query != query else { return }
     debounceTasks[type]?.cancel()
     invalidateList(for: type, clearCursor: true)
-    updateState(for: type) { $0.query = query }
-    let expectedGeneration = state(for: type).listGeneration
+    updateState(for: type) {
+      $0.query = query
+      $0.criteriaGeneration &+= 1
+      $0.pendingReload = true
+    }
+    let expectedCriteriaGeneration = state(for: type).criteriaGeneration
     let clock = self.clock
     debounceTasks[type] = Task { @MainActor [weak self] in
       do {
@@ -128,10 +150,12 @@ public final class LibraryModel {
       } catch {
         return
       }
-      guard let self, self.state(for: type).listGeneration == expectedGeneration else { return }
+      guard let self,
+        self.state(for: type).criteriaGeneration == expectedCriteriaGeneration
+      else { return }
       self.debounceTasks[type] = nil
       _ = await self.loadFirstPage(
-        for: type, expectedGeneration: expectedGeneration, skipIfLoading: true)
+        for: type, expectedCriteriaGeneration: expectedCriteriaGeneration, skipIfLoading: true)
     }
   }
 
@@ -151,8 +175,11 @@ public final class LibraryModel {
     let generation = initialState.listGeneration
     let query = initialState.query
     let onlyCollection = initialState.onlyCollection
+    let favoriteRevisions = initialState.favoriteOverlays.mapValues(\.revision)
+    let errorGeneration = initialState.errorGeneration &+ 1
     updateState(for: type) {
       $0.isLoadingNextPage = true
+      $0.errorGeneration = errorGeneration
       $0.error = nil
     }
     do {
@@ -161,17 +188,20 @@ public final class LibraryModel {
       guard state(for: type).listGeneration == generation else { return }
       updateState(for: type) { state in
         var seen = Set(state.items.map(\.id))
-        for item in page.items where seen.insert(item.id).inserted {
+        let items = reconciled(
+          page.items, with: state, requestFavoriteRevisions: favoriteRevisions)
+        for item in items where seen.insert(item.id).inserted {
           state.items.append(item)
         }
         state.nextCursor = page.nextCursor
         state.isLoadingNextPage = false
-        state.error = nil
+        if state.errorGeneration == errorGeneration { state.error = nil }
       }
     } catch {
       guard state(for: type).listGeneration == generation else { return }
       updateState(for: type) {
         $0.isLoadingNextPage = false
+        $0.errorGeneration &+= 1
         $0.error = Self.loadError(from: error)
       }
     }
@@ -185,10 +215,15 @@ public final class LibraryModel {
     let requestedFavorite = !original.isFavorite
     let optimistic = original.replacingFavorite(with: requestedFavorite)
 
-    invalidateList(for: type, clearCursor: false)
-    let favoriteGeneration = state(for: type).listGeneration
+    if !state(for: type).pendingReload {
+      invalidateList(for: type, clearCursor: false)
+    }
     updateState(for: type) { state in
+      state.favoriteRevision &+= 1
+      state.favoriteOverlays[id] = FavoriteOverlay(
+        revision: state.favoriteRevision, card: optimistic, isUpdating: true)
       state.favoriteUpdatingIDs.insert(id)
+      state.errorGeneration &+= 1
       state.error = nil
       state.items[location.index] = optimistic
     }
@@ -199,10 +234,13 @@ public final class LibraryModel {
       guard canonical.profileType == type, canonical.id == id else {
         restoreFavoriteFailure(
           id: id, type: type, original: original, originalIndex: location.index,
-          optimistic: optimistic, generation: favoriteGeneration)
+          optimistic: optimistic)
         return
       }
       updateState(for: type) { state in
+        state.favoriteRevision &+= 1
+        state.favoriteOverlays[id] = FavoriteOverlay(
+          revision: state.favoriteRevision, card: canonical, isUpdating: false)
         state.favoriteUpdatingIDs.remove(id)
         guard let index = state.items.firstIndex(where: { $0.id == id }) else { return }
         if state.onlyCollection && !canonical.isFavorite {
@@ -214,7 +252,7 @@ public final class LibraryModel {
     } catch {
       restoreFavoriteFailure(
         id: id, type: type, original: original, originalIndex: location.index,
-        optimistic: optimistic, generation: favoriteGeneration)
+        optimistic: optimistic)
     }
   }
 
@@ -264,51 +302,63 @@ public final class LibraryModel {
   }
 
   private func scheduleFirstPage(for type: ProfileType) {
-    let expectedGeneration = state(for: type).listGeneration
+    updateState(for: type) { $0.pendingReload = true }
+    let expectedCriteriaGeneration = state(for: type).criteriaGeneration
     Task { @MainActor [weak self] in
       _ = await self?.loadFirstPage(
-        for: type, expectedGeneration: expectedGeneration, skipIfLoading: true)
+        for: type, expectedCriteriaGeneration: expectedCriteriaGeneration, skipIfLoading: true)
     }
   }
 
   private func loadFirstPage(
     for type: ProfileType,
-    expectedGeneration: UInt64? = nil,
+    expectedCriteriaGeneration: UInt64? = nil,
     skipIfLoading: Bool = false
   ) async -> Bool {
     let existing = state(for: type)
-    if let expectedGeneration, existing.listGeneration != expectedGeneration { return false }
+    if let expectedCriteriaGeneration,
+      existing.criteriaGeneration != expectedCriteriaGeneration
+    {
+      return false
+    }
     if skipIfLoading && existing.isLoadingFirstPage { return false }
 
     debounceTasks[type]?.cancel()
     debounceTasks[type] = nil
     let generation = existing.listGeneration &+ 1
+    let errorGeneration = existing.errorGeneration &+ 1
     updateState(for: type) {
       $0.listGeneration = generation
       $0.isLoadingFirstPage = true
       $0.isLoadingNextPage = false
+      $0.errorGeneration = errorGeneration
       $0.error = nil
     }
     let snapshot = state(for: type)
+    let favoriteRevisions = snapshot.favoriteOverlays.mapValues(\.revision)
 
     do {
       let page = try await api.listProfiles(
         type: type, query: snapshot.query, onlyCollection: snapshot.onlyCollection,
         cursor: nil, limit: 50)
       guard state(for: type).listGeneration == generation else { return false }
-      updateState(for: type) {
-        $0.items = page.items
-        $0.nextCursor = page.nextCursor
-        $0.isLoadingFirstPage = false
-        $0.loaded = true
-        $0.dirty = false
-        $0.error = nil
+      updateState(for: type) { state in
+        state.items = reconciled(
+          page.items, with: state, requestFavoriteRevisions: favoriteRevisions)
+        state.nextCursor = page.nextCursor
+        state.isLoadingFirstPage = false
+        state.loaded = true
+        state.dirty = false
+        state.pendingReload = false
+        if state.errorGeneration == errorGeneration { state.error = nil }
       }
       return true
     } catch {
       guard state(for: type).listGeneration == generation else { return false }
       updateState(for: type) {
         $0.isLoadingFirstPage = false
+        $0.pendingReload = false
+        $0.errorGeneration &+= 1
         $0.error = Self.loadError(from: error)
       }
       return false
@@ -329,17 +379,36 @@ public final class LibraryModel {
 
   private func restoreFavoriteFailure(
     id: UUID, type: ProfileType, original: ProfileCard, originalIndex: Int,
-    optimistic: ProfileCard, generation: UInt64
+    optimistic: ProfileCard
   ) {
     updateState(for: type) { state in
+      state.favoriteRevision &+= 1
+      state.favoriteOverlays[id] = FavoriteOverlay(
+        revision: state.favoriteRevision, card: original, isUpdating: false)
       state.favoriteUpdatingIDs.remove(id)
       if let currentIndex = state.items.firstIndex(where: { $0.id == id }),
-        state.listGeneration == generation || state.items[currentIndex] == optimistic
+        state.items[currentIndex] == optimistic
       {
         state.items.remove(at: currentIndex)
         state.items.insert(original, at: min(originalIndex, state.items.count))
       }
+      state.errorGeneration &+= 1
       state.error = Self.favoriteError()
+    }
+  }
+
+  private func reconciled(
+    _ items: [ProfileCard], with state: TypeState,
+    requestFavoriteRevisions: [UUID: UInt64]
+  ) -> [ProfileCard] {
+    items.compactMap { item in
+      guard let overlay = state.favoriteOverlays[item.id],
+        overlay.isUpdating || requestFavoriteRevisions[item.id] != overlay.revision
+      else { return item }
+      if state.onlyCollection && !overlay.isUpdating && !overlay.card.isFavorite {
+        return nil
+      }
+      return overlay.card
     }
   }
 

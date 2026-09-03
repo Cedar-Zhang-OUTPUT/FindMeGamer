@@ -127,3 +127,69 @@ None within the stable company-internal Demo boundary. Task 8 owns Library UI,
 profile sheets, Analyze submission, and root wiring. Extreme input rates,
 malicious payloads, huge-library optimization, persistent/offline caching, and
 public multi-tenant synchronization remain intentionally out of scope.
+
+## Independent-review fix round 1
+
+### Finding and regression RED
+
+The review found that Favorite used the same `listGeneration` needed by a
+pending Search debounce or queued Only Collection reload. Toggling Favorite
+therefore made the scheduled current-criteria load silently return without an
+API request, leaving old cards under new controls. A queued filter request that
+had already begun could likewise be discarded with its returned cursor.
+
+Three production-coupled tests were added first. Against commit
+`51bd9d57d99173a9da6e91a2a699595a470bc680`, the two Search cases both failed
+at literal `reloadStarted` expectations because the second list request never
+occurred. The Only Collection case failed because `nextCursor` remained `nil`
+instead of the literal `filtered-cursor`. This was the required genuine
+behavior RED.
+
+The regressions exercise both response orderings: a current Search result
+lands while Favorite success is held, and another current Search result lands
+after Favorite failure. The queued Only Collection request is held until after
+canonical Favorite success. They assert one mutation, the exact latest list
+arguments, canonical/rollback favorite value, current cursor, and stable
+Favorite error ownership.
+
+### Minimal ownership separation
+
+Each type now has a criteria generation and an explicit pending-reload bit
+separate from list-response generation. Search/filter changes and scheduled
+loads own the former; ordinary newer/stale list requests own the latter.
+Favorite still invalidates unrelated old list work, but preserves the one
+reload required by the user's current query/filter.
+
+Per-profile Favorite overlays carry a monotonic revision, the optimistic or
+settled canonical/rollback card, and in-flight state. A preserved current-list
+request captures the revisions it began with and reconciles only profiles
+whose Favorite changed while it was active. This accepts the current page and
+cursor without allowing it to overwrite optimistic, canonical, or rolled-back
+state. Confirmed unfavorites remain excluded from Only Collection while an
+optimistic unfavorite remains visible until confirmation, preserving the
+original contract.
+
+Error revisions ensure a later successful list completion cannot clear a
+Favorite failure that completed after that list request began. A genuinely
+later list failure may still become the current visible error. No API, UI,
+AppSession, JobPoller, generated output, package, backend, retry, persistence,
+or provider behavior changed.
+
+### Fix verification
+
+- Exact Search regressions: 2/2 GREEN.
+- Exact queued Only Collection regression: 1/1 GREEN.
+- Complete focused Library suite: 18 tests / 1 suite, 0 failures; repeated 5/5.
+- Full Swift suite: 86 tests / 8 suites, 0 failures, 0.120 s.
+- Strict Swift build with `-warnings-as-errors`: exit 0. Existing diagnostics
+  are limited to the generated target's pre-existing warning exception.
+- Both changed Swift files pass strict `swift-format`; `git diff --check` and
+  scope/secret/artifact checks pass.
+- Safe invalid-URL app verification launched exact PID `69536`; that PID was
+  terminated, `kill -0` failed afterward, and no `FindMeGamer` process
+  remained. The staged bundle contains `invalid://local-verification`.
+
+The fix commit subject is `fix: preserve library reloads during favorites`.
+Its exact SHA and immutable fix-package byte count/SHA-256 are recorded in the
+post-commit handoff because embedding those values in this same commit would
+change the identifiers being reported.

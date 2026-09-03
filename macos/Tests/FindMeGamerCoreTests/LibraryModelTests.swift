@@ -367,6 +367,143 @@ struct LibraryModelTests {
   }
 
   @MainActor
+  @Test func pendingSearchSurvivesFavoriteSuccessAndKeepsCanonicalCard() async {
+    let favoriteGate = CompletionGate<ProfileCard>()
+    let clock = ManualClock()
+    let id = UUID(uuidString: "00000000-0000-0000-0000-000000000421")!
+    let original = creatorCard(id, name: "Target", favorite: false)
+    let canonical = creatorCard(id, name: "Canonical Target", favorite: true)
+    let api = LibraryAPI(
+      listOutcomes: [
+        .page(page([original], cursor: "old-cursor")),
+        .page(page([original], cursor: "latest-cursor")),
+      ],
+      favoriteOutcomes: [.gated(favoriteGate)])
+    let model = LibraryModel(api: api, clock: clock)
+    await model.loadFirstPage()
+
+    model.setSearch("latest query")
+    #expect(await eventually { await clock.pendingSleepCount == 1 })
+    let update = Task { await model.toggleFavorite(id: id) }
+    await favoriteGate.waitUntilEntered()
+    await clock.advance(by: .milliseconds(299))
+    await Task.yield()
+    #expect(await api.listCallCount == 1)
+    await clock.advance(by: .milliseconds(1))
+    let reloadStarted = await eventually { await api.listCallCount == 2 }
+    #expect(reloadStarted)
+    guard reloadStarted else {
+      favoriteGate.resume(.success(canonical))
+      await update.value
+      return
+    }
+
+    #expect(model.items.first?.isFavorite == true)
+    favoriteGate.resume(.success(canonical))
+    await update.value
+
+    #expect(model.items == [canonical])
+    #expect(model.query == "latest query")
+    #expect(model.nextCursor == "latest-cursor")
+    #expect(model.error == nil)
+    #expect(await api.favoriteCallCount == 1)
+    #expect(
+      await api.listCalls[1]
+        == ListCall(
+          type: .creator, query: "latest query", onlyCollection: false, cursor: nil, limit: 50)
+    )
+  }
+
+  @MainActor
+  @Test func pendingSearchSurvivesFavoriteFailureAndKeepsRollbackErrorAfterReload() async {
+    let favoriteGate = CompletionGate<ProfileCard>()
+    let reloadGate = CompletionGate<ProfileCardPage>()
+    let clock = ManualClock()
+    let id = UUID(uuidString: "00000000-0000-0000-0000-000000000422")!
+    let original = creatorCard(id, name: "Target", favorite: false)
+    let api = LibraryAPI(
+      listOutcomes: [
+        .page(page([original], cursor: "old-cursor")),
+        .gated(reloadGate),
+      ],
+      favoriteOutcomes: [.gated(favoriteGate)])
+    let model = LibraryModel(api: api, clock: clock)
+    await model.loadFirstPage()
+
+    model.setSearch("failure query")
+    #expect(await eventually { await clock.pendingSleepCount == 1 })
+    let update = Task { await model.toggleFavorite(id: id) }
+    await favoriteGate.waitUntilEntered()
+    await clock.advance(by: .milliseconds(300))
+    let reloadStarted = await eventually { await api.listCallCount == 2 }
+    #expect(reloadStarted)
+    guard reloadStarted else {
+      favoriteGate.resume(
+        .failure(APIError(code: "server_error", message: "unsafe", retryable: true)))
+      await update.value
+      return
+    }
+
+    favoriteGate.resume(
+      .failure(APIError(code: "server_error", message: "unsafe", retryable: true)))
+    await update.value
+    #expect(model.items == [original])
+    #expect(model.error?.message == "Could not update favorite.")
+
+    reloadGate.resume(
+      .success(
+        page([creatorCard(id, name: "Target", favorite: true)], cursor: "latest-cursor")))
+    #expect(await eventually { !model.isLoadingFirstPage })
+
+    #expect(model.items == [original])
+    #expect(model.query == "failure query")
+    #expect(model.nextCursor == "latest-cursor")
+    #expect(model.error?.message == "Could not update favorite.")
+    #expect(await api.favoriteCallCount == 1)
+  }
+
+  @MainActor
+  @Test func queuedOnlyCollectionReloadSurvivesImmediateFavorite() async {
+    let favoriteGate = CompletionGate<ProfileCard>()
+    let reloadGate = CompletionGate<ProfileCardPage>()
+    let id = UUID(uuidString: "00000000-0000-0000-0000-000000000423")!
+    let original = creatorCard(id, name: "Target", favorite: false)
+    let canonical = creatorCard(id, name: "Canonical Target", favorite: true)
+    let api = LibraryAPI(
+      listOutcomes: [
+        .page(page([original], cursor: "old-cursor")),
+        .gated(reloadGate),
+      ],
+      favoriteOutcomes: [.gated(favoriteGate)])
+    let model = LibraryModel(api: api, clock: ManualClock())
+    await model.loadFirstPage()
+
+    model.setOnlyCollection(true)
+    let update = Task { await model.toggleFavorite(id: id) }
+    await favoriteGate.waitUntilEntered()
+    let reloadStarted = await eventually { await api.listCallCount == 2 }
+    #expect(reloadStarted)
+    guard reloadStarted else {
+      favoriteGate.resume(.success(canonical))
+      await update.value
+      return
+    }
+
+    favoriteGate.resume(.success(canonical))
+    await update.value
+    #expect(model.items == [canonical])
+    reloadGate.resume(.success(page([original], cursor: "filtered-cursor")))
+    #expect(await eventually { !model.isLoadingFirstPage })
+
+    #expect(model.items == [canonical])
+    #expect(model.onlyCollection)
+    #expect(model.nextCursor == "filtered-cursor")
+    #expect(
+      await api.listCalls[1]
+        == ListCall(type: .creator, query: "", onlyCollection: true, cursor: nil, limit: 50))
+  }
+
+  @MainActor
   @Test func selectedSuccessfulAnalysisRefreshesOnceAndHighlightsForExactlyTwoSeconds() async {
     let clock = ManualClock()
     let firstAffectedID = UUID(uuidString: "00000000-0000-0000-0000-000000000501")!
