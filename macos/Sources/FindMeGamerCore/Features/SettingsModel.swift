@@ -44,7 +44,7 @@ public final class SettingsModel {
   public static let fontSizeKey = "font-size"
 
   public let connectionServices: [ConnectionService] = [.steam, .youtube, .deepSeek]
-  public let workspaceStatus: String
+  public private(set) var workspaceStatus: String
   public let apiBaseURL: String
   public let appVersion: String
 
@@ -166,6 +166,10 @@ public final class SettingsModel {
   public func restoreAppearanceDefaults() {
     setAppearanceMode(.system)
     setFontSize(.default)
+  }
+
+  public func updateWorkspaceConnection(isOnline: Bool) {
+    workspaceStatus = isOnline ? "Connected" : "Offline"
   }
 
   public func loadSMTPSettings() async {
