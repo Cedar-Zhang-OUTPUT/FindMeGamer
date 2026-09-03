@@ -1,0 +1,191 @@
+name: find-me-gamer
+
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  REDIS_URL: redis://redis:6379/0
+  WORKSPACE_ACCESS_KEY_HASH: ${WORKSPACE_ACCESS_KEY_HASH}
+  EXTERNAL_BASE_URL: https://${SERVICE_DOMAIN}
+  S3_REGION: ${FMG_AWS_REGION}
+  S3_BUCKET: ${FMG_S3_BUCKET}
+  AWS_REGION: ${FMG_AWS_REGION}
+  AWS_DEFAULT_REGION: ${FMG_AWS_REGION}
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+x-app-build: &app-build
+  context: ./backend
+  dockerfile: Dockerfile
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  logging: *default-logging
+  networks:
+    - backend
+
+services:
+  proxy:
+    <<: *service-defaults
+    image: caddy:2-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      SERVICE_DOMAIN: ${SERVICE_DOMAIN}
+    ports:
+      - target: 80
+        published: "80"
+        protocol: tcp
+      - target: 443
+        published: "443"
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: ./Caddyfile
+        target: /etc/caddy/Caddyfile
+        read_only: true
+      - type: volume
+        source: caddy_data
+        target: /data
+      - type: volume
+        source: caddy_config
+        target: /config
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  api:
+    <<: *service-defaults
+    build: *app-build
+    command: python -m app.run
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8000"
+    volumes:
+      - type: bind
+        source: /etc/find-me-gamer/master.key
+        target: /etc/find-me-gamer/master.key
+        read_only: true
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  worker:
+    <<: *service-defaults
+    build: *app-build
+    command: >-
+      celery -A app.workers.celery_app:celery_app worker
+      --loglevel=INFO --concurrency=5
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - type: bind
+        source: /etc/find-me-gamer/master.key
+        target: /etc/find-me-gamer/master.key
+        read_only: true
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          celery -A app.workers.celery_app:celery_app inspect ping
+          --destination "celery@$$HOSTNAME" --timeout 5
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  beat:
+    <<: *service-defaults
+    build: *app-build
+    command: >-
+      celery -A app.workers.celery_app:celery_app beat --loglevel=INFO
+    environment: *app-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          from pathlib import Path;
+          raise SystemExit(b'beat' not in Path('/proc/1/cmdline').read_bytes())
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  postgres:
+    <<: *service-defaults
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - type: volume
+        source: postgres_data
+        target: /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  redis:
+    <<: *service-defaults
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - type: volume
+        source: redis_data
+        target: /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  backend:
+    name: find-me-gamer-backend
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: find-me-gamer-postgres-data
+  redis_data:
+    name: find-me-gamer-redis-data
+  caddy_data:
+    name: find-me-gamer-caddy-data
+  caddy_config:
+    name: find-me-gamer-caddy-config
