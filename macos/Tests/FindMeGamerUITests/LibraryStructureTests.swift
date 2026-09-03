@@ -142,24 +142,26 @@ import Testing
   }
 
   @MainActor
-  @Test func invalidatedNextPageExitsBeforeOneSameCursorReplacement() async {
+  @Test func removingLastCollectionItemKeepsHostUntilSameCursorReplacement() async {
     let firstID = UUID(uuidString: "30000000-0000-4000-8000-000000000001")!
     let secondID = UUID(uuidString: "30000000-0000-4000-8000-000000000002")!
     let heldPage = PaginationPageGate()
-    let first = paginationCreator(firstID, name: "First")
-    let favorite = paginationCreator(firstID, name: "First", favorite: true)
-    let second = paginationCreator(secondID, name: "Second")
+    let first = paginationCreator(firstID, name: "First", favorite: true)
+    let unfavorite = paginationCreator(firstID, name: "First")
+    let second = paginationCreator(secondID, name: "Second", favorite: true)
     let api = PaginationAPI(
       outcomes: [
         .page(ProfileCardPage(items: [first], nextCursor: "cursor-a")),
         .gated(heldPage),
         .page(ProfileCardPage(items: [second], nextCursor: "cursor-b")),
       ],
-      favoriteResult: favorite)
+      favoriteResult: unfavorite)
     let model = LibraryModel(api: api)
     let pagination = LibraryPaginationCoordinator()
 
-    await model.loadFirstPage()
+    model.setOnlyCollection(true)
+    #expect(await paginationEventually { await api.listCallCount == 1 })
+    #expect(await paginationEventually { !model.isLoadingFirstPage })
     let request = paginationRequest(model)
     let firstTaskID = pagination.taskID(for: request)
     let oldLoad = Task { @MainActor in
@@ -172,8 +174,18 @@ import Testing
 
     await model.toggleFavorite(id: firstID)
     pagination.observe(paginationObservation(model))
+    #expect(model.items.isEmpty)
     #expect(model.nextCursor == "cursor-a")
     #expect(model.canLoadNextPage)
+    #expect(
+      LibraryContentPolicy.presentation(
+        itemCount: model.items.count,
+        isLoadingFirstPage: model.isLoadingFirstPage,
+        hasError: model.error != nil,
+        hasNextCursor: model.nextCursor != nil,
+        isLoadingNextPage: model.isLoadingNextPage,
+        keepsPaginationHost: pagination.keepsPaginationHost)
+        == .scrollable(showEmptyState: true))
     #expect(await api.listCallCount == 2)
     #expect(await api.maximumConcurrentListCalls == 1)
 
@@ -190,8 +202,7 @@ import Testing
 
     #expect(await api.listCallCount == 3)
     #expect(await api.maximumConcurrentListCalls == 1)
-    #expect(model.items.map(\.id) == [firstID, secondID])
-    #expect(model.items[0].isFavorite)
+    #expect(model.items.map(\.id) == [secondID])
     #expect(model.nextCursor == "cursor-b")
   }
 
@@ -434,4 +445,13 @@ private func paginationCreator(
       canonicalURL: "https://youtube.example/\(id)", favorite: favorite,
       currentFacts: [:], brief: [:], sourceStatus: [:], lastAnalyzedAt: nil,
       nextAnalysisAt: nil, contact: nil))
+}
+
+@MainActor
+private func paginationEventually(_ predicate: @MainActor () async -> Bool) async -> Bool {
+  for _ in 0..<300 {
+    if await predicate() { return true }
+    await Task.yield()
+  }
+  return await predicate()
 }

@@ -17,6 +17,31 @@ enum LibraryAccessibility {
   static let grid = "library.grid"
 }
 
+enum LibraryContentPresentation: Equatable {
+  case initialLoading
+  case empty
+  case scrollable(showEmptyState: Bool)
+}
+
+enum LibraryContentPolicy {
+  static func presentation(
+    itemCount: Int,
+    isLoadingFirstPage: Bool,
+    hasError: Bool,
+    hasNextCursor: Bool,
+    isLoadingNextPage: Bool,
+    keepsPaginationHost: Bool
+  ) -> LibraryContentPresentation {
+    if itemCount > 0 { return .scrollable(showEmptyState: false) }
+    if hasNextCursor || isLoadingNextPage || keepsPaginationHost {
+      return .scrollable(showEmptyState: true)
+    }
+    if isLoadingFirstPage { return .initialLoading }
+    if hasError { return .scrollable(showEmptyState: false) }
+    return .empty
+  }
+}
+
 struct LibraryPaginationRequest: Hashable, Sendable {
   let profileType: ProfileType
   let query: String
@@ -62,6 +87,11 @@ final class LibraryPaginationCoordinator {
   private var queuedRequest: LibraryPaginationRequest?
   private var wasLoadingFirstPage = false
   private var requestBeforeFirstPage: LibraryPaginationRequest?
+
+  var keepsPaginationHost: Bool {
+    activeRequest != nil || pendingReplacement != nil || queuedRequest != nil
+      || failedRequest != nil
+  }
 
   func taskID(for request: LibraryPaginationRequest) -> LibraryPaginationTaskID {
     LibraryPaginationTaskID(request: request, revision: revision)
@@ -178,17 +208,26 @@ struct LibraryView: View {
   }
 
   @ViewBuilder private var libraryContent: some View {
-    if model.items.isEmpty && model.isLoadingFirstPage {
+    switch contentPresentation {
+    case .initialLoading:
       ProgressView()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    } else if model.items.isEmpty && model.error == nil {
+    case .empty:
       ContentUnavailableView(
         LibraryCopy.empty,
         systemImage: model.selectedType == .game ? "gamecontroller" : "person.2"
       )
       .frame(maxWidth: .infinity, maxHeight: .infinity)
-    } else {
+    case .scrollable(let showEmptyState):
       ScrollView {
+        if showEmptyState {
+          ContentUnavailableView(
+            LibraryCopy.empty,
+            systemImage: model.selectedType == .game ? "gamecontroller" : "person.2"
+          )
+          .frame(maxWidth: .infinity, minHeight: 180)
+        }
+
         LazyVGrid(
           columns: [
             GridItem(
@@ -209,6 +248,16 @@ struct LibraryView: View {
           .padding(.vertical, 12)
       }
     }
+  }
+
+  private var contentPresentation: LibraryContentPresentation {
+    LibraryContentPolicy.presentation(
+      itemCount: model.items.count,
+      isLoadingFirstPage: model.isLoadingFirstPage,
+      hasError: model.error != nil,
+      hasNextCursor: model.nextCursor != nil,
+      isLoadingNextPage: model.isLoadingNextPage,
+      keepsPaginationHost: pagination.keepsPaginationHost)
   }
 
   private func errorBanner(_ error: APIError) -> some View {

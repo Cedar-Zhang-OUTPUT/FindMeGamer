@@ -193,3 +193,56 @@ unused `headerRowCount` constant remain the explicitly nonblocking follow-ups.
 The fix commit subject is `fix: recover library pagination`. Its exact SHA and
 immutable fix-package byte count/SHA-256 are recorded in the post-commit
 handoff because embedding those values here would change the identifiers.
+
+## Independent-review fix round 2
+
+### Remaining finding and RED
+
+The scoped re-review identified one ordinary Only Collection path not covered
+by round 1. If its single visible Favorite was removed during cursor A's active
+next-page request, Task 7 correctly removed the card and retained cursor A, but
+`LibraryView.libraryContent` switched to its standalone empty branch. That
+destroyed the entire ScrollView/footer task host before the coordinator could
+launch its deferred replacement, producing a false final empty Library while a
+later page remained.
+
+The existing real-model regression was changed first to use Only Collection,
+an initially favorited sole card, and a canonical unfavorite result while the
+next page was held. It now requires `model.items.isEmpty`, retained cursor A,
+the correct empty-state presentation inside a scrollable pagination host,
+maximum list concurrency one, and the later replacement card/cursor. Against
+round-1 commit `5f546ffedef657762da5f51cf07e7af986214f05`, the focused command failed
+compilation with the expected `cannot find 'LibraryContentPolicy' in scope`
+and missing `keepsPaginationHost` errors. The existing seven-test suite was
+discovered; this was not a zero-test RED.
+
+### Minimal fix and evidence
+
+One deterministic `LibraryContentPolicy`, consumed directly by the real view,
+selects initial loading, standalone empty, or scrollable content. With no
+cards, any retained next cursor, next-page loading state, or active/pending/
+failed coordinator recovery keeps the ScrollView, adaptive grid, and pagination
+footer alive. The same scrollable surface renders the required `No profiles
+found.` state while empty, so retaining the task host does not fabricate cards
+or hide the empty result. Normal no-cursor empty and initial-loading branches
+remain unchanged.
+
+The modified production-coupled test passes through the actual Task 7 model:
+the sole card is removed, cursor A remains, the policy selects
+`.scrollable(showEmptyState: true)`, the stale gated result does not commit, and
+exactly one replacement returns the next card with maximum concurrency one.
+No coordinator scheduling algorithm, Task 7 model/API, root, manifest, backend,
+generated output, or unrelated Library UI changed.
+
+- Focused `LibraryStructureTests`: 7 tests / 1 suite, 0 failures.
+- Full Swift suite: 93 tests / 9 suites, 0 failures, 0.132 s.
+- Strict warnings-as-errors build: exit 0; only pre-existing generated-target
+  diagnostics remain under its scoped exception.
+- Changed files pass strict Swift format, `git diff --check`, manifest/
+  dependency, scope, secret, artifact, and resolution checks.
+- Safe invalid-URL app verification retained the expected bundle identity,
+  macOS `14.0`, and invalid URL. Exact PID `96258` was terminated and no app
+  process remains.
+
+The round-2 commit SHA and fix-only review-package bytes/SHA-256 are recorded
+in the post-commit handoff because embedding them here would change them.
