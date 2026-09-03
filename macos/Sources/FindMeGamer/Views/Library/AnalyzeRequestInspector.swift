@@ -49,23 +49,25 @@ struct AnalyzeRequestInspector: View {
 
       Divider()
 
-      ScrollView {
-        LazyVStack(alignment: .leading, spacing: 0) {
-          ForEach(model.jobs) { job in
-            JobStatusRow(
-              job: job,
-              writesEnabled: writesEnabled,
-              isRetrying: model.retryingJobIDs.contains(job.id),
-              isReanalyzing: model.reanalyzingJobIDs.contains(job.id),
-              onOpenProfile: {
-                if let route = AnalyzeProfileRoute(job: job) {
-                  onOpenProfile(route.type, route.id)
-                }
-              },
-              onRetry: { Task { await model.retry(job: job) } },
-              onReanalyze: { Task { await model.reanalyze(.job(job)) } })
+      AdaptiveGlassSurface(role: .analyzeStatus) {
+        ScrollView {
+          LazyVStack(alignment: .leading, spacing: 0) {
+            ForEach(model.jobs) { job in
+              JobStatusRow(
+                job: job,
+                writesEnabled: writesEnabled,
+                isRetrying: model.retryingJobIDs.contains(job.id),
+                isReanalyzing: model.reanalyzingJobIDs.contains(job.id),
+                onOpenProfile: {
+                  if let route = AnalyzeProfileRoute(job: job) {
+                    onOpenProfile(route.type, route.id)
+                  }
+                },
+                onRetry: { Task { await model.retry(job: job) } },
+                onReanalyze: { Task { await model.reanalyze(.job(job)) } })
 
-            Divider()
+              Divider()
+            }
           }
         }
       }

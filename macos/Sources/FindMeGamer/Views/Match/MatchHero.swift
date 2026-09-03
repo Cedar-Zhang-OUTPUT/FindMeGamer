@@ -27,35 +27,39 @@ struct MatchHero: View {
   }
 
   var body: some View {
-    VStack(spacing: 14) {
-      ViewThatFits(in: .horizontal) {
-        HStack(spacing: 12) {
-          Text(MatchCopy.heroPrefix)
-            .font(.title2.weight(.semibold))
-          gameSelector
-          submit
+    AdaptiveGlassSurface(role: .matchHero) {
+      VStack(spacing: 14) {
+        AdaptiveGlassActionGroup {
+          ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+              Text(MatchCopy.heroPrefix)
+                .font(.title2.weight(.semibold))
+              gameSelector
+              submit
+            }
+
+            VStack(spacing: 12) {
+              Text(MatchCopy.heroPrefix)
+                .font(.title2.weight(.semibold))
+              gameSelector
+              submit
+            }
+          }
         }
 
-        VStack(spacing: 12) {
-          Text(MatchCopy.heroPrefix)
-            .font(.title2.weight(.semibold))
-          gameSelector
-          submit
+        gameLoadingAndFeedback
+
+        if let actionError = model.actionError {
+          Label(actionError, systemImage: "exclamationmark.triangle")
+            .font(.callout)
+            .foregroundStyle(.red)
+            .textSelection(.enabled)
         }
       }
-
-      gameLoadingAndFeedback
-
-      if let actionError = model.actionError {
-        Label(actionError, systemImage: "exclamationmark.triangle")
-          .font(.callout)
-          .foregroundStyle(.red)
-          .textSelection(.enabled)
-      }
+      .frame(maxWidth: .infinity)
+      .padding(.horizontal, 28)
+      .padding(.vertical, 36)
     }
-    .frame(maxWidth: .infinity)
-    .padding(.horizontal, 28)
-    .padding(.vertical, 36)
   }
 
   private var gameSelector: some View {

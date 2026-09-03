@@ -7,19 +7,20 @@ struct BatchOutreachBar: View {
 
   var body: some View {
     if selectedCount > 0 {
-      HStack {
-        Text("\(selectedCount) selected")
-          .foregroundStyle(.secondary)
-        Spacer()
-        Button(MatchCopy.sendOutreach(count: selectedCount), action: onSend)
-          .buttonStyle(.borderedProminent)
-          .disabled(!writesEnabled)
-          .accessibilityIdentifier(MatchAccessibility.batchSend)
-          .help("Compose Outreach for the selected Creators")
+      AdaptiveGlassSurface(role: .batchOutreach) {
+        HStack {
+          Text("\(selectedCount) selected")
+            .foregroundStyle(.secondary)
+          Spacer()
+          Button(MatchCopy.sendOutreach(count: selectedCount), action: onSend)
+            .buttonStyle(.borderedProminent)
+            .disabled(!writesEnabled)
+            .accessibilityIdentifier(MatchAccessibility.batchSend)
+            .help("Compose Outreach for the selected Creators")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
       }
-      .padding(.horizontal, 18)
-      .padding(.vertical, 12)
-      .background(Color.secondary.opacity(0.08))
     }
   }
 }
