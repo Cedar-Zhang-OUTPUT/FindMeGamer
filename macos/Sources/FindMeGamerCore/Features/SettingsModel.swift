@@ -111,6 +111,7 @@ public final class SettingsModel {
   @ObservationIgnored private let disconnect: @MainActor @Sendable () async -> Void
 
   @ObservationIgnored private var savedSMTPDraft: SMTPSettingsDraft?
+  @ObservationIgnored private var smtpHasUserEdits = false
   @ObservationIgnored private var smtpDraftRevision: UInt64 = 0
   @ObservationIgnored private var smtpStatusRevision: UInt64 = 0
   @ObservationIgnored private var smtpLoadGeneration: UInt64 = 0
@@ -124,6 +125,7 @@ public final class SettingsModel {
   @ObservationIgnored private var connectionLoadGenerations: [ConnectionService: UInt64] = [:]
 
   @ObservationIgnored private var savedReanalysis: SharedSettings?
+  @ObservationIgnored private var reanalysisHasUserEdits = false
   @ObservationIgnored private var reanalysisDraftRevision: UInt64 = 0
   @ObservationIgnored private var reanalysisStatusRevision: UInt64 = 0
   @ObservationIgnored private var reanalysisLoadGeneration: UInt64 = 0
@@ -169,6 +171,7 @@ public final class SettingsModel {
     smtpLoadGeneration &+= 1
     let generation = smtpLoadGeneration
     let draftRevision = smtpDraftRevision
+    let hadUnsavedDraft = smtpHasUserEdits && smtpIsDirty
     let statusRevision = smtpStatusRevision
     isLoadingSMTP = true
     smtpLoadError = nil
@@ -178,10 +181,10 @@ public final class SettingsModel {
 
     do {
       let status = try await api.smtpSettings()
-      guard smtpLoadGeneration == generation, smtpDraftRevision == draftRevision,
-        smtpStatusRevision == statusRevision
+      guard smtpLoadGeneration == generation, smtpStatusRevision == statusRevision
       else { return }
-      adoptSMTPStatus(status, updateDraft: true)
+      let shouldAdoptDraft = !hadUnsavedDraft && smtpDraftRevision == draftRevision
+      adoptSMTPStatus(status, updateDraft: shouldAdoptDraft)
     } catch {
       guard smtpLoadGeneration == generation, smtpDraftRevision == draftRevision,
         smtpStatusRevision == statusRevision
@@ -209,6 +212,7 @@ public final class SettingsModel {
     smtpFromName = fromName
     smtpReplyTo = replyTo
     smtpEmailsPerMinute = emailsPerMinute
+    smtpHasUserEdits = true
     smtpDraftRevision &+= 1
     smtpActionError = nil
   }
@@ -216,6 +220,7 @@ public final class SettingsModel {
   public func updateSMTPPassword(_ password: String) {
     guard !smtpActionInFlight, smtpPassword != password else { return }
     smtpPassword = password
+    smtpHasUserEdits = true
     smtpDraftRevision &+= 1
     smtpActionError = nil
   }
@@ -299,6 +304,12 @@ public final class SettingsModel {
     connectionActions.contains(service)
   }
 
+  public func canTestConnection(_ service: ConnectionService) -> Bool {
+    connectionServices.contains(service) && connectionStatuses[service]?.configured == true
+      && connectionSecrets[service, default: ""].isEmpty
+      && !connectionActions.contains(service)
+  }
+
   public func updateConnectionSecret(_ secret: String, for service: ConnectionService) {
     guard connectionServices.contains(service), !connectionActions.contains(service) else { return }
     connectionSecrets[service] = secret
@@ -339,7 +350,17 @@ public final class SettingsModel {
   }
 
   public func testConnection(_ service: ConnectionService) async {
-    guard connectionServices.contains(service), !connectionActions.contains(service) else { return }
+    guard connectionServices.contains(service) else { return }
+    guard !connectionActions.contains(service) else { return }
+    guard connectionStatuses[service]?.configured == true else {
+      connectionErrors[service] = "Configure \(service.displayName) before testing the connection."
+      return
+    }
+    guard connectionSecrets[service, default: ""].isEmpty else {
+      connectionErrors[service] =
+        "Replace or clear the \(service.displayName) credential before testing the connection."
+      return
+    }
     connectionActions.insert(service)
     connectionErrors[service] = nil
     defer { connectionActions.remove(service) }
@@ -347,9 +368,8 @@ public final class SettingsModel {
     do {
       let result = try await api.testConnection(service)
       connectionStatusRevisions[service, default: 0] &+= 1
-      let configured = connectionStatuses[service]?.configured ?? false
       connectionStatuses[service] = ConnectionStatus(
-        service: service, configured: configured, lastTestStatus: result.status,
+        service: service, configured: true, lastTestStatus: result.status,
         lastTestedAt: result.testedAt)
     } catch {
       connectionErrors[service] = Self.safeMessage(
@@ -361,6 +381,7 @@ public final class SettingsModel {
     guard !isSavingReanalysis else { return }
     self.gameIntervalDays = gameIntervalDays
     self.creatorIntervalDays = creatorIntervalDays
+    reanalysisHasUserEdits = true
     reanalysisDraftRevision &+= 1
     reanalysisError = nil
   }
@@ -369,6 +390,7 @@ public final class SettingsModel {
     reanalysisLoadGeneration &+= 1
     let generation = reanalysisLoadGeneration
     let draftRevision = reanalysisDraftRevision
+    let hadUnsavedDraft = reanalysisHasUserEdits && reanalysisIsDirty
     let statusRevision = reanalysisStatusRevision
     isLoadingReanalysis = true
     reanalysisError = nil
@@ -379,13 +401,15 @@ public final class SettingsModel {
     do {
       let settings = try await api.sharedSettings()
       guard reanalysisLoadGeneration == generation,
-        reanalysisDraftRevision == draftRevision,
         reanalysisStatusRevision == statusRevision
       else { return }
       sharedSettings = settings
       savedReanalysis = settings
-      gameIntervalDays = settings.gameIntervalDays
-      creatorIntervalDays = settings.creatorIntervalDays
+      if !hadUnsavedDraft && reanalysisDraftRevision == draftRevision {
+        gameIntervalDays = settings.gameIntervalDays
+        creatorIntervalDays = settings.creatorIntervalDays
+        reanalysisHasUserEdits = false
+      }
     } catch {
       guard reanalysisLoadGeneration == generation,
         reanalysisDraftRevision == draftRevision,
@@ -411,6 +435,7 @@ public final class SettingsModel {
       savedReanalysis = settings
       gameIntervalDays = settings.gameIntervalDays
       creatorIntervalDays = settings.creatorIntervalDays
+      reanalysisHasUserEdits = false
     } catch {
       reanalysisError = Self.safeMessage(
         error, fallback: "Could not save Re-analysis Settings.")
@@ -483,6 +508,7 @@ public final class SettingsModel {
     smtpFromName = visibleDraft.fromName
     smtpReplyTo = visibleDraft.replyTo
     smtpEmailsPerMinute = visibleDraft.emailsPerMinute ?? 30
+    smtpHasUserEdits = false
     smtpDraftRevision &+= 1
   }
 
@@ -516,6 +542,7 @@ public final class SettingsModel {
         connectionErrors[service] = "Could not load the \(service.displayName) connection."
         return
       }
+      connectionErrors[service] = nil
       connectionStatuses[service] = status
     } catch {
       guard connectionLoadGenerations[service] == generation,

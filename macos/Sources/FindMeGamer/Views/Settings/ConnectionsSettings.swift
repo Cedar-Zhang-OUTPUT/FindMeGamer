@@ -70,7 +70,7 @@ struct ConnectionsSettings: View {
         Button("Test Connection") {
           Task { await model.testConnection(service) }
         }
-        .disabled(!writesEnabled || model.isConnectionActionInFlight(service))
+        .disabled(!writesEnabled || !model.canTestConnection(service))
       }
 
       if let error = model.connectionError(for: service) {

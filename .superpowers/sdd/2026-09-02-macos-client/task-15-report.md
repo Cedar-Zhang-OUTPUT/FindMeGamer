@@ -85,3 +85,50 @@ surfaced the pre-existing Task 14 gate-entry assertion in
 scheduling. The isolated Task 14 suite passed 14/14 in five consecutive runs,
 the final full run passed 166/166, and the failure does not execute Task 15
 production code. No additional internal-Demo product follow-up is known.
+
+## Fix 01: preserve drafts during loads and require known connections
+
+Fix 01 started from `20b2c092c31637583ce9c85d1420b48cbb02feaf`
+and changed only `SettingsModel`, `ConnectionsSettings`, the focused Settings
+tests, and this report.
+
+Held-response tests were added before production edits. The first behavioral
+RED discovered 13 tests and recorded 25 issues: a first SMTP load failed to
+publish canonical status after typing, dirty SMTP refresh replaced all authored
+fields and the replacement credential, Test ran before Steam status was known
+and synthesized `configured=false`, first re-analysis load failed to publish
+canonical settings after editing, and dirty re-analysis refresh replaced both
+authored intervals. A wished-for shared connection eligibility query then
+produced the expected compile RED because it did not exist. A second focused
+RED recorded six clean-refresh failures after an edit was reverted to the exact
+baseline, proving that an edit marker alone was too broad.
+
+SMTP and re-analysis loads now separately decide canonical publication and
+draft adoption. A current response always publishes its canonical baseline;
+editor fields are adopted only when the request started without an unsaved
+draft and no edit occurred while awaiting it. First-load and dirty-at-start
+drafts remain intact and become saveable, reverted clean drafts adopt refreshed
+canonical values, and the existing successful Save/Test mutation generations
+still fence older reads.
+
+Connection Test now shares one model eligibility policy with the UI: the exact
+service must have known `configured=true` status, no service action may be in
+flight, and its replacement input must be empty. Direct ineligible calls make
+no request, publish safe actionable copy, and never synthesize status. A valid
+test preserves `configured=true`; a successful initial status read clears the
+temporary pre-status guidance.
+
+Fix 01 verification:
+
+- focused GREEN repeated: 13 tests / 1 suite, 0 failures each;
+- full suite: 169 tests / 17 suites, 0 failures;
+- `swift build -Xswiftc -warnings-as-errors`: exit 0 with only the established
+  generated-target diagnostics;
+- strict format, diff/scope, dependency, and credential scans: passed;
+- safe invalid-URL launch: bundle `com.findmegamer.desktop`, minimum macOS
+  `14.0`, exact URL preserved, exact PID `61647` terminated, and no process
+  remained.
+
+The fix commit hash is reported in the post-commit handoff to avoid a
+self-referential report change. The existing bounded Task 14 test-fixture note
+above remains unchanged and was not pursued in this fix.

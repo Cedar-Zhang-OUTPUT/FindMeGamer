@@ -177,9 +177,9 @@ struct SettingsModelTests {
     #expect(model.smtpHost == "typed.smtp")
 
     model.updateSMTPDraft(
-      host: initial.host ?? "", port: initial.port ?? 587, encryption: initial.encryption,
-      username: initial.username ?? "", password: "", fromName: initial.fromName ?? "",
-      replyTo: initial.replyTo ?? "", emailsPerMinute: initial.emailsPerMinute)
+      host: stale.host ?? "", port: stale.port ?? 587, encryption: stale.encryption,
+      username: stale.username ?? "", password: "", fromName: stale.fromName ?? "",
+      replyTo: stale.replyTo ?? "", emailsPerMinute: stale.emailsPerMinute)
     let mutationRead = Task { await model.loadSMTPSettings() }
     #expect(await mutationLoadGate.waitUntilEntered())
     await model.testSMTPConnection()
@@ -198,6 +198,86 @@ struct SettingsModelTests {
     await send.value
     #expect(model.smtpStatus?.lastTestedAt == Date(timeIntervalSince1970: 110))
     #expect(!model.isSendingSMTPTest)
+  }
+
+  @MainActor
+  @Test func smtpLoadsPublishCanonicalStateWithoutReplacingAuthoredDrafts() async {
+    let firstGate = SettingsGate<SMTPSettingsStatus>()
+    let firstCanonical = smtpStatus(configured: false, host: nil)
+    let firstAPI = SettingsAPI(smtpLoadOutcomes: [.gated(firstGate)])
+    let firstModel = SettingsModel(
+      api: firstAPI, appearanceStore: SettingsPreferenceStore())
+
+    let firstLoad = Task { await firstModel.loadSMTPSettings() }
+    #expect(await firstGate.waitUntilEntered())
+    firstModel.updateSMTPDraft(
+      host: "authored.smtp", port: 465, encryption: .tls,
+      username: "author@company.test", password: smtpCanary, fromName: "Authored Team",
+      replyTo: "reply-authored@company.test", emailsPerMinute: 18)
+    firstGate.resume(.success(firstCanonical))
+    await firstLoad.value
+
+    #expect(firstModel.smtpStatus == firstCanonical)
+    #expect(firstModel.smtpHost == "authored.smtp")
+    #expect(firstModel.smtpPort == 465)
+    #expect(firstModel.smtpEncryption == .tls)
+    #expect(firstModel.smtpUsername == "author@company.test")
+    #expect(firstModel.smtpPassword == smtpCanary)
+    #expect(firstModel.smtpFromName == "Authored Team")
+    #expect(firstModel.smtpReplyTo == "reply-authored@company.test")
+    #expect(firstModel.smtpEmailsPerMinute == 18)
+    #expect(firstModel.canSaveSMTP)
+
+    let oldCanonical = smtpStatus(configured: true, host: "old.smtp")
+    let newerCanonical = smtpStatus(configured: true, host: "server-new.smtp")
+    let refreshGate = SettingsGate<SMTPSettingsStatus>()
+    let refreshAPI = SettingsAPI(
+      smtpLoadOutcomes: [.value(oldCanonical), .gated(refreshGate)])
+    let refreshModel = SettingsModel(
+      api: refreshAPI, appearanceStore: SettingsPreferenceStore())
+    await refreshModel.loadSMTPSettings()
+    refreshModel.updateSMTPDraft(
+      host: "authored-refresh.smtp", port: 2525, encryption: SMTPEncryption.none,
+      username: "refresh@company.test", password: smtpCanary, fromName: "Refresh Team",
+      replyTo: "reply-refresh@company.test", emailsPerMinute: 22)
+
+    let refresh = Task { await refreshModel.loadSMTPSettings() }
+    #expect(await refreshGate.waitUntilEntered())
+    refreshGate.resume(.success(newerCanonical))
+    await refresh.value
+
+    #expect(refreshModel.smtpStatus == newerCanonical)
+    #expect(refreshModel.smtpHost == "authored-refresh.smtp")
+    #expect(refreshModel.smtpPort == 2525)
+    #expect(refreshModel.smtpEncryption == SMTPEncryption.none)
+    #expect(refreshModel.smtpUsername == "refresh@company.test")
+    #expect(refreshModel.smtpPassword == smtpCanary)
+    #expect(refreshModel.smtpFromName == "Refresh Team")
+    #expect(refreshModel.smtpReplyTo == "reply-refresh@company.test")
+    #expect(refreshModel.smtpEmailsPerMinute == 22)
+    #expect(refreshModel.canSaveSMTP)
+
+    let cleanOld = smtpStatus(configured: true, host: "clean-old.smtp")
+    let cleanNew = smtpStatus(configured: true, host: "clean-new.smtp", port: 465)
+    let cleanAPI = SettingsAPI(smtpLoadOutcomes: [.value(cleanOld), .value(cleanNew)])
+    let cleanModel = SettingsModel(api: cleanAPI, appearanceStore: SettingsPreferenceStore())
+    await cleanModel.loadSMTPSettings()
+    cleanModel.updateSMTPDraft(
+      host: "temporary.smtp", port: cleanOld.port ?? 587, encryption: cleanOld.encryption,
+      username: cleanOld.username ?? "", password: "", fromName: cleanOld.fromName ?? "",
+      replyTo: cleanOld.replyTo ?? "", emailsPerMinute: cleanOld.emailsPerMinute)
+    cleanModel.updateSMTPDraft(
+      host: cleanOld.host ?? "", port: cleanOld.port ?? 587, encryption: cleanOld.encryption,
+      username: cleanOld.username ?? "", password: "", fromName: cleanOld.fromName ?? "",
+      replyTo: cleanOld.replyTo ?? "", emailsPerMinute: cleanOld.emailsPerMinute)
+    #expect(!cleanModel.smtpIsDirty)
+
+    await cleanModel.loadSMTPSettings()
+
+    #expect(cleanModel.smtpStatus == cleanNew)
+    #expect(cleanModel.smtpHost == "clean-new.smtp")
+    #expect(cleanModel.smtpPort == 465)
+    #expect(!cleanModel.smtpIsDirty)
   }
 
   @MainActor
@@ -284,6 +364,51 @@ struct SettingsModelTests {
   }
 
   @MainActor
+  @Test func connectionTestWaitsForKnownConfiguredStateAndACommittedCredential() async {
+    let steamGate = SettingsGate<ConnectionStatus>()
+    let configured = connection(.steam, configured: true)
+    let api = SettingsAPI(
+      connectionLoadOutcomes: [
+        .gated(steamGate), .value(connection(.youtube)), .value(connection(.deepSeek)),
+      ],
+      connectionTestOutcomes: [
+        .value(testResult(.success, at: 320)), .value(testResult(.success, at: 321)),
+        .value(testResult(.success, at: 322)),
+      ])
+    let model = SettingsModel(api: api, appearanceStore: SettingsPreferenceStore())
+
+    let load = Task { await model.loadConnections() }
+    #expect(await steamGate.waitUntilEntered())
+    #expect(!model.canTestConnection(.steam))
+    await model.testConnection(.steam)
+    #expect(await api.connectionTestCalls.isEmpty)
+    #expect(model.connectionStatus(for: .steam) == nil)
+    #expect(model.connectionError(for: .steam) == "Configure Steam before testing the connection.")
+
+    steamGate.resume(.success(configured))
+    await load.value
+    #expect(model.connectionStatus(for: .steam) == configured)
+    #expect(model.connectionError(for: .steam) == nil)
+    #expect(model.canTestConnection(.steam))
+
+    model.updateConnectionSecret(serviceCanary, for: .steam)
+    #expect(!model.canTestConnection(.steam))
+    await model.testConnection(.steam)
+    #expect(await api.connectionTestCalls.isEmpty)
+    #expect(
+      model.connectionError(for: .steam)
+        == "Replace or clear the Steam credential before testing the connection.")
+
+    model.updateConnectionSecret("", for: .steam)
+    #expect(model.canTestConnection(.steam))
+    await model.testConnection(.steam)
+    #expect(await api.connectionTestCalls == [.steam])
+    #expect(model.connectionStatus(for: .steam)?.configured == true)
+    #expect(model.connectionStatus(for: .steam)?.lastTestStatus == .success)
+    #expect(model.connectionStatus(for: .steam)?.lastTestedAt == Date(timeIntervalSince1970: 320))
+  }
+
+  @MainActor
   @Test func reanalysisDraftBoundsFailureAndReadMutationFencesPreserveCanonicalTruth() async {
     let initial = SharedSettings(gameIntervalDays: 30, creatorIntervalDays: 14)
     let stale = SharedSettings(gameIntervalDays: 10, creatorIntervalDays: 5)
@@ -324,6 +449,63 @@ struct SettingsModelTests {
     #expect(
       await api.sharedSaveCalls.last
         == ReanalysisDraft(gameIntervalDays: 45, creatorIntervalDays: 20))
+  }
+
+  @MainActor
+  @Test func reanalysisLoadsPublishCanonicalStateWithoutReplacingAuthoredDrafts() async {
+    let firstGate = SettingsGate<SharedSettings>()
+    let firstCanonical = SharedSettings(gameIntervalDays: 30, creatorIntervalDays: 14)
+    let firstAPI = SettingsAPI(sharedLoadOutcomes: [.gated(firstGate)])
+    let firstModel = SettingsModel(
+      api: firstAPI, appearanceStore: SettingsPreferenceStore())
+
+    let firstLoad = Task { await firstModel.loadReanalysis() }
+    #expect(await firstGate.waitUntilEntered())
+    firstModel.updateReanalysis(gameIntervalDays: 40, creatorIntervalDays: 18)
+    firstGate.resume(.success(firstCanonical))
+    await firstLoad.value
+
+    #expect(firstModel.sharedSettings == firstCanonical)
+    #expect(firstModel.gameIntervalDays == 40)
+    #expect(firstModel.creatorIntervalDays == 18)
+    #expect(firstModel.canSaveReanalysis)
+
+    let oldCanonical = SharedSettings(gameIntervalDays: 30, creatorIntervalDays: 14)
+    let newerCanonical = SharedSettings(gameIntervalDays: 35, creatorIntervalDays: 15)
+    let refreshGate = SettingsGate<SharedSettings>()
+    let refreshAPI = SettingsAPI(
+      sharedLoadOutcomes: [.value(oldCanonical), .gated(refreshGate)])
+    let refreshModel = SettingsModel(
+      api: refreshAPI, appearanceStore: SettingsPreferenceStore())
+    await refreshModel.loadReanalysis()
+    refreshModel.updateReanalysis(gameIntervalDays: 45, creatorIntervalDays: 20)
+
+    let refresh = Task { await refreshModel.loadReanalysis() }
+    #expect(await refreshGate.waitUntilEntered())
+    refreshGate.resume(.success(newerCanonical))
+    await refresh.value
+
+    #expect(refreshModel.sharedSettings == newerCanonical)
+    #expect(refreshModel.gameIntervalDays == 45)
+    #expect(refreshModel.creatorIntervalDays == 20)
+    #expect(refreshModel.canSaveReanalysis)
+
+    let cleanOld = SharedSettings(gameIntervalDays: 30, creatorIntervalDays: 14)
+    let cleanNew = SharedSettings(gameIntervalDays: 35, creatorIntervalDays: 16)
+    let cleanAPI = SettingsAPI(
+      sharedLoadOutcomes: [.value(cleanOld), .value(cleanNew)])
+    let cleanModel = SettingsModel(api: cleanAPI, appearanceStore: SettingsPreferenceStore())
+    await cleanModel.loadReanalysis()
+    cleanModel.updateReanalysis(gameIntervalDays: 31, creatorIntervalDays: 15)
+    cleanModel.updateReanalysis(gameIntervalDays: 30, creatorIntervalDays: 14)
+    #expect(!cleanModel.canSaveReanalysis)
+
+    await cleanModel.loadReanalysis()
+
+    #expect(cleanModel.sharedSettings == cleanNew)
+    #expect(cleanModel.gameIntervalDays == 35)
+    #expect(cleanModel.creatorIntervalDays == 16)
+    #expect(!cleanModel.canSaveReanalysis)
   }
 
   @MainActor
