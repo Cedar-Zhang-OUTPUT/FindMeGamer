@@ -69,6 +69,10 @@ load_protected_configuration() {
   local region_count=0
   local acquisition_count=0
   local backup_count=0
+  local workspace_hash_count=0
+  local workspace_hash_safe=0
+  local workspace_hash_value=""
+  local workspace_hash_inner=""
 
   while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
@@ -88,12 +92,26 @@ load_protected_configuration() {
         FMG_BACKUP_PREFIX="${line#*=}"
         backup_count=$((backup_count + 1))
         ;;
+      WORKSPACE_ACCESS_KEY_HASH=*)
+        workspace_hash_value="${line#*=}"
+        workspace_hash_count=$((workspace_hash_count + 1))
+        if [[ "$workspace_hash_value" == \'*\' ]]; then
+          workspace_hash_inner="${workspace_hash_value:1:${#workspace_hash_value}-2}"
+          if [[ "$workspace_hash_inner" =~ ^\$argon2id\$v=[0-9]+\$m=[0-9]+,t=[0-9]+,p=[0-9]+\$[A-Za-z0-9+/]+={0,2}\$[A-Za-z0-9+/]+={0,2}$ ]]; then
+            workspace_hash_safe=1
+          fi
+          unset workspace_hash_inner
+        fi
+        unset workspace_hash_value
+        ;;
     esac
   done <"$config_file"
 
   [[ "$bucket_count" == "1" && "$region_count" == "1" &&
     "$acquisition_count" == "1" && "$backup_count" == "1" ]] ||
     fail "protected app.env must contain each required S3 configuration key exactly once"
+  [[ "$workspace_hash_count" == "1" && "$workspace_hash_safe" == "1" ]] ||
+    fail "protected app.env Workspace hash must be one production Argon2id value enclosed in single quotes; edit only that value and retry"
 }
 
 if [[ "$dry_run" != "1" ]]; then
@@ -134,6 +152,7 @@ repo_root="$(cd "$script_dir/.." && pwd)"
 
 if [[ "$dry_run" == "1" ]]; then
   probe_key="${FMG_ACQUISITION_PREFIX}health/dry-run-probe"
+  printf 'require one single-quoted production Argon2id Workspace hash without printing it\n'
   printf 'request an IMDSv2 token without logging its value\n'
   printf 'resolve the EC2 instance ID with that token\n'
   printf 'aws sts get-caller-identity --output json --region %q\n' "$FMG_AWS_REGION"

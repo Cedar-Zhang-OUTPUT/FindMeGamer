@@ -114,9 +114,15 @@ render_env_with_workspace_hash() {
   local line
   local replacements=0
 
+  [[ "$workspace_hash" == '$argon2id$'* ]] ||
+    fail "Workspace Access Key hashing returned an invalid result"
+  [[ "$workspace_hash" != *$'\n'* && "$workspace_hash" != *$'\r'* &&
+    "$workspace_hash" != *"'"* ]] ||
+    fail "Workspace Access Key hash cannot be represented safely in app.env"
+
   while IFS= read -r line || [[ -n "$line" ]]; do
     if [[ "$line" == WORKSPACE_ACCESS_KEY_HASH=* ]]; then
-      printf 'WORKSPACE_ACCESS_KEY_HASH=%s\n' "$workspace_hash"
+      printf "WORKSPACE_ACCESS_KEY_HASH='%s'\n" "$workspace_hash"
       replacements=$((replacements + 1))
     else
       printf '%s\n' "$line"
@@ -172,7 +178,11 @@ install_app_env_if_absent() {
     pending_temp="$(mktemp "$etc_dir/.app.env.XXXXXX")"
     chmod 0600 "$pending_temp"
     if [[ "$test_mode" == true ]]; then
-      copy_env_skeleton "$pending_temp"
+      if [[ -n "${FMG_TEST_WORKSPACE_HASH:-}" ]]; then
+        render_env_with_workspace_hash "$pending_temp" "$FMG_TEST_WORKSPACE_HASH"
+      else
+        copy_env_skeleton "$pending_temp"
+      fi
     else
       workspace_hash="$(prompt_and_hash_workspace_key)"
       render_env_with_workspace_hash "$pending_temp" "$workspace_hash"

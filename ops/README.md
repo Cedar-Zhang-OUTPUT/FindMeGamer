@@ -36,6 +36,13 @@ The placeholder `grep` must produce no output. Keep one recovery copy of
 `master.key` in the company password manager. Never store that recovery copy in
 Git or S3, and never paste it into command arguments, tickets, or logs.
 
+The Workspace hash must be one single-quoted dotenv value so Docker Compose
+preserves its literal dollar signs. If `app.env` was created by an older
+bootstrap and its `WORKSPACE_ACCESS_KEY_HASH=$argon2id$...` value is unquoted,
+use `sudoedit` to wrap only the existing hash in single quotes, leaving its
+bytes otherwise unchanged, then rerun `sudo ops/validate_instance_access.sh`.
+Do not print the value or regenerate unrelated configuration.
+
 Confirm Docker data is on the existing EBS-backed filesystem:
 
 ```bash

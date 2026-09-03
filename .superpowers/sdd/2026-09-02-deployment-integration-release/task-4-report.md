@@ -328,3 +328,145 @@ was started. ShellCheck was conditionally skipped because it is unavailable.
 The fix commit subject is exactly
 `fix: load protected env for instance probe`; its immutable hash is supplied
 after commit.
+
+---
+
+## Fix round 2: preserve Compose dotenv values
+
+### Reviewed finding
+
+The bootstrap wrote the generated Argon2id Workspace hash as an unquoted
+dotenv value. Docker Compose treats the hash's dollar-prefixed segments as
+interpolation syntax, so `docker compose config --quiet` could report success
+while the API, worker, and beat received a different value. That breaks the
+ordinary first-deployment login path.
+
+This fix changes only bootstrap serialization, the preflight validator, their
+focused tests, the operator remediation note, and this appended report. The
+four S3 settings, lifecycle merge, Instance Role/IMDS/probe behavior, backup
+and restore behavior, Compose topology, and the recorded StreamingBody Minor
+remain unchanged.
+
+### Genuine RED
+
+The bootstrap regression supplies one production-shaped Argon2id value through
+the real renderer, reads the resulting protected dotenv, and invokes the local
+Docker Compose CLI to render the actual project as canonical JSON and as its
+interpolation environment. It starts no service or container. Against base
+`90f18296187e52a2786a71e02604c99cf52ff91d`:
+
+```text
+$ bash ops/tests/test_bootstrap_server.sh
+bootstrap server test: unquoted Workspace hash did not round-trip through real Compose
+$ echo $?
+1
+```
+
+The validator regression supplies the same production-shaped value in the
+legacy unquoted form and proves rejection must happen before any fake Docker,
+AWS, or curl boundary. Against the same base:
+
+```text
+$ bash ops/tests/test_s3_configuration.sh
+s3 configuration test: validator accepted a legacy unquoted Workspace hash
+$ echo $?
+1
+```
+
+### Minimal GREEN
+
+The bootstrap now emits exactly one single-quoted dotenv value:
+
+```text
+WORKSPACE_ACCESS_KEY_HASH='$argon2id$...'
+```
+
+Before writing, it rejects a non-Argon2id result or a value containing a
+single quote, carriage return, or newline, without printing the value. The
+existing install-if-absent path remains intact, so an existing protected
+`app.env` is still preserved byte-for-byte. The production renderer is exposed
+to test mode only when the explicit `FMG_TEST_WORKSPACE_HASH` fixture variable
+is set; normal test-mode bootstrap behavior is otherwise unchanged.
+
+The validator's existing line parser now also requires exactly one
+`WORKSPACE_ACCESS_KEY_HASH` whose complete value is single-quoted and whose
+inner bytes have a production-shaped Argon2id encoding. It neither sources nor
+evaluates the dotenv. The temporary hash variables are unset after comparison,
+and errors contain remediation but no value. This validation occurs while
+loading protected configuration, before Docker, AWS, curl, IMDS, or the probe.
+
+Docker Compose's canonical JSON escapes a literal runtime dollar as `$$`; the
+focused test decodes that documented canonical representation and compares the
+API, worker, and beat values byte-for-byte with the fixture. A second real
+`config --environment` assertion confirms the raw interpolation value contains
+the original single-dollar bytes. The generated protected file is independently
+asserted to contain the exact single-quoted line.
+
+Focused GREEN:
+
+```text
+$ bash -n ops/bootstrap_server.sh ops/validate_instance_access.sh \
+    ops/tests/test_bootstrap_server.sh ops/tests/test_s3_configuration.sh
+$ bash ops/tests/test_bootstrap_server.sh
+bootstrap server test: PASS
+$ bash ops/tests/test_s3_configuration.sh
+s3 configuration test: PASS
+```
+
+### Regression and security evidence
+
+The focused tests prove:
+
+- a generated production-shaped hash survives the real Compose render for all
+  three consumers and no container starts;
+- the protected dotenv has exact single-quoted serialization;
+- unsafe generated values fail without creating `app.env` or leaking the
+  hash;
+- an existing protected `app.env` remains byte-identical on bootstrap rerun;
+- legacy unquoted and quoted malformed hashes fail before all external
+  boundaries, with a safe operator message and no hash in output;
+- the protected file still supplies each of the four exact S3 keys once, both
+  Compose commands still use the same `--env-file`, and static credentials are
+  still rejected;
+- lifecycle merge, Instance Role/IMDS gates, exact one-object probe and cleanup,
+  backup/restore fakes, and Task 1 Compose assertions remain green.
+
+The README gives a bounded legacy remediation: use `sudoedit` to wrap only the
+existing hash in single quotes without printing or regenerating it, then rerun
+the validator.
+
+### Final verification
+
+Fresh pre-commit output:
+
+```text
+$ bash -n <Task 1-4 scripts and tests>
+$ for pass in 1 2; do
+    bash ops/tests/test_bootstrap_server.sh
+    bash ops/tests/test_s3_configuration.sh
+  done
+bootstrap server test: PASS
+s3 configuration test: PASS
+bootstrap server test: PASS
+s3 configuration test: PASS
+$ bash ops/tests/test_backup_scripts.sh
+backup scripts test: PASS
+$ bash ops/tests/test_compose_config.sh
+true  # repeated for all 16 assertions
+$ docker compose --env-file .env.example config --quiet
+$ FMG_DRY_RUN=1 bash ops/configure_s3_lifecycle.sh
+3-line inert plan; exit 0
+$ FMG_DRY_RUN=1 bash ops/validate_instance_access.sh
+9-line inert plan including quoted-hash and exact env-file checks; exit 0
+$ <jq lifecycle, diff, scope/mode, secret/config-output, no-source/eval,
+   metadata-mutation, and artifact gates>
+task4 fix2 final gate: PASS
+```
+
+All Docker Compose invocations only rendered configuration. No container,
+stack, AWS, IMDS, S3, EC2, IAM, lifecycle, systemd, or production host action
+was performed. ShellCheck and shfmt remain unavailable on this host.
+
+No binding concern remains. The commit subject is exactly
+`fix: preserve compose dotenv values`; its immutable hash is supplied after
+commit.

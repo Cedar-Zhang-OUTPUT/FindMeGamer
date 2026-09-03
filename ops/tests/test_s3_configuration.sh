@@ -288,13 +288,14 @@ identity_json='{"Account":"123456789012","Arn":"arn:aws:sts::123456789012:assume
 metadata_json='{"HttpTokens":"required","HttpPutResponseHopLimit":2,"HttpEndpoint":"enabled"}'
 protected_env="$test_root/app.env"
 dotenv_execution_marker="$test_root/dotenv-was-executed"
+workspace_hash='$argon2id$v=19$m=65536,t=3,p=4$cHJvZHVjdGlvbi1zYWx0$cHJvZHVjdGlvbi1oYXNoLWJ5dGVz'
 cat >"$protected_env" <<EOF
 SERVICE_DOMAIN=demo.find-me-gamer.example.invalid
 BACKEND_SUBNET=172.30.0.0/24
 POSTGRES_DB=find_me_gamer
 POSTGRES_USER=find_me_gamer
 POSTGRES_PASSWORD=protected-password-canary-never-log
-WORKSPACE_ACCESS_KEY_HASH=\$argon2id\$v=19\$m=65536,t=3,p=4\$protected-hash-canary-never-log
+WORKSPACE_ACCESS_KEY_HASH='$workspace_hash'
 FMG_AWS_REGION=us-west-2
 FMG_S3_BUCKET=company-demo-artifacts
 FMG_BACKUP_PREFIX=database/backups/
@@ -334,7 +335,7 @@ grep -q ' run --rm --no-deps -T api ' < <(sed -n '2p' "$docker_log")
 [[ ! -e "$dotenv_execution_marker" ]]
 ! grep -Fq 'protected-password-canary-never-log' \
   "$test_root/access-success.out" "$test_root/access-success.err" "$docker_log"
-! grep -Fq 'protected-hash-canary-never-log' \
+! grep -Fq "$workspace_hash" \
   "$test_root/access-success.out" "$test_root/access-success.err" "$docker_log"
 ! grep -Fq 'test-metadata-token' "$access_script" "$aws_log" "$curl_log" "$docker_log"
 
@@ -365,6 +366,20 @@ fi
 grep -Fq 'static AWS credentials are forbidden' "$test_root/static.err"
 [[ ! -s "$aws_log" && ! -s "$curl_log" && ! -s "$docker_log" ]]
 
+legacy_env="$test_root/legacy-unquoted.env"
+sed "s#^WORKSPACE_ACCESS_KEY_HASH=.*#WORKSPACE_ACCESS_KEY_HASH=$workspace_hash#" \
+  "$protected_env" >"$legacy_env"
+chmod 0600 "$legacy_env"
+: >"$aws_log"; : >"$curl_log"; : >"$docker_log"
+if env -i "${access_environment[@]}" FMG_FAKE_EXPECTED_ENV_FILE="$legacy_env" \
+  "$access_script" --test-mode "$legacy_env" \
+  >"$test_root/legacy.out" 2>"$test_root/legacy.err"; then
+  fail "validator accepted a legacy unquoted Workspace hash"
+fi
+grep -Fq 'single quotes' "$test_root/legacy.err"
+[[ ! -s "$aws_log" && ! -s "$curl_log" && ! -s "$docker_log" ]]
+! grep -Fq "$workspace_hash" "$test_root/legacy.out" "$test_root/legacy.err"
+
 missing_key_env="$test_root/missing-key.env"
 grep -v '^FMG_BACKUP_PREFIX=' "$protected_env" >"$missing_key_env"
 chmod 0600 "$missing_key_env"
@@ -374,6 +389,10 @@ chmod 0644 "$unsafe_mode_env"
 overlap_env="$test_root/overlap.env"
 sed 's#^FMG_BACKUP_PREFIX=.*#FMG_BACKUP_PREFIX=import/#' "$protected_env" >"$overlap_env"
 chmod 0600 "$overlap_env"
+malformed_hash_env="$test_root/malformed-hash.env"
+sed "s#^WORKSPACE_ACCESS_KEY_HASH=.*#WORKSPACE_ACCESS_KEY_HASH='not-an-argon2id-hash'#" \
+  "$protected_env" >"$malformed_hash_env"
+chmod 0600 "$malformed_hash_env"
 symlink_env="$test_root/symlink.env"
 ln -s "$protected_env" "$symlink_env"
 
@@ -382,6 +401,7 @@ for invalid_env in \
   "$missing_key_env" \
   "$unsafe_mode_env" \
   "$overlap_env" \
+  "$malformed_hash_env" \
   "$symlink_env"; do
   : >"$aws_log"; : >"$curl_log"; : >"$docker_log"
   if env -i "${access_environment[@]}" \
