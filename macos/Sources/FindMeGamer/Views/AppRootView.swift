@@ -7,25 +7,17 @@ struct AppRootView: View {
 
   var body: some View {
     Group {
-      switch session.state {
+      switch WorkspaceRootSurface.resolve(state: session.state, hasService: session.service != nil)
+      {
       case .checking:
         ProgressView("Checking workspace access…")
-      case .needsKey:
+      case .access:
         WorkspaceAccessView(session: session, key: $workspaceAccessKey)
-      case .authenticated:
-        placeholder
-      case .offline:
-        if session.service != nil {
-          placeholder
-        } else {
-          WorkspaceAccessView(session: session, key: $workspaceAccessKey)
-        }
+      case .workspace:
+        AuthenticatedRootView(session: session)
       }
     }
     .frame(minWidth: 640, minHeight: 420)
-  }
-
-  private var placeholder: some View {
-    Text("Find Me Gamer")
+    .modifier(AppearancePreferences())
   }
 }
