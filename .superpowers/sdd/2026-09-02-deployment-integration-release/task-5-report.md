@@ -229,3 +229,120 @@ No binding concern remains. The only tooling limitation is reported after the
 final conditional ShellCheck/shfmt gate. The required commit subject is
 `ops: deploy stack with one command`; its immutable hash is supplied after
 commit.
+
+---
+
+## Fix round 1: make the protected deploy environment authoritative
+
+### Reviewed finding
+
+Docker Compose gives values already present in the invoking shell precedence
+over the file passed with `--env-file`. The original deploy replaced its four
+host-side values from the protected file, but left five other Compose
+interpolation keys inherited. A stale database password could therefore break
+migration after the maintenance stop, and a stale Workspace hash could reject
+ordinary coworkers after an otherwise successful deployment.
+
+The fix is restricted to `ops/deploy.sh`, its focused test, and this appended
+report. Ordering, lock/ref handling, backup, systemd, remote deployment,
+lifecycle, and application behavior are unchanged.
+
+### Real Compose precedence demonstration
+
+The focused test creates a disposable mode-0600 complete dotenv, invokes the
+real local Docker Compose `config --format json` path with a conflicting
+synthetic shell password, and uses `jq` to confirm the rendered API database
+URL contains the shell marker rather than the file marker. Output is captured
+inside the disposable test directory and neither marker is printed. This
+read-only command renders configuration only and starts no container.
+
+### Genuine RED
+
+The real deploy then runs through the existing strict external fakes with
+conflicting inherited values for every Compose input and the host backup
+prefix. The Docker fake records only safe key-state markers, never values. It
+requires all five host-unneeded keys to be absent and the four parsed
+non-secret values to match the protected file on every invocation, including
+the nested backup. Against base
+`fafb00509deecfee5acd12a9ff1561457e298869`:
+
+```text
+$ bash ops/tests/test_deploy_script.sh
+deploy script test: inherited Compose interpolation key reached fake Docker: BACKEND_SUBNET
+$ echo $?
+1
+```
+
+The failure was the reviewed precedence defect, not a test setup or syntax
+error. The real Compose characterization had already succeeded.
+
+### Minimal GREEN
+
+Immediately after literal parsing/export of `SERVICE_DOMAIN`,
+`FMG_S3_BUCKET`, `FMG_AWS_REGION`, and `FMG_BACKUP_PREFIX`, and before the
+first Compose version check, deployment now explicitly unsets only:
+
+- `BACKEND_SUBNET`
+- `POSTGRES_DB`
+- `POSTGRES_USER`
+- `POSTGRES_PASSWORD`
+- `WORKSPACE_ACCESS_KEY_HASH`
+
+Compose therefore resolves those values from the protected env-file, while
+the four non-secret host values still come from exact-key parsing and replace
+conflicting inherited values. No secret is parsed, exported, echoed, logged,
+or passed separately in argv; the protected file is still never sourced or
+evaluated.
+
+Focused GREEN:
+
+```text
+$ bash -n ops/deploy.sh ops/tests/test_deploy_script.sh
+$ bash ops/tests/test_deploy_script.sh
+deploy script test: PASS
+```
+
+The focused assertions cover every fake Docker/Compose invocation, including
+version, build, stop, data health start, nested PostgreSQL backup, migration,
+the single full-up, and status. Removing any one of the five unsets produces a
+safe `present <KEY>` failure without revealing the value. The four protected
+non-secret values are independently checked on each invocation.
+
+### Final verification and deferred Minors
+
+The final gate reruns focused deployment twice, the full Task 3 backup test,
+all Task 1–5 script regressions, Bash syntax, real Compose rendering, dry-run,
+diff/scope/mode, secret/output, no-source/eval, destructive/AWS-mutation, and
+generated-artifact checks. All Docker Compose use outside fakes is
+configuration rendering only; no checkout, fetch, SSH, container start,
+database, AWS, HTTP health, systemd, or production-file action occurs.
+
+Fresh final output is recorded after the complete gate:
+
+```text
+$ bash ops/tests/test_deploy_script.sh  # twice
+deploy script test: PASS
+deploy script test: PASS
+$ bash ops/tests/test_backup_scripts.sh
+backup scripts test: PASS
+$ bash ops/tests/test_compose_config.sh
+true  # repeated for all 16 assertions
+$ bash ops/tests/test_bootstrap_server.sh
+bootstrap server test: PASS
+$ bash ops/tests/test_s3_configuration.sh
+s3 configuration test: PASS
+$ docker compose --env-file .env.example config --quiet
+$ FMG_DRY_RUN=1 ops/deploy.sh main
+deterministic non-mutating plan; exit 0
+$ <syntax, diff, scope/mode, secret, destructive/AWS, and artifact gates>
+task5 fix1 final gate: PASS
+```
+
+The readiness loop's final unconditional sleep may cross the 120-second
+deadline by less than two seconds; this remains the explicitly deferred
+non-blocking Minor. The earlier one-shot boto3 StreamingBody close also remains
+untouched. ShellCheck is run only if installed.
+
+No binding concern remains. The required commit subject is
+`fix: make protected deploy env authoritative`; its immutable hash is supplied
+after commit.

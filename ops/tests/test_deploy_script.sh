@@ -56,11 +56,13 @@ trap cleanup EXIT
 
 fake_bin="$test_root/bin"
 command_log="$test_root/commands.log"
+environment_log="$test_root/environment.log"
 ssh_log="$test_root/ssh.log"
 curl_count="$test_root/curl-count"
 date_count="$test_root/date-count"
 mkdir -p "$fake_bin"
 : >"$command_log"
+: >"$environment_log"
 : >"$ssh_log"
 printf '0\n' >"$curl_count"
 printf '0\n' >"$date_count"
@@ -101,6 +103,24 @@ cat >"$fake_bin/docker" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'docker %s\n' "$*" >>"$FMG_FAKE_COMMAND_LOG"
+for key in BACKEND_SUBNET POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD WORKSPACE_ACCESS_KEY_HASH; do
+  if printenv "$key" >/dev/null 2>&1; then
+    printf 'present %s\n' "$key" >>"$FMG_FAKE_ENVIRONMENT_LOG"
+  fi
+done
+for key in SERVICE_DOMAIN FMG_S3_BUCKET FMG_AWS_REGION FMG_BACKUP_PREFIX; do
+  case "$key" in
+    SERVICE_DOMAIN) expected='demo.internal.example' ;;
+    FMG_S3_BUCKET) expected='company-demo-artifacts' ;;
+    FMG_AWS_REGION) expected='us-west-2' ;;
+    FMG_BACKUP_PREFIX) expected='database/backups/' ;;
+  esac
+  if [[ "${!key:-}" == "$expected" ]]; then
+    printf 'protected %s\n' "$key" >>"$FMG_FAKE_ENVIRONMENT_LOG"
+  else
+    printf 'wrong %s\n' "$key" >>"$FMG_FAKE_ENVIRONMENT_LOG"
+  fi
+done
 command_line=" $* "
 case "$command_line" in
   *' exec -T postgres '*' pg_dump '*)
@@ -174,6 +194,7 @@ execution_marker="$test_root/dotenv-executed"
 workspace_hash='$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA'
 cat >"$env_file" <<EOF
 SERVICE_DOMAIN=demo.internal.example
+BACKEND_SUBNET=172.30.0.0/24
 POSTGRES_DB=find_me_gamer
 POSTGRES_USER=find_me_gamer
 POSTGRES_PASSWORD='literal dollar \$ and spaces \$(touch $execution_marker)'
@@ -186,6 +207,32 @@ EOF
 printf 'not-a-real-master-key\n' >"$master_key"
 chmod 0600 "$env_file" "$master_key"
 
+precedence_env="$test_root/compose-precedence.env"
+cat >"$precedence_env" <<'EOF'
+SERVICE_DOMAIN=precedence.internal.example
+BACKEND_SUBNET=172.30.0.0/24
+POSTGRES_DB=find_me_gamer
+POSTGRES_USER=find_me_gamer
+POSTGRES_PASSWORD=file-compose-password-marker
+WORKSPACE_ACCESS_KEY_HASH='$argon2id$v=19$m=65536,t=3,p=4$c2FsdA$aGFzaA'
+FMG_AWS_REGION=us-west-2
+FMG_S3_BUCKET=company-demo-artifacts
+EOF
+chmod 0600 "$precedence_env"
+real_compose_output="$test_root/real-compose.json"
+real_compose_error="$test_root/real-compose.err"
+if ! env -i PATH="$PATH" HOME="${HOME:-$test_root}" \
+  POSTGRES_PASSWORD=inherited-compose-password-marker \
+  docker compose --project-directory "$repo_root" --env-file "$precedence_env" \
+  config --format json >"$real_compose_output" 2>"$real_compose_error"; then
+  fail "real Compose precedence demonstration could not render"
+fi
+jq -e '
+  .services.api.environment.DATABASE_URL |
+  contains(":inherited-compose-password-marker@postgres:")
+' "$real_compose_output" >/dev/null ||
+  fail "real Compose did not demonstrate shell precedence over --env-file"
+
 base_environment=(
   PATH="$fake_bin:/usr/bin:/bin"
   FMG_DEPLOY_TEST_MODE=1
@@ -193,6 +240,7 @@ base_environment=(
   FMG_DEPLOY_MASTER_KEY_FILE="$master_key"
   FMG_DEPLOY_LOCK_FILE="$lock_file"
   FMG_FAKE_COMMAND_LOG="$command_log"
+  FMG_FAKE_ENVIRONMENT_LOG="$environment_log"
   FMG_FAKE_CURL_COUNT="$curl_count"
   FMG_FAKE_DATE_COUNT="$date_count"
 )
@@ -200,6 +248,11 @@ base_environment=(
 run_deploy() {
   env -i "${base_environment[@]}" \
     SERVICE_DOMAIN=inherited.invalid \
+    BACKEND_SUBNET=10.99.0.0/24 \
+    POSTGRES_DB=inherited_database \
+    POSTGRES_USER=inherited_user \
+    POSTGRES_PASSWORD=inherited-password-canary \
+    WORKSPACE_ACCESS_KEY_HASH=inherited-workspace-hash-canary \
     FMG_S3_BUCKET=inherited-bucket \
     FMG_AWS_REGION=eu-central-1 \
     FMG_BACKUP_PREFIX=inherited/backups/ \
@@ -217,6 +270,8 @@ assert_contains "$success_output" \
   "s3://company-demo-artifacts/database/backups/20260903T010203Z-0123456789ab-pre-migration.dump"
 ! grep -Eq 'inherited\.invalid|inherited-bucket|eu-central-1|inherited/backups/' \
   "$success_output" "$success_error" "$command_log"
+! grep -Eq 'inherited-password-canary|inherited-workspace-hash-canary' \
+  "$success_output" "$success_error" "$command_log"
 assert_before "$command_log" " build" " stop proxy api worker beat"
 assert_before "$command_log" " stop proxy api worker beat" " up -d --wait"
 assert_before "$command_log" " up -d --wait" " pg_dump "
@@ -232,6 +287,19 @@ while IFS= read -r compose_command; do
   [[ "$compose_command" == *"--env-file $env_file"* ]] ||
     fail "Compose command omitted the protected env-file: $compose_command"
 done < <(grep '^docker compose ' "$command_log")
+if grep -q '^present ' "$environment_log"; then
+  leaked_key="$(grep '^present ' "$environment_log" | head -n 1 | cut -d' ' -f2)"
+  fail "inherited Compose interpolation key reached fake Docker: $leaked_key"
+fi
+if grep -q '^wrong ' "$environment_log"; then
+  wrong_key="$(grep '^wrong ' "$environment_log" | head -n 1 | cut -d' ' -f2)"
+  fail "protected non-secret value did not replace inherited value: $wrong_key"
+fi
+compose_invocations="$(grep -c '^docker compose ' "$command_log")"
+for key in SERVICE_DOMAIN FMG_S3_BUCKET FMG_AWS_REGION FMG_BACKUP_PREFIX; do
+  [[ "$(grep -c "^protected $key$" "$environment_log")" == "$compose_invocations" ]] ||
+    fail "protected value was not authoritative for every Compose invocation: $key"
+done
 assert_contains "$success_output" "0123456789abcdef0123456789abcdef01234567"
 
 for existing in 0 1; do

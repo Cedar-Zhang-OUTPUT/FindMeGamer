@@ -158,6 +158,8 @@ fi
 require_protected_file "$env_file" "$required_owner"
 require_protected_file "$master_key_file" "$required_owner"
 load_deploy_configuration
+unset BACKEND_SUBNET POSTGRES_DB POSTGRES_USER POSTGRES_PASSWORD \
+  WORKSPACE_ACCESS_KEY_HASH
 
 for command_name in flock git docker curl date; do
   command -v "$command_name" >/dev/null 2>&1 || fail "$command_name is required"
