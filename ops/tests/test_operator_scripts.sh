@@ -65,6 +65,7 @@ def run(command: list[str], environment: dict[str, str]) -> subprocess.Completed
 
 fake_curl_source = r'''#!/usr/bin/env python3
 import json, os, pathlib, sys
+from urllib.parse import urlsplit
 arguments = sys.argv[1:]
 log = pathlib.Path(os.environ["FMG_FAKE_CURL_LOG"])
 with log.open("a", encoding="utf-8") as stream:
@@ -80,8 +81,10 @@ if "--max-redirs" not in arguments or arguments[arguments.index("--max-redirs") 
 if "--location" in arguments or "-L" in arguments or "POST" in arguments:
     raise SystemExit(92)
 output = pathlib.Path(arguments[arguments.index("--output") + 1])
+write_out = arguments[arguments.index("--write-out") + 1]
 url = arguments[-1]
-path = url.split("smoke.test", 1)[-1]
+parsed_url = urlsplit(url)
+path = parsed_url.path + (("?" + parsed_url.query) if parsed_url.query else "")
 mode = os.environ.get("FMG_FAKE_CURL_MODE", "ok")
 status = 200
 if path == "/health/live" or path == "/health/ready":
@@ -112,7 +115,10 @@ if mode == "unhealthy" and path == "/health/ready":
     status = 503
     body = {"status": "unavailable", "private": "BODY-CANARY"}
 output.write_text(body if isinstance(body, str) else json.dumps(body), encoding="utf-8")
-sys.stdout.write(str(status))
+metadata = str(status)
+if "%{remote_ip}" in write_out:
+    metadata += " " + os.environ.get("FMG_FAKE_CURL_REMOTE_IP", "198.51.100.42")
+sys.stdout.write(metadata)
 '''
 
 fake_docker_source = r'''#!/usr/bin/env python3
@@ -222,6 +228,34 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
             "HOME": str(test_root),
         }
     )
+
+    for blocked_remote in (
+        "127.0.0.1",
+        "169.254.1.2",
+        "0.0.0.0",
+        "::",
+        "::1",
+        "fe80::1",
+        "::ffff:127.0.0.1",
+        "::ffff:a9fe:102",
+        "::ffff:0:0",
+        "0000:0000:0000:0000:0000:ffff:7f00:0001",
+    ):
+        curl_log.write_text("", encoding="utf-8")
+        blocked = run(
+            [str(smoke_script), "https://smoke.test"],
+            smoke_environment | {"FMG_FAKE_CURL_REMOTE_IP": blocked_remote},
+        )
+        assert blocked.returncode != 0
+        blocked_observable = blocked.stdout + blocked.stderr + curl_log.read_text(encoding="utf-8")
+        assert key not in blocked_observable
+        blocked_calls = [json.loads(line) for line in curl_log.read_text().splitlines()]
+        assert len(blocked_calls) == 1
+        assert blocked_calls[0][-1].endswith("/health/live")
+        assert "--config" not in blocked_calls[0]
+        assert not any("authorization" in argument.casefold() for argument in blocked_calls[0])
+
+    curl_log.write_text("", encoding="utf-8")
     smoke = run([str(smoke_script), "https://smoke.test"], smoke_environment)
     assert smoke.returncode == 0, smoke.stderr
     observable = smoke.stdout + smoke.stderr + curl_log.read_text(encoding="utf-8")
@@ -232,6 +266,14 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
     assert all("--proto" in call and call[call.index("--proto") + 1] == "=https" for call in calls)
     assert all("--max-redirs" in call and call[call.index("--max-redirs") + 1] == "0" for call in calls)
     assert all("--location" not in call and "-L" not in call and "POST" not in call for call in calls)
+    assert all("--noproxy" in call and call[call.index("--noproxy") + 1] == "*" for call in calls)
+    assert "%{remote_ip}" in calls[0][calls[0].index("--write-out") + 1]
+    assert "--resolve" not in calls[0]
+    assert all(
+        "--resolve" in call
+        and call[call.index("--resolve") + 1] == "smoke.test:443:198.51.100.42"
+        for call in calls[1:]
+    )
     assert all(key not in argument for call in calls for argument in call)
     public = [call for call in calls if call[-1].endswith("/r/not-a-capability?choice=accepted")]
     assert len(public) == 1 and "--config" not in public[0]
@@ -242,6 +284,35 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
     assert len(header_paths) == 1 and not Path(header_paths.pop()).exists()
     assert sum(call[-1].endswith("/api/v1/outreach/campaigns") for call in calls) == 2
     assert any("changed_after=opaque%20%2B%2Fcursor%3D%3D" in call[-1] for call in calls)
+
+    ipv6_log = test_root / "curl-ipv6.log"
+    ipv6_smoke = run(
+        [str(smoke_script), "https://smoke.test"],
+        smoke_environment
+        | {
+            "FMG_FAKE_CURL_LOG": str(ipv6_log),
+            "FMG_FAKE_CURL_REMOTE_IP": "2001:db8::42",
+        },
+    )
+    assert ipv6_smoke.returncode == 0, ipv6_smoke.stderr
+    ipv6_calls = [json.loads(line) for line in ipv6_log.read_text().splitlines()]
+    assert "--resolve" not in ipv6_calls[0]
+    assert all(
+        call[call.index("--resolve") + 1] == "smoke.test:443:[2001:db8::42]"
+        for call in ipv6_calls[1:]
+    )
+
+    port_log = test_root / "curl-port.log"
+    port_smoke = run(
+        [str(smoke_script), "https://smoke.test:8443"],
+        smoke_environment | {"FMG_FAKE_CURL_LOG": str(port_log)},
+    )
+    assert port_smoke.returncode == 0, port_smoke.stderr
+    port_calls = [json.loads(line) for line in port_log.read_text().splitlines()]
+    assert all(
+        call[call.index("--resolve") + 1] == "smoke.test:8443:198.51.100.42"
+        for call in port_calls[1:]
+    )
 
     def smoke_failure(environment: dict[str, str], base: str = "https://smoke.test") -> None:
         result = run([str(smoke_script), base], environment)

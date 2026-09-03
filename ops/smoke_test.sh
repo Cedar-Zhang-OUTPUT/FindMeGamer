@@ -55,6 +55,8 @@ if [[ -n "$base_port" ]]; then
   base_port_value=$((10#$base_port))
   [[ "$base_port_value" -ge 1 && "$base_port_value" -le 65535 ]] ||
     fail "base URL port is invalid"
+else
+  base_port_value=443
 fi
 base_host_lower="$(printf '%s' "$base_host" | tr '[:upper:]' '[:lower:]')"
 case "$base_host_lower" in
@@ -112,6 +114,48 @@ safe_error_suffix() {
   ' "$response_file" 2>/dev/null || true
 }
 
+ipv4_is_safe() {
+  local address="$1"
+  local first second third fourth remainder octet numeric
+  IFS='.' read -r first second third fourth remainder <<<"$address"
+  [[ -n "$first" && -n "$second" && -n "$third" && -n "$fourth" && -z "$remainder" ]] || return 1
+  for octet in "$first" "$second" "$third" "$fourth"; do
+    [[ "$octet" =~ ^[0-9]{1,3}$ ]] || return 1
+    numeric=$((10#$octet))
+    [[ "$numeric" -le 255 ]] || return 1
+  done
+  first=$((10#$first))
+  second=$((10#$second))
+  [[ "$first" -ne 0 && "$first" -ne 127 ]] || return 1
+  [[ "$first" -ne 169 || "$second" -ne 254 ]] || return 1
+}
+
+remote_ip_is_safe() {
+  local address="$1"
+  local address_lower compact first_hextet ipv4_suffix
+  if [[ "$address" != *:* ]]; then
+    ipv4_is_safe "$address"
+    return
+  fi
+  address_lower="$(printf '%s' "$address" | tr '[:upper:]' '[:lower:]')"
+  [[ "$address_lower" =~ ^[0-9a-f:.]+$ ]] || return 1
+  compact="${address_lower//:/}"
+  [[ ! "$compact" =~ ^0*$ && ! "$compact" =~ ^0*1$ ]] || return 1
+  first_hextet="${address_lower%%:*}"
+  [[ ! "$first_hextet" =~ ^fe[89ab][0-9a-f]$ ]] || return 1
+  if [[ "$address_lower" == ::ffff:* ||
+    "$address_lower" =~ ^0+:0+:0+:0+:0+:ffff: ]]; then
+    return 1
+  fi
+  if [[ "$address_lower" == *.* ]]; then
+    ipv4_suffix="${address_lower##*:}"
+    ipv4_is_safe "$ipv4_suffix" || return 1
+  fi
+}
+
+pinned_remote_ip=""
+resolve_entry=""
+
 request() {
   local endpoint_name="$1"
   local url="$2"
@@ -119,14 +163,30 @@ request() {
   local expected_status="$4"
   local -a curl_arguments=(
     --disable --silent --show-error --request GET --proto '=https'
-    --proto-redir '=https' --max-redirs 0 --connect-timeout 3 --max-time 10
-    --output "$response_file" --write-out '%{http_code}'
+    --proto-redir '=https' --max-redirs 0 --noproxy '*'
+    --connect-timeout 3 --max-time 10
+    --output "$response_file" --write-out '%{http_code} %{remote_ip}'
   )
+  if [[ -n "$resolve_entry" ]]; then
+    curl_arguments+=(--resolve "$resolve_entry")
+  fi
   if [[ "$authenticated" == "yes" ]]; then
     curl_arguments+=(--config "$header_file")
   fi
-  http_status="$("$curl_bin" "${curl_arguments[@]}" "$url" 2>/dev/null)" || fail "$endpoint_name request failed"
-  [[ "$http_status" =~ ^[0-9]{3}$ ]] || fail "$endpoint_name returned an invalid HTTP status"
+  http_metadata="$("$curl_bin" "${curl_arguments[@]}" "$url" 2>/dev/null)" || fail "$endpoint_name request failed"
+  IFS=' ' read -r http_status request_remote_ip unexpected_metadata <<<"$http_metadata"
+  [[ "$http_status" =~ ^[0-9]{3}$ && -n "$request_remote_ip" && -z "$unexpected_metadata" ]] ||
+    fail "$endpoint_name returned invalid connection metadata"
+  if [[ -z "$pinned_remote_ip" ]]; then
+    remote_ip_is_safe "$request_remote_ip" || fail "$endpoint_name resolved to an unsafe destination"
+    pinned_remote_ip="$request_remote_ip"
+    if [[ "$pinned_remote_ip" == *:* ]]; then
+      resolve_address="[${pinned_remote_ip}]"
+    else
+      resolve_address="$pinned_remote_ip"
+    fi
+    resolve_entry="${base_host}:${base_port_value}:${resolve_address}"
+  fi
   if [[ "$http_status" != "$expected_status" ]]; then
     suffix="$(safe_error_suffix)"
     fail "$endpoint_name failed (HTTP ${http_status}${suffix})"

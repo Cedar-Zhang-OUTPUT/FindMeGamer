@@ -221,3 +221,64 @@ production Docker, AWS, SMTP, SSH, public response action, or production file
 was touched.
 
 No binding concerns remain after fix round 1.
+
+## Fix round 2 — pin the smoke destination
+
+### TDD RED
+
+The fake curl was extended first to expose the actual `remote_ip` when the
+production write-out requests it. A blocked-address matrix asserted that a
+loopback/link-local/unspecified result permits exactly one unauthenticated
+`/health/live` call, never references the private curl config, and exits
+nonzero before any later request. Against
+`dc145bac6d411031e673e3293817531326207c75`, the first loopback case continued
+through the workflow and failed the new assertion:
+
+```text
+$ bash ops/tests/test_operator_scripts.sh
+PASS: exact 100-row synthetic Creator fixture
+AssertionError
+task7_fix2_RED_exit=1
+```
+
+### GREEN changes
+
+- Every curl request remains `--disable` first, explicit GET/HTTPS, and
+  no-redirect, and now also uses `--noproxy '*'` so its reported remote address
+  is the direct destination.
+- The first `/health/live` request remains unauthenticated and reports both
+  HTTP status and `remote_ip`. Before parsing its JSON or issuing an
+  authenticated request, portable Bash rejects IPv4/IPv6 loopback,
+  link-local, unspecified, and IPv4-mapped forms.
+- A safe address is converted into one `--resolve` entry using the original
+  TLS hostname and effective port (443 by default). Every subsequent public or
+  authenticated request carries that same pin; IPv6 addresses use curl's
+  bracketed resolve syntax, while TLS hostname verification remains intact.
+
+### Fix verification
+
+The final focused suite passed twice. It covers 10 blocked representations,
+including dotted and expanded IPv4-mapped forms, and proves each stops after
+one unauthenticated health request without an Authorization argument or config.
+The normal IPv4 path, a global IPv6 path, and an explicit-port path pass while
+every later call carries the exact expected pin; the public response GET still
+has no authentication config and no POST behavior.
+
+```text
+$ bash ops/tests/test_operator_scripts.sh
+PASS: exact 100-row synthetic Creator fixture
+PASS: fake-backed smoke secrecy and resumable seed workflow
+$ bash ops/tests/test_operator_scripts.sh
+PASS: exact 100-row synthetic Creator fixture
+PASS: fake-backed smoke secrecy and resumable seed workflow
+```
+
+The seed dry-run, Task 1–6 operator/Compose regressions,
+`integration/run.sh --contract`, and all ops/integration `bash -n` checks
+passed. The original related backend selection was rerun against the isolated
+test services: `226 passed in 17.55s`.
+
+Exact scope, no-host-Python, secret/process-argument, GET-only/public-no-auth,
+diff, executable-mode, and artifact gates passed. No real smoke endpoint,
+provider, AWS, production Docker, SMTP, SSH, response action, or production
+file was touched. No binding concerns remain after fix round 2.
