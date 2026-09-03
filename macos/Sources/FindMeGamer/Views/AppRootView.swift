@@ -4,6 +4,7 @@ import SwiftUI
 struct AppRootView: View {
   let session: AppSession
   @State private var workspaceAccessKey = ""
+  @State private var workspaceNavigation = WorkspaceNavigationState()
 
   var body: some View {
     Group {
@@ -14,7 +15,7 @@ struct AppRootView: View {
       case .access:
         WorkspaceAccessView(session: session, key: $workspaceAccessKey)
       case .workspace:
-        AuthenticatedRootView(session: session)
+        AuthenticatedRootView(session: session, navigation: workspaceNavigation)
       }
     }
     .frame(minWidth: 640, minHeight: 420)

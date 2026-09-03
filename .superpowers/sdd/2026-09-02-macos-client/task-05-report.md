@@ -7,7 +7,10 @@ Implemented the native macOS workspace shell against immutable base
 service offline states now share one stable two-column `NavigationSplitView`
 with the exact four destinations, independent navigation paths, a detail-only
 offline treatment, and root-level persisted appearance application. Task 4
-access/session behavior is unchanged.
+access/session behavior is unchanged. The binding independent-review fix now
+keeps the navigation-history owner at the stable per-window `AppRootView`
+level, so Retry can temporarily show checking progress without losing nested
+feature navigation.
 
 The required single commit uses subject
 `feat: add native macos workspace shell`. Its final content-addressed SHA and
@@ -68,14 +71,17 @@ stay on access. Final focused result: 5 tests in 1 suite, 0 failures.
 
 ## Navigation and offline behavior
 
-- The shell owns four distinct `@State NavigationPath` values: Library, Match,
-  Outreach, and Settings. Each destination selects its corresponding
-  `NavigationStack(path:)`; sidebar switching never clears any other path.
+- A per-window `WorkspaceNavigationState` owns four distinct `NavigationPath`
+  values: Library, Match, Outreach, and Settings. Stable `AppRootView` state
+  owns that object and passes bindings to `AuthenticatedRootView`; each
+  destination selects its corresponding `NavigationStack(path:)` and sidebar
+  switching never clears any other path.
 - Each stack currently renders only the exact destination title as a semantic
   placeholder. No fake business data or later feature model/view was added.
-- `WorkspaceRootSurface` keeps authenticated and retained-service offline
-  states on one stable workspace branch, preserving root-owned paths across
-  connectivity loss/recovery. Checking, needs-key, and offline-without-service
+- `WorkspaceRootSurface` maps authenticated and retained-service offline states
+  to workspace. The navigation owner sits above that branch, preserving paths
+  across the full offline -> checking -> authenticated Retry sequence while
+  checking still renders Progress. Needs-key and offline-without-service
   continue to follow Task 4 behavior.
 - `OfflineBanner` appears inside the detail column, above rather than instead of
   the selected stack, only for `.offline`. Its Retry button calls the existing
@@ -129,6 +135,7 @@ stay on access. Final focused result: 5 tests in 1 suite, 0 failures.
 ## Files changed
 
 - `macos/Sources/FindMeGamerCore/Models/AppDestination.swift`
+- `macos/Sources/FindMeGamerCore/Models/WorkspaceNavigationState.swift`
 - `macos/Sources/FindMeGamer/Views/SidebarView.swift`
 - `macos/Sources/FindMeGamer/Views/AuthenticatedRootView.swift`
 - `macos/Sources/FindMeGamer/Views/Shared/OfflineBanner.swift`
@@ -142,3 +149,50 @@ stay on access. Final focused result: 5 tests in 1 suite, 0 failures.
 None within the company-internal Demo Task 5 boundary. Feature content,
 appearance controls, polished visual treatment/Liquid Glass, keyboard command
 systems, and multi-window stress remain deliberately assigned to later work.
+
+## Binding review fix after `29dd30e`
+
+The first independent review identified one ordinary-flow navigation-loss
+defect: Offline-banner Retry transitions a retained-service session from
+`.offline` through `.checking` to `.authenticated`. The required checking
+ProgressView removes `AuthenticatedRootView`, so paths owned by that child were
+recreated empty when workspace returned.
+
+The focused fix commit uses subject `fix: retain workspace navigation on
+retry`. Its exact content-addressed SHA and immutable base-to-HEAD review byte
+count/SHA-256 are reported in the implementer handoff because embedding them in
+their own commit would change the values.
+
+### Review-fix RED/GREEN
+
+- RED: added `retrySequenceRetainsTheSameNavigationHistoryOwner` first and ran
+  `swift test --package-path macos --filter AppDestinationTests`. Compilation
+  failed at the expected missing production type: `cannot find
+  'WorkspaceNavigationState' in scope`.
+- GREEN: the focused suite passed 6 tests in 1 suite. The new behavior test
+  seeds all four actual `NavigationPath` values, proves the retained-service
+  surface sequence is exactly `.workspace`, `.checking`, `.workspace`, and
+  proves the same owner retains each history entry.
+- Minimal implementation: a `@MainActor @Observable`
+  `WorkspaceNavigationState` holds only the four paths. `AppRootView` owns it as
+  per-window `@State`; `AuthenticatedRootView` receives it with `@Bindable`.
+  The checking ProgressView, Retry action, AppSession, service, selection,
+  appearance, and later feature surfaces are unchanged.
+
+### Final review-fix verification
+
+- Focused: 6 tests / 1 suite / 0 failures.
+- Full Swift: 59 tests / 6 suites / 0 failures.
+- `swift build --package-path macos -Xswiftc -warnings-as-errors`: exit 0;
+  Core/App emit no warnings and only the previously bounded generated/schema
+  diagnostics remain.
+- Changed Swift files pass `xcrun swift-format lint --strict`; `git diff
+  --check` passes.
+- Safe invalid-URL real-app verification exited 0 and launched exact PID
+  `27122`. Staged plist values were `com.findmegamer.desktop`, `14.0`, and
+  `invalid://local-verification`. `/bin/kill 27122` terminated only that PID;
+  `kill -0` then failed and no `FindMeGamer` process remained.
+- No backend, OpenAPI/generated output, package manifest, AppSession, Keychain,
+  connectivity, build-runner, access UI, or later feature code changed.
+
+Bounded concerns after the fix: none within the internal-Demo Task 5 boundary.

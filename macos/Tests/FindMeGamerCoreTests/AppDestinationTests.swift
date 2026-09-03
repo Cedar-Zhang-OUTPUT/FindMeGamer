@@ -75,4 +75,26 @@ import Testing
     #expect(WorkspaceRootSurface.resolve(state: .offline, hasService: true) == .workspace)
     #expect(WorkspaceRootSurface.resolve(state: .offline, hasService: false) == .access)
   }
+
+  @MainActor
+  @Test func retrySequenceRetainsTheSameNavigationHistoryOwner() {
+    let navigation = WorkspaceNavigationState()
+    navigation.libraryPath.append("creator-detail")
+    navigation.matchPath.append("match-results")
+    navigation.outreachPath.append("campaign-detail")
+    navigation.settingsPath.append("email-settings")
+    let originalOwner = ObjectIdentifier(navigation)
+
+    let retrySequence: [AppSession.State] = [.offline, .checking, .authenticated]
+    #expect(
+      retrySequence.map {
+        WorkspaceRootSurface.resolve(state: $0, hasService: true)
+      } == [.workspace, .checking, .workspace])
+
+    #expect(ObjectIdentifier(navigation) == originalOwner)
+    #expect(navigation.libraryPath.count == 1)
+    #expect(navigation.matchPath.count == 1)
+    #expect(navigation.outreachPath.count == 1)
+    #expect(navigation.settingsPath.count == 1)
+  }
 }

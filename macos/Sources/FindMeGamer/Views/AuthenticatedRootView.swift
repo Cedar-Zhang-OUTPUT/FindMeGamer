@@ -14,12 +14,9 @@ extension EnvironmentValues {
 
 struct AuthenticatedRootView: View {
   let session: AppSession
+  @Bindable var navigation: WorkspaceNavigationState
 
   @SceneStorage("sidebar-selection") private var storedSelection = AppDestination.library.rawValue
-  @State private var libraryPath = NavigationPath()
-  @State private var matchPath = NavigationPath()
-  @State private var outreachPath = NavigationPath()
-  @State private var settingsPath = NavigationPath()
 
   var body: some View {
     NavigationSplitView {
@@ -54,19 +51,19 @@ struct AuthenticatedRootView: View {
   @ViewBuilder private var selectedDetail: some View {
     switch selectedDestination {
     case .library:
-      NavigationStack(path: $libraryPath) {
+      NavigationStack(path: $navigation.libraryPath) {
         DestinationPlaceholder(destination: .library)
       }
     case .match:
-      NavigationStack(path: $matchPath) {
+      NavigationStack(path: $navigation.matchPath) {
         DestinationPlaceholder(destination: .match)
       }
     case .outreach:
-      NavigationStack(path: $outreachPath) {
+      NavigationStack(path: $navigation.outreachPath) {
         DestinationPlaceholder(destination: .outreach)
       }
     case .settings:
-      NavigationStack(path: $settingsPath) {
+      NavigationStack(path: $navigation.settingsPath) {
         DestinationPlaceholder(destination: .settings)
       }
     }
