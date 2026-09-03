@@ -191,3 +191,140 @@ task4 final gate: PASS
 
 No binding concern remains. The only tooling limitation is that ShellCheck and
 shfmt are unavailable on this host.
+
+---
+
+## Fix round 1: protected configuration and Compose rendering
+
+### Reviewed finding
+
+The fixed base expected all four S3 configuration values in the inherited
+environment and ran the API probe without `--env-file`. The later normal sudo
+deployment path does not preserve `FMG_BACKUP_PREFIX`, and Compose could not
+reliably interpolate the Task 1 configuration. The finding was reproducible
+and binding for the ordinary operator flow.
+
+This fix changes only `ops/validate_instance_access.sh`, its focused test, and
+this appended report. Lifecycle behavior/template, IAM, `.env.example`,
+bootstrap, Compose/Caddy, backup/restore, application code, and the recorded
+StreamingBody Minor remain unchanged.
+
+### Genuine RED
+
+The focused regression first created a disposable current-user-owned mode-0600
+`app.env` containing every Task 1 variable, the four safe S3 settings, literal
+Argon/password canaries, and a command-substitution canary. It cleared all
+inherited FMG and AWS values, invoked the real validator through the existing
+external fakes, and required the protected file to drive both the probe and
+Compose commands.
+
+Against base `b8bb9177a6a3f9f8f80a70b9b5e7ac47f7a1a705`:
+
+```text
+$ bash ops/tests/test_s3_configuration.sh
+s3 configuration test: validator must load the protected env and render Compose before the probe
+$ echo $?
+1
+```
+
+The failure was caused by the real validator requiring the cleared inherited
+`FMG_S3_BUCKET`, before either the file or Compose could be used.
+
+### Minimal GREEN
+
+Live mode now fixes the configuration path to exact
+`/etc/find-me-gamer/app.env`. Only explicit
+`--test-mode /path/to/app.env` can select a disposable test file. Live mode
+requires a regular non-symlink, root-owned, exact mode-0600 file; test mode
+retains the type/mode checks and requires ownership by the executing test user.
+
+The parser reads the file line-by-line and assigns only these exact keys,
+without `source`, `eval`, expansion, or logging:
+
+- `FMG_S3_BUCKET`
+- `FMG_AWS_REGION`
+- `FMG_ACQUISITION_PREFIX`
+- `FMG_BACKUP_PREFIX`
+
+Each must occur exactly once. The file values replace conflicting inherited
+FMG values deterministically before the existing validation. Static inherited
+AWS access-key credentials are still rejected before Compose, IMDS, or AWS
+operations.
+
+Before requesting IMDS or creating a container, the validator now runs:
+
+```text
+docker compose --project-directory <repository> --env-file <protected-file> config --quiet
+```
+
+The single probe uses the same global project-directory and env-file options
+before `run --rm --no-deps -T api`. A failed Compose render stops before run.
+The environment-free dry run does not read `/etc`; it visibly plans both
+commands with exact `/etc/find-me-gamer/app.env` and remains inert.
+
+Focused GREEN:
+
+```text
+$ bash -n ops/validate_instance_access.sh ops/tests/test_s3_configuration.sh
+$ bash ops/tests/test_s3_configuration.sh
+s3 configuration test: PASS
+```
+
+### Regression and security evidence
+
+The focused test proves:
+
+- cleared inherited FMG/AWS values are supplied by the protected file;
+- conflicting inherited FMG values are replaced by exact file values;
+- one successful `config --quiet` precedes exactly one `run`, with the same
+  exact env-file path on both commands;
+- missing file/key, unsafe mode, overlapping prefixes, and a symlink fail
+  before AWS, curl, or Docker boundaries;
+- Compose-render failure never reaches container creation;
+- the dotenv command-substitution marker is never created;
+- password/hash canaries and file contents do not appear in stdout, stderr, or
+  Docker command logs;
+- all previously approved Instance Role, IMDS, remediation, single-key probe,
+  cleanup, failure, and lifecycle cases remain covered.
+
+The Task 1 Compose regression uses only local `config` rendering and starts no
+container. Task 2 bootstrap, Task 3 backup/restore fakes, and Task 4 focused
+tests pass. No AWS, IMDS, S3, EC2, IAM, lifecycle, systemd, or production host
+operation was executed.
+
+### Final verification
+
+The final gate runs focused twice, Task 1–4 regressions, both environment-free
+dry runs, Bash syntax, jq lifecycle validation, Compose render, diff/scope,
+secret/config-output/AWS-mutation/artifact scans, and exact executable modes.
+ShellCheck and shfmt remain unavailable on this host.
+
+Fresh pre-commit output:
+
+```text
+$ bash -n <Task 1-4 scripts and tests>
+$ bash ops/tests/test_s3_configuration.sh
+s3 configuration test: PASS
+$ bash ops/tests/test_s3_configuration.sh
+s3 configuration test: PASS
+$ bash ops/tests/test_bootstrap_server.sh
+bootstrap server test: PASS
+$ bash ops/tests/test_backup_scripts.sh
+backup scripts test: PASS
+$ docker compose --env-file .env.example config --quiet
+$ bash ops/tests/test_compose_config.sh
+true  # repeated for all 16 assertions
+$ FMG_DRY_RUN=1 bash ops/configure_s3_lifecycle.sh
+3-line inert plan; exit 0
+$ FMG_DRY_RUN=1 bash ops/validate_instance_access.sh
+8-line inert plan with explicit protected env-file; exit 0
+$ <jq, diff, exact scope/mode, secret/config-output, no-eval,
+   metadata-mutation, and artifact gates>
+task4 fix1 final gate: PASS
+```
+
+The Compose commands above only rendered configuration; no container or stack
+was started. ShellCheck was conditionally skipped because it is unavailable.
+The fix commit subject is exactly
+`fix: load protected env for instance probe`; its immutable hash is supplied
+after commit.

@@ -120,7 +120,29 @@ printf '%q ' "$@" >>"$FMG_FAKE_DOCKER_LOG"
 printf '\n' >>"$FMG_FAKE_DOCKER_LOG"
 [[ "$1" == "compose" ]]
 shift
-while [[ "${1:-}" != "run" ]]; do shift; done
+project_directory=""
+env_file=""
+while [[ "${1:-}" == --* ]]; do
+  case "$1" in
+    --project-directory)
+      project_directory="$2"
+      shift 2
+      ;;
+    --env-file)
+      env_file="$2"
+      shift 2
+      ;;
+    *) exit 64 ;;
+  esac
+done
+[[ "$project_directory" == "$FMG_FAKE_EXPECTED_PROJECT_DIRECTORY" &&
+  "$env_file" == "$FMG_FAKE_EXPECTED_ENV_FILE" ]]
+if [[ "$1" == "config" ]]; then
+  [[ "$2" == "--quiet" && $# == 2 ]]
+  [[ "${FMG_FAKE_COMPOSE_CONFIG_FAILURE:-0}" != "1" ]] || exit 65
+  exit 0
+fi
+[[ "$1" == "run" ]]
 shift
 [[ "$1" == "--rm" && "$2" == "--no-deps" && "$3" == "-T" && "$4" == "api" ]]
 shift 4
@@ -264,6 +286,22 @@ done
 
 identity_json='{"Account":"123456789012","Arn":"arn:aws:sts::123456789012:assumed-role/FindMeGamerEc2Role/i-0123456789abcdef0","UserId":"AROATEST:i-0123456789abcdef0"}'
 metadata_json='{"HttpTokens":"required","HttpPutResponseHopLimit":2,"HttpEndpoint":"enabled"}'
+protected_env="$test_root/app.env"
+dotenv_execution_marker="$test_root/dotenv-was-executed"
+cat >"$protected_env" <<EOF
+SERVICE_DOMAIN=demo.find-me-gamer.example.invalid
+BACKEND_SUBNET=172.30.0.0/24
+POSTGRES_DB=find_me_gamer
+POSTGRES_USER=find_me_gamer
+POSTGRES_PASSWORD=protected-password-canary-never-log
+WORKSPACE_ACCESS_KEY_HASH=\$argon2id\$v=19\$m=65536,t=3,p=4\$protected-hash-canary-never-log
+FMG_AWS_REGION=us-west-2
+FMG_S3_BUCKET=company-demo-artifacts
+FMG_BACKUP_PREFIX=database/backups/
+FMG_ACQUISITION_PREFIX=import/acquisition/
+IGNORED_COMMAND=\$(touch "$dotenv_execution_marker")
+EOF
+chmod 0600 "$protected_env"
 access_environment=(
   "${base_environment[@]}"
   FMG_FAKE_CURL_LOG="$curl_log"
@@ -272,20 +310,46 @@ access_environment=(
   FMG_FAKE_PYTHONPATH="$fake_python"
   FMG_FAKE_IDENTITY_JSON="$identity_json"
   FMG_FAKE_METADATA_JSON="$metadata_json"
+  FMG_FAKE_EXPECTED_PROJECT_DIRECTORY="$repo_root"
+  FMG_FAKE_EXPECTED_ENV_FILE="$protected_env"
 )
 
 : >"$aws_log"; : >"$curl_log"; : >"$docker_log"; : >"$probe_log"
-env -i "${access_environment[@]}" "$access_script" >/dev/null
+if ! env -i "${access_environment[@]}" \
+  FMG_S3_BUCKET= FMG_AWS_REGION= FMG_ACQUISITION_PREFIX= FMG_BACKUP_PREFIX= \
+  "$access_script" --test-mode "$protected_env" \
+  >"$test_root/access-success.out" 2>"$test_root/access-success.err"; then
+  fail "validator must load the protected env and render Compose before the probe"
+fi
 expected_key='import/acquisition/health/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
 [[ "$(grep -c "^put company-demo-artifacts $expected_key$" "$probe_log")" == "1" ]]
 [[ "$(grep -c "^get company-demo-artifacts $expected_key$" "$probe_log")" == "1" ]]
 [[ "$(grep -c "^delete company-demo-artifacts $expected_key$" "$probe_log")" == "1" ]]
-[[ "$(wc -l <"$docker_log" | tr -d ' ')" == "1" ]]
+[[ "$(grep -c ' config --quiet ' "$docker_log")" == "1" ]]
+[[ "$(grep -c ' run --rm --no-deps -T api ' "$docker_log")" == "1" ]]
+[[ "$(grep -c -- "--env-file $protected_env " "$docker_log")" == "2" ]]
+[[ "$(wc -l <"$docker_log" | tr -d ' ')" == "2" ]]
+grep -q ' config --quiet ' < <(sed -n '1p' "$docker_log")
+grep -q ' run --rm --no-deps -T api ' < <(sed -n '2p' "$docker_log")
+[[ ! -e "$dotenv_execution_marker" ]]
+! grep -Fq 'protected-password-canary-never-log' \
+  "$test_root/access-success.out" "$test_root/access-success.err" "$docker_log"
+! grep -Fq 'protected-hash-canary-never-log' \
+  "$test_root/access-success.out" "$test_root/access-success.err" "$docker_log"
 ! grep -Fq 'test-metadata-token' "$access_script" "$aws_log" "$curl_log" "$docker_log"
+
+: >"$aws_log"; : >"$curl_log"; : >"$docker_log"; : >"$probe_log"
+env -i "${access_environment[@]}" \
+  FMG_S3_BUCKET=inherited-wrong-bucket FMG_AWS_REGION=eu-west-1 \
+  FMG_ACQUISITION_PREFIX=inherited/acquisition/ FMG_BACKUP_PREFIX=inherited/backups/ \
+  "$access_script" --test-mode "$protected_env" >/dev/null
+[[ "$(grep -c "^put company-demo-artifacts $expected_key$" "$probe_log")" == "1" ]]
+! grep -Fq 'inherited-wrong-bucket' "$docker_log" "$probe_log"
 
 : >"$probe_log"; : >"$docker_log"
 if env -i "${access_environment[@]}" FMG_FAKE_PROBE_FAILURE=get \
-  "$access_script" >"$test_root/probe-failure.out" 2>"$test_root/probe-failure.err"; then
+  "$access_script" --test-mode "$protected_env" \
+  >"$test_root/probe-failure.out" 2>"$test_root/probe-failure.err"; then
   fail "access validation accepted a failed read probe"
 fi
 [[ "$(grep -c "^put company-demo-artifacts $expected_key$" "$probe_log")" == "1" ]]
@@ -294,53 +358,82 @@ fi
 
 : >"$aws_log"; : >"$curl_log"; : >"$docker_log"
 if env -i "${access_environment[@]}" AWS_ACCESS_KEY_ID=forbidden \
-  "$access_script" >"$test_root/static.out" 2>"$test_root/static.err"; then
+  "$access_script" --test-mode "$protected_env" \
+  >"$test_root/static.out" 2>"$test_root/static.err"; then
   fail "access validation accepted static credentials"
 fi
 grep -Fq 'static AWS credentials are forbidden' "$test_root/static.err"
 [[ ! -s "$aws_log" && ! -s "$curl_log" && ! -s "$docker_log" ]]
 
-: >"$aws_log"; : >"$curl_log"; : >"$docker_log"
-if env -i "${access_environment[@]}" FMG_BACKUP_PREFIX= \
-  "$access_script" >"$test_root/missing-backup.out" 2>"$test_root/missing-backup.err"; then
-  fail "access validation accepted a missing backup prefix"
-fi
-[[ ! -s "$aws_log" && ! -s "$curl_log" && ! -s "$docker_log" ]]
+missing_key_env="$test_root/missing-key.env"
+grep -v '^FMG_BACKUP_PREFIX=' "$protected_env" >"$missing_key_env"
+chmod 0600 "$missing_key_env"
+unsafe_mode_env="$test_root/unsafe-mode.env"
+cp "$protected_env" "$unsafe_mode_env"
+chmod 0644 "$unsafe_mode_env"
+overlap_env="$test_root/overlap.env"
+sed 's#^FMG_BACKUP_PREFIX=.*#FMG_BACKUP_PREFIX=import/#' "$protected_env" >"$overlap_env"
+chmod 0600 "$overlap_env"
+symlink_env="$test_root/symlink.env"
+ln -s "$protected_env" "$symlink_env"
+
+for invalid_env in \
+  "$test_root/does-not-exist.env" \
+  "$missing_key_env" \
+  "$unsafe_mode_env" \
+  "$overlap_env" \
+  "$symlink_env"; do
+  : >"$aws_log"; : >"$curl_log"; : >"$docker_log"
+  if env -i "${access_environment[@]}" \
+    "$access_script" --test-mode "$invalid_env" \
+    >"$test_root/invalid-config.out" 2>"$test_root/invalid-config.err"; then
+    fail "access validation accepted missing, malformed, or unsafe protected config"
+  fi
+  [[ ! -s "$aws_log" && ! -s "$curl_log" && ! -s "$docker_log" ]]
+  ! grep -Fq 'protected-password-canary-never-log' \
+    "$test_root/invalid-config.out" "$test_root/invalid-config.err"
+done
 
 : >"$aws_log"; : >"$curl_log"; : >"$docker_log"
-if env -i "${access_environment[@]}" FMG_BACKUP_PREFIX=import/ \
-  "$access_script" >"$test_root/overlap.out" 2>"$test_root/overlap.err"; then
-  fail "access validation accepted overlapping production prefixes"
+if env -i "${access_environment[@]}" FMG_FAKE_COMPOSE_CONFIG_FAILURE=1 \
+  "$access_script" --test-mode "$protected_env" \
+  >"$test_root/compose-config.out" 2>"$test_root/compose-config.err"; then
+  fail "access validation continued after Compose render failed"
 fi
-[[ ! -s "$aws_log" && ! -s "$curl_log" && ! -s "$docker_log" ]]
+[[ "$(grep -c ' config --quiet ' "$docker_log")" == "1" ]]
+! grep -q ' run --rm --no-deps -T api ' "$docker_log"
+[[ ! -s "$curl_log" ]]
 
 : >"$aws_log"; : >"$docker_log"
 if env -i "${access_environment[@]}" \
   FMG_FAKE_IDENTITY_JSON='{"Account":"123456789012","Arn":"arn:aws:iam::123456789012:user/operator","UserId":"AIDATEST"}' \
-  "$access_script" >"$test_root/identity.out" 2>"$test_root/identity.err"; then
+  "$access_script" --test-mode "$protected_env" \
+  >"$test_root/identity.out" 2>"$test_root/identity.err"; then
   fail "access validation accepted a non-Instance-Role identity"
 fi
 grep -Fq "not using this EC2 instance's assumed Instance Role" "$test_root/identity.err"
-[[ ! -s "$docker_log" ]]
+! grep -q ' run --rm --no-deps -T api ' "$docker_log"
 
 : >"$aws_log"; : >"$docker_log"
 if env -i "${access_environment[@]}" \
   FMG_FAKE_METADATA_JSON='{"HttpTokens":"optional","HttpPutResponseHopLimit":1,"HttpEndpoint":"enabled"}' \
-  "$access_script" >"$test_root/metadata.out" 2>"$test_root/metadata.err"; then
+  "$access_script" --test-mode "$protected_env" \
+  >"$test_root/metadata.out" 2>"$test_root/metadata.err"; then
   fail "access validation accepted unsafe metadata options"
 fi
 grep -Fq 'aws ec2 modify-instance-metadata-options --instance-id "i-0123456789abcdef0" --http-tokens required --http-put-response-hop-limit 2' \
   "$test_root/metadata.err"
 ! grep -q 'modify-instance-metadata-options' "$aws_log"
-[[ ! -s "$docker_log" ]]
+! grep -q ' run --rm --no-deps -T api ' "$docker_log"
 
 : >"$aws_log"; : >"$docker_log"
 if env -i "${access_environment[@]}" FMG_FAKE_METADATA_FAILURE=1 \
-  "$access_script" >"$test_root/permission.out" 2>"$test_root/permission.err"; then
+  "$access_script" --test-mode "$protected_env" \
+  >"$test_root/permission.out" 2>"$test_root/permission.err"; then
   fail "access validation continued without metadata inspection permission"
 fi
 grep -Fq 'ensure the Instance Role permits ec2:DescribeInstances' "$test_root/permission.err"
-[[ ! -s "$docker_log" ]]
+! grep -q ' run --rm --no-deps -T api ' "$docker_log"
 
 : >"$aws_log"; : >"$curl_log"; : >"$docker_log"
 lifecycle_plan="$(env -i PATH="$fake_bin:/usr/bin:/bin" HOME="$test_root/home" FMG_DRY_RUN=1 \
@@ -352,6 +445,8 @@ access_plan="$(env -i PATH="$fake_bin:/usr/bin:/bin" HOME="$test_root/home" FMG_
   FMG_FAKE_AWS_LOG="$aws_log" FMG_FAKE_CURL_LOG="$curl_log" \
   FMG_FAKE_DOCKER_LOG="$docker_log" "$access_script")"
 grep -Fq 'find-me-gamer-example-bucket/acquisition/health/' <<<"$access_plan"
+grep -Fq -- '--env-file /etc/find-me-gamer/app.env config --quiet' <<<"$access_plan"
+grep -Fq -- '--env-file /etc/find-me-gamer/app.env run --rm --no-deps -T api' <<<"$access_plan"
 [[ ! -s "$aws_log" && ! -s "$curl_log" && ! -s "$docker_log" ]]
 
 echo "s3 configuration test: PASS"

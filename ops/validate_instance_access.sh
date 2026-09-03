@@ -27,11 +27,87 @@ validate_prefix() {
 dry_run="${FMG_DRY_RUN:-0}"
 [[ "$dry_run" == "0" || "$dry_run" == "1" ]] || fail "FMG_DRY_RUN must be 0 or 1"
 
+test_mode=false
+config_file="/etc/find-me-gamer/app.env"
+case "$#" in
+  0) ;;
+  2)
+    [[ "$1" == "--test-mode" && -n "$2" ]] ||
+      fail "usage: $0 [--test-mode /path/to/app.env]"
+    test_mode=true
+    config_file="$2"
+    ;;
+  *) fail "usage: $0 [--test-mode /path/to/app.env]" ;;
+esac
+
 if [[ "$dry_run" == "1" ]]; then
   FMG_S3_BUCKET="${FMG_S3_BUCKET:-find-me-gamer-example-bucket}"
   FMG_AWS_REGION="${FMG_AWS_REGION:-us-east-1}"
   FMG_ACQUISITION_PREFIX="${FMG_ACQUISITION_PREFIX:-acquisition/}"
   FMG_BACKUP_PREFIX="${FMG_BACKUP_PREFIX:-backups/}"
+fi
+
+file_mode() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    stat -f '%Lp' "$1"
+  else
+    stat -c '%a' "$1"
+  fi
+}
+
+file_owner_id() {
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    stat -f '%u' "$1"
+  else
+    stat -c '%u' "$1"
+  fi
+}
+
+load_protected_configuration() {
+  local line
+  local bucket_count=0
+  local region_count=0
+  local acquisition_count=0
+  local backup_count=0
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      FMG_S3_BUCKET=*)
+        FMG_S3_BUCKET="${line#*=}"
+        bucket_count=$((bucket_count + 1))
+        ;;
+      FMG_AWS_REGION=*)
+        FMG_AWS_REGION="${line#*=}"
+        region_count=$((region_count + 1))
+        ;;
+      FMG_ACQUISITION_PREFIX=*)
+        FMG_ACQUISITION_PREFIX="${line#*=}"
+        acquisition_count=$((acquisition_count + 1))
+        ;;
+      FMG_BACKUP_PREFIX=*)
+        FMG_BACKUP_PREFIX="${line#*=}"
+        backup_count=$((backup_count + 1))
+        ;;
+    esac
+  done <"$config_file"
+
+  [[ "$bucket_count" == "1" && "$region_count" == "1" &&
+    "$acquisition_count" == "1" && "$backup_count" == "1" ]] ||
+    fail "protected app.env must contain each required S3 configuration key exactly once"
+}
+
+if [[ "$dry_run" != "1" ]]; then
+  [[ -f "$config_file" && ! -L "$config_file" ]] ||
+    fail "$config_file must be a regular, non-symlink file"
+  [[ "$(file_mode "$config_file")" == "600" ]] || fail "$config_file must have mode 0600"
+  required_owner=0
+  if [[ "$test_mode" == true ]]; then
+    required_owner="$(id -u)"
+  fi
+  [[ "$(file_owner_id "$config_file")" == "$required_owner" ]] ||
+    fail "$config_file must be owned by the required account"
+  unset required_owner
+  load_protected_configuration
 fi
 
 require_environment FMG_S3_BUCKET
@@ -64,8 +140,10 @@ if [[ "$dry_run" == "1" ]]; then
   printf 'aws ec2 describe-instances --instance-ids <resolved-instance-id> --region %q --output json\n' \
     "$FMG_AWS_REGION"
   printf 'require HttpTokens=required and HttpPutResponseHopLimit=2; print remediation only on mismatch\n'
-  printf 'docker compose --project-directory %q run --rm --no-deps -T api python <single-object-probe> %q %q %q\n' \
-    "$repo_root" "$FMG_S3_BUCKET" "$FMG_AWS_REGION" "$probe_key"
+  printf 'docker compose --project-directory %q --env-file %q config --quiet\n' \
+    "$repo_root" "$config_file"
+  printf 'docker compose --project-directory %q --env-file %q run --rm --no-deps -T api python <single-object-probe> %q %q %q\n' \
+    "$repo_root" "$config_file" "$FMG_S3_BUCKET" "$FMG_AWS_REGION" "$probe_key"
   printf 'probe target: s3://%s/%s\n' "$FMG_S3_BUCKET" "$probe_key"
   exit 0
 fi
@@ -75,6 +153,11 @@ for command_name in aws curl docker jq openssl; do
 done
 aws_version="$(aws --version 2>&1)" || fail "unable to inspect AWS CLI version"
 [[ "$aws_version" == aws-cli/2.* ]] || fail "AWS CLI v2 is required"
+
+if ! docker compose --project-directory "$repo_root" --env-file "$config_file" \
+  config --quiet; then
+  fail "protected app.env cannot render the production Compose configuration"
+fi
 
 metadata_token=""
 if ! metadata_token="$(
@@ -154,7 +237,7 @@ finally:
 PYTHON
 )"
 
-if ! docker compose --project-directory "$repo_root" \
+if ! docker compose --project-directory "$repo_root" --env-file "$config_file" \
   run --rm --no-deps -T api \
   python -c "$probe_program" "$FMG_S3_BUCKET" "$FMG_AWS_REGION" "$probe_key"; then
   fail "the one-object S3 write/read/delete probe failed"
