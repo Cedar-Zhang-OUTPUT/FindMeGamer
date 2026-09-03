@@ -150,3 +150,83 @@ None within the internal-Demo Task 4 boundary. Public/multi-user authentication,
 remote logout/revocation, key rotation, malicious Keychain corruption, extreme
 concurrency, telemetry, the Task 5 shell/offline banner, polling, and feature UI
 remain intentionally out of scope.
+
+## Binding review fix after `a3baa55`
+
+The first independent review identified two ordinary-flow defects. The focused
+fix commit uses subject `fix: make workspace retries authoritative`; its exact
+content-addressed SHA is reported in the implementer handoff because embedding
+the SHA inside its own commit would change that SHA.
+
+### Retry RED/GREEN
+
+The complete regression sequence begins with a missing-key restore, enters a
+candidate key, receives a transient validation failure, and invokes the same
+action as the visible Try Again control with that still-local candidate.
+
+- RED 1: the reviewed commit did not compile the regression because
+  `AppSession` had no `retryAccess` member. This demonstrated the absence of an
+  action that can select candidate revalidation instead of stale idempotent
+  restore.
+- GREEN 1: the regression passed 1/1. The same exact candidate reached the API
+  twice, validation ran exactly twice, and the fake store remained untouched
+  after the transient failure then saved exactly once after success.
+- RED 2: with the no-candidate branch deliberately restored to the reviewed
+  idempotent behavior, the retry test failed with fake-store read count 1
+  instead of the hand-derived expected 2.
+- GREEN 2: candidate and no-candidate retry regressions passed 2/2. A non-empty
+  key calls `connect(key:)`; an empty/all-whitespace key explicitly reruns
+  restore despite prior `didRestore`.
+
+`WorkspaceAccessView` now sends Try Again through `retryAccess(key:)`. The key
+binding is owned by `AppRootView`'s local in-memory `@State`, so the candidate
+survives the temporary `.checking` branch that removes and recreates the access
+view. It is not observable on `AppSession`, is never persisted before a
+successful validation, and is cleared when a service is successfully retained.
+Configuration/no-candidate retry continues through the forced restore path.
+
+### Disconnect/recovery RED/GREEN
+
+A test-only continuation gate suspends the second validation after an initial
+successful restore and connectivity false/true recovery. The test completes
+`disconnectThisMac()` first, then resumes the API despite task cancellation.
+It is table-driven over API success and an explicit `CancellationError`.
+
+- RED: success overwrote the disconnected session as `.authenticated` and
+  restored a workspace session; cancellation overwrote it as `.offline`.
+  Three assertions failed across the two cases on the reviewed implementation.
+- GREEN: both cases passed. Final state stayed `.needsKey`, service/session
+  stayed nil, the exact fake key was deleted once, and validation count remained
+  exactly two.
+
+The fix adds a private, observation-ignored session generation. Every restore,
+connect, and recovery validation captures authority and checks both generation
+and task cancellation after suspension before committing observable state.
+Disconnect increments the generation and clears/cancels restore and recovery
+tasks before awaiting local Keychain deletion, then rechecks its own authority
+before committing. Stale task cleanup is also generation-guarded so it cannot
+clear a newer task reference.
+
+### Final fix verification
+
+- New retry regressions: 2 tests, 0 failures.
+- New suspended-recovery regression: 1 parameterized test / 2 completion cases,
+  0 failures.
+- Full `AppSessionTests`: 19 tests, 1 suite, 0 failures, 0.118 s.
+- Focused Keychain/connectivity: 8 tests in 2 suites passed; explicit
+  connectivity filter ran 2/2.
+- Full Swift suite: 53 tests, 5 suites, 0 failures, 0.115 s.
+- `swift build --package-path macos -Xswiftc -warnings-as-errors`: exit 0.
+- Changed Swift passes `swift format lint --strict`; `git diff --check` passes.
+- Safe `./script/build_and_run.sh --verify` launched exact PID `10320` with
+  bundle ID `com.findmegamer.desktop` and macOS floor `14.0`; `/bin/kill 10320`
+  terminated only that PID and no `FindMeGamer` process remained. As in the
+  initial implementation gate, the launch used `invalid://local-verification`
+  so the real bundle path was exercised without querying the developer's
+  Keychain or contacting a backend; the runner's normal localhost URL remains
+  unchanged.
+- No backend, OpenAPI, generated output, package manifest, build runner,
+  Keychain implementation, connectivity implementation, or Task 5 feature
+  surface changed in this fix.
+
+Bounded concerns after the fix: none within the internal-Demo Task 4 boundary.

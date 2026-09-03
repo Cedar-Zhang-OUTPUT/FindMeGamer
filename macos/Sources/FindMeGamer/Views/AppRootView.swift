@@ -3,6 +3,7 @@ import SwiftUI
 
 struct AppRootView: View {
   let session: AppSession
+  @State private var workspaceAccessKey = ""
 
   var body: some View {
     Group {
@@ -10,14 +11,14 @@ struct AppRootView: View {
       case .checking:
         ProgressView("Checking workspace access…")
       case .needsKey:
-        WorkspaceAccessView(session: session)
+        WorkspaceAccessView(session: session, key: $workspaceAccessKey)
       case .authenticated:
         placeholder
       case .offline:
         if session.service != nil {
           placeholder
         } else {
-          WorkspaceAccessView(session: session)
+          WorkspaceAccessView(session: session, key: $workspaceAccessKey)
         }
       }
     }

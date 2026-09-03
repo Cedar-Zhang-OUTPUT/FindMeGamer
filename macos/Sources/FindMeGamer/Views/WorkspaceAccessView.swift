@@ -4,7 +4,7 @@ import SwiftUI
 struct WorkspaceAccessView: View {
   let session: AppSession
 
-  @State private var key = ""
+  @Binding var key: String
   @FocusState private var keyFieldIsFocused: Bool
 
   var body: some View {
@@ -30,7 +30,11 @@ struct WorkspaceAccessView: View {
       HStack {
         if session.state == .offline {
           Button("Try Again") {
-            Task { await session.restore() }
+            let candidate = key
+            Task {
+              await session.retryAccess(key: candidate)
+              clearSavedCandidate()
+            }
           }
         }
 
@@ -52,6 +56,15 @@ struct WorkspaceAccessView: View {
       !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return }
     let candidate = key
-    Task { await session.connect(key: candidate) }
+    Task {
+      await session.connect(key: candidate)
+      clearSavedCandidate()
+    }
+  }
+
+  private func clearSavedCandidate() {
+    if session.service != nil {
+      key = ""
+    }
   }
 }

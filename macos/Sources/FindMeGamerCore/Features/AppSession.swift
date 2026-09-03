@@ -27,6 +27,7 @@ public final class AppSession {
   @ObservationIgnored private var recoveryTask: Task<Void, Never>?
   @ObservationIgnored private var didRestore = false
   @ObservationIgnored private var isOnline = true
+  @ObservationIgnored private var generation: UInt64 = 0
 
   public init(
     apiFactory: @escaping APIFactory,
@@ -67,6 +68,9 @@ public final class AppSession {
       return
     }
 
+    let operationGeneration = beginOperation()
+    recoveryTask?.cancel()
+    recoveryTask = nil
     state = .checking
     message = "Checking workspace access…"
     workspaceSession = nil
@@ -74,53 +78,78 @@ public final class AppSession {
     let candidateService = apiFactory(baseURL, key)
     do {
       let validatedSession = try await candidateService.validateSession()
+      guard canCommit(operationGeneration) else { return }
       do {
         try await keyStore.save(key)
       } catch {
+        guard canCommit(operationGeneration) else { return }
         state = .needsKey
         message = "The Workspace Access Key could not be saved on this Mac."
         return
       }
+      guard canCommit(operationGeneration) else { return }
       service = candidateService
       workspaceSession = validatedSession
       state = isOnline ? .authenticated : .offline
       message = isOnline ? "Connected." : offlineMessage
       didRestore = true
     } catch let error as APIError where error.code == "workspace_key_invalid" {
+      guard canCommit(operationGeneration) else { return }
       state = .needsKey
       message = safeInvalidKeyMessage(error.message, key: key)
     } catch {
+      guard canCommit(operationGeneration) else { return }
       state = .offline
       message = offlineMessage
     }
   }
 
   public func restore() async {
-    if didRestore { return }
+    await restore(allowRepeat: false)
+  }
+
+  public func retryAccess(key: String) async {
+    if key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      await restore(allowRepeat: true)
+    } else {
+      await connect(key: key)
+    }
+  }
+
+  private func restore(allowRepeat: Bool) async {
+    if didRestore, !allowRepeat { return }
     if let restoreTask {
       await restoreTask.value
       return
     }
 
+    let operationGeneration = beginOperation()
     let task = Task { @MainActor [weak self] in
       guard let self else { return }
-      await self.performRestore()
+      await self.performRestore(generation: operationGeneration)
     }
     restoreTask = task
     await task.value
-    restoreTask = nil
+    if generation == operationGeneration {
+      restoreTask = nil
+    }
   }
 
   public func disconnectThisMac() async {
+    let operationGeneration = beginOperation()
+    restoreTask?.cancel()
+    restoreTask = nil
     recoveryTask?.cancel()
     recoveryTask = nil
     do {
       try await keyStore.delete()
     } catch {
+      guard generation == operationGeneration else { return }
       state = .offline
       message = "The Workspace Access Key could not be removed from this Mac."
       return
     }
+    guard generation == operationGeneration else { return }
     service = nil
     workspaceSession = nil
     didRestore = true
@@ -134,7 +163,7 @@ public final class AppSession {
     connectivity.cancel()
   }
 
-  private func performRestore() async {
+  private func performRestore(generation operationGeneration: UInt64) async {
     state = .checking
     message = "Checking workspace access…"
     guard let baseURL = resolvedBaseURL() else {
@@ -146,12 +175,14 @@ public final class AppSession {
     do {
       key = try await keyStore.read()
     } catch {
+      guard canCommit(operationGeneration) else { return }
       service = nil
       workspaceSession = nil
       state = .offline
       message = "The Workspace Access Key could not be read from this Mac."
       return
     }
+    guard canCommit(operationGeneration) else { return }
     guard let key else {
       service = nil
       workspaceSession = nil
@@ -164,14 +195,19 @@ public final class AppSession {
     let restoredService = apiFactory(baseURL, key)
     service = restoredService
     do {
-      workspaceSession = try await restoredService.validateSession()
+      let validatedSession = try await restoredService.validateSession()
+      guard canCommit(operationGeneration) else { return }
+      workspaceSession = validatedSession
       state = isOnline ? .authenticated : .offline
       message = isOnline ? "Connected." : offlineMessage
       didRestore = true
     } catch let error as APIError where error.code == "workspace_key_invalid" {
-      await removeInvalidSavedKey(error: error, key: key)
+      guard canCommit(operationGeneration) else { return }
+      await removeInvalidSavedKey(error: error, key: key, generation: operationGeneration)
+      guard canCommit(operationGeneration) else { return }
       didRestore = true
     } catch {
+      guard canCommit(operationGeneration) else { return }
       workspaceSession = nil
       state = .offline
       message = offlineMessage
@@ -190,30 +226,40 @@ public final class AppSession {
     }
 
     guard !wasOnline, state == .offline, service != nil, recoveryTask == nil else { return }
+    let operationGeneration = beginOperation()
     recoveryTask = Task { @MainActor [weak self] in
       guard let self else { return }
-      await self.recoverConnection()
-      self.recoveryTask = nil
+      await self.recoverConnection(generation: operationGeneration)
+      if self.generation == operationGeneration {
+        self.recoveryTask = nil
+      }
     }
   }
 
-  private func recoverConnection() async {
+  private func recoverConnection(generation operationGeneration: UInt64) async {
     guard let service else { return }
     do {
       let validatedSession = try await service.validateSession()
+      guard canCommit(operationGeneration) else { return }
       workspaceSession = validatedSession
       state = isOnline ? .authenticated : .offline
       message = isOnline ? "Connected." : offlineMessage
     } catch let error as APIError where error.code == "workspace_key_invalid" {
+      guard canCommit(operationGeneration) else { return }
       let key = (try? await keyStore.read()) ?? ""
-      await removeInvalidSavedKey(error: error, key: key)
+      guard canCommit(operationGeneration) else { return }
+      await removeInvalidSavedKey(error: error, key: key, generation: operationGeneration)
     } catch {
+      guard canCommit(operationGeneration) else { return }
       state = .offline
       message = offlineMessage
     }
   }
 
-  private func removeInvalidSavedKey(error: APIError, key: String) async {
+  private func removeInvalidSavedKey(
+    error: APIError, key: String, generation operationGeneration: UInt64
+  ) async {
+    guard canCommit(operationGeneration) else { return }
     service = nil
     workspaceSession = nil
     state = .needsKey
@@ -221,8 +267,18 @@ public final class AppSession {
     do {
       try await keyStore.delete()
     } catch {
+      guard canCommit(operationGeneration) else { return }
       message = "The invalid Workspace Access Key could not be removed from this Mac."
     }
+  }
+
+  private func beginOperation() -> UInt64 {
+    generation &+= 1
+    return generation
+  }
+
+  private func canCommit(_ operationGeneration: UInt64) -> Bool {
+    generation == operationGeneration && !Task.isCancelled
   }
 
   private func resolvedBaseURL() -> URL? {

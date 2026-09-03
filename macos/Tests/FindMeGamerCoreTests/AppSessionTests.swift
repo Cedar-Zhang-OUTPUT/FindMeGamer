@@ -149,6 +149,49 @@ struct AppSessionTests {
   }
 
   @MainActor
+  @Test func retryAfterMissingKeyAndTransientCandidateFailureValidatesTheCandidateAgain() async {
+    let store = MemoryWorkspaceKeyStore()
+    let api = SessionAPI(outcomes: [.transport(.timedOut), .success(testSession)])
+    let factory = APIFactoryRecorder(api: api)
+    let session = makeSession(store: store, factory: factory)
+    let candidate = "still-local-candidate"
+
+    await session.restore()
+    #expect(session.state == .needsKey)
+
+    await session.connect(key: candidate)
+    #expect(session.state == .offline)
+    #expect(session.service == nil)
+    #expect(await store.savedValues.isEmpty)
+
+    await session.retryAccess(key: candidate)
+
+    #expect(session.state == .authenticated)
+    #expect(session.workspaceSession == testSession)
+    #expect(session.service != nil)
+    #expect(factory.keys == [candidate, candidate])
+    #expect(await api.validationCount == 2)
+    #expect(await store.savedValues == [candidate])
+  }
+
+  @MainActor
+  @Test func retryWithoutCandidateRerunsRestoreAfterPriorMissingKey() async {
+    let store = MemoryWorkspaceKeyStore()
+    let api = SessionAPI(outcomes: [.success(testSession)])
+    let session = makeSession(store: store, factory: APIFactoryRecorder(api: api))
+
+    await session.restore()
+    #expect(session.state == .needsKey)
+    #expect(await store.readCount == 1)
+
+    await session.retryAccess(key: " \n\t ")
+
+    #expect(session.state == .needsKey)
+    #expect(await store.readCount == 2)
+    #expect(await api.validationCount == 0)
+  }
+
+  @MainActor
   @Test func transientRestorePreservesKeyAndRecoversOnceWhenConnectivityReturns() async {
     let store = MemoryWorkspaceKeyStore(value: "saved-key")
     let api = SessionAPI(
@@ -231,6 +274,39 @@ struct AppSessionTests {
     #expect(await store.deleteCount == 1)
     #expect(await store.value == nil)
     #expect(await api.validationCount == 1)
+  }
+
+  @MainActor
+  @Test(
+    arguments: [SuspendedValidationCompletion.success, .cancelled]
+  )
+  func disconnectFencesSuspendedRecoveryCompletion(
+    completion: SuspendedValidationCompletion
+  ) async {
+    let gate = ValidationGate()
+    let store = MemoryWorkspaceKeyStore(value: "saved-key")
+    let api = SessionAPI(
+      outcomes: [.success(testSession), .suspended(gate, completion)])
+    let connectivity = FakeConnectivity()
+    let session = makeSession(
+      store: store, factory: APIFactoryRecorder(api: api), connectivity: connectivity)
+    await session.restore()
+
+    connectivity.emit(false)
+    connectivity.emit(true)
+    await gate.waitUntilEntered()
+
+    await session.disconnectThisMac()
+    gate.resume()
+    await api.waitUntilResolved(count: 2)
+    try? await Task.sleep(for: .milliseconds(20))
+
+    #expect(session.state == .needsKey)
+    #expect(session.service == nil)
+    #expect(session.workspaceSession == nil)
+    #expect(await store.value == nil)
+    #expect(await store.deleteCount == 1)
+    #expect(await api.validationCount == 2)
   }
 
   @MainActor
@@ -379,9 +455,45 @@ private final class CallOrder: @unchecked Sendable {
   }
 }
 
+enum SuspendedValidationCompletion: Sendable {
+  case success
+  case cancelled
+}
+
+private final class ValidationGate: @unchecked Sendable {
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<Void, Never>?
+  private var entered = false
+
+  func suspend() async {
+    await withCheckedContinuation { continuation in
+      lock.withLock {
+        entered = true
+        self.continuation = continuation
+      }
+    }
+  }
+
+  func waitUntilEntered() async {
+    while !lock.withLock({ entered }) {
+      await Task.yield()
+    }
+  }
+
+  func resume() {
+    let continuation = lock.withLock {
+      let pending = self.continuation
+      self.continuation = nil
+      return pending
+    }
+    continuation?.resume()
+  }
+}
+
 private actor MemoryWorkspaceKeyStore: WorkspaceKeyStore {
   private(set) var value: String?
   private(set) var savedValues: [String] = []
+  private(set) var readCount = 0
   private(set) var deleteCount = 0
   private let readError: (any Error)?
   private let saveError: (any Error)?
@@ -403,6 +515,7 @@ private actor MemoryWorkspaceKeyStore: WorkspaceKeyStore {
   }
 
   func read() async throws -> String? {
+    readCount += 1
     if let readError { throw readError }
     return value
   }
@@ -480,10 +593,12 @@ private actor SessionAPI: APIService {
     case api(APIError)
     case transport(URLError.Code)
     case cancelled
+    case suspended(ValidationGate, SuspendedValidationCompletion)
   }
 
   private var outcomes: [Outcome]
   private(set) var validationCount = 0
+  private var resolvedCount = 0
   private let order: CallOrder?
   private let validationDelay: Duration?
 
@@ -501,10 +616,31 @@ private actor SessionAPI: APIService {
     if let validationDelay { try await Task.sleep(for: validationDelay) }
     let outcome = outcomes.isEmpty ? .success(testSession) : outcomes.removeFirst()
     switch outcome {
-    case .success(let session): return session
-    case .api(let error): throw error
-    case .transport(let code): throw URLError(code)
-    case .cancelled: throw CancellationError()
+    case .success(let session):
+      resolvedCount += 1
+      return session
+    case .api(let error):
+      resolvedCount += 1
+      throw error
+    case .transport(let code):
+      resolvedCount += 1
+      throw URLError(code)
+    case .cancelled:
+      resolvedCount += 1
+      throw CancellationError()
+    case .suspended(let gate, let completion):
+      await gate.suspend()
+      resolvedCount += 1
+      switch completion {
+      case .success: return testSession
+      case .cancelled: throw CancellationError()
+      }
+    }
+  }
+
+  func waitUntilResolved(count: Int) async {
+    while resolvedCount < count {
+      await Task.yield()
     }
   }
 
