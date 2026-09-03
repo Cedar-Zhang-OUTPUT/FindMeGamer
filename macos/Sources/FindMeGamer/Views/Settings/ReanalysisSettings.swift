@@ -37,8 +37,15 @@ struct ReanalysisSettings: View {
       .disabled(!writesEnabled || !model.canSaveReanalysis)
 
       if let error = model.reanalysisError {
-        Label(error, systemImage: "exclamationmark.triangle")
-          .foregroundStyle(.red)
+        HStack {
+          Label(error, systemImage: "exclamationmark.triangle")
+            .foregroundStyle(.red)
+          Spacer()
+          Button("Try Again") {
+            Task { await model.loadReanalysis() }
+          }
+          .disabled(model.isLoadingReanalysis)
+        }
       }
     }
     .confirmationDialog(

@@ -78,7 +78,19 @@ struct EmailSettingsView: View {
         }
         .disabled(!writesEnabled || !model.canSendSMTPTest)
 
-        if let error = model.smtpLoadError ?? model.smtpActionError {
+        if let error = model.smtpLoadError {
+          HStack {
+            Label(error, systemImage: "exclamationmark.triangle")
+              .foregroundStyle(.red)
+            Spacer()
+            Button("Try Again") {
+              Task { await model.loadSMTPSettings() }
+            }
+            .disabled(model.isLoadingSMTP)
+          }
+        }
+
+        if let error = model.smtpActionError {
           Label(error, systemImage: "exclamationmark.triangle")
             .foregroundStyle(.red)
         }

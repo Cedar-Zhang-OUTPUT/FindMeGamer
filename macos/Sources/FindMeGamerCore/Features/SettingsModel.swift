@@ -186,8 +186,7 @@ public final class SettingsModel {
       let shouldAdoptDraft = !hadUnsavedDraft && smtpDraftRevision == draftRevision
       adoptSMTPStatus(status, updateDraft: shouldAdoptDraft)
     } catch {
-      guard smtpLoadGeneration == generation, smtpDraftRevision == draftRevision,
-        smtpStatusRevision == statusRevision
+      guard smtpLoadGeneration == generation, smtpStatusRevision == statusRevision
       else { return }
       smtpLoadError = Self.safeMessage(error, fallback: "Could not load Email Settings.")
     }
@@ -412,7 +411,6 @@ public final class SettingsModel {
       }
     } catch {
       guard reanalysisLoadGeneration == generation,
-        reanalysisDraftRevision == draftRevision,
         reanalysisStatusRevision == statusRevision
       else { return }
       reanalysisError = Self.safeMessage(

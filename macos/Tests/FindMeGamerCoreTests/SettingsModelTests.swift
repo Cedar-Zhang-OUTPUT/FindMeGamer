@@ -281,6 +281,56 @@ struct SettingsModelTests {
   }
 
   @MainActor
+  @Test func smtpInitialLoadFailurePreservesAuthoredDraftAndRetryPublishesCanonicalState() async {
+    let failureGate = SettingsGate<SMTPSettingsStatus>()
+    let canonical = smtpStatus(configured: false, host: nil)
+    let api = SettingsAPI(
+      smtpLoadOutcomes: [
+        .gated(failureGate), .value(canonical),
+      ])
+    let model = SettingsModel(api: api, appearanceStore: SettingsPreferenceStore())
+
+    let firstLoad = Task { await model.loadSMTPSettings() }
+    #expect(await failureGate.waitUntilEntered())
+    model.updateSMTPDraft(
+      host: "authored.smtp", port: 465, encryption: .tls,
+      username: "author@company.test", password: smtpCanary, fromName: "Authored Team",
+      replyTo: "reply-authored@company.test", emailsPerMinute: 18)
+    failureGate.resume(
+      .failure(
+        APIError(
+          code: "smtp_unavailable", message: "Email Settings are unavailable.", retryable: true)))
+    await firstLoad.value
+
+    #expect(model.smtpStatus == nil)
+    #expect(model.smtpHost == "authored.smtp")
+    #expect(model.smtpPort == 465)
+    #expect(model.smtpEncryption == .tls)
+    #expect(model.smtpUsername == "author@company.test")
+    #expect(model.smtpPassword == smtpCanary)
+    #expect(model.smtpFromName == "Authored Team")
+    #expect(model.smtpReplyTo == "reply-authored@company.test")
+    #expect(model.smtpEmailsPerMinute == 18)
+    #expect(model.smtpLoadError == "Email Settings are unavailable.")
+    #expect(!model.canSaveSMTP)
+
+    await model.loadSMTPSettings()
+
+    #expect(model.smtpStatus == canonical)
+    #expect(model.smtpHost == "authored.smtp")
+    #expect(model.smtpPort == 465)
+    #expect(model.smtpEncryption == .tls)
+    #expect(model.smtpUsername == "author@company.test")
+    #expect(model.smtpPassword == smtpCanary)
+    #expect(model.smtpFromName == "Authored Team")
+    #expect(model.smtpReplyTo == "reply-authored@company.test")
+    #expect(model.smtpEmailsPerMinute == 18)
+    #expect(model.smtpLoadError == nil)
+    #expect(model.canSaveSMTP)
+    #expect(await api.smtpLoadCalls == 2)
+  }
+
+  @MainActor
   @Test func connectionsExposeThreeServicesAndReplaceTestWithoutLeakingInputs() async {
     let steamInitial = connection(.steam, configured: false, status: .notTested)
     let youtubeInitial = connection(.youtube, configured: true, status: .notTested)
@@ -506,6 +556,42 @@ struct SettingsModelTests {
     #expect(cleanModel.gameIntervalDays == 35)
     #expect(cleanModel.creatorIntervalDays == 16)
     #expect(!cleanModel.canSaveReanalysis)
+  }
+
+  @MainActor
+  @Test func reanalysisInitialLoadFailurePreservesDraftAndRetryPublishesCanonicalState() async {
+    let failureGate = SettingsGate<SharedSettings>()
+    let canonical = SharedSettings(gameIntervalDays: 30, creatorIntervalDays: 14)
+    let api = SettingsAPI(
+      sharedLoadOutcomes: [
+        .gated(failureGate), .value(canonical),
+      ])
+    let model = SettingsModel(api: api, appearanceStore: SettingsPreferenceStore())
+
+    let firstLoad = Task { await model.loadReanalysis() }
+    #expect(await failureGate.waitUntilEntered())
+    model.updateReanalysis(gameIntervalDays: 40, creatorIntervalDays: 18)
+    failureGate.resume(
+      .failure(
+        APIError(
+          code: "settings_unavailable", message: "Re-analysis Settings are unavailable.",
+          retryable: true)))
+    await firstLoad.value
+
+    #expect(model.sharedSettings == nil)
+    #expect(model.gameIntervalDays == 40)
+    #expect(model.creatorIntervalDays == 18)
+    #expect(model.reanalysisError == "Re-analysis Settings are unavailable.")
+    #expect(!model.canSaveReanalysis)
+
+    await model.loadReanalysis()
+
+    #expect(model.sharedSettings == canonical)
+    #expect(model.gameIntervalDays == 40)
+    #expect(model.creatorIntervalDays == 18)
+    #expect(model.reanalysisError == nil)
+    #expect(model.canSaveReanalysis)
+    #expect(await api.sharedLoadCalls == 2)
   }
 
   @MainActor

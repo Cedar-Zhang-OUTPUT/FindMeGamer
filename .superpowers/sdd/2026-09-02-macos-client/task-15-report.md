@@ -132,3 +132,40 @@ Fix 01 verification:
 The fix commit hash is reported in the post-commit handoff to avoid a
 self-referential report change. The existing bounded Task 14 test-fixture note
 above remains unchanged and was not pursued in this fix.
+
+## Fix 02: recover initial settings load failures
+
+Fix 02 started from `855b4ffcaee31c2a8f21ffee2f7238e409821b1a`
+and changed only `SettingsModel`, the SMTP and Re-analysis settings views, the
+focused Settings tests, and this report.
+
+Two held-failure-to-retry-success tests were added before production edits.
+The focused RED discovered 15 tests and recorded exactly two issues: SMTP's
+expected `Email Settings are unavailable.` load error was `nil`, and
+Re-analysis's expected `Re-analysis Settings are unavailable.` load error was
+`nil`. All existing tests and every other assertion in the new scenarios
+passed, including exact authored-draft preservation.
+
+Current load failures now retain only the load-generation and successful
+canonical-mutation fences. Draft edits no longer suppress a safe failure, and
+they still never replace or clear SMTP fields/password or Re-analysis
+intervals. Each section renders a native `Try Again` button beside its load
+error, disabled while that section loads. Retry invokes only the corresponding
+load, then reuses Fix 01 behavior to publish canonical state, preserve the dirty
+draft, and enable a valid Save.
+
+Fix 02 verification:
+
+- focused GREEN repeated twice: 15 tests / 1 suite, 0 failures each;
+- full suite: 171 tests / 17 suites, 0 failures;
+- `swift build -Xswiftc -warnings-as-errors`: exit 0 with only the established
+  generated-target diagnostics;
+- strict format, whitespace, diff/scope, dependency, credential, and artifact
+  checks: passed;
+- safe invalid-URL launch: bundle `com.findmegamer.desktop`, minimum macOS
+  `14.0`, exact URL preserved, exact PID `68552` terminated, and no process
+  remained.
+
+The Fix 02 commit hash is reported in the post-commit handoff. No API/DTO,
+connection, successful-load, root, package, backend, or Task 14 behavior was
+changed.
