@@ -158,3 +158,76 @@ None within the stable company-internal Demo boundary. WebSockets, persistent
 local Job storage, background launch agents, public-scale fanout, extreme
 cursor/volume defenses, Campaign polling, automatic mutation retry, and feature
 UI/model wiring remain intentionally out of scope.
+
+## Independent-review fix round 1
+
+### Finding and regression RED
+
+The independent review correctly identified an ordinary navigation race in
+commit `9e3127f1b81399ef37763052c27b850e704a3a7a`: `stop()` cancelled and discarded
+the current work handle immediately, so an immediate `start()` could launch a
+replacement `listJobs` while a cancellation-ignoring request was still live.
+
+`immediateRestartWaitsForCancellationIgnoringRequestToExit` was added first.
+It commits `committed-cursor`, starts a second request behind the existing
+cancellation-ignoring gate, calls Stop and Start before releasing that request,
+and checks that no replacement request or event appears while it remains held.
+After release it checks that exactly one replacement starts from
+`committed-cursor`, maximum API concurrency remains one, the stale page never
+emits, and the replacement terminal event continues normal registry behavior.
+
+The exact focused command produced genuine behavioral RED against the reviewed
+implementation:
+
+```text
+swift test --package-path macos \
+  --filter JobPollerTests.immediateRestartWaitsForCancellationIgnoringRequestToExit
+
+Expectation failed: await api.callCount == 2
+Expectation failed: await api.maximumConcurrentCalls == 1
+Expectation failed: events.count == 1
+Expectation failed: await api.maximumConcurrentCalls == 1
+Test run with 1 test in 1 suite failed with 4 issues
+```
+
+### Minimal state-machine correction
+
+The poller now retains a cancelled sync or sleep task until its exit callback.
+Every work item receives a monotonic operation ID and reports completion to the
+actor on both normal and cancelled paths. The actor retires only the matching
+operation. Generation, running-state, cancellation, and operation-identity
+checks prevent old outcomes from committing.
+
+If Start arrives while cancelled work is retiring, one `restartPending` bit
+defers the immediate sync. The exiting work clears its own handle and schedules
+exactly one replacement using the current generation and last committed cursor.
+Repeated Start remains idempotent. A later Stop clears that pending authority.
+Refresh during a sleep similarly waits for the cancelled sleeper's exit before
+scheduling, while in-flight Refresh remains one coalesced follow-up. No API,
+model, AppSession, UI, package, backend, or generated contract changed.
+
+### Fix verification
+
+- Exact new regression: 1/1 GREEN, then 5/5 additional consecutive runs GREEN.
+- Complete focused suite: 9 tests / 1 suite, 0 failures.
+- Full Swift suite: 68 tests / 7 suites, 0 failures, 0.123 s.
+- Strict Swift build: `swift build --package-path macos -Xswiftc
+  -warnings-as-errors`, exit 0. The existing generated OpenAPI diagnostics are
+  covered by the package's pre-existing generated-target exception; Core and
+  app sources compiled strictly.
+- `swift format lint --strict` passed for both changed Swift files;
+  `git diff --check` passed.
+- Scope/secret/artifact audit found only `JobPoller.swift`,
+  `JobPollerTests.swift`, and this report changed; no tracked `.build`/`dist`
+  output and no credential/provider/network addition.
+- Safe app verification used
+  `SERVICE_BASE_URL='invalid://local-verification'
+  ./script/build_and_run.sh --verify`. The staged bundle retained identifier
+  `com.findmegamer.desktop`, minimum macOS `14.0`, and the invalid verification
+  URL. Exact PID `43816` was terminated; `kill -0` failed afterward and
+  `pgrep -x FindMeGamer` found no remaining process.
+
+The fix commit subject is `fix: serialize job poller restart`. The immutable
+fix package is generated from that commit after committing; its exact byte
+count and SHA-256 are recorded in the handoff because embedding either value in
+this same commit would change the package being identified.

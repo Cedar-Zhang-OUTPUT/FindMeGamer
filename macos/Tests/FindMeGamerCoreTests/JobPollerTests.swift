@@ -231,6 +231,49 @@ struct JobPollerTests {
     events.cancel()
   }
 
+  @Test func immediateRestartWaitsForCancellationIgnoringRequestToExit() async throws {
+    let jobID = UUID(uuidString: "51000000-0000-0000-0000-000000000001")!
+    let gate = APIGate()
+    let queued = JobChange.analysis(analysis(id: jobID, status: .queued))
+    let terminal = JobChange.analysis(analysis(id: jobID, status: .succeeded))
+    let api = JobAPI(
+      steps: [
+        .page(page(items: [queued], cursor: "committed-cursor")),
+        .suspended(gate, page(items: [terminal], cursor: "stale-cursor")),
+        .page(page(items: [terminal], cursor: "replacement-cursor")),
+      ])
+    let clock = ManualClock()
+    let poller = JobPoller(api: api, clock: clock)
+    let events = EventProbe(stream: poller.events)
+
+    await poller.start()
+    try await waitUntil { await clock.pendingSleepCount == 1 }
+    await poller.refreshNow()
+    try await gate.waitUntilEntered()
+
+    await poller.stop()
+    await poller.start()
+    await drainTasks()
+
+    #expect(await api.callCount == 2)
+    #expect(await api.maximumConcurrentCalls == 1)
+    #expect(events.count == 1)
+
+    gate.resume()
+    try await waitUntil {
+      let callCount = await api.callCount
+      return callCount == 3 && events.count == 2
+    }
+
+    #expect(
+      await api.calls.map(\.changedAfter) == [nil, "committed-cursor", "committed-cursor"])
+    #expect(await api.maximumConcurrentCalls == 1)
+    #expect(events.values.map(\.changes) == [[queued], [terminal]])
+    #expect(events.values.last?.hasActiveJobs == false)
+    await poller.stop()
+    events.cancel()
+  }
+
   @Test func streamTerminationCancelsPendingPollingWork() async throws {
     let jobID = UUID(uuidString: "60000000-0000-0000-0000-000000000001")!
     let api = JobAPI(

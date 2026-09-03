@@ -53,8 +53,11 @@ public actor JobPoller {
   private var cursor: String?
   private var activeJobs: Set<JobIdentity> = []
   private var workTask: Task<Void, Never>?
+  private var workID: UInt64?
+  private var nextWorkID: UInt64 = 0
   private var phase = Phase.idle
   private var refreshPending = false
+  private var restartPending = false
   private var running = false
   private var generation: UInt64 = 0
 
@@ -79,6 +82,10 @@ public actor JobPoller {
     running = true
     refreshPending = false
     generation &+= 1
+    if workTask != nil {
+      restartPending = true
+      return
+    }
     scheduleSync(generation: generation)
   }
 
@@ -86,10 +93,12 @@ public actor JobPoller {
     guard running || workTask != nil else { return }
     running = false
     refreshPending = false
+    restartPending = false
     generation &+= 1
     workTask?.cancel()
-    workTask = nil
-    phase = .idle
+    if workTask == nil {
+      phase = .idle
+    }
   }
 
   public func refreshNow() {
@@ -100,22 +109,25 @@ public actor JobPoller {
     case .syncing:
       refreshPending = true
     case .sleeping:
+      refreshPending = true
       workTask?.cancel()
-      workTask = nil
-      phase = .idle
-      scheduleSync(generation: generation)
     }
   }
 
   private func scheduleSync(generation operationGeneration: UInt64) {
-    guard running, generation == operationGeneration else { return }
+    guard running, generation == operationGeneration, workTask == nil else { return }
     phase = .syncing
+    nextWorkID &+= 1
+    let operationID = nextWorkID
+    workID = operationID
     let api = self.api
     let startingCursor = cursor
     workTask = Task { [weak self] in
       let outcome = await Self.fetchChanges(api: api, startingAt: startingCursor)
-      guard !Task.isCancelled else { return }
-      await self?.finishSync(outcome, generation: operationGeneration)
+      let wasCancelled = Task.isCancelled
+      await self?.syncWorkExited(
+        id: operationID, outcome: outcome, wasCancelled: wasCancelled,
+        generation: operationGeneration)
     }
   }
 
@@ -146,10 +158,13 @@ public actor JobPoller {
     }
   }
 
-  private func finishSync(_ outcome: SyncOutcome, generation operationGeneration: UInt64) {
-    guard running, generation == operationGeneration else { return }
-    workTask = nil
-    phase = .idle
+  private func syncWorkExited(
+    id operationID: UInt64, outcome: SyncOutcome, wasCancelled: Bool,
+    generation operationGeneration: UInt64
+  ) {
+    guard retireWork(id: operationID) else { return }
+    if schedulePendingRestart() { return }
+    guard running, generation == operationGeneration, !wasCancelled else { return }
 
     if case .success(let page) = outcome {
       cursor = page.cursor
@@ -173,25 +188,56 @@ public actor JobPoller {
   }
 
   private func scheduleSleep(generation operationGeneration: UInt64) {
-    guard running, generation == operationGeneration else { return }
+    guard running, generation == operationGeneration, workTask == nil else { return }
     phase = .sleeping
+    nextWorkID &+= 1
+    let operationID = nextWorkID
+    workID = operationID
     let clock = self.clock
     workTask = Task { [weak self] in
+      let completed: Bool
       do {
         try await clock.sleep(for: .seconds(3))
         try Task.checkCancellation()
-        await self?.sleepFinished(generation: operationGeneration)
+        completed = true
       } catch {
         // Cancellation is the control signal for Refresh, Stop, or stream termination.
+        completed = false
       }
+      await self?.sleepWorkExited(
+        id: operationID, completed: completed, generation: operationGeneration)
     }
   }
 
-  private func sleepFinished(generation operationGeneration: UInt64) {
-    guard running, generation == operationGeneration, phase == .sleeping else { return }
+  private func sleepWorkExited(
+    id operationID: UInt64, completed: Bool, generation operationGeneration: UInt64
+  ) {
+    guard retireWork(id: operationID) else { return }
+    if schedulePendingRestart() { return }
+    guard running, generation == operationGeneration else { return }
+    if refreshPending {
+      refreshPending = false
+      scheduleSync(generation: operationGeneration)
+    } else if completed {
+      scheduleSync(generation: operationGeneration)
+    }
+  }
+
+  private func retireWork(id operationID: UInt64) -> Bool {
+    guard workID == operationID else { return false }
     workTask = nil
+    workID = nil
     phase = .idle
-    scheduleSync(generation: operationGeneration)
+    return true
+  }
+
+  private func schedulePendingRestart() -> Bool {
+    guard restartPending else { return false }
+    restartPending = false
+    refreshPending = false
+    guard running else { return true }
+    scheduleSync(generation: generation)
+    return true
   }
 
   private func apply(_ changes: [JobChange]) {
