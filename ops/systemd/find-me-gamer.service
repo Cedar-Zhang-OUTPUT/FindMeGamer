@@ -1,0 +1,17 @@
+[Unit]
+Description=Find Me Gamer Docker Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/find-me-gamer
+EnvironmentFile=/etc/find-me-gamer/app.env
+ExecStart=/usr/bin/docker compose --project-directory /opt/find-me-gamer --env-file /etc/find-me-gamer/app.env up -d
+ExecStop=/usr/bin/docker compose --project-directory /opt/find-me-gamer --env-file /etc/find-me-gamer/app.env stop
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

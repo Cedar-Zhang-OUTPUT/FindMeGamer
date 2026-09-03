@@ -41,6 +41,13 @@ require_environment FMG_BACKUP_PREFIX
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
+compose_command=(docker compose --project-directory "$repo_root")
+if [[ -n "${FMG_COMPOSE_ENV_FILE:-}" ]]; then
+  [[ "$FMG_COMPOSE_ENV_FILE" == /* && -f "$FMG_COMPOSE_ENV_FILE" &&
+    ! -L "$FMG_COMPOSE_ENV_FILE" ]] ||
+    fail "FMG_COMPOSE_ENV_FILE must be an absolute regular non-symlink file"
+  compose_command+=(--env-file "$FMG_COMPOSE_ENV_FILE")
+fi
 
 if [[ "$dry_run" == "1" ]]; then
   timestamp="${FMG_DRY_RUN_TIMESTAMP:-20000101T000000Z}"
@@ -81,8 +88,12 @@ sha256_digest() {
 if [[ "$dry_run" == "1" ]]; then
   dump_file="/tmp/find-me-gamer-backup/$dump_name"
   checksum_file="${dump_file}.sha256"
-  printf "docker compose --project-directory %q exec -T postgres sh -eu -c '%s' > %q\n" \
-    "$repo_root" "$dump_container_command" "$dump_file"
+  printf 'docker compose --project-directory %q' "$repo_root"
+  if [[ -n "${FMG_COMPOSE_ENV_FILE:-}" ]]; then
+    printf ' --env-file %q' "$FMG_COMPOSE_ENV_FILE"
+  fi
+  printf " exec -T postgres sh -eu -c '%s' > %q\n" \
+    "$dump_container_command" "$dump_file"
   printf 'sha256sum-or-shasum %q > %q\n' "$dump_file" "$checksum_file"
   print_command aws s3 cp "$dump_file" "$dump_uri" --sse AES256 \
     --region "$FMG_AWS_REGION" --only-show-errors
@@ -109,7 +120,7 @@ dump_file="$temp_dir/$dump_name"
 checksum_file="${dump_file}.sha256"
 
 echo "Creating PostgreSQL custom-format backup." >&2
-docker compose --project-directory "$repo_root" exec -T postgres \
+"${compose_command[@]}" exec -T postgres \
   sh -eu -c "$dump_container_command" >"$dump_file"
 [[ -s "$dump_file" ]] || fail "pg_dump produced an empty backup"
 

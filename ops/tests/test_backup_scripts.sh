@@ -90,6 +90,29 @@ assert_contains "$backup_plan" "--sse AES256 --region us-west-2"
 assert_before "$backup_plan" "pg_dump --format=custom" "sha256sum-or-shasum"
 assert_before "$backup_plan" "sha256sum-or-shasum" "aws s3 cp"
 
+compose_env_file="$test_root/compose.env"
+printf 'POSTGRES_PASSWORD=literal-compose-value\n' >"$compose_env_file"
+chmod 0600 "$compose_env_file"
+backup_env_plan="$(
+  env "${common_environment[@]}" \
+    FMG_COMPOSE_ENV_FILE="$compose_env_file" \
+    FMG_DRY_RUN=1 \
+    FMG_DRY_RUN_TIMESTAMP=20260903T010203Z \
+    FMG_DRY_RUN_COMMIT=0123456789ab \
+    "$backup_script" --pre-migration
+)"
+assert_contains "$backup_env_plan" "--env-file $compose_env_file"
+if env "${common_environment[@]}" FMG_DRY_RUN=1 \
+  FMG_COMPOSE_ENV_FILE=relative.env "$backup_script" >/dev/null 2>&1; then
+  fail "backup accepted a relative Compose environment file"
+fi
+compose_env_link="$test_root/compose-link.env"
+ln -s "$compose_env_file" "$compose_env_link"
+if env "${common_environment[@]}" FMG_DRY_RUN=1 \
+  FMG_COMPOSE_ENV_FILE="$compose_env_link" "$backup_script" >/dev/null 2>&1; then
+  fail "backup accepted a symlink Compose environment file"
+fi
+
 restore_uri="s3://demo-backup-bucket/database/backups/test.dump"
 restore_plan="$(
   env "${common_environment[@]}" FMG_DRY_RUN=1 \
@@ -237,6 +260,14 @@ assert_before "$(<"$fake_log")" "sha256sum" "aws s3 cp"
 while IFS= read -r source_path; do
   [[ ! -e "$source_path" ]] || fail "backup temporary artifact was not cleaned up"
 done <"$fake_sources"
+
+: >"$fake_log"
+: >"$fake_sources"
+printf '0\n' >"$fake_aws_count"
+env "${live_environment[@]}" FMG_COMPOSE_ENV_FILE="$compose_env_file" \
+  "$backup_script" --pre-migration >"$test_root/env-backup.stdout" 2>/dev/null
+[[ "$(grep -c -- "--env-file $compose_env_file" "$fake_log")" = "1" ]] ||
+  fail "live backup did not pass the exact Compose environment file"
 
 : >"$fake_log"
 : >"$fake_sources"
