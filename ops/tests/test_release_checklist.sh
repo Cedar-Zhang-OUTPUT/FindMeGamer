@@ -71,8 +71,8 @@ PY
 rg -Fq -- '--env-file /etc/find-me-gamer/app.env' "$recorder"
 ! rg -n 'source[[:space:]]+|(^|[[:space:]])\.[[:space:]]+/etc/find-me-gamer/app\.env|eval[[:space:]]' "$recorder"
 for forbidden in backup_postgres restore_rehearsal seed_initial_creators smoke_test \
-  '/api/v1/analyze' '/api/v1/matches' '/api/v1/outreach' '/r/' 'POST'; do
-  ! rg -F "$forbidden" "$recorder"
+  '/api/v1/analyze' '/api/v1/matches' '/api/v1/outreach' 'POST'; do
+  ! rg -Fq "$forbidden" "$recorder"
 done
 
 dry_output="$(cd "$repository_root" && FMG_DRY_RUN=1 "$recorder" 0.1.0)"
@@ -336,6 +336,71 @@ with tempfile.TemporaryDirectory(prefix="fmg-task9-test.") as temporary:
     assert repeat.returncode != 0 and marker.read_bytes() == original
 
     shutil.rmtree(destination)
+    completed = checklist.read_text()
+
+    # Mutable checklist values are validated before any external capture.
+    calls_before_field_validation = log.read_text()
+    invalid_completed_checklists = [
+        ("absolute response capability URL", completed.replace(
+            "- Actual outcome: Observed the expected safe outcome.",
+            "- Actual outcome: https://release.test/r/opaque-capability?choice=accepted",
+            1,
+        )),
+        ("relative response capability", completed.replace(
+            "- Actual outcome: Observed the expected safe outcome.",
+            "- Actual outcome: Observed /r/opaque-capability without copying it.",
+            1,
+        )),
+        ("uppercase password assignment", completed.replace(
+            "- Environment/device/OS: internal-production / controlled device",
+            "- Environment/device/OS: POSTGRES_PASSWORD=SECRET-CANARY",
+            1,
+        )),
+        ("scenario operator placeholder", completed.replace("- Responsible operator: Operator One", "- Responsible operator: TBD", 1)),
+        ("scenario timestamp placeholder", completed.replace("- UTC timestamp: 2026-09-03T01:30:00Z", "- UTC timestamp: TBD", 1)),
+        ("scenario environment placeholder", completed.replace(
+            "- Environment/device/OS: internal-production / controlled device",
+            "- Environment/device/OS: N/A",
+            1,
+        )),
+        ("scenario actual placeholder", completed.replace(
+            "- Actual outcome: Observed the expected safe outcome.",
+            "- Actual outcome: TODO",
+            1,
+        )),
+        ("header operator placeholder", completed.replace("- Primary operator: Operator One", "- Primary operator: TBD", 1)),
+        ("sign-off placeholder", completed.replace(
+            "- [x] Primary operator approval — name / UTC: Operator One / 2026-09-03T02:05:00Z",
+            "- [x] Primary operator approval — name / UTC: ___ / 2026-09-03T02:05:00Z",
+            1,
+        )),
+        ("sign-off identity mismatch", completed.replace(
+            "- [x] Independent witness approval — name / UTC: Witness Two / 2026-09-03T02:06:00Z",
+            "- [x] Independent witness approval — name / UTC: Someone Else / 2026-09-03T02:06:00Z",
+            1,
+        )),
+    ]
+    for label, invalid_checklist in invalid_completed_checklists:
+        checklist.write_text(invalid_checklist, encoding="utf-8")
+        rejected = run(recorder, base_env, version)
+        assert rejected.returncode != 0, label
+        assert "SECRET-CANARY" not in rejected.stdout + rejected.stderr
+        assert not destination.exists()
+        assert log.read_text() == calls_before_field_validation
+
+    # Ordinary Unicode names and environment descriptions remain accepted.
+    unicode_completed = completed.replace("Operator One", "操作员甲")
+    unicode_completed = unicode_completed.replace("Witness Two", "Witness Élodie 二")
+    unicode_completed = unicode_completed.replace(
+        "internal-production / controlled device", "生产环境 / controlled Mac"
+    )
+    checklist.write_text(unicode_completed, encoding="utf-8")
+    unicode_success = run(recorder, base_env, version)
+    assert unicode_success.returncode == 0, unicode_success.stderr
+    assert destination.exists()
+    shutil.rmtree(destination)
+    checklist.write_text(completed, encoding="utf-8")
+
     scenarios = [
         ("ssh-failure", "deployed commit"),
         ("bad-commit", "deployed commit"),
@@ -378,7 +443,6 @@ with tempfile.TemporaryDirectory(prefix="fmg-task9-test.") as temporary:
     assert log.read_text() == before_calls
 
     # Incomplete checklist, mismatched checksum, unsafe restore and path escapes fail pre-capture.
-    completed = checklist.read_text()
     checklist.write_text(completed.replace("- [x] PASS", "- [ ] PASS", 1), encoding="utf-8")
     assert run(recorder, base_env, version).returncode != 0
     checklist.write_text(completed, encoding="utf-8")

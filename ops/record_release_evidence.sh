@@ -196,6 +196,42 @@ header_value() {
   ' "$checklist"
 }
 
+is_placeholder() {
+  local value="$1"
+  local normalized
+  normalized="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  case "$normalized" in
+    "" | ___ | *___* | tbd | todo | n/a | na | none | null)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+validate_person_name() {
+  local value="$1"
+  local lowered
+  [[ ${#value} -ge 1 && ${#value} -le 80 ]] || return 1
+  is_placeholder "$value" && return 1
+  [[ ! "$value" =~ [[:cntrl:]] ]] || return 1
+  lowered="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  [[ "$lowered" != *http://* && "$lowered" != *https://* ]] || return 1
+}
+
+validate_environment_text() {
+  local value="$1"
+  local lowered
+  [[ ${#value} -ge 1 && ${#value} -le 160 ]] || return 1
+  is_placeholder "$value" && return 1
+  [[ ! "$value" =~ [[:cntrl:]] ]] || return 1
+  lowered="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  [[ "$lowered" != *http://* && "$lowered" != *https://* ]] || return 1
+}
+
+validate_utc_timestamp() {
+  [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]
+}
+
 release_version="$(header_value "Release version")" || fail "checklist release version field is invalid"
 deployed_commit="$(header_value "Immutable deployed commit")" || fail "checklist deployed commit field is invalid"
 checklist_origin="$(header_value "Service HTTPS origin")" || fail "checklist service origin field is invalid"
@@ -213,15 +249,21 @@ decision="$(header_value "Final release decision")" || fail "checklist decision 
 [[ "$checklist_origin" == "$service_origin" ]] || fail "checklist service origin does not match"
 [[ "$checklist_archive" == "release/$(basename "$archive")" ]] || fail "checklist artifact does not match"
 [[ "$checklist_digest" == "$actual_digest" ]] || fail "checklist checksum does not match"
-[[ "$environment_label" =~ ^[A-Za-z0-9][-A-Za-z0-9._\ ]{0,79}$ ]] || fail "checklist environment label is invalid"
-[[ "$utc_start" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ &&
-  "$utc_completion" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] ||
+validate_environment_text "$environment_label" || fail "checklist environment label is invalid"
+if ! validate_utc_timestamp "$utc_start" || ! validate_utc_timestamp "$utc_completion"; then
   fail "checklist UTC times are invalid"
-[[ -n "$primary_operator" && "$primary_operator" != *___* && ${#primary_operator} -le 80 ]] || fail "checklist primary operator is invalid"
-[[ -n "$witness" && "$witness" != *___* && ${#witness} -le 80 ]] || fail "checklist witness is invalid"
+fi
+validate_person_name "$primary_operator" || fail "checklist primary operator is invalid"
+validate_person_name "$witness" || fail "checklist witness is invalid"
 [[ "$decision" == "PASS" ]] || fail "checklist final decision is incomplete"
 
-if LC_ALL=C grep -Eq '[[:cntrl:]]|SECRET-CANARY|BEGIN ([A-Z ]+)?PRIVATE KEY|Authorization[[:space:]]*:|Cookie[[:space:]]*:|(^|[^A-Za-z])(password|secret|token|database_url)[[:space:]]*=' "$checklist"; then
+[[ "$(grep -Eic 'https?://' "$checklist")" == "1" &&
+  "$(grep -Fxc -- "- Service HTTPS origin: $service_origin" "$checklist")" == "1" ]] ||
+  fail "checklist contains an unexpected absolute URL"
+if grep -Eiq '(^|[^A-Za-z0-9])/r/[A-Za-z0-9._~+/-]{6,}([?][^[:space:]]*)?' "$checklist"; then
+  fail "checklist contains a response capability"
+fi
+if LC_ALL=C grep -Eiq '[[:cntrl:]]|SECRET-CANARY|BEGIN ([A-Z ]+)?PRIVATE KEY|(^|[^A-Za-z0-9_])[A-Za-z0-9_]*(secret|password|token|database_url|authorization|cookie|api_key|workspace_key|master_key)[A-Za-z0-9_]*[[:space:]]*[:=]' "$checklist"; then
   fail "checklist contains prohibited sensitive content"
 fi
 if grep -Eiq '^- (workspace|api|provider|steam|youtube|deepseek|smtp|master|response|aws).*(key|token|password|secret|credential)[[:space:]]*:' "$checklist"; then
@@ -232,6 +274,17 @@ if grep -Eq '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' "$checklist"; then
 fi
 
 awk '
+  function placeholder(value, normalized) {
+    normalized = tolower(value)
+    return (normalized == "" || normalized ~ /___/ || normalized == "tbd" || normalized == "todo" || normalized == "n\/a" || normalized == "na" || normalized == "none" || normalized == "null")
+  }
+  function url(value, normalized) {
+    normalized = tolower(value)
+    return (normalized ~ /https?:\/\//)
+  }
+  function capability(value) {
+    return (value ~ /(^|[^A-Za-z0-9])\/r\/[A-Za-z0-9._~+\/-][A-Za-z0-9._~+\/-][A-Za-z0-9._~+\/-][A-Za-z0-9._~+\/-][A-Za-z0-9._~+\/-][A-Za-z0-9._~+\/-]/)
+  }
   BEGIN {
     split("workspace-key steam-analyze youtube-analyze library reanalyze creator-seed three-stage-match outreach accepted declined duplicate-send cloud-continuation offline-reconnect macos-14 macos-26 backup-restore master-key-recovery", expected, " ")
     split("Responsible operator|UTC timestamp|Environment/device/OS|Prerequisites/test data|Steps|Expected outcome|Actual outcome|Evidence filenames", fields, "|")
@@ -256,9 +309,13 @@ awk '
         seen[key] += 1
         value = substr($0, length(prefix) + 1)
         sub(/^[[:space:]]+/, "", value)
-        if (value == "" || value ~ /___/) exit 22
+        sub(/[[:space:]]+$/, "", value)
+        if (placeholder(value)) exit 22
+        if (fields[field_index] == "Responsible operator" && (length(value) > 80 || url(value))) exit 29
+        if (fields[field_index] == "UTC timestamp" && value !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z$/) exit 30
+        if (fields[field_index] == "Environment/device/OS" && (length(value) > 160 || url(value))) exit 31
+        if (fields[field_index] == "Actual outcome" && (length(value) > 500 || url(value) || capability(value))) exit 32
         if (fields[field_index] == "Evidence filenames" && value !~ /^[A-Za-z0-9._-]+(, [A-Za-z0-9._-]+)*$/) exit 23
-        if (fields[field_index] == "Actual outcome" && tolower(value) ~ /(authorization|cookie|workspace key|api key|password|secret|response token|mail body|database_url)/) exit 28
       }
     }
   }
@@ -277,10 +334,31 @@ awk '
   }
 ' "$checklist" || fail "checklist scenarios are incomplete or malformed"
 
-grep -Eq '^- \[x\] Primary operator approval — name / UTC: .+ / [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$checklist" ||
-  fail "primary operator sign-off is incomplete"
-grep -Eq '^- \[x\] Independent witness approval — name / UTC: .+ / [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$checklist" ||
-  fail "independent witness sign-off is incomplete"
+signoff_value() {
+  local role="$1"
+  awk -v prefix="- [x] ${role} approval — name / UTC:" '
+    index($0, prefix) == 1 {
+      count += 1
+      value = substr($0, length(prefix) + 1)
+      sub(/^[[:space:]]+/, "", value)
+      print value
+    }
+    END { if (count != 1) exit 1 }
+  ' "$checklist"
+}
+
+[[ "$(grep -Fc 'Primary operator approval — name / UTC:' "$checklist")" == "1" ]] ||
+  fail "primary operator sign-off is malformed"
+[[ "$(grep -Fc 'Independent witness approval — name / UTC:' "$checklist")" == "1" ]] ||
+  fail "independent witness sign-off is malformed"
+primary_signoff="$(signoff_value "Primary operator")" || fail "primary operator sign-off is incomplete"
+witness_signoff="$(signoff_value "Independent witness")" || fail "independent witness sign-off is incomplete"
+[[ "$primary_signoff" == "$primary_operator / "* ]] || fail "primary operator sign-off identity does not match"
+[[ "$witness_signoff" == "$witness / "* ]] || fail "independent witness sign-off identity does not match"
+primary_signoff_time="${primary_signoff#"$primary_operator / "}"
+witness_signoff_time="${witness_signoff#"$witness / "}"
+validate_utc_timestamp "$primary_signoff_time" || fail "primary operator sign-off timestamp is invalid"
+validate_utc_timestamp "$witness_signoff_time" || fail "independent witness sign-off timestamp is invalid"
 
 [[ "$(wc -l <"$restore_input" | tr -d ' ')" == "3" ]] || fail "restore result schema is invalid"
 restore_result="$(sed -n '1s/^result=//p' "$restore_input")"

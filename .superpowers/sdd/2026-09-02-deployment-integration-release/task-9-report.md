@@ -107,3 +107,65 @@ workspace.
   action was performed.
 
 No binding concerns remain.
+
+## Fix round 1: validate release evidence fields
+
+### TDD RED
+
+The focused fake-live fixture first inserted an otherwise completed scenario
+outcome containing
+`https://release.test/r/opaque-capability?choice=accepted`. At base
+`6209842e50034ab3951e362870ce98b492baada1`, the recorder accepted it, executed
+the fake external captures, and published the capability in the checklist
+snapshot. The production-coupled expectation that validation fail before any
+capture therefore exited nonzero:
+
+```text
+task9_fix1_RED_exit=1
+```
+
+The same pre-capture matrix also covers a relative `/r/<capability>`, an
+uppercase `POSTGRES_PASSWORD` assignment in scenario environment text,
+scenario operator/time/environment/actual placeholders, a header operator
+placeholder, a sign-off placeholder, and a witness identity mismatch.
+
+### GREEN implementation and evidence
+
+- The entire completed checklist now contains exactly one absolute HTTP(S)
+  URL: the exact Service HTTPS origin header matching `SERVICE_BASE_URL`.
+  Any other absolute URL or obvious response-capability path is rejected before
+  capture or snapshot copying.
+- Credential assignment/field checks are case-insensitive for authorization,
+  cookies, secrets, passwords, tokens, database URLs, API/workspace/master
+  keys, and PEM material while the fixed checklist's explanatory prose remains
+  valid.
+- Header operators and environment label now use bounded, control/URL-free,
+  non-placeholder validation and accept normal Unicode text. Each scenario
+  requires a bounded non-placeholder operator/environment/actual value and an
+  exact UTC timestamp. Actual outcomes additionally reject URLs and response
+  capabilities; evidence filenames retain their strict basename allowlist.
+- Each final sign-off occurs exactly once, is checked, names the exact matching
+  header operator/witness, and carries an exact UTC timestamp. A fake-live
+  positive case with `操作员甲`, `Witness Élodie 二`, and
+  `生产环境 / controlled Mac` completes and publishes normally.
+
+Final focused suite, twice:
+
+```text
+$ /bin/bash ops/tests/test_release_checklist.sh
+PASS: exact unchecked 17-scenario checklist contract
+PASS: fake-backed sanitized atomic evidence recorder contracts
+PASS: release checklist and evidence recorder
+$ /bin/bash ops/tests/test_release_checklist.sh
+PASS: exact unchecked 17-scenario checklist contract
+PASS: fake-backed sanitized atomic evidence recorder contracts
+PASS: release checklist and evidence recorder
+```
+
+`FMG_DRY_RUN=1 ops/record_release_evidence.sh 0.1.0` again printed the nine
+confined plans and PASS with no evidence directory or workspace mutation.
+Task 1–8 Compose/bootstrap/backup/S3/deploy/operator/release/integration
+contract regressions passed. Bash 3.2 syntax, exact three-file fix scope,
+diff, secret/token/email, path, and zero evidence-residue gates passed. No real
+acceptance, SSH, curl, Docker, app, provider, SMTP, AWS, Keychain, or network
+action occurred. No binding concerns remain.
