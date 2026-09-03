@@ -1,0 +1,48 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BucketLifecycleConfiguration",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetLifecycleConfiguration",
+        "s3:PutLifecycleConfiguration"
+      ],
+      "Resource": "arn:aws:s3:::REPLACE_WITH_BUCKET_NAME"
+    },
+    {
+      "Sid": "ListApprovedPrefixes",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::REPLACE_WITH_BUCKET_NAME",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "REPLACE_WITH_BACKUP_PREFIX",
+            "REPLACE_WITH_BACKUP_PREFIX/*",
+            "REPLACE_WITH_ACQUISITION_PREFIX",
+            "REPLACE_WITH_ACQUISITION_PREFIX/*"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ReadWriteApprovedObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::REPLACE_WITH_BUCKET_NAME/REPLACE_WITH_BACKUP_PREFIX/*",
+        "arn:aws:s3:::REPLACE_WITH_BUCKET_NAME/REPLACE_WITH_ACQUISITION_PREFIX/*"
+      ]
+    },
+    {
+      "Sid": "DeleteAcquisitionHealthProbeObjects",
+      "Effect": "Allow",
+      "Action": "s3:DeleteObject",
+      "Resource": "arn:aws:s3:::REPLACE_WITH_BUCKET_NAME/REPLACE_WITH_ACQUISITION_PREFIX/health/*"
+    }
+  ]
+}
