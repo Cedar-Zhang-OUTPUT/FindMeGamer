@@ -107,14 +107,17 @@ public enum WorkspaceRootSurface: Sendable, Equatable, Hashable {
   case access
   case workspace
 
-  public static func resolve(state: AppSession.State, hasService: Bool) -> WorkspaceRootSurface {
+  public static func resolve(
+    state: AppSession.State,
+    hasValidatedWorkspace: Bool
+  ) -> WorkspaceRootSurface {
     switch state {
     case .checking:
-      hasService ? .workspace : .checking
+      hasValidatedWorkspace ? .workspace : .checking
     case .needsKey:
       .access
     case .authenticated, .offline:
-      hasService ? .workspace : .access
+      hasValidatedWorkspace ? .workspace : .access
     }
   }
 }

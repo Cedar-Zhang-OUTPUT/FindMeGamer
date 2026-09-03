@@ -72,14 +72,22 @@ import Testing
     #expect(offline.navigationEnabled)
   }
 
-  @Test func retainedServiceKeepsAuthenticatedAndOfflineStatesOnTheSameWorkspaceSurface() {
-    #expect(WorkspaceRootSurface.resolve(state: .checking, hasService: false) == .checking)
-    #expect(WorkspaceRootSurface.resolve(state: .checking, hasService: true) == .workspace)
-    #expect(WorkspaceRootSurface.resolve(state: .needsKey, hasService: false) == .access)
-    #expect(WorkspaceRootSurface.resolve(state: .authenticated, hasService: true) == .workspace)
-    #expect(WorkspaceRootSurface.resolve(state: .authenticated, hasService: false) == .access)
-    #expect(WorkspaceRootSurface.resolve(state: .offline, hasService: true) == .workspace)
-    #expect(WorkspaceRootSurface.resolve(state: .offline, hasService: false) == .access)
+  @Test func onlyAValidatedWorkspaceCanOwnTheRetainedWorkspaceSurface() {
+    #expect(
+      WorkspaceRootSurface.resolve(state: .checking, hasValidatedWorkspace: false) == .checking)
+    #expect(
+      WorkspaceRootSurface.resolve(state: .checking, hasValidatedWorkspace: true) == .workspace)
+    #expect(
+      WorkspaceRootSurface.resolve(state: .needsKey, hasValidatedWorkspace: false) == .access)
+    #expect(
+      WorkspaceRootSurface.resolve(state: .authenticated, hasValidatedWorkspace: true)
+        == .workspace)
+    #expect(
+      WorkspaceRootSurface.resolve(state: .authenticated, hasValidatedWorkspace: false) == .access)
+    #expect(
+      WorkspaceRootSurface.resolve(state: .offline, hasValidatedWorkspace: true) == .workspace)
+    #expect(
+      WorkspaceRootSurface.resolve(state: .offline, hasValidatedWorkspace: false) == .access)
   }
 
   @MainActor
@@ -94,7 +102,7 @@ import Testing
     let retrySequence: [AppSession.State] = [.offline, .checking, .authenticated]
     #expect(
       retrySequence.map {
-        WorkspaceRootSurface.resolve(state: $0, hasService: true)
+        WorkspaceRootSurface.resolve(state: $0, hasValidatedWorkspace: true)
       } == [.workspace, .workspace, .workspace])
 
     #expect(ObjectIdentifier(navigation) == originalOwner)

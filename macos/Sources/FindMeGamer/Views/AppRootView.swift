@@ -8,7 +8,9 @@ struct AppRootView: View {
 
   var body: some View {
     Group {
-      switch WorkspaceRootSurface.resolve(state: session.state, hasService: session.service != nil)
+      switch WorkspaceRootSurface.resolve(
+        state: session.state,
+        hasValidatedWorkspace: session.workspaceSession != nil)
       {
       case .checking:
         ProgressView("Checking workspace access…")

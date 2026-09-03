@@ -39,6 +39,66 @@ struct AppSessionTests {
   }
 
   @MainActor
+  @Test func heldSavedKeyValidationStaysOnCheckingUntilValidationSucceeds() async {
+    let gate = ValidationGate()
+    let store = MemoryWorkspaceKeyStore(value: "saved-key")
+    let api = SessionAPI(outcomes: [.suspended(gate, .success)])
+    let session = makeSession(store: store, factory: APIFactoryRecorder(api: api))
+
+    let restoreTask = Task { await session.restore() }
+    await gate.waitUntilEntered()
+
+    #expect(session.state == .checking)
+    #expect(session.service != nil)
+    #expect(session.workspaceSession == nil)
+    #expect(
+      WorkspaceRootSurface.resolve(
+        state: session.state,
+        hasValidatedWorkspace: session.workspaceSession != nil) == .checking)
+
+    gate.resume()
+    await restoreTask.value
+
+    #expect(session.state == .authenticated)
+    #expect(session.workspaceSession == testSession)
+    #expect(
+      WorkspaceRootSurface.resolve(
+        state: session.state,
+        hasValidatedWorkspace: session.workspaceSession != nil) == .workspace)
+  }
+
+  @MainActor
+  @Test func heldInvalidSavedKeyGoesFromCheckingDirectlyToAccess() async {
+    let gate = ValidationGate()
+    let store = MemoryWorkspaceKeyStore(value: "SAVED-KEY-CANARY")
+    let api = SessionAPI(outcomes: [.suspended(gate, .invalidKey)])
+    let session = makeSession(store: store, factory: APIFactoryRecorder(api: api))
+
+    let restoreTask = Task { await session.restore() }
+    await gate.waitUntilEntered()
+
+    #expect(session.state == .checking)
+    #expect(session.service != nil)
+    #expect(session.workspaceSession == nil)
+    #expect(
+      WorkspaceRootSurface.resolve(
+        state: session.state,
+        hasValidatedWorkspace: session.workspaceSession != nil) == .checking)
+
+    gate.resume()
+    await restoreTask.value
+
+    #expect(session.state == .needsKey)
+    #expect(session.service == nil)
+    #expect(session.workspaceSession == nil)
+    #expect(await store.deleteCount == 1)
+    #expect(
+      WorkspaceRootSurface.resolve(
+        state: session.state,
+        hasValidatedWorkspace: session.workspaceSession != nil) == .access)
+  }
+
+  @MainActor
   @Test func invalidSavedKeyIsTheOnlyAPIErrorThatDeletesIt() async {
     let invalidStore = MemoryWorkspaceKeyStore(value: "SAVED-KEY-CANARY")
     let invalidAPI = SessionAPI(
@@ -458,6 +518,7 @@ private final class CallOrder: @unchecked Sendable {
 enum SuspendedValidationCompletion: Sendable {
   case success
   case cancelled
+  case invalidKey
 }
 
 private final class ValidationGate: @unchecked Sendable {
@@ -634,6 +695,9 @@ private actor SessionAPI: APIService {
       switch completion {
       case .success: return testSession
       case .cancelled: throw CancellationError()
+      case .invalidKey:
+        throw APIError(
+          code: "workspace_key_invalid", message: "The workspace key is invalid.", retryable: false)
       }
     }
   }
