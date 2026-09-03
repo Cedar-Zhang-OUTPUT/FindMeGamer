@@ -123,6 +123,124 @@ struct OutreachManagementModelTests {
   }
 
   @MainActor
+  @Test func lateTemplateListCannotOverwriteSuccessfulSave() async {
+    let source = template(id: id(26), name: "Source", isDefault: true)
+    let saved = template(
+      id: source.id, name: "Saved", subject: "Saved subject", body: "Saved body",
+      isDefault: true, version: 2)
+    let listGate = ManagementGate<[OutreachTemplate]>()
+    let saveGate = ManagementGate<OutreachTemplate>()
+    let api = ManagementAPI(
+      templateListOutcomes: [.value([source]), .gated(listGate)],
+      saveOutcomes: [.gated(saveGate)])
+    let model = OutreachManagementModel(api: api, clock: ManualClock())
+    await model.loadTemplates()
+    model.editTemplateName("Authored")
+
+    let refresh = Task { await model.loadTemplates() }
+    #expect(await listGate.waitUntilEntered())
+    let save = Task { await model.saveTemplate() }
+    #expect(await saveGate.waitUntilEntered())
+    saveGate.resume(.success(saved))
+    await save.value
+    #expect(model.templates == [saved])
+    #expect(model.templateDraft == TemplateDraft(template: saved))
+
+    listGate.resume(.success([source]))
+    await refresh.value
+    #expect(model.templates == [saved])
+    #expect(model.templateDraft == TemplateDraft(template: saved))
+    #expect(!model.hasUnsavedTemplateChanges)
+  }
+
+  @MainActor
+  @Test func lateTemplateListsCannotUndoDuplicateDefaultOrDelete() async {
+    let source = template(id: id(27), name: "Source", isDefault: false)
+    let backendDefault = template(id: id(28), name: "Default", isDefault: true)
+    let duplicate = template(id: id(29), name: "Duplicate", isDefault: false)
+
+    let duplicateListGate = ManagementGate<[OutreachTemplate]>()
+    let duplicateAPI = ManagementAPI(
+      templateListOutcomes: [
+        .value([source, backendDefault]), .gated(duplicateListGate),
+      ], duplicateOutcomes: [.value(duplicate)])
+    let duplicateModel = OutreachManagementModel(api: duplicateAPI, clock: ManualClock())
+    await duplicateModel.loadTemplates()
+    duplicateModel.selectTemplate(id: source.id)
+    let duplicateRefresh = Task { await duplicateModel.loadTemplates() }
+    #expect(await duplicateListGate.waitUntilEntered())
+    await duplicateModel.duplicateSelectedTemplate()
+    duplicateListGate.resume(.success([source, backendDefault]))
+    await duplicateRefresh.value
+    #expect(duplicateModel.templates == [source, backendDefault, duplicate])
+    #expect(duplicateModel.selectedTemplateID == duplicate.id)
+
+    let madeDefault = template(id: source.id, name: source.name, isDefault: true)
+    let oldDefaultCleared = template(
+      id: backendDefault.id, name: backendDefault.name, isDefault: false)
+    let defaultListGate = ManagementGate<[OutreachTemplate]>()
+    let defaultAPI = ManagementAPI(
+      templateListOutcomes: [
+        .value([source, backendDefault]), .gated(defaultListGate),
+      ], defaultOutcomes: [.value(madeDefault)])
+    let defaultModel = OutreachManagementModel(api: defaultAPI, clock: ManualClock())
+    await defaultModel.loadTemplates()
+    defaultModel.selectTemplate(id: source.id)
+    let defaultRefresh = Task { await defaultModel.loadTemplates() }
+    #expect(await defaultListGate.waitUntilEntered())
+    await defaultModel.setSelectedTemplateDefault()
+    defaultListGate.resume(.success([source, backendDefault]))
+    await defaultRefresh.value
+    #expect(defaultModel.templates == [madeDefault, oldDefaultCleared])
+    #expect(defaultModel.selectedTemplateID == source.id)
+
+    let deleteListGate = ManagementGate<[OutreachTemplate]>()
+    let deleteAPI = ManagementAPI(
+      templateListOutcomes: [
+        .value([source, backendDefault]), .gated(deleteListGate),
+      ], deleteOutcomes: [.success(())])
+    let deleteModel = OutreachManagementModel(api: deleteAPI, clock: ManualClock())
+    await deleteModel.loadTemplates()
+    deleteModel.selectTemplate(id: source.id)
+    let deleteRefresh = Task { await deleteModel.loadTemplates() }
+    #expect(await deleteListGate.waitUntilEntered())
+    await deleteModel.deleteSelectedTemplate()
+    deleteListGate.resume(.success([source, backendDefault]))
+    await deleteRefresh.value
+    #expect(deleteModel.templates == [backendDefault])
+    #expect(deleteModel.selectedTemplateID == backendDefault.id)
+  }
+
+  @MainActor
+  @Test func failedTemplateMutationDoesNotFenceHeldList() async {
+    let source = template(id: id(31), name: "Source", isDefault: true)
+    let refreshed = template(
+      id: source.id, name: "Refreshed", subject: "Refreshed subject", body: "Refreshed body",
+      isDefault: true, version: 2)
+    let listGate = ManagementGate<[OutreachTemplate]>()
+    let api = ManagementAPI(
+      templateListOutcomes: [.value([source]), .gated(listGate)],
+      saveOutcomes: [
+        .failure(APIError(code: "save_failed", message: "Save failed.", retryable: true))
+      ])
+    let model = OutreachManagementModel(api: api, clock: ManualClock())
+    await model.loadTemplates()
+    model.editTemplateName("Authored")
+    let authored = model.templateDraft
+
+    let refresh = Task { await model.loadTemplates() }
+    #expect(await listGate.waitUntilEntered())
+    await model.saveTemplate()
+    listGate.resume(.success([refreshed]))
+    await refresh.value
+
+    #expect(model.templates == [refreshed])
+    #expect(model.templateDraft == authored)
+    #expect(model.templateActionError == "Save failed.")
+    #expect(model.hasUnsavedTemplateChanges)
+  }
+
+  @MainActor
   @Test func savedPreviewDebouncesExactDraftAndFencesStaleFailure() async {
     let clock = ManualClock()
     let oldGate = ManagementGate<RenderedEmail>()

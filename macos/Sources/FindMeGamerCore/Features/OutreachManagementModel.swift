@@ -102,6 +102,7 @@ public final class OutreachManagementModel {
   @ObservationIgnored private let clock: any AppClock
   @ObservationIgnored private let idempotencyKey: @Sendable () -> String
   @ObservationIgnored private var campaignGeneration: UInt64 = 0
+  @ObservationIgnored private var templateMutationGeneration: UInt64 = 0
   @ObservationIgnored private var previewGeneration: UInt64 = 0
   @ObservationIgnored private var previewTask: Task<Void, Never>?
   @ObservationIgnored private var resendKeys: [UUID: String] = [:]
@@ -210,12 +211,14 @@ public final class OutreachManagementModel {
     let draftAtRequest = templateDraft
     let selectionAtRequest = selectedTemplateID
     let wasDirty = hasUnsavedTemplateChanges
+    let mutationGenerationAtRequest = templateMutationGeneration
     isLoadingTemplates = true
     templatesError = nil
     defer { isLoadingTemplates = false }
 
     do {
       let loaded = try await api.listTemplates()
+      guard templateMutationGeneration == mutationGenerationAtRequest else { return }
       let shouldPreserveDraft =
         wasDirty || templateDraft != draftAtRequest || selectedTemplateID != selectionAtRequest
       templates = loaded
@@ -301,6 +304,7 @@ public final class OutreachManagementModel {
 
     do {
       let canonical = try await api.saveTemplate(submitted)
+      templateMutationGeneration &+= 1
       upsert(canonical, enforceDefault: canonical.isDefault)
       adopt(canonical)
     } catch {
@@ -318,6 +322,7 @@ public final class OutreachManagementModel {
 
     do {
       let canonical = try await api.duplicateTemplate(id: id)
+      templateMutationGeneration &+= 1
       upsert(canonical, enforceDefault: canonical.isDefault)
       adopt(canonical)
     } catch {
@@ -336,6 +341,7 @@ public final class OutreachManagementModel {
 
     do {
       let canonical = try await api.setDefaultTemplate(id: id)
+      templateMutationGeneration &+= 1
       upsert(canonical, enforceDefault: true)
       adopt(canonical)
     } catch {
@@ -354,6 +360,7 @@ public final class OutreachManagementModel {
 
     do {
       try await api.deleteTemplate(id: id)
+      templateMutationGeneration &+= 1
       templates.removeAll { $0.id == id }
       if let next = templates.first(where: \.isDefault) ?? templates.first {
         adopt(next)

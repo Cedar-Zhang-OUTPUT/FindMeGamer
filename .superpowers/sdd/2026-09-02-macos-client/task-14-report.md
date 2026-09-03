@@ -136,3 +136,43 @@ explicitly parked under the agreed boundary. Campaign, WebKit, API/DTO, root,
 Package, and backend behavior were not changed. The fix commit SHA and immutable
 review-package hash are reported in the post-commit handoff to avoid
 self-referential package changes.
+
+## Fix round 02: fence late Template list results
+
+The fix started from `7071bddf7110382ad7b008f1a58ee5fab469ff83` after an
+independent re-review confirmed Fix 01 and identified an older held Template list
+response overwriting a later accepted canonical mutation.
+
+Tests were added before production changes with controllable actor gates. The
+focused RED discovered 14 tests and recorded six exact behavior failures: the
+late list restored pre-Save content, removed a successful Duplicate, reversed a
+successful Set Default, and restored a successfully deleted Template. The
+failure-mutation control already passed, proving that an unsuccessful Save must
+still permit the held list result to publish.
+
+The minimal production change is a private monotonic canonical Template mutation
+generation. `loadTemplates()` captures it before awaiting and discards its whole
+successful payload when a later successful mutation has advanced the generation.
+Save, Duplicate, Set Default, and Delete advance it only after server success and
+immediately before publishing their canonical state. This preserves both
+operation orders, does not advance on mutation failure, and leaves Fix 01's dirty
+refresh retention and clean canonical adoption unchanged.
+
+Fix 02 verification:
+
+- focused GREEN repeated twice: 14 tests / 1 suite, 0 failures each;
+- final full Swift suite: 156 tests / 16 suites, 0 failures. One preceding full
+  run emitted a single unrelated `MatchModelTests` parallel-scheduling failure;
+  the isolated Match suite immediately passed 11/11 and the required fresh full
+  rerun passed 156/156;
+- `swift build -Xswiftc -warnings-as-errors`: passed, with only the generated
+  target's established target-local diagnostics;
+- strict `swift-format` on both touched Swift files, diff whitespace, and exact
+  scope checks: passed;
+- safe invalid-URL launch: bundle `com.findmegamer.desktop`, minimum macOS
+  `14.0`, exact PID `28759` terminated, zero remaining processes.
+
+Only the management model, its focused tests, and this report changed. Campaign,
+preview, resend, WebKit, API/DTO, root, Package, and backend code were untouched;
+the concurrent resend-feedback Minor remains parked. The fix SHA and immutable
+review-package identifiers are recorded in the post-commit handoff.
