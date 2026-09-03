@@ -55,11 +55,16 @@ import Testing
     #expect(FontSizePreference.restoring(rawValue: "extra-large").dynamicTypeSize == .xxLarge)
   }
 
-  @Test func workspaceAvailabilityDisablesOnlyWritesWhileOffline() {
+  @Test func workspaceAvailabilityDisablesWritesUnlessAuthenticated() {
     let authenticated = WorkspaceAvailability(state: .authenticated)
     #expect(authenticated.writesEnabled)
     #expect(authenticated.readsEnabled)
     #expect(authenticated.navigationEnabled)
+
+    let checking = WorkspaceAvailability(state: .checking)
+    #expect(!checking.writesEnabled)
+    #expect(checking.readsEnabled)
+    #expect(checking.navigationEnabled)
 
     let offline = WorkspaceAvailability(state: .offline)
     #expect(!offline.writesEnabled)
@@ -69,6 +74,7 @@ import Testing
 
   @Test func retainedServiceKeepsAuthenticatedAndOfflineStatesOnTheSameWorkspaceSurface() {
     #expect(WorkspaceRootSurface.resolve(state: .checking, hasService: false) == .checking)
+    #expect(WorkspaceRootSurface.resolve(state: .checking, hasService: true) == .workspace)
     #expect(WorkspaceRootSurface.resolve(state: .needsKey, hasService: false) == .access)
     #expect(WorkspaceRootSurface.resolve(state: .authenticated, hasService: true) == .workspace)
     #expect(WorkspaceRootSurface.resolve(state: .authenticated, hasService: false) == .access)
@@ -89,7 +95,7 @@ import Testing
     #expect(
       retrySequence.map {
         WorkspaceRootSurface.resolve(state: $0, hasService: true)
-      } == [.workspace, .checking, .workspace])
+      } == [.workspace, .workspace, .workspace])
 
     #expect(ObjectIdentifier(navigation) == originalOwner)
     #expect(navigation.libraryPath.count == 1)

@@ -13,6 +13,25 @@ struct EnglishCopyTests {
       AppDestination.allCases.map(\.rawValue) == ["library", "match", "outreach", "settings"])
   }
 
+  @Test func composerSendRequiresBothWritableWorkspaceAndEligibleDraft() {
+    #expect(
+      OutreachComposerActionPolicy.canSend(
+        workspaceWritesEnabled: true,
+        modelCanConfirmSend: true))
+    #expect(
+      !OutreachComposerActionPolicy.canSend(
+        workspaceWritesEnabled: false,
+        modelCanConfirmSend: true))
+    #expect(
+      !OutreachComposerActionPolicy.canSend(
+        workspaceWritesEnabled: true,
+        modelCanConfirmSend: false))
+    #expect(
+      !OutreachComposerActionPolicy.canSend(
+        workspaceWritesEnabled: false,
+        modelCanConfirmSend: false))
+  }
+
   @Test func productionCopySurfacesContainNoCJKProductText() {
     let productCopy =
       AppDestination.allCases.map(\.title)

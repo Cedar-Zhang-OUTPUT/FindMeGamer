@@ -89,7 +89,16 @@ public struct WorkspaceAvailability: Sendable, Equatable, Hashable {
   public let navigationEnabled = true
 
   public init(state: AppSession.State) {
-    writesEnabled = state != .offline
+    writesEnabled = state == .authenticated
+  }
+}
+
+public enum OutreachComposerActionPolicy {
+  public static func canSend(
+    workspaceWritesEnabled: Bool,
+    modelCanConfirmSend: Bool
+  ) -> Bool {
+    workspaceWritesEnabled && modelCanConfirmSend
   }
 }
 
@@ -101,7 +110,7 @@ public enum WorkspaceRootSurface: Sendable, Equatable, Hashable {
   public static func resolve(state: AppSession.State, hasService: Bool) -> WorkspaceRootSurface {
     switch state {
     case .checking:
-      .checking
+      hasService ? .workspace : .checking
     case .needsKey:
       .access
     case .authenticated, .offline:

@@ -49,6 +49,54 @@ struct OutreachManagementModelTests {
   }
 
   @MainActor
+  @Test func acceptedSendQueuesFreshCampaignDrainAfterActiveRead() async {
+    let accepted = campaignSummary(id: id(3), game: "Accepted")
+    let oldRead = ManagementGate<CampaignPage>()
+    let api = ManagementAPI(
+      campaignPageOutcomes: [
+        .gated(oldRead),
+        .value(CampaignPage(items: [accepted], cursor: nil, hasMore: false)),
+      ])
+    let model = OutreachManagementModel(api: api)
+
+    let activeRead = Task { await model.loadCampaigns() }
+    #expect(await oldRead.waitUntilEntered())
+    await model.refreshCampaignsAfterAcceptedSend()
+    oldRead.resume(
+      .success(CampaignPage(items: [], cursor: "old snapshot", hasMore: false)))
+    await activeRead.value
+
+    #expect(await api.campaignPageCalls == [nil, nil])
+    #expect(model.campaigns == [accepted])
+    #expect(model.campaignsError == nil)
+    #expect(!model.isLoadingCampaigns)
+  }
+
+  @MainActor
+  @Test func acceptedSendFollowUpStillRunsAfterActiveReadFailure() async {
+    let accepted = campaignSummary(id: id(4), game: "Accepted after failure")
+    let oldRead = ManagementGate<CampaignPage>()
+    let api = ManagementAPI(
+      campaignPageOutcomes: [
+        .gated(oldRead),
+        .value(CampaignPage(items: [accepted], cursor: nil, hasMore: false)),
+      ])
+    let model = OutreachManagementModel(api: api)
+
+    let activeRead = Task { await model.loadCampaigns() }
+    #expect(await oldRead.waitUntilEntered())
+    await model.refreshCampaignsAfterAcceptedSend()
+    oldRead.resume(
+      .failure(APIError(code: "old_failed", message: "Old read failed.", retryable: true)))
+    await activeRead.value
+
+    #expect(await api.campaignPageCalls == [nil, nil])
+    #expect(model.campaigns == [accepted])
+    #expect(model.campaignsError == nil)
+    #expect(!model.isLoadingCampaigns)
+  }
+
+  @MainActor
   @Test func newerCampaignSelectionFencesHeldOldSuccessAndFailure() async {
     let aID = id(10)
     let bID = id(11)
@@ -508,22 +556,33 @@ private final class ManagementGate<Value: Sendable>: @unchecked Sendable {
   private let lock = NSLock()
   private var continuation: CheckedContinuation<Result<Value, APIError>, Never>?
   private var entered = false
+  private var entryWaiters: [CheckedContinuation<Void, Never>] = []
 
   func wait() async -> Result<Value, APIError> {
     await withCheckedContinuation { continuation in
-      lock.withLock {
+      let waiters = lock.withLock {
         entered = true
         self.continuation = continuation
+        let waiters = entryWaiters
+        entryWaiters.removeAll()
+        return waiters
+      }
+      for waiter in waiters {
+        waiter.resume()
       }
     }
   }
 
   func waitUntilEntered() async -> Bool {
-    for _ in 0..<1_000 {
-      if lock.withLock({ entered }) { return true }
-      await Task.yield()
+    await withCheckedContinuation { waiter in
+      let resumeImmediately = lock.withLock {
+        if entered { return true }
+        entryWaiters.append(waiter)
+        return false
+      }
+      if resumeImmediately { waiter.resume() }
     }
-    return lock.withLock { entered }
+    return true
   }
 
   func resume(_ result: Result<Value, APIError>) {

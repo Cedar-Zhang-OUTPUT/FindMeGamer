@@ -8,6 +8,7 @@ struct OutreachComposerSheet: View {
   let onAccepted: (SendBatch) -> Void
 
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.workspaceWritesEnabled) private var workspaceWritesEnabled
   @State private var isShowingConfirmation = false
   @State private var reportedBatchID: UUID?
 
@@ -30,8 +31,10 @@ struct OutreachComposerSheet: View {
       titleVisibility: .visible
     ) {
       Button("Send Now") {
+        guard canSend else { return }
         Task { await model.confirmSend() }
       }
+      .disabled(!canSend)
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("The server will accept this batch and queue delivery.")
@@ -186,10 +189,11 @@ struct OutreachComposerSheet: View {
       }
       .disabled(model.isSending)
       Button("Send Outreach") {
+        guard canSend else { return }
         isShowingConfirmation = true
       }
       .buttonStyle(.borderedProminent)
-      .disabled(!model.canConfirmSend)
+      .disabled(!canSend)
     }
     .padding(16)
   }
@@ -201,6 +205,12 @@ struct OutreachComposerSheet: View {
         guard let id else { return }
         Task { await model.selectTemplate(id: id) }
       })
+  }
+
+  private var canSend: Bool {
+    OutreachComposerActionPolicy.canSend(
+      workspaceWritesEnabled: workspaceWritesEnabled,
+      modelCanConfirmSend: model.canConfirmSend)
   }
 
   private var subjectBinding: Binding<String> {

@@ -102,6 +102,7 @@ public final class OutreachManagementModel {
   @ObservationIgnored private let clock: any AppClock
   @ObservationIgnored private let idempotencyKey: @Sendable () -> String
   @ObservationIgnored private var campaignGeneration: UInt64 = 0
+  @ObservationIgnored private var campaignRefreshRequired = false
   @ObservationIgnored private var templateMutationGeneration: UInt64 = 0
   @ObservationIgnored private var previewGeneration: UInt64 = 0
   @ObservationIgnored private var previewTask: Task<Void, Never>?
@@ -124,10 +125,27 @@ public final class OutreachManagementModel {
 
   public func loadCampaigns() async {
     guard !isLoadingCampaigns else { return }
+    await drainCampaignsThroughRequiredRefreshes()
+  }
+
+  public func refreshCampaignsAfterAcceptedSend() async {
+    campaignRefreshRequired = true
+    guard !isLoadingCampaigns else { return }
+    await drainCampaignsThroughRequiredRefreshes()
+  }
+
+  private func drainCampaignsThroughRequiredRefreshes() async {
     isLoadingCampaigns = true
-    campaignsError = nil
     defer { isLoadingCampaigns = false }
 
+    repeat {
+      campaignRefreshRequired = false
+      await drainCampaignsOnce()
+    } while campaignRefreshRequired
+  }
+
+  private func drainCampaignsOnce() async {
+    campaignsError = nil
     do {
       var cursor: String?
       var hasMore = true

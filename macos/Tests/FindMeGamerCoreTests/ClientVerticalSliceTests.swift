@@ -7,7 +7,8 @@ import Testing
 struct ClientVerticalSliceTests {
   @MainActor
   @Test func realModelsCompleteAnalyzeMatchComposeAndCampaignFlow() async {
-    let api = VerticalSliceAPI()
+    let heldCampaignRead = VerticalSliceGate<CampaignPage>()
+    let api = VerticalSliceAPI(heldFirstCampaignRead: heldCampaignRead)
     let keys = TestKeySequence([
       "17000000-0000-4000-8000-000000000001",
       "17000000-0000-4000-8000-000000000002",
@@ -71,6 +72,9 @@ struct ClientVerticalSliceTests {
     #expect(result.recommendedMatches.map(\.label) == [.strong])
     #expect(result.otherMatches.map(\.label) == [.limited])
 
+    let preSendCampaignRead = Task { await coordinator.outreach.loadCampaigns() }
+    #expect(await heldCampaignRead.waitUntilEntered())
+
     let orderedCreatorIDs = [fixtureID(12), fixtureID(11)]
     await coordinator.composer.load(matchID: result.id, creatorIDs: orderedCreatorIDs)
     #expect(coordinator.composer.selectedTemplate?.name == "Default Outreach")
@@ -85,13 +89,19 @@ struct ClientVerticalSliceTests {
       return
     }
     #expect(coordinator.outreach.campaigns.isEmpty)
+    let matchCallsBeforeAcceptedRefresh = await api.matchCallCount
     await coordinator.sendBatchAccepted(accepted)
+    heldCampaignRead.resume(
+      .success(CampaignPage(items: [], cursor: "old snapshot", hasMore: false)))
+    await preSendCampaignRead.value
 
     #expect(coordinator.outreach.campaigns.count == 1)
     #expect(coordinator.outreach.campaigns.first?.metrics.sentCreators == 1)
     #expect(await api.sendCalls.count == 1)
     #expect(await api.sendCalls.first?.draft.creatorIDs == orderedCreatorIDs)
     #expect(await api.sendCalls.first?.key == "17000000-0000-4000-8000-000000000003")
+    #expect(await api.campaignListCallCount == 2)
+    #expect(await api.matchCallCount == matchCallsBeforeAcceptedRefresh + 1)
     #expect(accepted.deliveries.isEmpty)
   }
 
@@ -157,10 +167,16 @@ private actor VerticalSliceAPI: APIService {
 
   private var analyzedAlpha = false
   private var campaigns: [CampaignSummary] = []
+  private let heldFirstCampaignRead: VerticalSliceGate<CampaignPage>?
   private(set) var profileListCallCount = 0
   private(set) var matchCallCount = 0
+  private(set) var campaignListCallCount = 0
   private(set) var settingsWriteCount = 0
   private(set) var sendCalls: [SendCall] = []
+
+  init(heldFirstCampaignRead: VerticalSliceGate<CampaignPage>? = nil) {
+    self.heldFirstCampaignRead = heldFirstCampaignRead
+  }
 
   func listProfiles(
     type: ProfileType, query: String, onlyCollection: Bool, cursor: String?, limit: Int
@@ -242,7 +258,11 @@ private actor VerticalSliceAPI: APIService {
   }
 
   func listCampaigns(cursor: String?) async throws -> CampaignPage {
-    CampaignPage(items: campaigns, cursor: nil, hasMore: false)
+    campaignListCallCount += 1
+    if campaignListCallCount == 1, let heldFirstCampaignRead {
+      return try await heldFirstCampaignRead.wait().get()
+    }
+    return CampaignPage(items: campaigns, cursor: nil, hasMore: false)
   }
 
   func smtpSettings() async throws -> SMTPSettingsStatus {
@@ -357,6 +377,49 @@ private final class TestKeySequence: @unchecked Sendable {
     defer { lock.unlock() }
     defer { index += 1 }
     return values[index]
+  }
+}
+
+private final class VerticalSliceGate<Value: Sendable>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var continuation: CheckedContinuation<Result<Value, APIError>, Never>?
+  private var entered = false
+  private var entryWaiters: [CheckedContinuation<Void, Never>] = []
+
+  func wait() async -> Result<Value, APIError> {
+    await withCheckedContinuation { continuation in
+      let waiters = lock.withLock {
+        entered = true
+        self.continuation = continuation
+        let waiters = entryWaiters
+        entryWaiters.removeAll()
+        return waiters
+      }
+      for waiter in waiters {
+        waiter.resume()
+      }
+    }
+  }
+
+  func waitUntilEntered() async -> Bool {
+    await withCheckedContinuation { waiter in
+      let resumeImmediately = lock.withLock {
+        if entered { return true }
+        entryWaiters.append(waiter)
+        return false
+      }
+      if resumeImmediately { waiter.resume() }
+    }
+    return true
+  }
+
+  func resume(_ result: Result<Value, APIError>) {
+    let pending = lock.withLock {
+      let pending = continuation
+      continuation = nil
+      return pending
+    }
+    pending?.resume(returning: result)
   }
 }
 

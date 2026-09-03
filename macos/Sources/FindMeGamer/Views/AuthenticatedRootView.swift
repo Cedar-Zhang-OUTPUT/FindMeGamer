@@ -61,6 +61,16 @@ struct AuthenticatedRootView: View {
         VStack(spacing: 0) {
           if session.state == .offline {
             OfflineBanner(retry: retry)
+          } else if session.state == .checking {
+            HStack(spacing: 8) {
+              ProgressView()
+                .controlSize(.small)
+              Text("Checking workspace access…")
+                .font(.callout)
+            }
+            .foregroundStyle(.secondary)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
           }
 
           if selectedDestination == .match, let error = coordinator.outreach.resendError {
@@ -74,9 +84,9 @@ struct AuthenticatedRootView: View {
 
           selectedDetail(coordinator)
         }
-        .environment(\.workspaceWritesEnabled, availability.writesEnabled)
       }
     )
+    .environment(\.workspaceWritesEnabled, availability.writesEnabled)
     .onAppear { storedSelection = selectedDestination.rawValue }
     .task { await coordinator.run() }
     .onChange(of: session.state) { _, state in
@@ -93,6 +103,7 @@ struct AuthenticatedRootView: View {
     }
     .sheet(isPresented: profilePresentation(coordinator)) {
       profileSheet(coordinator)
+        .environment(\.workspaceWritesEnabled, availability.writesEnabled)
     }
     .sheet(
       item: $composerRequest,
@@ -104,7 +115,9 @@ struct AuthenticatedRootView: View {
           creatorIDs: request.creatorIDs,
           onAccepted: { batch in
             Task { await coordinator.sendBatchAccepted(batch) }
-          })
+          }
+        )
+        .environment(\.workspaceWritesEnabled, availability.writesEnabled)
       })
   }
 

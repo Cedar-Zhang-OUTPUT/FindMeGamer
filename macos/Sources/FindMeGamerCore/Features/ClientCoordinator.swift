@@ -239,7 +239,7 @@ public final class ClientCoordinator {
   }
 
   public func sendBatchAccepted(_ batch: SendBatch) async {
-    async let campaigns: Void = outreach.loadCampaigns()
+    async let campaigns: Void = outreach.refreshCampaignsAfterAcceptedSend()
     if let matchID = batch.matchTaskID, match.selectedMatchID == matchID {
       async let result: Void = match.openResult(id: matchID)
       _ = await (campaigns, result)
