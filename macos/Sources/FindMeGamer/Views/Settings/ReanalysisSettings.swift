@@ -36,7 +36,7 @@ struct ReanalysisSettings: View {
       }
       .disabled(!writesEnabled || !model.canSaveReanalysis)
 
-      if let error = model.reanalysisError {
+      if let error = model.reanalysisLoadError {
         HStack {
           Label(error, systemImage: "exclamationmark.triangle")
             .foregroundStyle(.red)
@@ -46,6 +46,11 @@ struct ReanalysisSettings: View {
           }
           .disabled(model.isLoadingReanalysis)
         }
+      }
+
+      if let error = model.reanalysisActionError {
+        Label(error, systemImage: "exclamationmark.triangle")
+          .foregroundStyle(.red)
       }
     }
     .confirmationDialog(

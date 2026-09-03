@@ -559,6 +559,54 @@ struct SettingsModelTests {
   }
 
   @MainActor
+  @Test func reanalysisSaveAndLoadFailuresKeepDistinctRecoveryPaths() async {
+    let initial = SharedSettings(gameIntervalDays: 30, creatorIntervalDays: 14)
+    let refreshed = SharedSettings(gameIntervalDays: 35, creatorIntervalDays: 15)
+    let api = SettingsAPI(
+      sharedLoadOutcomes: [
+        .value(initial),
+        .failure(
+          APIError(
+            code: "settings_unavailable", message: "Re-analysis Settings are unavailable.",
+            retryable: true)),
+        .value(refreshed),
+      ],
+      sharedSaveOutcomes: [
+        .failure(APIError(code: "save_failed", message: "Could not update.", retryable: true))
+      ])
+    let model = SettingsModel(api: api, appearanceStore: SettingsPreferenceStore())
+
+    await model.loadReanalysis()
+    model.updateReanalysis(gameIntervalDays: 45, creatorIntervalDays: 20)
+    await model.saveReanalysis()
+
+    #expect(model.reanalysisActionError == "Could not update.")
+    #expect(model.reanalysisLoadError == nil)
+    #expect(model.sharedSettings == initial)
+    #expect(model.gameIntervalDays == 45)
+    #expect(model.creatorIntervalDays == 20)
+    #expect(model.canSaveReanalysis)
+
+    await model.loadReanalysis()
+
+    #expect(model.reanalysisLoadError == "Re-analysis Settings are unavailable.")
+    #expect(model.reanalysisActionError == "Could not update.")
+    #expect(model.sharedSettings == initial)
+    #expect(model.gameIntervalDays == 45)
+    #expect(model.creatorIntervalDays == 20)
+    #expect(model.canSaveReanalysis)
+
+    await model.loadReanalysis()
+
+    #expect(model.reanalysisLoadError == nil)
+    #expect(model.reanalysisActionError == "Could not update.")
+    #expect(model.sharedSettings == refreshed)
+    #expect(model.gameIntervalDays == 45)
+    #expect(model.creatorIntervalDays == 20)
+    #expect(model.canSaveReanalysis)
+  }
+
+  @MainActor
   @Test func reanalysisInitialLoadFailurePreservesDraftAndRetryPublishesCanonicalState() async {
     let failureGate = SettingsGate<SharedSettings>()
     let canonical = SharedSettings(gameIntervalDays: 30, creatorIntervalDays: 14)
@@ -581,7 +629,8 @@ struct SettingsModelTests {
     #expect(model.sharedSettings == nil)
     #expect(model.gameIntervalDays == 40)
     #expect(model.creatorIntervalDays == 18)
-    #expect(model.reanalysisError == "Re-analysis Settings are unavailable.")
+    #expect(model.reanalysisLoadError == "Re-analysis Settings are unavailable.")
+    #expect(model.reanalysisActionError == nil)
     #expect(!model.canSaveReanalysis)
 
     await model.loadReanalysis()
@@ -589,7 +638,8 @@ struct SettingsModelTests {
     #expect(model.sharedSettings == canonical)
     #expect(model.gameIntervalDays == 40)
     #expect(model.creatorIntervalDays == 18)
-    #expect(model.reanalysisError == nil)
+    #expect(model.reanalysisLoadError == nil)
+    #expect(model.reanalysisActionError == nil)
     #expect(model.canSaveReanalysis)
     #expect(await api.sharedLoadCalls == 2)
   }
@@ -660,7 +710,8 @@ struct SettingsModelTests {
     #expect(await api.totalCallCount == 0)
 
     let publicCopy = [
-      model.smtpActionError, model.smtpLoadError, model.reanalysisError,
+      model.smtpActionError, model.smtpLoadError, model.reanalysisLoadError,
+      model.reanalysisActionError,
       model.connectionError(for: .steam), model.connectionError(for: .youtube),
       model.connectionError(for: .deepSeek),
     ].compactMap { $0 }.joined(separator: " ")

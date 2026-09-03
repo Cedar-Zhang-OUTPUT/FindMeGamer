@@ -169,3 +169,38 @@ Fix 02 verification:
 The Fix 02 commit hash is reported in the post-commit handoff. No API/DTO,
 connection, successful-load, root, package, backend, or Task 14 behavior was
 changed.
+
+## Fix 03: distinguish Re-analysis errors
+
+Fix 03 started from `f6c3bbad9b95c47227906c121cb959522ecc9044`
+and changed only `SettingsModel`, `ReanalysisSettings`, the focused Settings
+tests, and this report.
+
+A deterministic Save-failure, Load-failure, Load-success regression was added
+before production edits. The focused RED exited nonzero with six compile errors
+because `SettingsModel` had neither `reanalysisActionError` nor
+`reanalysisLoadError`, directly proving the missing provenance state.
+
+Re-analysis now publishes distinct Load and Action errors. Load clears and sets
+only its Load error; draft edits and Save clear or set only the Action error.
+The load failure retains the dirty draft and prior action feedback, while the
+subsequent successful Load clears only its own error, publishes canonical
+settings, preserves authored intervals, and leaves Save eligible. The View
+shows `Try Again` only with a Load error; a Save error is plain feedback and the
+existing confirmed Save action remains the only write retry path.
+
+Fix 03 verification:
+
+- focused GREEN repeated twice: 16 tests / 1 suite, 0 failures each;
+- full suite: 172 tests / 17 suites, 0 failures;
+- `swift build -Xswiftc -warnings-as-errors`: exit 0 with only the established
+  generated-target diagnostics;
+- strict format, whitespace, diff/scope, dependency, credential, and artifact
+  checks: passed;
+- safe invalid-URL launch: bundle `com.findmegamer.desktop`, minimum macOS
+  `14.0`, exact URL preserved, exact PID `73745` terminated, and no process
+  remained.
+
+The Fix 03 commit hash is reported in the post-commit handoff. No other state,
+network call, retry behavior, API/DTO, root, package, backend, or parked scope
+was changed.

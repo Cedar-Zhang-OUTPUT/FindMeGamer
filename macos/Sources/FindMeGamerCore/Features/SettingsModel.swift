@@ -73,7 +73,8 @@ public final class SettingsModel {
   public private(set) var creatorIntervalDays = 14
   public private(set) var isLoadingReanalysis = false
   public private(set) var isSavingReanalysis = false
-  public private(set) var reanalysisError: String?
+  public private(set) var reanalysisLoadError: String?
+  public private(set) var reanalysisActionError: String?
 
   public private(set) var gameActivity = ProfileAnalysisActivity.unavailable
   public private(set) var creatorActivity = ProfileAnalysisActivity.unavailable
@@ -382,7 +383,7 @@ public final class SettingsModel {
     self.creatorIntervalDays = creatorIntervalDays
     reanalysisHasUserEdits = true
     reanalysisDraftRevision &+= 1
-    reanalysisError = nil
+    reanalysisActionError = nil
   }
 
   public func loadReanalysis() async {
@@ -392,7 +393,7 @@ public final class SettingsModel {
     let hadUnsavedDraft = reanalysisHasUserEdits && reanalysisIsDirty
     let statusRevision = reanalysisStatusRevision
     isLoadingReanalysis = true
-    reanalysisError = nil
+    reanalysisLoadError = nil
     defer {
       if reanalysisLoadGeneration == generation { isLoadingReanalysis = false }
     }
@@ -413,7 +414,7 @@ public final class SettingsModel {
       guard reanalysisLoadGeneration == generation,
         reanalysisStatusRevision == statusRevision
       else { return }
-      reanalysisError = Self.safeMessage(
+      reanalysisLoadError = Self.safeMessage(
         error, fallback: "Could not load Re-analysis Settings.")
     }
   }
@@ -423,7 +424,7 @@ public final class SettingsModel {
     let draft = ReanalysisDraft(
       gameIntervalDays: gameIntervalDays, creatorIntervalDays: creatorIntervalDays)
     isSavingReanalysis = true
-    reanalysisError = nil
+    reanalysisActionError = nil
     defer { isSavingReanalysis = false }
 
     do {
@@ -435,7 +436,7 @@ public final class SettingsModel {
       creatorIntervalDays = settings.creatorIntervalDays
       reanalysisHasUserEdits = false
     } catch {
-      reanalysisError = Self.safeMessage(
+      reanalysisActionError = Self.safeMessage(
         error, fallback: "Could not save Re-analysis Settings.")
     }
   }
