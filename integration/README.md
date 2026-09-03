@@ -19,9 +19,12 @@ fakes inside the API and Worker containers. SMTP is fail-closed and unused.
 No public provider, AWS account, mailbox, production dotenv, user AWS config,
 or Keychain is accessed.
 
-The default cleanup trap always runs `docker compose down --volumes
---remove-orphans` for that exact unique project and deletes its mode-0600
-temporary env/master-key directory. A failed run prints bounded service
+All Docker and Compose operations have explicit time limits. The default cleanup
+trap always runs bounded `docker compose down --volumes --remove-orphans` for
+that exact unique project, validates the Compose project/service labels before
+deleting only its three API/Worker/Beat build-image tags, and deletes its
+mode-0600 temporary env/master-key directory. Cleanup continues to the remaining
+exact resources when one step times out. A failed run prints bounded service
 diagnostics first. For a quick non-mutating Compose policy check, run:
 
 ```bash

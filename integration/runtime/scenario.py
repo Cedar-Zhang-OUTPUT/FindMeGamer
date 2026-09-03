@@ -28,11 +28,17 @@ COMPOSE = [
     "-f",
     str(ROOT / "integration/compose.integration.yaml"),
 ]
+DOCKER_COMMAND_TIMEOUT = 5.0
 
 
 def compose(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [*COMPOSE, *arguments], cwd=ROOT, text=True, capture_output=True, check=check
+        [*COMPOSE, *arguments],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=check,
+        timeout=DOCKER_COMMAND_TIMEOUT,
     )
 
 
@@ -146,6 +152,7 @@ def assert_project_service_health() -> None:
                 text=True,
                 capture_output=True,
                 check=True,
+                timeout=DOCKER_COMMAND_TIMEOUT,
             )
             .stdout.strip()
             .split()
@@ -373,6 +380,7 @@ def healthy_worker_and_beat() -> bool:
             text=True,
             capture_output=True,
             check=True,
+            timeout=DOCKER_COMMAND_TIMEOUT,
         ).stdout.strip()
         if state != "healthy":
             return False
