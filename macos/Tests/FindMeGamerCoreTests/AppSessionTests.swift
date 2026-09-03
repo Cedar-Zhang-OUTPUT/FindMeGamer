@@ -276,6 +276,59 @@ struct AppSessionTests {
   }
 
   @MainActor
+  @Test func retainedWorkspaceSurvivesHeldRetryTransportFailure() async {
+    let gate = ValidationGate()
+    let store = MemoryWorkspaceKeyStore(value: "saved-key")
+    let api = SessionAPI(
+      outcomes: [
+        .success(testSession),
+        .suspended(gate, .transport(.notConnectedToInternet)),
+      ])
+    let connectivity = FakeConnectivity()
+    let session = makeSession(
+      store: store,
+      factory: APIFactoryRecorder(api: api),
+      connectivity: connectivity)
+
+    await session.restore()
+    connectivity.emit(false)
+    while session.state != .offline {
+      await Task.yield()
+    }
+    #expect(
+      WorkspaceRootSurface.resolve(
+        state: session.state,
+        hasValidatedWorkspace: session.workspaceSession != nil) == .workspace)
+    #expect(!WorkspaceAvailability(state: session.state).writesEnabled)
+
+    let retryTask = Task { await session.retryAccess(key: "") }
+    await gate.waitUntilEntered()
+
+    #expect(session.state == .checking)
+    #expect(session.workspaceSession == testSession)
+    #expect(
+      WorkspaceRootSurface.resolve(
+        state: session.state,
+        hasValidatedWorkspace: session.workspaceSession != nil) == .workspace)
+    #expect(!WorkspaceAvailability(state: session.state).writesEnabled)
+
+    gate.resume()
+    await retryTask.value
+
+    #expect(session.state == .offline)
+    #expect(session.workspaceSession == testSession)
+    #expect(session.service != nil)
+    #expect(await store.value == "saved-key")
+    #expect(await store.deleteCount == 0)
+    #expect(await api.validationCount == 2)
+    #expect(
+      WorkspaceRootSurface.resolve(
+        state: session.state,
+        hasValidatedWorkspace: session.workspaceSession != nil) == .workspace)
+    #expect(!WorkspaceAvailability(state: session.state).writesEnabled)
+  }
+
+  @MainActor
   @Test func repeatedAndConcurrentRestoreCoalescesValidation() async {
     let store = MemoryWorkspaceKeyStore(value: "saved-key")
     let api = SessionAPI(outcomes: [.success(testSession)], validationDelay: .milliseconds(30))
@@ -519,6 +572,7 @@ enum SuspendedValidationCompletion: Sendable {
   case success
   case cancelled
   case invalidKey
+  case transport(URLError.Code)
 }
 
 private final class ValidationGate: @unchecked Sendable {
@@ -698,6 +752,7 @@ private actor SessionAPI: APIService {
       case .invalidKey:
         throw APIError(
           code: "workspace_key_invalid", message: "The workspace key is invalid.", retryable: false)
+      case .transport(let code): throw URLError(code)
       }
     }
   }

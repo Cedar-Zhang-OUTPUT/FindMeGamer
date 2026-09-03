@@ -208,7 +208,6 @@ public final class AppSession {
       didRestore = true
     } catch {
       guard canCommit(operationGeneration) else { return }
-      workspaceSession = nil
       state = .offline
       message = offlineMessage
       didRestore = true
