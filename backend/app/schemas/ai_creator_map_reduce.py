@@ -78,7 +78,7 @@ class ReducerEvidenceReference(EvidenceReference):
 
 ReducerEvidenceReferences = Annotated[
     tuple[ReducerEvidenceReference, ...],
-    Field(min_length=1, max_length=1),
+    Field(min_length=1, max_length=3),
 ]
 
 

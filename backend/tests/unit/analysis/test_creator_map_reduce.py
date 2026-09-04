@@ -215,6 +215,33 @@ def test_map_reduce_schemas_are_strict_frozen_and_bounded() -> None:
     assert CreatorBriefSynthesis.deepseek_max_tokens == 3_072
 
 
+def test_map_reduce_claims_accept_up_to_three_evidence_references() -> None:
+    payload = _batch_payload()
+    primary_games = payload["content_format"]["primary_games"]
+    primary_games["evidence"] = [
+        {
+            "kind": "source_fact",
+            "source_type": "video_id",
+            "reference": f"video:video-{index}",
+            "observation": f"Video {index} supports this bounded signal.",
+        }
+        for index in range(1, 4)
+    ]
+
+    CreatorVideoBatchDigest.model_validate(payload)
+
+    primary_games["evidence"].append(
+        {
+            "kind": "source_fact",
+            "source_type": "video_id",
+            "reference": "video:video-4",
+            "observation": "Video 4 exceeds the bounded evidence allowance.",
+        }
+    )
+    with pytest.raises(ValidationError):
+        CreatorVideoBatchDigest.model_validate(payload)
+
+
 def test_reducer_fields_are_mutually_exclusive_and_cover_final_synthesis() -> None:
     reducer_types = (
         CreatorContentFormatReduction,
