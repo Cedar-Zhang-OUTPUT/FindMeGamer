@@ -801,6 +801,17 @@ def test_briefs_reject_full_profile_sized_claims() -> None:
         CreatorBrief.model_validate(creator)
 
 
+def test_creator_brief_accepts_bounded_descriptive_list_items() -> None:
+    payload = creator_synthesis_payload()["creator_brief"]
+    payload["collaboration_risks"]["values"] = ["r" * 64]
+
+    CreatorBrief.model_validate(payload)
+
+    payload["collaboration_risks"]["values"] = ["r" * 65]
+    with pytest.raises(ValidationError):
+        CreatorBrief.model_validate(payload)
+
+
 def test_worst_case_screening_brief_budget_fits_one_game_and_100_creators() -> None:
     source_evidence = [
         {
@@ -836,7 +847,7 @@ def test_worst_case_screening_brief_budget_fits_one_game_and_100_creators() -> N
     max_creator_text = creator_compact_text_claim("x" * 144)
     max_creator_text["evidence"] = source_evidence[:1]
     max_creator_list = creator_compact_list_claim(
-        *(f"{index}{'x' * 47}" for index in range(3))
+        *(f"{index}{'x' * 63}" for index in range(3))
     )
     max_creator_list["evidence"] = source_evidence[:1]
     max_creator_audience = {

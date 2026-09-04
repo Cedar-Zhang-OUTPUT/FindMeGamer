@@ -56,7 +56,7 @@ CreatorBriefText = Annotated[
 ]
 CreatorBriefItem = Annotated[
     str,
-    Field(min_length=1, max_length=48),
+    Field(min_length=1, max_length=64),
     AfterValidator(_creator_brief_text),
 ]
 CreatorBriefValues = Annotated[
