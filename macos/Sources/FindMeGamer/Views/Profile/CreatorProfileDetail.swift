@@ -8,28 +8,34 @@ struct CreatorProfileDetail: View {
   let onSave: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
       if let warning = presentation.staleWarning {
         Label(warning, systemImage: "exclamationmark.triangle.fill")
           .foregroundStyle(.orange)
           .font(.headline)
       } else {
-        ViewThatFits(in: .horizontal) {
-          HStack(alignment: .top, spacing: 14) {
-            sourceColumn
-            analysisColumn
-          }
-          .frame(minWidth: 610)
+        WorkspaceSectionHeader(
+          "Creator Brief",
+          subtitle: "A concise read on content, audience, performance, and promotion style.")
+        FactSection(title: "Overview", fields: presentation.briefFields)
 
-          VStack(alignment: .leading, spacing: 14) {
-            sourceColumn
-            analysisColumn
-          }
-        }
+        DisclosureGroup {
+          ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: WorkspaceDesign.spaceM) {
+              sourceColumn
+              analysisColumn
+            }
+            .frame(minWidth: 610)
 
-        DisclosureGroup("Creator Brief") {
-          FactSection(title: "AI Analysis", fields: presentation.briefFields)
-            .padding(.top, 8)
+            VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+              sourceColumn
+              analysisColumn
+            }
+          }
+          .padding(.top, WorkspaceDesign.spaceS)
+        } label: {
+          Label("Explore source facts and AI evidence", systemImage: "doc.text.magnifyingglass")
+            .font(.headline)
         }
       }
 

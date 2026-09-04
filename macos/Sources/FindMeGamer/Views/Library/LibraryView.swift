@@ -4,8 +4,8 @@ import SwiftUI
 enum LibraryLayout {
   static let headerRowCount = 2
   static let searchMaximumWidth: CGFloat = 360
-  static let gridMinimumWidth: CGFloat = 240
-  static let gridMaximumWidth: CGFloat = 340
+  static let gridMinimumWidth = WorkspaceDesign.libraryGridMinimumWidth
+  static let gridMaximumWidth = WorkspaceDesign.libraryGridMaximumWidth
   static let profileTypes: [ProfileType] = [.game, .creator]
 }
 
@@ -184,7 +184,7 @@ struct LibraryView: View {
   @State private var pagination = LibraryPaginationCoordinator()
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
+    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
       LibraryHeader(
         model: model,
         activeAnalysisJobCount: analyzeModel.activeJobCount,
@@ -197,7 +197,9 @@ struct LibraryView: View {
 
       libraryContent
     }
-    .padding()
+    .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
+    .padding(.vertical, WorkspaceDesign.pageVerticalPadding)
+    .workspaceCanvas()
     .task {
       model.selectType(model.selectedType)
     }
@@ -227,33 +229,42 @@ struct LibraryView: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
     case .scrollable(let showEmptyState):
       ScrollView {
-        if showEmptyState {
-          ContentUnavailableView(
-            LibraryCopy.empty,
-            systemImage: model.selectedType == .game ? "gamecontroller" : "person.2"
-          )
-          .frame(maxWidth: .infinity, minHeight: 180)
-        }
+        LazyVStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+          WorkspaceSectionHeader(
+            model.selectedType == .game ? "Game Profiles" : "Creator Profiles",
+            subtitle: "Open a profile for the full evidence trail.",
+            count: model.items.count)
 
-        LazyVGrid(
-          columns: [
-            GridItem(
-              .adaptive(
-                minimum: LibraryLayout.gridMinimumWidth,
-                maximum: LibraryLayout.gridMaximumWidth),
-              spacing: 14)
-          ],
-          spacing: 14
-        ) {
-          ForEach(model.items) { item in
-            profileCard(item)
+          if showEmptyState {
+            ContentUnavailableView(
+              LibraryCopy.empty,
+              systemImage: model.selectedType == .game ? "gamecontroller" : "person.2"
+            )
+            .frame(maxWidth: .infinity, minHeight: 180)
           }
-        }
-        .accessibilityIdentifier(LibraryAccessibility.grid)
 
-        paginationFooter
-          .padding(.vertical, 12)
+          LazyVGrid(
+            columns: [
+              GridItem(
+                .adaptive(
+                  minimum: LibraryLayout.gridMinimumWidth,
+                  maximum: LibraryLayout.gridMaximumWidth),
+                spacing: WorkspaceDesign.spaceM)
+            ],
+            alignment: .leading,
+            spacing: WorkspaceDesign.spaceM
+          ) {
+            ForEach(model.items) { item in
+              profileCard(item)
+            }
+          }
+          .accessibilityIdentifier(LibraryAccessibility.grid)
+
+          paginationFooter
+            .padding(.vertical, 12)
+        }
       }
+      .scrollIndicators(.automatic)
     }
   }
 

@@ -89,84 +89,144 @@ struct CreatorMatchRow: View {
   let onResend: (UUID) -> Void
 
   @State private var detailsExpanded = false
+  @State private var isHovered = false
 
   private var candidate: MatchCandidate { presentation.source }
+  private var previewPolicy: MatchCandidatePreviewPolicy {
+    MatchCandidatePreviewPolicy(reasons: presentation.reasons)
+  }
   private var isNewSendEligible: Bool {
     MatchOutreachActionPolicy.isEligibleForNewSend(candidate)
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(alignment: .top, spacing: 12) {
-        if isNewSendEligible {
-          Toggle("Select \(presentation.name)", isOn: $isSelected)
-            .labelsHidden()
-            .toggleStyle(.checkbox)
-            .disabled(!writesEnabled)
-            .accessibilityIdentifier(MatchAccessibility.creatorSelect(presentation.id))
-            .help("Select this Creator for Outreach")
-        }
-
-        AsyncArtwork(url: presentation.avatarURL, fallbackSystemImage: "person.crop.circle")
-          .frame(width: 64, height: 64)
-          .clipShape(Circle())
-
-        VStack(alignment: .leading, spacing: 5) {
-          Button(presentation.name, action: onOpenProfile)
-            .buttonStyle(.link)
-            .font(.headline)
-            .help("Open this Creator Profile")
-
-          Text(presentation.label)
-            .font(.subheadline.weight(.medium))
-
-          if let performanceSummary = presentation.performanceSummary {
-            Text(performanceSummary)
-              .font(.callout)
-              .foregroundStyle(.secondary)
+    WorkspaceSurface(style: isHovered ? .elevated : .card) {
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+        HStack(alignment: .top, spacing: WorkspaceDesign.spaceM) {
+          if isNewSendEligible {
+            Toggle("Select \(presentation.name)", isOn: $isSelected)
+              .labelsHidden()
+              .toggleStyle(.checkbox)
+              .disabled(!writesEnabled)
+              .accessibilityIdentifier(MatchAccessibility.creatorSelect(presentation.id))
+              .help("Select this Creator for Outreach")
           }
 
-          statistics
-        }
+          AsyncArtwork(url: presentation.avatarURL, fallbackSystemImage: "person.crop.circle")
+            .frame(width: 70, height: 70)
+            .clipShape(Circle())
+            .overlay { Circle().strokeBorder(Color.primary.opacity(0.1)) }
 
-        Spacer(minLength: 12)
-        outreachActions
-      }
+          VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: WorkspaceDesign.spaceS) {
+              Button(presentation.name, action: onOpenProfile)
+                .buttonStyle(.plain)
+                .font(.title3.weight(.semibold))
+                .help("Open this Creator Profile")
 
-      if !presentation.reasons.isEmpty {
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Match Reasons")
-            .font(.subheadline.weight(.semibold))
-          ForEach(presentation.reasons, id: \.self) { reason in
-            Text("• \(reason)")
+              WorkspaceStatusLozenge(
+                title: presentation.label,
+                systemImage: labelSystemImage,
+                tone: labelTone)
+            }
+
+            if let performanceSummary = presentation.performanceSummary {
+              Text(performanceSummary)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            }
+
+            if let primaryReason = previewPolicy.primaryReason {
+              Label(primaryReason, systemImage: "sparkle")
+                .font(.callout.weight(.medium))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+            }
           }
+
+          Spacer(minLength: WorkspaceDesign.spaceM)
+          outreachActions
+        }
+
+        statistics
+
+        DisclosureGroup(isExpanded: $detailsExpanded) {
+          VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+            if !presentation.reasons.isEmpty {
+              VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXS) {
+                Text("Match Reasons")
+                  .font(.headline)
+                ForEach(presentation.reasons, id: \.self) { reason in
+                  Label(reason, systemImage: "circle.fill")
+                    .labelStyle(MatchReasonLabelStyle())
+                }
+              }
+            }
+
+            MatchBriefView(presentation: presentation.brief)
+          }
+          .padding(.top, WorkspaceDesign.spaceS)
+        } label: {
+          HStack(spacing: WorkspaceDesign.spaceXS) {
+            Text(MatchCopy.viewDetails)
+            if previewPolicy.additionalReasonCount > 0 {
+              Text("+\(previewPolicy.additionalReasonCount) signals")
+                .foregroundStyle(.secondary)
+            }
+          }
+          .font(.callout.weight(.medium))
         }
       }
-
-      DisclosureGroup(MatchCopy.viewDetails, isExpanded: $detailsExpanded) {
-        MatchBriefView(presentation: presentation.brief)
-          .padding(.top, 8)
-      }
+      .padding(WorkspaceDesign.spaceM)
     }
-    .padding(14)
-    .background(Color.secondary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+    .overlay {
+      RoundedRectangle(cornerRadius: WorkspaceDesign.cardCornerRadius, style: .continuous)
+        .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: isSelected ? 2 : 0)
+        .allowsHitTesting(false)
+    }
+    .onHover { isHovered = $0 }
+    .animation(.easeOut(duration: 0.18), value: isHovered)
+    .animation(.easeInOut(duration: 0.18), value: isSelected)
     .accessibilityIdentifier(MatchAccessibility.creator(presentation.id))
   }
 
   @ViewBuilder private var statistics: some View {
-    HStack(spacing: 12) {
-      if let subscriberCount = presentation.subscriberCount {
-        Text("\(subscriberCount.formatted()) subscribers")
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: WorkspaceDesign.spaceS) {
+        statisticItems
       }
-      if let recentAverageViews = presentation.recentAverageViews {
-        Text("\(recentAverageViews.formatted()) recent average views")
-      }
-      if let recentMedianViews = presentation.recentMedianViews {
-        Text("\(recentMedianViews.formatted()) recent median views")
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXS) {
+        statisticItems
       }
     }
+  }
+
+  @ViewBuilder private var statisticItems: some View {
+    if let subscriberCount = presentation.subscriberCount {
+      statistic("Subscribers", value: subscriberCount)
+    }
+    if let recentAverageViews = presentation.recentAverageViews {
+      statistic("Recent average", value: recentAverageViews)
+    }
+    if let recentMedianViews = presentation.recentMedianViews {
+      statistic("Recent median", value: recentMedianViews)
+    }
+  }
+
+  private func statistic(_ label: String, value: Int) -> some View {
+    HStack(spacing: 5) {
+      Text(value, format: .number)
+        .fontWeight(.semibold)
+        .monospacedDigit()
+      Text(label)
+        .foregroundStyle(.secondary)
+    }
     .font(.caption)
-    .foregroundStyle(.secondary)
+    .padding(.horizontal, 9)
+    .padding(.vertical, 6)
+    .background(Color.secondary.opacity(0.07), in: Capsule())
+    .accessibilityElement(children: .combine)
   }
 
   @ViewBuilder private var outreachActions: some View {
@@ -182,6 +242,7 @@ struct CreatorMatchRow: View {
 
       if isNewSendEligible {
         Button(MatchCopy.sendEmail, action: onSend)
+          .buttonStyle(.borderedProminent)
           .disabled(!MatchOutreachActionPolicy.canSendNew(candidate, writesEnabled: writesEnabled))
           .accessibilityIdentifier(MatchAccessibility.creatorSend(presentation.id))
           .help("Compose new Outreach for this Creator")
@@ -205,5 +266,30 @@ struct CreatorMatchRow: View {
       }
     }
     .controlSize(.small)
+  }
+
+  private var labelTone: WorkspaceTone {
+    if presentation.label.localizedCaseInsensitiveContains("strong") { return .success }
+    if presentation.label.localizedCaseInsensitiveContains("good") { return .accent }
+    return .neutral
+  }
+
+  private var labelSystemImage: String {
+    if presentation.label.localizedCaseInsensitiveContains("strong") { return "sparkles" }
+    if presentation.label.localizedCaseInsensitiveContains("good") {
+      return "checkmark.circle.fill"
+    }
+    return "minus.circle.fill"
+  }
+}
+
+private struct MatchReasonLabelStyle: LabelStyle {
+  func makeBody(configuration: Configuration) -> some View {
+    HStack(alignment: .firstTextBaseline, spacing: 8) {
+      configuration.icon
+        .font(.system(size: 5))
+        .foregroundStyle(Color.accentColor)
+      configuration.title
+    }
   }
 }

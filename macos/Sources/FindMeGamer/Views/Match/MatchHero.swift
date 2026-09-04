@@ -28,19 +28,30 @@ struct MatchHero: View {
 
   var body: some View {
     AdaptiveGlassSurface(role: .matchHero) {
-      VStack(spacing: 14) {
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+        HStack(spacing: WorkspaceDesign.spaceS) {
+          WorkspaceStatusLozenge(
+            title: "Library only",
+            systemImage: "books.vertical.fill",
+            tone: .neutral)
+          Text("Matches use analyzed Creator Profiles already in this Workspace.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+
         AdaptiveGlassActionGroup {
           ViewThatFits(in: .horizontal) {
-            HStack(spacing: 12) {
+            HStack(alignment: .center, spacing: WorkspaceDesign.spaceM) {
               Text(MatchCopy.heroPrefix)
-                .font(.title2.weight(.semibold))
+                .font(.system(.title, design: .serif, weight: .semibold))
               gameSelector
+              Spacer(minLength: WorkspaceDesign.spaceM)
               submit
             }
 
-            VStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: WorkspaceDesign.spaceS) {
               Text(MatchCopy.heroPrefix)
-                .font(.title2.weight(.semibold))
+                .font(.system(.title, design: .serif, weight: .semibold))
               gameSelector
               submit
             }
@@ -57,8 +68,8 @@ struct MatchHero: View {
         }
       }
       .frame(maxWidth: .infinity)
-      .padding(.horizontal, 28)
-      .padding(.vertical, 36)
+      .padding(.horizontal, WorkspaceDesign.spaceM)
+      .padding(.vertical, WorkspaceDesign.spaceS)
     }
   }
 
@@ -71,16 +82,28 @@ struct MatchHero: View {
       HStack(spacing: 8) {
         if let selected = model.selectedGame {
           AsyncArtwork(url: artworkURL(for: selected), fallbackSystemImage: "gamecontroller")
-            .frame(width: 28, height: 28)
-            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .frame(width: 44, height: 44)
+            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
           Text(selected.name)
+            .font(.headline)
         } else {
           Text(MatchCopy.selectGame)
+            .font(.headline)
         }
         Image(systemName: "chevron.down")
           .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      .padding(.leading, 8)
+      .padding(.trailing, 12)
+      .padding(.vertical, 6)
+      .background(Color.primary.opacity(0.06), in: Capsule())
+      .overlay {
+        Capsule().strokeBorder(Color.primary.opacity(0.1))
       }
     }
+    .menuStyle(.borderlessButton)
+    .menuIndicator(.hidden)
     .accessibilityIdentifier(MatchAccessibility.gameSelector)
     .help("Choose an analyzed Game Profile")
   }
@@ -95,6 +118,8 @@ struct MatchHero: View {
         Button(MatchCopy.submit) {
           Task { await model.submit() }
         }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
         .disabled(!policy.submitEnabled)
         .accessibilityIdentifier(MatchAccessibility.submit)
         .help("Start a Match for the selected Game")

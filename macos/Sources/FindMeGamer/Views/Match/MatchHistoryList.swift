@@ -39,14 +39,17 @@ struct MatchHistoryList: View {
   let writesEnabled: Bool
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
       HStack {
-        Text(MatchCopy.history)
-          .font(.title2.bold())
+        WorkspaceSectionHeader(
+          MatchCopy.history,
+          subtitle: "Active work and recent results, newest first.",
+          count: model.tasks.count)
         Spacer()
         if model.isLoadingHistory {
           ProgressView()
             .controlSize(.small)
+            .accessibilityLabel("Loading Match history")
         }
       }
 
@@ -66,14 +69,19 @@ struct MatchHistoryList: View {
           "No Match history", systemImage: "person.2.badge.magnifyingglass",
           description: Text("Completed and active Match tasks will appear here."))
       } else {
-        List(model.tasks) { task in
-          MatchHistoryRow(model: model, task: task, writesEnabled: writesEnabled)
+        ScrollView {
+          LazyVStack(spacing: WorkspaceDesign.spaceS) {
+            ForEach(model.tasks) { task in
+              MatchHistoryRow(model: model, task: task, writesEnabled: writesEnabled)
+            }
+          }
+          .padding(.vertical, 1)
         }
-        .listStyle(.inset)
       }
     }
-    .padding(.horizontal, 20)
-    .padding(.vertical, 16)
+    .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
+    .padding(.top, WorkspaceDesign.spaceL)
+    .padding(.bottom, WorkspaceDesign.pageVerticalPadding)
     .frame(maxHeight: .infinity)
     .accessibilityIdentifier(MatchAccessibility.history)
   }
@@ -99,34 +107,42 @@ private struct MatchHistoryRow: View {
         rowContent
       }
     }
+    .buttonStyle(.plain)
     .accessibilityIdentifier(MatchAccessibility.task(task.id))
   }
 
   private var rowContent: some View {
-    HStack(alignment: .top, spacing: 12) {
-      AsyncArtwork(
-        url: ArtworkURLPolicy.validated(task.game.coverURL.flatMap(URL.init(string:))),
-        fallbackSystemImage: "gamecontroller"
-      )
-      .frame(width: 54, height: 54)
-      .clipShape(RoundedRectangle(cornerRadius: 8))
+    WorkspaceSurface(style: .card) {
+      HStack(alignment: .center, spacing: WorkspaceDesign.spaceM) {
+        Capsule()
+          .fill(statusColor)
+          .frame(width: 3, height: 48)
+          .accessibilityHidden(true)
 
-      VStack(alignment: .leading, spacing: 5) {
-        HStack(alignment: .firstTextBaseline) {
-          Text(task.game.name)
-            .font(.headline)
-          Spacer()
-          Text(task.createdAt, style: .relative)
+        AsyncArtwork(
+          url: ArtworkURLPolicy.validated(task.game.coverURL.flatMap(URL.init(string:))),
+          fallbackSystemImage: "gamecontroller.fill"
+        )
+        .frame(width: 58, height: 58)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+        VStack(alignment: .leading, spacing: 5) {
+          HStack(alignment: .firstTextBaseline) {
+            Text(task.game.name)
+              .font(.headline)
+            Spacer()
+            Text(task.createdAt, style: .relative)
+              .font(.caption)
+              .foregroundStyle(.secondary)
+              .accessibilityLabel("Created \(task.createdAt.formatted())")
+          }
+
+          Text(task.stage.matchWorkflowLabel)
             .font(.caption)
             .foregroundStyle(.secondary)
-            .accessibilityLabel("Created \(task.createdAt.formatted())")
+
+          status
         }
-
-        Text(task.stage.matchWorkflowLabel)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-
-        status
 
         if presentation.showsRetry {
           Button("Retry") {
@@ -137,8 +153,17 @@ private struct MatchHistoryRow: View {
           .help("Retry this failed Match")
         }
       }
+      .padding(WorkspaceDesign.spaceS)
     }
-    .padding(.vertical, 6)
+  }
+
+  private var statusColor: Color {
+    switch presentation.semantic {
+    case .progress: .accentColor
+    case .succeeded: .green
+    case .failed: .red
+    case .superseded: .secondary
+    }
   }
 
   @ViewBuilder private var status: some View {
@@ -149,21 +174,28 @@ private struct MatchHistoryRow: View {
           .controlSize(.small)
         Text(label)
       }
+      .font(.caption.weight(.medium))
     case .succeeded(let resultCount):
-      Label("Completed · \(resultCount) creators", systemImage: "checkmark.circle.fill")
-        .foregroundStyle(.green)
+      WorkspaceStatusLozenge(
+        title: "Completed · \(resultCount) creators",
+        systemImage: "checkmark.circle.fill",
+        tone: .success)
     case .failed(let message):
       VStack(alignment: .leading, spacing: 3) {
-        Label("Failed", systemImage: "xmark.circle.fill")
-          .foregroundStyle(.red)
+        WorkspaceStatusLozenge(
+          title: "Failed",
+          systemImage: "xmark.circle.fill",
+          tone: .danger)
         Text(message)
           .font(.caption)
           .foregroundStyle(.secondary)
           .textSelection(.enabled)
       }
     case .superseded:
-      Label("Superseded", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
-        .foregroundStyle(.secondary)
+      WorkspaceStatusLozenge(
+        title: "Superseded",
+        systemImage: "arrow.trianglehead.2.clockwise.rotate.90",
+        tone: .neutral)
     }
   }
 }

@@ -64,6 +64,7 @@ struct MatchResultView: View {
     }
     .accessibilityIdentifier(MatchAccessibility.result)
     .navigationTitle("Match Result")
+    .workspaceCanvas()
     .task(id: matchID) {
       await model.openResult(id: matchID)
     }
@@ -118,12 +119,16 @@ struct MatchResultView: View {
     let presentation = MatchResultPresentation(result: result)
     return VStack(spacing: 0) {
       ScrollView {
-        LazyVStack(alignment: .leading, spacing: 18) {
-          gameHeader(result.game)
+        LazyVStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
+          gameHeader(
+            result.game,
+            creatorCount: presentation.recommended.count + presentation.other.count)
 
           VStack(alignment: .leading, spacing: 10) {
-            Text(MatchCopy.recommended)
-              .font(.title2.bold())
+            WorkspaceSectionHeader(
+              MatchCopy.recommended,
+              subtitle: "The clearest creator fits, ordered by the matching service.",
+              count: presentation.recommended.count)
             candidateGroup(
               presentation.recommended, result: result,
               emptyCopy: "No recommended Creators in this Match.")
@@ -136,11 +141,16 @@ struct MatchResultView: View {
             )
             .padding(.top, 10)
           } label: {
-            Text(MatchCopy.other)
-              .font(.title3.weight(.semibold))
+            WorkspaceSectionHeader(
+              MatchCopy.other,
+              subtitle: "Useful alternatives with weaker or mixed evidence.",
+              count: presentation.other.count)
           }
         }
-        .padding(20)
+        .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
+        .padding(.vertical, WorkspaceDesign.pageVerticalPadding)
+        .frame(maxWidth: 1_120, alignment: .leading)
+        .frame(maxWidth: .infinity)
       }
 
       BatchOutreachBar(
@@ -151,26 +161,39 @@ struct MatchResultView: View {
     }
   }
 
-  private func gameHeader(_ game: MatchGameHeader) -> some View {
-    HStack(spacing: 12) {
-      AsyncArtwork(
-        url: ArtworkURLPolicy.validated(game.coverURL.flatMap(URL.init(string:))),
-        fallbackSystemImage: "gamecontroller"
-      )
-      .frame(width: 72, height: 72)
-      .clipShape(RoundedRectangle(cornerRadius: 9))
+  private func gameHeader(_ game: MatchGameHeader, creatorCount: Int) -> some View {
+    WorkspaceSurface(style: .elevated) {
+      HStack(spacing: WorkspaceDesign.spaceM) {
+        AsyncArtwork(
+          url: ArtworkURLPolicy.validated(game.coverURL.flatMap(URL.init(string:))),
+          fallbackSystemImage: "gamecontroller.fill"
+        )
+        .frame(width: 116, height: 82)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-      VStack(alignment: .leading, spacing: 5) {
-        Text("Matched for")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-        Button(game.name) { onOpenProfile(.game, game.id) }
-          .buttonStyle(.link)
-          .font(.title2.weight(.semibold))
-          .accessibilityIdentifier(MatchAccessibility.gameProfile)
-          .help("Open this Game Profile")
+        VStack(alignment: .leading, spacing: 6) {
+          Text("MATCH CONTEXT")
+            .font(.caption2.weight(.bold))
+            .tracking(1.3)
+            .foregroundStyle(Color.accentColor)
+          Button(game.name) { onOpenProfile(.game, game.id) }
+            .buttonStyle(.plain)
+            .font(.system(.title2, design: .serif, weight: .semibold))
+            .accessibilityIdentifier(MatchAccessibility.gameProfile)
+            .help("Open this Game Profile")
+          Label("Open the full Game Profile", systemImage: "arrow.up.right")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+
+        Spacer()
+
+        WorkspaceStatusLozenge(
+          title: "\(creatorCount) creators considered",
+          systemImage: "person.2.fill",
+          tone: .accent)
       }
-      Spacer()
+      .padding(WorkspaceDesign.spaceM)
     }
   }
 

@@ -41,7 +41,7 @@ struct CampaignDetailView: View {
 
   private func campaignContent(_ campaign: OutreachCampaign) -> some View {
     ScrollView {
-      VStack(alignment: .leading, spacing: 22) {
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
         campaignHeader(campaign)
 
         if let message = model.resendMessage {
@@ -70,31 +70,87 @@ struct CampaignDetailView: View {
           }
         }
       }
-      .padding(24)
+      .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
+      .padding(.vertical, WorkspaceDesign.pageVerticalPadding)
       .frame(maxWidth: 1_100, alignment: .leading)
       .frame(maxWidth: .infinity)
     }
+    .workspaceCanvas()
   }
 
   private func campaignHeader(_ campaign: OutreachCampaign) -> some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(campaign.game.name)
-          .font(.largeTitle.bold())
-        Text(campaign.state.displayName)
-          .foregroundStyle(.secondary)
-        Spacer()
+    WorkspaceSurface(style: .elevated) {
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .firstTextBaseline, spacing: WorkspaceDesign.spaceM) {
+            campaignTitle(campaign, lineLimit: 1, fixedWidth: true)
+            Spacer(minLength: WorkspaceDesign.spaceL)
+            campaignStatus(campaign)
+          }
+
+          VStack(alignment: .leading, spacing: WorkspaceDesign.spaceS) {
+            campaignTitle(campaign, lineLimit: 3, fixedWidth: false)
+            campaignStatus(campaign)
+          }
+        }
+
+        CampaignMetricGrid(metrics: campaign.metrics)
       }
-      HStack(spacing: 22) {
-        CampaignMetric(label: "Sent Creators", value: "\(campaign.metrics.sentCreators)")
-        CampaignMetric(label: "Accepted", value: "\(campaign.metrics.accepted)")
-        CampaignMetric(label: "Declined", value: "\(campaign.metrics.declined)")
-        CampaignMetric(label: "No Response", value: "\(campaign.metrics.noResponse)")
-        CampaignMetric(label: "Failed", value: "\(campaign.metrics.failed)")
-        CampaignMetric(
-          label: "Response Rate",
-          value: campaign.metrics.responseRate.formatted(.percent.precision(.fractionLength(0))))
-      }
+      .padding(WorkspaceDesign.spaceL)
+    }
+  }
+
+  private func campaignTitle(
+    _ campaign: OutreachCampaign,
+    lineLimit: Int,
+    fixedWidth: Bool
+  ) -> some View {
+    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXS) {
+      Text("CAMPAIGN")
+        .font(.caption2.weight(.bold))
+        .tracking(1.4)
+        .foregroundStyle(Color.accentColor)
+
+      Text(campaign.game.name)
+        .font(.system(.largeTitle, design: .serif, weight: .semibold))
+        .tracking(-0.4)
+        .lineLimit(lineLimit)
+        .fixedSize(horizontal: fixedWidth, vertical: false)
+    }
+  }
+
+  private func campaignStatus(_ campaign: OutreachCampaign) -> some View {
+    WorkspaceStatusLozenge(
+      title: campaign.state.displayName,
+      systemImage: statusImage(campaign.state),
+      tone: statusTone(campaign.state))
+  }
+
+  private func statusTone(_ state: CampaignState) -> WorkspaceTone {
+    switch state {
+    case .completed:
+      .success
+    case .failed:
+      .danger
+    case .queued, .sending:
+      .accent
+    case .notStarted:
+      .neutral
+    }
+  }
+
+  private func statusImage(_ state: CampaignState) -> String {
+    switch state {
+    case .completed:
+      "checkmark.circle.fill"
+    case .failed:
+      "exclamationmark.triangle.fill"
+    case .queued:
+      "clock.fill"
+    case .sending:
+      "paperplane.fill"
+    case .notStarted:
+      "circle.dashed"
     }
   }
 

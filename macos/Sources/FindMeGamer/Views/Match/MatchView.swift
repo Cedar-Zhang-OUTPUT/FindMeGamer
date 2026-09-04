@@ -51,10 +51,17 @@ struct MatchView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      MatchHero(model: model, writesEnabled: writesEnabled)
-      Divider()
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
+        WorkspacePageHeader(WorkspacePageCopy.match)
+        MatchHero(model: model, writesEnabled: writesEnabled)
+      }
+      .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
+      .padding(.top, WorkspaceDesign.pageVerticalPadding)
+
       MatchHistoryList(model: model, writesEnabled: writesEnabled)
     }
+    .workspaceCanvas()
+    .navigationTitle("Match")
     .navigationDestination(for: MatchRoute.self) { route in
       switch route {
       case .result(let matchID):

@@ -2,11 +2,19 @@ import FindMeGamerCore
 import SwiftUI
 import WebKit
 
+private enum TemplateWorkspaceMode: String, CaseIterable, Identifiable {
+  case edit = "Edit"
+  case preview = "Preview"
+
+  var id: String { rawValue }
+}
+
 struct TemplateEditor: View {
   @Bindable var model: OutreachManagementModel
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
   @State private var confirmation: Confirmation?
+  @State private var workspaceMode = TemplateWorkspaceMode.edit
 
   var body: some View {
     Group {
@@ -15,11 +23,37 @@ struct TemplateEditor: View {
           "Select a Template", systemImage: "doc.text",
           description: Text("Choose a Template from the list or create a new one."))
       } else {
-        HSplitView {
-          editor
-            .frame(minWidth: 320, idealWidth: 400)
-          preview
-            .frame(minWidth: 300, idealWidth: 420)
+        VStack(spacing: 0) {
+          HStack(spacing: WorkspaceDesign.spaceM) {
+            Picker("Template workspace", selection: $workspaceMode) {
+              ForEach(TemplateWorkspaceMode.allCases) { mode in
+                Text(mode.rawValue).tag(mode)
+              }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 220)
+
+            Spacer()
+
+            if model.hasUnsavedTemplateChanges {
+              WorkspaceStatusLozenge(
+                title: "Unsaved changes",
+                systemImage: "pencil.circle.fill",
+                tone: .warning)
+            }
+          }
+          .padding(.horizontal, WorkspaceDesign.spaceM)
+          .padding(.vertical, WorkspaceDesign.spaceS)
+
+          Divider()
+
+          switch workspaceMode {
+          case .edit:
+            editor
+          case .preview:
+            preview
+          }
         }
       }
     }

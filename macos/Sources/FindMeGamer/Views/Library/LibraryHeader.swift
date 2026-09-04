@@ -21,62 +21,86 @@ struct LibraryHeader: View {
   let onAnalyzeRequest: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 12) {
-        Picker(
-          "Profile Type",
-          selection: Binding(
-            get: { model.selectedType },
-            set: { model.selectType($0) })
-        ) {
-          ForEach(LibraryLayout.profileTypes, id: \.self) { type in
-            Text(type.displayName).tag(type)
+    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+      WorkspacePageHeader(WorkspacePageCopy.library) {
+        HStack(spacing: WorkspaceDesign.spaceS) {
+          if let count = LibraryBadge.visibleCount(for: activeAnalysisJobCount) {
+            WorkspaceStatusLozenge(
+              title: "\(count) active",
+              systemImage: "waveform.path.ecg",
+              tone: .accent)
           }
-        }
-        .pickerStyle(.segmented)
-        .fixedSize()
-        .accessibilityIdentifier(LibraryAccessibility.profileType)
 
-        Toggle(
-          LibraryCopy.onlyCollection,
-          isOn: Binding(
-            get: { model.onlyCollection },
-            set: { model.setOnlyCollection($0) })
-        )
-        .toggleStyle(.checkbox)
-        .accessibilityIdentifier(LibraryAccessibility.onlyCollection)
-
-        Spacer()
-
-        if let count = LibraryBadge.visibleCount(for: activeAnalysisJobCount) {
-          Text(count, format: .number)
-            .font(.caption.bold())
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(.tint.opacity(0.15), in: Capsule())
-            .accessibilityLabel("\(count) active analysis jobs")
-        }
-
-        Button(LibraryCopy.analyzeRequest, action: onAnalyzeRequest)
+          Button(action: onAnalyzeRequest) {
+            Label(LibraryCopy.analyzeRequest, systemImage: "sparkles")
+          }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.large)
           .disabled(!writesEnabled)
           .accessibilityIdentifier(LibraryAccessibility.analyzeRequest)
           .help("Request analysis for a game or creator profile")
+        }
       }
 
-      HStack {
-        TextField(
-          LibraryCopy.searchPlaceholder,
-          text: Binding(
-            get: { model.query },
-            set: { model.setSearch($0) })
-        )
-        .textFieldStyle(.roundedBorder)
-        .frame(maxWidth: LibraryLayout.searchMaximumWidth)
-        .accessibilityLabel("Search profiles")
-        .accessibilityIdentifier(LibraryAccessibility.search)
-        .help("Search the selected profile library")
+      WorkspaceSurface(style: .quiet) {
+        VStack(alignment: .leading, spacing: WorkspaceDesign.spaceS) {
+          HStack(spacing: WorkspaceDesign.spaceM) {
+            Picker(
+              "Profile Type",
+              selection: Binding(
+                get: { model.selectedType },
+                set: { model.selectType($0) })
+            ) {
+              ForEach(LibraryLayout.profileTypes, id: \.self) { type in
+                Text("\(type.displayName) Profiles").tag(type)
+              }
+            }
+            .pickerStyle(.segmented)
+            .fixedSize()
+            .accessibilityIdentifier(LibraryAccessibility.profileType)
 
-        Spacer()
+            Toggle(
+              LibraryCopy.onlyCollection,
+              isOn: Binding(
+                get: { model.onlyCollection },
+                set: { model.setOnlyCollection($0) })
+            )
+            .toggleStyle(.checkbox)
+            .accessibilityIdentifier(LibraryAccessibility.onlyCollection)
+
+            Spacer()
+          }
+
+          HStack(spacing: WorkspaceDesign.spaceS) {
+            Image(systemName: "magnifyingglass")
+              .foregroundStyle(.secondary)
+
+            TextField(
+              LibraryCopy.searchPlaceholder,
+              text: Binding(
+                get: { model.query },
+                set: { model.setSearch($0) })
+            )
+            .textFieldStyle(.plain)
+            .frame(maxWidth: LibraryLayout.searchMaximumWidth)
+            .accessibilityLabel("Search profiles")
+            .accessibilityIdentifier(LibraryAccessibility.search)
+            .help("Search the selected profile library")
+
+            Spacer()
+          }
+          .padding(.horizontal, 11)
+          .padding(.vertical, 8)
+          .background(
+            Color(nsColor: .textBackgroundColor).opacity(0.72),
+            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+          )
+          .overlay {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+              .strokeBorder(Color.primary.opacity(0.08))
+          }
+        }
+        .padding(WorkspaceDesign.spaceM)
       }
     }
   }

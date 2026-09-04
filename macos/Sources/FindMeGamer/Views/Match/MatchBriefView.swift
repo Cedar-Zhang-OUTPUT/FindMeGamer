@@ -44,23 +44,53 @@ struct MatchBriefView: View {
   let presentation: MatchBriefPresentation
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      ForEach(presentation.dimensions) { dimension in
-        VStack(alignment: .leading, spacing: 5) {
-          Text(dimension.title)
-            .font(.headline)
-          Text(dimension.analysis)
-          MatchTextList(title: "Evidence", values: dimension.evidence)
+    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+      WorkspaceSectionHeader(
+        "Deep Match",
+        subtitle: "Five dimensions of fit, with the model evidence preserved.")
+
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 250), spacing: WorkspaceDesign.spaceS)],
+        alignment: .leading,
+        spacing: WorkspaceDesign.spaceS
+      ) {
+        ForEach(presentation.dimensions) { dimension in
+          WorkspaceSurface(style: .quiet) {
+            VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXS) {
+              Text(dimension.title)
+                .font(.headline)
+              Text(dimension.analysis)
+                .font(.callout)
+              MatchTextList(title: "Evidence", values: dimension.evidence)
+            }
+            .padding(WorkspaceDesign.spaceS)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+          }
         }
       }
 
-      MatchTextList(title: "Strengths", values: presentation.strengths)
-      MatchTextList(title: "Risks", values: presentation.risks)
-      MatchTextList(title: "Evidence", values: presentation.evidence)
-      MatchTextList(title: "Match Reasons", values: presentation.matchReasons)
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .top, spacing: WorkspaceDesign.spaceM) {
+          supportingAnalysis
+        }
+        VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+          supportingAnalysis
+        }
+      }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .textSelection(.enabled)
+  }
+
+  @ViewBuilder private var supportingAnalysis: some View {
+    MatchTextList(title: "Strengths", values: presentation.strengths)
+      .frame(maxWidth: .infinity, alignment: .topLeading)
+    MatchTextList(title: "Risks", values: presentation.risks)
+      .frame(maxWidth: .infinity, alignment: .topLeading)
+    MatchTextList(title: "Evidence", values: presentation.evidence)
+      .frame(maxWidth: .infinity, alignment: .topLeading)
+    MatchTextList(title: "Match Reasons", values: presentation.matchReasons)
+      .frame(maxWidth: .infinity, alignment: .topLeading)
   }
 }
 

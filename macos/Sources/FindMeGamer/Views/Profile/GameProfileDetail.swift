@@ -9,23 +9,29 @@ struct GameProfileDetail: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .top, spacing: 14) {
-          sourceColumn
-          analysisColumn
-        }
-        .frame(minWidth: 610)
+    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+      WorkspaceSectionHeader(
+        "Game Brief",
+        subtitle: "The positioning signal your team can scan before opening the evidence.")
+      FactSection(title: "Overview", fields: presentation.briefFields)
 
-        VStack(alignment: .leading, spacing: 14) {
-          sourceColumn
-          analysisColumn
-        }
-      }
+      DisclosureGroup {
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .top, spacing: WorkspaceDesign.spaceM) {
+            sourceColumn
+            analysisColumn
+          }
+          .frame(minWidth: 610)
 
-      DisclosureGroup("Game Brief") {
-        FactSection(title: "AI Analysis", fields: presentation.briefFields)
-          .padding(.top, 8)
+          VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+            sourceColumn
+            analysisColumn
+          }
+        }
+        .padding(.top, WorkspaceDesign.spaceS)
+      } label: {
+        Label("Explore source facts and AI evidence", systemImage: "doc.text.magnifyingglass")
+          .font(.headline)
       }
     }
   }

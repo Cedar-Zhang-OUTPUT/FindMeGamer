@@ -36,7 +36,7 @@ struct AsyncArtwork: View {
 
   var body: some View {
     ZStack {
-      Color.secondary.opacity(0.12)
+      ArtworkPlaceholder(systemImage: fallbackSystemImage)
 
       if let image {
         Image(nsImage: image)
@@ -45,10 +45,6 @@ struct AsyncArtwork: View {
       } else if isLoading {
         ProgressView()
           .controlSize(.small)
-      } else {
-        Image(systemName: fallbackSystemImage)
-          .font(.title)
-          .foregroundStyle(.secondary)
       }
     }
     .clipped()
@@ -88,5 +84,41 @@ struct AsyncArtwork: View {
       image = nil
       isLoading = false
     }
+  }
+}
+
+private struct ArtworkPlaceholder: View {
+  let systemImage: String
+
+  var body: some View {
+    GeometryReader { proxy in
+      ZStack {
+        LinearGradient(
+          colors: [
+            Color.accentColor.opacity(0.2),
+            Color.cyan.opacity(0.08),
+            Color.secondary.opacity(0.1),
+          ],
+          startPoint: .topLeading,
+          endPoint: .bottomTrailing)
+
+        Circle()
+          .fill(Color.accentColor.opacity(0.1))
+          .frame(width: proxy.size.width * 0.72)
+          .blur(radius: 1)
+          .offset(x: proxy.size.width * 0.3, y: -proxy.size.height * 0.28)
+
+        Circle()
+          .stroke(Color.cyan.opacity(0.22), lineWidth: 1)
+          .frame(width: min(proxy.size.width, proxy.size.height) * 0.58)
+          .offset(x: -proxy.size.width * 0.26, y: proxy.size.height * 0.22)
+
+        Image(systemName: systemImage)
+          .font(.system(size: min(proxy.size.width, proxy.size.height) * 0.25, weight: .medium))
+          .symbolRenderingMode(.hierarchical)
+          .foregroundStyle(Color.primary.opacity(0.5))
+      }
+    }
+    .accessibilityHidden(true)
   }
 }

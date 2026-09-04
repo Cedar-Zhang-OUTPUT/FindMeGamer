@@ -19,19 +19,33 @@ struct OutreachManagementView<EmailSettings: View>: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      Picker("Outreach section", selection: $model.selectedTab) {
-        ForEach(OutreachManagementTab.allCases, id: \.self) { tab in
-          Text(tab.displayName).tag(tab)
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+        WorkspacePageHeader(WorkspacePageCopy.outreach)
+
+        WorkspaceSurface(style: .quiet) {
+          HStack {
+            Picker("Outreach section", selection: $model.selectedTab) {
+              ForEach(OutreachManagementTab.allCases, id: \.self) { tab in
+                Text(tab.displayName).tag(tab)
+              }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 520)
+
+            Spacer(minLength: 0)
+          }
+          .padding(WorkspaceDesign.spaceS)
         }
       }
-      .pickerStyle(.segmented)
-      .labelsHidden()
-      .padding()
-
-      Divider()
+      .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
+      .padding(.top, WorkspaceDesign.pageVerticalPadding)
+      .padding(.bottom, WorkspaceDesign.spaceM)
 
       selectedContent
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+    .workspaceCanvas()
     .navigationTitle("Outreach")
     .navigationDestination(for: OutreachManagementRoute.self) { route in
       switch route {

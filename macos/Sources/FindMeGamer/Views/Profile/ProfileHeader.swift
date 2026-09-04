@@ -11,22 +11,42 @@ struct ProfileHeader: View {
   let onReanalyze: () -> Void
 
   var body: some View {
-    HStack(alignment: .top, spacing: 18) {
-      AsyncArtwork(url: artworkURL, fallbackSystemImage: fallbackSystemImage)
-        .frame(width: 112, height: 112)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
+    ViewThatFits(in: .horizontal) {
+      HStack(alignment: .top, spacing: WorkspaceDesign.spaceL) {
+        identity
+        Spacer(minLength: WorkspaceDesign.spaceL)
+        analysisSchedule
+      }
 
-      VStack(alignment: .leading, spacing: 8) {
-        Text(name)
-          .font(.title2.weight(.semibold))
-          .textSelection(.enabled)
-        Text(type.displayName)
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+        identity
+        analysisSchedule
+      }
+    }
+  }
+
+  private var identity: some View {
+    HStack(alignment: .top, spacing: WorkspaceDesign.spaceM) {
+      AsyncArtwork(url: artworkURL, fallbackSystemImage: fallbackSystemImage)
+        .frame(width: 124, height: 104)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceS) {
+        VStack(alignment: .leading, spacing: 4) {
+          WorkspaceStatusLozenge(
+            title: "\(type.displayName) Profile",
+            systemImage: type == .game ? "gamecontroller.fill" : "person.crop.circle.fill",
+            tone: .accent)
+
+          Text(name)
+            .font(.system(.title, design: .serif, weight: .semibold))
+            .textSelection(.enabled)
+            .accessibilityAddTraits(.isHeader)
+        }
 
         if let sourceURL {
           Link(destination: sourceURL) {
-            Label(sourceLinkLabel, systemImage: "arrow.up.right.square")
+            Label(sourceLinkLabel, systemImage: "arrow.up.right")
           }
           .accessibilityIdentifier("profile.source")
           .help("Open the canonical source page")
@@ -36,7 +56,7 @@ struct ProfileHeader: View {
             .accessibilityIdentifier("profile.source")
         }
 
-        HStack(spacing: 10) {
+        HStack(spacing: WorkspaceDesign.spaceS) {
           Button(action: onFavorite) {
             Label(
               isFavorite ? "Favorited" : "Favorite",
@@ -62,27 +82,31 @@ struct ProfileHeader: View {
           if isFavoriteInFlight || isReanalyzeInFlight {
             ProgressView()
               .controlSize(.small)
+              .accessibilityLabel("Updating Profile")
           }
         }
       }
+    }
+  }
 
-      Spacer(minLength: 12)
-
+  private var analysisSchedule: some View {
+    WorkspaceSurface(style: .quiet) {
       Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 7) {
         GridRow {
-          Text("Last Analyzed")
+          Label("Last analyzed", systemImage: "clock.arrow.circlepath")
             .foregroundStyle(.secondary)
           Text(dateText(lastAnalyzedAt))
             .textSelection(.enabled)
         }
         GridRow {
-          Text("Next Re-analysis")
+          Label("Next refresh", systemImage: "calendar.badge.clock")
             .foregroundStyle(.secondary)
           Text(dateText(nextAnalysisAt))
             .textSelection(.enabled)
         }
       }
       .font(.subheadline)
+      .padding(WorkspaceDesign.spaceS)
     }
   }
 

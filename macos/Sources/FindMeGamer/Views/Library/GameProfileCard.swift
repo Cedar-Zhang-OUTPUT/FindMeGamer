@@ -84,62 +84,110 @@ struct GameProfileCard: View {
   let onOpen: () -> Void
   let onFavorite: () -> Void
 
+  @State private var isHovered = false
+
   private var presentation: GameCardPresentation { GameCardPresentation(card: card) }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    WorkspaceSurface(style: isHovered || isHighlighted ? .elevated : .card) {
       Button(action: onOpen) {
-        VStack(alignment: .leading, spacing: 10) {
-          AsyncArtwork(url: presentation.artworkURL, fallbackSystemImage: "gamecontroller")
-            .frame(height: 132)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+        VStack(alignment: .leading, spacing: 0) {
+          ZStack(alignment: .bottomLeading) {
+            AsyncArtwork(url: presentation.artworkURL, fallbackSystemImage: "gamecontroller.fill")
+              .frame(height: 154)
 
-          Text(presentation.name)
-            .font(.headline)
-            .lineLimit(2)
+            LinearGradient(
+              colors: [.clear, Color.black.opacity(0.5)],
+              startPoint: .center,
+              endPoint: .bottom)
 
-          Text(presentation.summary ?? "Summary unavailable.")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .lineLimit(3)
-
-          if !presentation.tags.isEmpty {
-            LibraryTagRow(tags: presentation.tags)
+            Text("GAME PROFILE")
+              .font(.caption2.weight(.bold))
+              .tracking(1.2)
+              .foregroundStyle(.white.opacity(0.9))
+              .padding(WorkspaceDesign.spaceS)
           }
+          .clipShape(
+            UnevenRoundedRectangle(
+              topLeadingRadius: WorkspaceDesign.cardCornerRadius,
+              topTrailingRadius: WorkspaceDesign.cardCornerRadius))
+
+          VStack(alignment: .leading, spacing: WorkspaceDesign.spaceS) {
+            HStack(alignment: .firstTextBaseline, spacing: WorkspaceDesign.spaceS) {
+              Text(presentation.name)
+                .font(.title3.weight(.semibold))
+                .lineLimit(2)
+              Spacer(minLength: WorkspaceDesign.spaceS)
+              Image(systemName: "arrow.up.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isHovered ? Color.accentColor : .secondary)
+            }
+
+            Text(presentation.summary ?? "Summary unavailable.")
+              .font(.callout)
+              .foregroundStyle(.secondary)
+              .lineLimit(3)
+
+            Spacer(minLength: 0)
+
+            if !presentation.tags.isEmpty {
+              LibraryTagRow(tags: presentation.tags)
+            }
+          }
+          .padding(14)
+          .frame(maxWidth: .infinity, minHeight: 142, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
       .accessibilityLabel("Open \(presentation.name)")
+      .accessibilityValue(Text(accessibilitySummary))
       .accessibilityIdentifier("library.profile.\(card.id.uuidString)")
       .help("Open this game profile")
-
-      HStack {
-        Spacer()
-        Button(action: onFavorite) {
-          Image(systemName: presentation.isFavorite ? "heart.fill" : "heart")
-            .foregroundStyle(presentation.isFavorite ? Color.accentColor : .secondary)
-        }
-        .buttonStyle(.borderless)
-        .disabled(!writesEnabled || isUpdatingFavorite)
-        .accessibilityLabel(
-          presentation.isFavorite
-            ? "Remove \(presentation.name) from favorites" : "Add \(presentation.name) to favorites"
-        )
-        .accessibilityIdentifier("library.favorite.\(card.id.uuidString)")
-        .help(presentation.isFavorite ? "Remove from favorites" : "Add to favorites")
-      }
     }
-    .padding(12)
-    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
     .overlay {
-      RoundedRectangle(cornerRadius: 10)
+      RoundedRectangle(cornerRadius: WorkspaceDesign.cardCornerRadius, style: .continuous)
         .stroke(
-          isHighlighted ? Color.accentColor : Color.secondary.opacity(0.18),
-          lineWidth: isHighlighted ? 2 : 1)
+          isHighlighted ? Color.accentColor : Color.clear,
+          lineWidth: isHighlighted ? 2 : 0
+        )
+        .allowsHitTesting(false)
     }
+    .overlay(alignment: .topTrailing) {
+      favoriteButton
+        .padding(WorkspaceDesign.spaceS)
+    }
+    .onHover { isHovered = $0 }
+    .animation(.easeOut(duration: 0.18), value: isHovered)
     .animation(.easeInOut(duration: 0.2), value: isHighlighted)
+  }
+
+  private var favoriteButton: some View {
+    Button(action: onFavorite) {
+      Image(systemName: presentation.isFavorite ? "heart.fill" : "heart")
+        .font(.callout.weight(.semibold))
+        .foregroundStyle(presentation.isFavorite ? Color.accentColor : .white.opacity(0.9))
+        .frame(width: 30, height: 30)
+        .background(.black.opacity(0.35), in: Circle())
+    }
+    .buttonStyle(.plain)
+    .disabled(!writesEnabled || isUpdatingFavorite)
+    .accessibilityLabel(
+      presentation.isFavorite
+        ? "Remove \(presentation.name) from favorites" : "Add \(presentation.name) to favorites"
+    )
+    .accessibilityIdentifier("library.favorite.\(card.id.uuidString)")
+    .help(presentation.isFavorite ? "Remove from favorites" : "Add to favorites")
+  }
+
+  private var accessibilitySummary: String {
+    var parts = [presentation.summary ?? "Summary unavailable"]
+    if !presentation.tags.isEmpty {
+      parts.append("Tags: \(presentation.tags.joined(separator: ", "))")
+    }
+    if isHighlighted { parts.append("Recently updated") }
+    return parts.joined(separator: " · ")
   }
 }
 
@@ -147,14 +195,14 @@ struct LibraryTagRow: View {
   let tags: [String]
 
   var body: some View {
-    HStack(spacing: 5) {
+    HStack(spacing: WorkspaceDesign.spaceXS) {
       ForEach(tags, id: \.self) { tag in
         Text(tag)
-          .font(.caption)
+          .font(.caption2.weight(.medium))
           .lineLimit(1)
-          .padding(.horizontal, 6)
-          .padding(.vertical, 3)
-          .background(Color.secondary.opacity(0.12), in: Capsule())
+          .padding(.horizontal, 8)
+          .padding(.vertical, 4)
+          .background(Color.accentColor.opacity(0.09), in: Capsule())
       }
     }
   }

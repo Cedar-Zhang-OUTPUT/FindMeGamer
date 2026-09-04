@@ -5,8 +5,12 @@ struct FactSection: View {
   let fields: [ProfileDisplayField]
 
   var body: some View {
-    GroupBox(title) {
+    WorkspaceSurface(style: .quiet) {
       VStack(alignment: .leading, spacing: 10) {
+        Text(title)
+          .font(.headline)
+          .accessibilityAddTraits(.isHeader)
+
         if fields.isEmpty {
           Text("Not available")
             .foregroundStyle(.secondary)
@@ -34,7 +38,7 @@ struct FactSection: View {
           }
         }
       }
-      .padding(.top, 4)
+      .padding(WorkspaceDesign.spaceS)
       .frame(maxWidth: .infinity, alignment: .leading)
       .textSelection(.enabled)
     }

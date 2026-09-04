@@ -26,15 +26,19 @@ struct ProfileSheet: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      ProfileHeader(
-        profile: state.currentProfile,
-        isFavorite: state.favorite,
-        writesEnabled: writesEnabled,
-        isFavoriteInFlight: state.isFavoriteInFlight,
-        isReanalyzeInFlight: state.isReanalyzeInFlight,
-        onFavorite: favorite,
-        onReanalyze: reanalyze)
+    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+      WorkspaceSurface(style: .elevated) {
+        ProfileHeader(
+          profile: state.currentProfile,
+          isFavorite: state.favorite,
+          writesEnabled: writesEnabled,
+          isFavoriteInFlight: state.isFavoriteInFlight,
+          isReanalyzeInFlight: state.isReanalyzeInFlight,
+          onFavorite: favorite,
+          onReanalyze: reanalyze
+        )
+        .padding(WorkspaceDesign.spaceM)
+      }
 
       if let message = state.actionMessage {
         Label(message, systemImage: "exclamationmark.triangle")
@@ -45,6 +49,8 @@ struct ProfileSheet: View {
       ScrollView {
         detail
           .padding(.vertical, 2)
+          .frame(maxWidth: 1_020, alignment: .leading)
+          .frame(maxWidth: .infinity)
       }
 
       HStack {
@@ -54,8 +60,9 @@ struct ProfileSheet: View {
           .accessibilityIdentifier("profile.close")
       }
     }
-    .padding(20)
-    .frame(minWidth: 640, idealWidth: 840, minHeight: 520)
+    .padding(WorkspaceDesign.spaceL)
+    .frame(minWidth: 700, idealWidth: 920, minHeight: 560)
+    .workspaceCanvas()
     .accessibilityIdentifier("profile.sheet")
   }
 

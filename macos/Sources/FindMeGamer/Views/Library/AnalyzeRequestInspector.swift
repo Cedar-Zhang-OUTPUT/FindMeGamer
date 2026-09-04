@@ -7,36 +7,55 @@ struct AnalyzeRequestInspector: View {
   let onOpenProfile: (ProfileType, UUID) -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text("Analyze Request")
-        .font(.title2.bold())
-
-      Picker("Profile Type", selection: $model.targetType) {
-        Text("Creator").tag(ProfileType.creator)
-        Text("Game").tag(ProfileType.game)
+    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+      HStack(spacing: WorkspaceDesign.spaceS) {
+        SignalMark()
+        VStack(alignment: .leading, spacing: 2) {
+          Text("Analyze Profile")
+            .font(.title2.weight(.semibold))
+            .accessibilityAddTraits(.isHeader)
+          Text("Turn a source page into a shared profile.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
       }
-      .pickerStyle(.segmented)
-      .accessibilityIdentifier(AnalyzeAccessibility.profileType)
 
-      TextField("Steam or YouTube URL", text: $model.urlText)
-        .textFieldStyle(.roundedBorder)
-        .accessibilityIdentifier(AnalyzeAccessibility.url)
+      WorkspaceSurface(style: .quiet) {
+        VStack(alignment: .leading, spacing: WorkspaceDesign.spaceS) {
+          Picker("Profile Type", selection: $model.targetType) {
+            Text("Creator").tag(ProfileType.creator)
+            Text("Game").tag(ProfileType.game)
+          }
+          .pickerStyle(.segmented)
+          .accessibilityIdentifier(AnalyzeAccessibility.profileType)
 
-      HStack {
-        Spacer()
-        if model.isSubmitting {
-          ProgressView()
-            .controlSize(.small)
+          TextField("Steam or YouTube URL", text: $model.urlText)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityIdentifier(AnalyzeAccessibility.url)
+
+          HStack {
+            Text(model.targetType == .game ? "Steam store page" : "YouTube channel page")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Spacer()
+            if model.isSubmitting {
+              ProgressView()
+                .controlSize(.small)
+                .accessibilityLabel("Submitting analysis request")
+            }
+            Button("Submit") {
+              Task { await model.submit() }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(
+              !AnalyzeActionPolicy.canSubmit(
+                writesEnabled: writesEnabled, isSubmitting: model.isSubmitting)
+            )
+            .accessibilityIdentifier(AnalyzeAccessibility.submit)
+            .help("Submit this profile for analysis")
+          }
         }
-        Button("Submit") {
-          Task { await model.submit() }
-        }
-        .disabled(
-          !AnalyzeActionPolicy.canSubmit(
-            writesEnabled: writesEnabled, isSubmitting: model.isSubmitting)
-        )
-        .accessibilityIdentifier(AnalyzeAccessibility.submit)
-        .help("Submit this profile for analysis")
+        .padding(WorkspaceDesign.spaceM)
       }
 
       if let validationMessage = model.validationMessage {
@@ -47,7 +66,10 @@ struct AnalyzeRequestInspector: View {
         existingProfileBanner(profile)
       }
 
-      Divider()
+      WorkspaceSectionHeader(
+        "Recent Analysis",
+        subtitle: "Requests keep their status while you continue working.",
+        count: model.jobs.count)
 
       AdaptiveGlassSurface(role: .analyzeStatus) {
         ScrollView {
@@ -72,7 +94,8 @@ struct AnalyzeRequestInspector: View {
         }
       }
     }
-    .padding()
+    .padding(WorkspaceDesign.spaceM)
+    .workspaceCanvas()
   }
 
   private func messageBanner(_ message: String) -> some View {

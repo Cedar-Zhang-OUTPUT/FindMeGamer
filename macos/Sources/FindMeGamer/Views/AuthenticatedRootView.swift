@@ -60,12 +60,19 @@ struct AuthenticatedRootView: View {
       detail: {
         VStack(spacing: 0) {
           if session.workspaceSession?.workspaceName == "Find Me Gamer Demo" {
-            Label("Local Demo Data · No real email will be sent", systemImage: "testtube.2")
-              .font(.callout.weight(.medium))
-              .foregroundStyle(.blue)
-              .padding(10)
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .background(Color.blue.opacity(0.08))
+            HStack(spacing: WorkspaceDesign.spaceS) {
+              WorkspaceStatusLozenge(
+                title: "Local Demo Data",
+                systemImage: "testtube.2",
+                tone: .accent)
+              Text("No real email will be sent")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+              Spacer()
+            }
+            .padding(.horizontal, WorkspaceDesign.spaceM)
+            .padding(.vertical, 7)
+            .background(.bar)
           } else if session.state == .offline {
             OfflineBanner(retry: retry)
           } else if session.state == .checking {
@@ -91,6 +98,7 @@ struct AuthenticatedRootView: View {
 
           selectedDetail(coordinator)
         }
+        .workspaceCanvas()
       }
     )
     .environment(\.workspaceWritesEnabled, availability.writesEnabled)

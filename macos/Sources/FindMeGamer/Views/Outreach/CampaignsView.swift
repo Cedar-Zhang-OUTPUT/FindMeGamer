@@ -26,8 +26,19 @@ struct CampaignsView: View {
           NavigationLink(value: OutreachManagementRoute.campaign(campaign.id)) {
             CampaignRow(campaign: campaign)
           }
+          .buttonStyle(.plain)
+          .listRowInsets(
+            EdgeInsets(
+              top: WorkspaceDesign.spaceXS,
+              leading: WorkspaceDesign.pageHorizontalPadding,
+              bottom: WorkspaceDesign.spaceXS,
+              trailing: WorkspaceDesign.pageHorizontalPadding)
+          )
+          .listRowSeparator(.hidden)
+          .listRowBackground(Color.clear)
         }
-        .listStyle(.inset)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .safeAreaInset(edge: .top, spacing: 0) {
           if let error = model.campaignsError {
             CampaignErrorBanner(message: error) {
@@ -49,48 +60,66 @@ private struct CampaignRow: View {
   let campaign: CampaignSummary
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline) {
-        Text(campaign.game.name)
-          .font(.headline)
-        Spacer()
-        Text(campaign.state.displayName)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
+    WorkspaceSurface(style: .card) {
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
+        HStack(alignment: .top, spacing: WorkspaceDesign.spaceM) {
+          VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXS) {
+            Text(campaign.game.name)
+              .font(.title3.weight(.semibold))
+              .foregroundStyle(.primary)
+              .lineLimit(2)
 
-      HStack(spacing: 18) {
-        CampaignMetric(label: "Sent Creators", value: "\(campaign.metrics.sentCreators)")
-        CampaignMetric(label: "Accepted", value: "\(campaign.metrics.accepted)")
-        CampaignMetric(label: "Declined", value: "\(campaign.metrics.declined)")
-        CampaignMetric(label: "No Response", value: "\(campaign.metrics.noResponse)")
-        CampaignMetric(label: "Failed", value: "\(campaign.metrics.failed)")
-        CampaignMetric(
-          label: "Response Rate",
-          value: campaign.metrics.responseRate.formatted(.percent.precision(.fractionLength(0))))
-      }
+            Text("Latest activity \(campaign.latestActivityAt, style: .relative)")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
 
-      Text("Latest activity \(campaign.latestActivityAt, style: .relative)")
-        .font(.caption)
-        .foregroundStyle(.secondary)
+          Spacer(minLength: WorkspaceDesign.spaceM)
+
+          WorkspaceStatusLozenge(
+            title: campaign.state.displayName,
+            systemImage: statusImage,
+            tone: statusTone)
+
+          Image(systemName: "chevron.forward")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .accessibilityHidden(true)
+        }
+
+        CampaignMetricGrid(metrics: campaign.metrics, compact: true)
+      }
+      .padding(WorkspaceDesign.spaceM)
     }
-    .padding(.vertical, 6)
+    .contentShape(RoundedRectangle(cornerRadius: WorkspaceDesign.cardCornerRadius))
   }
-}
 
-struct CampaignMetric: View {
-  let label: String
-  let value: String
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(value)
-        .font(.headline.monospacedDigit())
-      Text(label)
-        .font(.caption)
-        .foregroundStyle(.secondary)
+  private var statusTone: WorkspaceTone {
+    switch campaign.state {
+    case .completed:
+      .success
+    case .failed:
+      .danger
+    case .queued, .sending:
+      .accent
+    case .notStarted:
+      .neutral
     }
-    .accessibilityElement(children: .combine)
+  }
+
+  private var statusImage: String {
+    switch campaign.state {
+    case .completed:
+      "checkmark.circle.fill"
+    case .failed:
+      "exclamationmark.triangle.fill"
+    case .queued:
+      "clock.fill"
+    case .sending:
+      "paperplane.fill"
+    case .notStarted:
+      "circle.dashed"
+    }
   }
 }
 
@@ -99,14 +128,17 @@ private struct CampaignErrorBanner: View {
   let retry: () -> Void
 
   var body: some View {
-    HStack {
-      Label(message, systemImage: "exclamationmark.triangle")
-        .foregroundStyle(.red)
-        .textSelection(.enabled)
-      Spacer()
-      Button("Try Again", action: retry)
+    WorkspaceSurface(style: .quiet) {
+      HStack(spacing: WorkspaceDesign.spaceM) {
+        Label(message, systemImage: "exclamationmark.triangle")
+          .foregroundStyle(.red)
+          .textSelection(.enabled)
+        Spacer()
+        Button("Try Again", action: retry)
+      }
+      .padding(WorkspaceDesign.spaceS)
     }
-    .padding(10)
-    .background(.bar)
+    .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
+    .padding(.top, WorkspaceDesign.spaceXS)
   }
 }

@@ -21,10 +21,10 @@ struct AdaptiveGlassSurface<Content: View>: View {
         .padding()
         .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 22))
     } else {
-      GroupBox {
-        content.padding(4)
+      WorkspaceSurface(style: role == .matchHero ? .elevated : .card) {
+        content
+          .padding()
       }
-      .groupBoxStyle(.automatic)
     }
   }
 }
