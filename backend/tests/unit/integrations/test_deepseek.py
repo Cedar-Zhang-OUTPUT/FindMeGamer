@@ -1,5 +1,6 @@
 import json
 import logging
+from typing import ClassVar
 
 import httpx
 import pytest
@@ -17,6 +18,10 @@ from app.integrations.errors import (
 class GameExtraction(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str
+
+
+class LargeGameExtraction(GameExtraction):
+    deepseek_max_tokens: ClassVar[int] = 6_144
 
 
 def test_deepseek_rejects_invalid_structured_output() -> None:
@@ -68,6 +73,7 @@ def test_deepseek_first_structured_request_uses_json_object_with_actual_schema()
     assert requests[0].url.path == "/chat/completions"
     assert requests[0].headers["authorization"] == "Bearer deepseek-secret"
     assert payload["response_format"] == {"type": "json_object"}
+    assert "max_tokens" not in payload
     instruction = payload["messages"][0]
     assert instruction["role"] == "system"
     prefix = (
@@ -87,6 +93,181 @@ def test_deepseek_first_structured_request_uses_json_object_with_actual_schema()
     ]
 
 
+def test_deepseek_uses_schema_output_budget_and_call_override() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": '{"title":"Elden Ring"}'},
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 20,
+                    "completion_tokens": 8,
+                    "total_tokens": 28,
+                },
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    gateway = DeepSeekGateway(api_key="test-key", http_client=client)
+
+    gateway.complete_structured("model", [], LargeGameExtraction)
+    gateway.complete_structured("model", [], LargeGameExtraction, max_tokens=12_288)
+
+    assert [json.loads(request.read())["max_tokens"] for request in requests] == [
+        6_144,
+        12_288,
+    ]
+
+
+@pytest.mark.parametrize("max_tokens", [True, 0, -1, 393_217, "4096"])
+def test_deepseek_rejects_invalid_call_output_budget(max_tokens: object) -> None:
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: (_ for _ in ()).throw(AssertionError("network called"))
+        )
+    )
+
+    with pytest.raises(PermanentIntegrationError, match="deepseek_input_invalid"):
+        DeepSeekGateway(api_key="test-key", http_client=client).complete_structured(
+            "model", [], GameExtraction, max_tokens=max_tokens  # type: ignore[arg-type]
+        )
+
+
+def test_deepseek_truncated_output_is_retryable_and_does_not_trigger_repair() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "length",
+                        "message": {"content": '{"title":"partial'},
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 6_144,
+                    "total_tokens": 6_244,
+                },
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(
+        TransientIntegrationError, match="deepseek_model_output_invalid"
+    ) as caught:
+        DeepSeekGateway(api_key="test-key", http_client=client).complete_structured(
+            "model", [], LargeGameExtraction
+        )
+
+    assert caught.value.retryable is True
+    assert calls == 1
+
+
+def test_deepseek_resource_interruption_is_retryable_without_repair() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "insufficient_system_resource",
+                        "message": {"content": ""},
+                    }
+                ]
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(TransientIntegrationError, match="deepseek_unavailable"):
+        DeepSeekGateway(api_key="test-key", http_client=client).complete_structured(
+            "model", [], GameExtraction
+        )
+
+    assert calls == 1
+
+
+def test_deepseek_vision_request_accepts_call_output_budget() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": '{"title":"Visual"}'}}]},
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    result = DeepSeekGateway(api_key="test-key", http_client=client).complete_vision(
+        "vision-model",
+        "Analyze only visible evidence",
+        ["https://cdn.example/one.jpg"],
+        GameExtraction,
+        max_tokens=2_048,
+    )
+
+    assert result.title == "Visual"
+    assert json.loads(requests[0].read())["max_tokens"] == 2_048
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        [],
+        {},
+        {"prompt_tokens": True, "completion_tokens": 1, "total_tokens": 1},
+        {"prompt_tokens": 1, "completion_tokens": -1, "total_tokens": 0},
+        {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": "2"},
+    ],
+)
+def test_deepseek_rejects_invalid_usage_without_repair(usage: object) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "finish_reason": "stop",
+                        "message": {"content": '{"title":"valid"}'},
+                    }
+                ],
+                "usage": usage,
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    with pytest.raises(PermanentIntegrationError, match="deepseek_response_invalid"):
+        DeepSeekGateway(api_key="test-key", http_client=client).complete_structured(
+            "model", [], GameExtraction
+        )
+
+    assert calls == 1
+
+
 def test_deepseek_repairs_once_without_mutating_caller_messages() -> None:
     requests: list[httpx.Request] = []
     original = [Message(role="user", content="Original prompt")]
@@ -101,7 +282,7 @@ def test_deepseek_repairs_once_without_mutating_caller_messages() -> None:
     client = httpx.Client(transport=httpx.MockTransport(handler))
     result = DeepSeekGateway(
         api_key="test-key", http_client=client
-    ).complete_structured("deepseek-v4-flash", original, GameExtraction)
+    ).complete_structured("deepseek-v4-flash", original, LargeGameExtraction)
 
     assert result.title == "Repaired"
     assert len(requests) == 2
@@ -109,6 +290,9 @@ def test_deepseek_repairs_once_without_mutating_caller_messages() -> None:
     repair_body = requests[1].read().decode()
     assert "Repair" in repair_body
     assert "not-json" in repair_body
+    assert all(
+        json.loads(request.read())["max_tokens"] == 6_144 for request in requests
+    )
 
 
 def test_deepseek_first_vision_request_uses_json_object_with_actual_schema() -> None:
@@ -376,6 +560,7 @@ def test_deepseek_timeout_redacts_authorization_prompt_and_output(caplog) -> Non
         {},
         {"choices": []},
         {"choices": [{"message": {}}]},
+        {"choices": [{"finish_reason": "stop", "message": {"content": ""}}]},
         {"choices": [{"message": {"content": "{}", "refusal": "No"}}]},
         {
             "choices": [

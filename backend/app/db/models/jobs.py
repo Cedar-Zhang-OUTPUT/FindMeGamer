@@ -8,6 +8,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     Enum,
+    ForeignKey,
     Index,
     Integer,
     event,
@@ -203,6 +204,29 @@ class AnalysisJob(TimestampMixin, Base):
     result_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CreatorAnalysisNode(TimestampMixin, Base):
+    """A validated successful Creator analysis node checkpoint."""
+
+    __tablename__ = "creator_analysis_nodes"
+    __table_args__ = (
+        CheckConstraint(
+            "node_key ~ '^[a-z][a-z0-9_.:-]{0,63}$'",
+            name="ck_creator_analysis_nodes_key",
+        ),
+    )
+
+    job_id: Mapped[UUID] = mapped_column(
+        ForeignKey(
+            "analysis_jobs.id",
+            ondelete="CASCADE",
+            name="fk_creator_analysis_nodes_job",
+        ),
+        primary_key=True,
+    )
+    node_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    output_payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
 
 def _serialize_and_timestamp_job_change(_mapper, connection, target) -> None:

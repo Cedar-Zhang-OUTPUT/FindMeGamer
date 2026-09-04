@@ -1,6 +1,7 @@
 import json
 import re
 import unicodedata
+from dataclasses import dataclass
 from ipaddress import ip_address
 from typing import Any, TypeVar
 from urllib.parse import unquote_to_bytes, urlsplit
@@ -32,11 +33,19 @@ MAX_SCHEMA_BYTES = 200_000
 MAX_MESSAGES = 100
 MAX_TOTAL_MESSAGE_CHARACTERS = 1_000_000
 MAX_VISION_IMAGES = 12
+MAX_MODEL_OUTPUT_TOKENS = 384 * 1_024
 HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=20.0, pool=5.0)
 _model_name = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
 _dns_label = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _hex_pair = re.compile(r"^[0-9A-Fa-f]{2}$")
 _numeric_host_label = re.compile(r"^(?:[0-9]+|0[xX][0-9A-Fa-f]+)$")
+
+
+@dataclass(frozen=True, slots=True)
+class _DeepSeekUsage:
+    prompt_tokens: int
+    completion_tokens: int
+    total_tokens: int
 
 
 class DeepSeekGateway:
@@ -76,11 +85,18 @@ class DeepSeekGateway:
         model: str,
         messages: list[Message],
         schema: type[T],
+        *,
+        max_tokens: int | None = None,
     ) -> T:
         _validate_model(model)
         _validate_messages(messages)
         request_messages = [message.model_dump(mode="json") for message in messages]
-        return self._complete(model, request_messages, schema)
+        return self._complete(
+            model,
+            request_messages,
+            schema,
+            max_tokens=max_tokens,
+        )
 
     def complete_vision(
         self,
@@ -88,6 +104,8 @@ class DeepSeekGateway:
         prompt: str,
         image_urls: list[str],
         schema: type[T],
+        *,
+        max_tokens: int | None = None,
     ) -> T:
         _validate_model(model)
         if (
@@ -109,6 +127,7 @@ class DeepSeekGateway:
             model,
             [{"role": "user", "content": content}],
             schema,
+            max_tokens=max_tokens,
         )
 
     def _complete(
@@ -116,10 +135,17 @@ class DeepSeekGateway:
         model: str,
         messages: list[dict[str, Any]],
         schema: type[T],
+        *,
+        max_tokens: int | None,
     ) -> T:
         schema_payload = _schema_payload(schema)
+        output_budget = _resolve_max_tokens(schema, max_tokens)
         request_messages = [_schema_instruction(schema_payload), *messages]
-        content = self._request(model, request_messages)
+        content = self._request(
+            model,
+            request_messages,
+            max_tokens=output_budget,
+        )
         try:
             return schema.model_validate_json(content)
         except (ValidationError, ValueError):
@@ -127,7 +153,11 @@ class DeepSeekGateway:
                 *request_messages,
                 *_repair_messages(content, schema_payload),
             ]
-        repaired = self._request(model, repair_messages)
+        repaired = self._request(
+            model,
+            repair_messages,
+            max_tokens=output_budget,
+        )
         try:
             return schema.model_validate_json(repaired)
         except (ValidationError, ValueError):
@@ -137,12 +167,16 @@ class DeepSeekGateway:
         self,
         model: str,
         messages: list[dict[str, Any]],
+        *,
+        max_tokens: int | None,
     ) -> str:
         payload = {
             "model": model,
             "messages": messages,
             "response_format": {"type": "json_object"},
         }
+        if max_tokens is not None:
+            payload["max_tokens"] = max_tokens
         try:
             with streaming_response(
                 self._client,
@@ -199,6 +233,17 @@ def _validate_messages(messages: object) -> None:
         > MAX_TOTAL_MESSAGE_CHARACTERS
     ):
         raise PermanentIntegrationError("deepseek_input_invalid")
+
+
+def _resolve_max_tokens(schema: type[T], override: int | None) -> int | None:
+    value = override
+    if value is None:
+        value = getattr(schema, "deepseek_max_tokens", None)
+    if value is None:
+        return None
+    if type(value) is not int or not 1 <= value <= MAX_MODEL_OUTPUT_TOKENS:
+        raise PermanentIntegrationError("deepseek_input_invalid")
+    return value
 
 
 def _validate_image_url(value: object) -> None:
@@ -319,6 +364,14 @@ def _extract_content(envelope: object) -> str:
     choice = choices[0]
     if not isinstance(choice, dict):
         raise PermanentIntegrationError("deepseek_response_invalid")
+    finish_reason = choice.get("finish_reason")
+    if finish_reason == "length":
+        raise TransientIntegrationError("deepseek_model_output_invalid")
+    if finish_reason == "insufficient_system_resource":
+        raise TransientIntegrationError("deepseek_unavailable")
+    if finish_reason not in (None, "stop"):
+        raise PermanentIntegrationError("deepseek_response_invalid")
+    _parse_usage(envelope.get("usage"))
     message = choice.get("message")
     if not isinstance(message, dict) or message.get("refusal"):
         raise PermanentIntegrationError("deepseek_response_invalid")
@@ -330,6 +383,24 @@ def _extract_content(envelope: object) -> str:
     ):
         raise PermanentIntegrationError("deepseek_response_invalid")
     return content
+
+
+def _parse_usage(value: object) -> _DeepSeekUsage | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise PermanentIntegrationError("deepseek_response_invalid")
+    return _DeepSeekUsage(
+        prompt_tokens=_usage_token_count(value.get("prompt_tokens")),
+        completion_tokens=_usage_token_count(value.get("completion_tokens")),
+        total_tokens=_usage_token_count(value.get("total_tokens")),
+    )
+
+
+def _usage_token_count(value: object) -> int:
+    if type(value) is not int or value < 0:
+        raise PermanentIntegrationError("deepseek_response_invalid")
+    return value
 
 
 def _repair_messages(

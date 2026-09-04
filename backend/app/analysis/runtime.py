@@ -10,7 +10,8 @@ from typing import Protocol
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.analysis.creator_pipeline import CreatorAnalysisPipeline
+from app.analysis.creator_checkpoints import CreatorAnalysisCheckpointStore
+from app.analysis.creator_map_reduce_pipeline import CreatorMapReducePipeline
 from app.analysis.game_pipeline import GameAnalysisPipeline
 from app.analysis.service import CreatorAnalysisService, GameAnalysisService
 from app.analysis.targets import (
@@ -165,7 +166,7 @@ class ProductionAnalysisRuntime:
                             base_url=self._settings.deepseek_api_base_url,
                         )
                     )
-                    yield CreatorAnalysisPipeline(
+                    yield CreatorMapReducePipeline(
                         service=CreatorAnalysisService(
                             session_factory=self._session_factory
                         ),
@@ -173,6 +174,9 @@ class ProductionAnalysisRuntime:
                         artifacts=artifacts,
                         public_pages=PublicPageGateway(),
                         deepseek=deepseek,
+                        checkpoints=CreatorAnalysisCheckpointStore(
+                            session_factory=self._session_factory
+                        ),
                     )
                 else:
                     raise PermanentIntegrationError("analysis_job_target_invalid")

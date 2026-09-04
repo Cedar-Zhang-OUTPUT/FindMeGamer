@@ -1,5 +1,5 @@
 from app.db.models.idempotency import IdempotencyRecord
-from app.db.models.jobs import AnalysisJob
+from app.db.models.jobs import AnalysisJob, CreatorAnalysisNode
 from app.db.models.match import (
     MatchCandidateInput,
     MatchPairwiseRecord,
@@ -21,6 +21,7 @@ __all__ = [
     "AnalysisJob",
     "CampaignCreatorResponse",
     "CreatorContact",
+    "CreatorAnalysisNode",
     "CreatorProfile",
     "Delivery",
     "GameProfile",

@@ -118,7 +118,7 @@ class CleanupFailingGateway(ClosableGateway):
         (
             TargetType.CREATOR,
             ("youtube", "deepseek"),
-            "CreatorAnalysisPipeline",
+            "CreatorMapReducePipeline",
             3,
         ),
     ],

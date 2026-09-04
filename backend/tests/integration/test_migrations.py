@@ -27,6 +27,7 @@ CORE_TABLES = {
     "creator_profiles",
     "creator_contacts",
     "analysis_jobs",
+    "creator_analysis_nodes",
     "shared_settings",
     "service_secrets",
     "idempotency_records",
@@ -714,7 +715,7 @@ def test_runtime_job_mutation_and_public_state_migration_share_lock_order(
         with database_engine.connect() as verification:
             assert (
                 verification.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260902_0005"
+                == "20260904_0006"
             )
     finally:
         release_worker.set()
@@ -805,7 +806,7 @@ def test_public_state_migration_does_not_deadlock_frozen_old_writer_order(
         with database_engine.connect() as verification:
             assert (
                 verification.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260902_0005"
+                == "20260904_0006"
             )
             assert (
                 verification.scalar(
