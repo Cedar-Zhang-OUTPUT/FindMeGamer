@@ -242,6 +242,17 @@ def test_map_reduce_claims_accept_up_to_three_evidence_references() -> None:
         CreatorVideoBatchDigest.model_validate(payload)
 
 
+def test_presentation_style_accepts_bounded_descriptive_values() -> None:
+    payload = _presentation_reduction_payload()
+    payload["style"]["values"] = ["s" * 128]
+
+    CreatorPresentationReduction.model_validate(payload)
+
+    payload["style"]["values"] = ["s" * 129]
+    with pytest.raises(ValidationError):
+        CreatorPresentationReduction.model_validate(payload)
+
+
 def test_reducer_fields_are_mutually_exclusive_and_cover_final_synthesis() -> None:
     reducer_types = (
         CreatorContentFormatReduction,

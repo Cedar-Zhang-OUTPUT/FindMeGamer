@@ -57,6 +57,16 @@ ReducerValues = Annotated[
     Field(min_length=1, max_length=3),
     AfterValidator(_unique_values),
 ]
+ReducerStyleItem = Annotated[
+    str,
+    Field(min_length=1, max_length=128),
+    AfterValidator(_bounded_text),
+]
+ReducerStyleValues = Annotated[
+    tuple[ReducerStyleItem, ...],
+    Field(min_length=1, max_length=3),
+    AfterValidator(_unique_values),
+]
 ReducerUnavailableReason = Annotated[
     str,
     Field(min_length=1, max_length=240),
@@ -101,12 +111,23 @@ class ReducerAvailableListClaim(StrictAIModel):
     confidence: Confidence
 
 
+class ReducerAvailableStyleClaim(StrictAIModel):
+    status: Literal["available"]
+    values: ReducerStyleValues
+    evidence: ReducerEvidenceReferences
+    confidence: Confidence
+
+
 ReducerEvidenceText = Annotated[
     ReducerAvailableTextClaim | ReducerUnavailableClaim,
     Field(discriminator="status"),
 ]
 ReducerEvidenceList = Annotated[
     ReducerAvailableListClaim | ReducerUnavailableClaim,
+    Field(discriminator="status"),
+]
+ReducerEvidenceStyle = Annotated[
+    ReducerAvailableStyleClaim | ReducerUnavailableClaim,
     Field(discriminator="status"),
 ]
 
@@ -230,7 +251,7 @@ class CreatorContentFormatReduction(StageOutput):
 class CreatorPresentationReduction(StageOutput):
     deepseek_max_tokens: ClassVar[int] = 2_048
 
-    style: ReducerEvidenceList
+    style: ReducerEvidenceStyle
     pacing: ReducerEvidenceText
     production_quality: ReducerEvidenceText
 
