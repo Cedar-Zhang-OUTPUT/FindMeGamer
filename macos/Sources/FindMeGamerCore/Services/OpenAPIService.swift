@@ -21,7 +21,9 @@ public struct OpenAPIService: APIService, Sendable {
     correlationIDProvider: @escaping WorkspaceAuthMiddleware.CorrelationIDProvider
   ) {
     client = Client(
-      serverURL: baseURL, transport: transport,
+      serverURL: baseURL,
+      configuration: .init(dateTranscoder: RFC3339DateTranscoder()),
+      transport: transport,
       middlewares: [
         WorkspaceAuthMiddleware(
           keyProvider: keyProvider, correlationIDProvider: correlationIDProvider)
@@ -425,6 +427,24 @@ public struct OpenAPIService: APIService, Sendable {
     switch value {
     case .existing_profile(let profile): .existingProfile(try DomainMapper.existingProfile(profile))
     case .job(let job): .job(try DomainMapper.analysisJob(job))
+    }
+  }
+}
+
+struct RFC3339DateTranscoder: DateTranscoder {
+  private let standard = ISO8601DateTranscoder()
+  private let fractional = ISO8601DateTranscoder(
+    options: [.withInternetDateTime, .withFractionalSeconds])
+
+  func encode(_ date: Date) throws -> String {
+    try standard.encode(date)
+  }
+
+  func decode(_ dateString: String) throws -> Date {
+    do {
+      return try fractional.decode(dateString)
+    } catch {
+      return try standard.decode(dateString)
     }
   }
 }

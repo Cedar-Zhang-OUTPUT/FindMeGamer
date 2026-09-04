@@ -255,6 +255,16 @@ import Testing
       #expect(!String(describing: error).contains("RAW-SECRET-CANARY"))
     }
   }
+
+  @Test func rfc3339TranscoderAcceptsNanosecondsAndTimezoneOffsets() throws {
+    let transcoder = RFC3339DateTranscoder()
+
+    let offsetDate = try transcoder.decode("2026-09-04T11:50:08.123456789+08:00")
+    let utcDate = try transcoder.decode("2026-09-04T03:50:08.123456789Z")
+
+    #expect(offsetDate == utcDate)
+    #expect(try transcoder.encode(offsetDate) == "2026-09-04T03:50:08Z")
+  }
 }
 
 private actor RecordingTransport: ClientTransport {
@@ -432,4 +442,4 @@ private let testResultFixture =
   #"{"succeeded":true,"last_test_status":"success","last_tested_at":"2026-09-03T00:00:00Z"}"#
 private let reanalysisFixture = #"{"game_interval_days":30,"creator_interval_days":30}"#
 private let connectionFixture =
-  #"{"configured":true,"last_test_status":"success","last_tested_at":"2026-09-03T00:00:00Z"}"#
+  #"{"configured":true,"last_test_status":"success","last_tested_at":"2026-09-04T03:50:08.619034Z"}"#
