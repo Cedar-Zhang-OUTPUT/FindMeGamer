@@ -1,3 +1,4 @@
+import json
 import logging
 
 import httpx
@@ -42,7 +43,9 @@ def test_deepseek_rejects_invalid_structured_output() -> None:
     assert calls == 2
 
 
-def test_deepseek_validates_directly_against_schema_in_one_request() -> None:
+def test_deepseek_first_structured_request_uses_json_object_with_actual_schema() -> (
+    None
+):
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -60,12 +63,28 @@ def test_deepseek_validates_directly_against_schema_in_one_request() -> None:
 
     assert result == GameExtraction(title="Elden Ring")
     assert len(requests) == 1
-    body = requests[0].read().decode()
+    payload = json.loads(requests[0].read())
     assert requests[0].method == "POST"
     assert requests[0].url.path == "/chat/completions"
     assert requests[0].headers["authorization"] == "Bearer deepseek-secret"
-    assert '"additionalProperties":false' in body
-    assert '"required":["title"]' in body
+    assert payload["response_format"] == {"type": "json_object"}
+    instruction = payload["messages"][0]
+    assert instruction["role"] == "system"
+    prefix = (
+        "Return exactly one JSON value that validates against this JSON Schema. "
+        "Return no Markdown, prose, or commentary. JSON Schema: "
+    )
+    assert instruction["content"].startswith(prefix)
+    assert json.loads(instruction["content"][len(prefix) :]) == {
+        "additionalProperties": False,
+        "properties": {"title": {"title": "Title", "type": "string"}},
+        "required": ["title"],
+        "title": "GameExtraction",
+        "type": "object",
+    }
+    assert payload["messages"][1:] == [
+        {"role": "user", "content": "Extract public game facts"}
+    ]
 
 
 def test_deepseek_repairs_once_without_mutating_caller_messages() -> None:
@@ -92,7 +111,7 @@ def test_deepseek_repairs_once_without_mutating_caller_messages() -> None:
     assert "not-json" in repair_body
 
 
-def test_deepseek_vision_uses_bounded_openai_multimodal_content() -> None:
+def test_deepseek_first_vision_request_uses_json_object_with_actual_schema() -> None:
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -111,8 +130,23 @@ def test_deepseek_vision_uses_bounded_openai_multimodal_content() -> None:
     )
 
     assert result.title == "Visual"
-    payload = __import__("json").loads(requests[0].read())
-    content = payload["messages"][0]["content"]
+    payload = json.loads(requests[0].read())
+    assert payload["response_format"] == {"type": "json_object"}
+    instruction = payload["messages"][0]
+    assert instruction["role"] == "system"
+    prefix = (
+        "Return exactly one JSON value that validates against this JSON Schema. "
+        "Return no Markdown, prose, or commentary. JSON Schema: "
+    )
+    assert instruction["content"].startswith(prefix)
+    assert json.loads(instruction["content"][len(prefix) :]) == {
+        "additionalProperties": False,
+        "properties": {"title": {"title": "Title", "type": "string"}},
+        "required": ["title"],
+        "title": "GameExtraction",
+        "type": "object",
+    }
+    content = payload["messages"][1]["content"]
     assert content == [
         {"type": "text", "text": "Analyze only visible evidence"},
         {"type": "image_url", "image_url": {"url": "https://cdn.example/one.jpg"}},
@@ -321,9 +355,12 @@ def test_deepseek_timeout_redacts_authorization_prompt_and_output(caplog) -> Non
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
 
-    with caplog.at_level(logging.DEBUG), pytest.raises(
-        TransientIntegrationError, match="deepseek_unavailable"
-    ) as caught:
+    with (
+        caplog.at_level(logging.DEBUG),
+        pytest.raises(
+            TransientIntegrationError, match="deepseek_unavailable"
+        ) as caught,
+    ):
         DeepSeekGateway(api_key=secret, http_client=client).complete_structured(
             "model", [Message(role="user", content=prompt)], GameExtraction
         )
@@ -405,9 +442,12 @@ def test_deepseek_stops_streaming_at_cap_and_closes_lying_length_response(
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
 
-    with caplog.at_level(logging.DEBUG), pytest.raises(
-        PermanentIntegrationError, match="deepseek_response_too_large"
-    ) as caught:
+    with (
+        caplog.at_level(logging.DEBUG),
+        pytest.raises(
+            PermanentIntegrationError, match="deepseek_response_too_large"
+        ) as caught,
+    ):
         DeepSeekGateway(api_key="test-key", http_client=client).complete_structured(
             "model", [], GameExtraction
         )
@@ -434,9 +474,12 @@ def test_deepseek_streaming_read_timeout_is_transient_and_closes(
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
 
-    with caplog.at_level(logging.DEBUG), pytest.raises(
-        TransientIntegrationError, match="deepseek_unavailable"
-    ) as caught:
+    with (
+        caplog.at_level(logging.DEBUG),
+        pytest.raises(
+            TransientIntegrationError, match="deepseek_unavailable"
+        ) as caught,
+    ):
         DeepSeekGateway(api_key="test-key", http_client=client).complete_structured(
             "model", [], GameExtraction
         )
@@ -463,9 +506,12 @@ def test_deepseek_does_not_read_server_error_body(
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
 
-    with caplog.at_level(logging.DEBUG), pytest.raises(
-        TransientIntegrationError, match="deepseek_unavailable"
-    ) as caught:
+    with (
+        caplog.at_level(logging.DEBUG),
+        pytest.raises(
+            TransientIntegrationError, match="deepseek_unavailable"
+        ) as caught,
+    ):
         DeepSeekGateway(api_key="test-key", http_client=client).complete_structured(
             "model", [], GameExtraction
         )

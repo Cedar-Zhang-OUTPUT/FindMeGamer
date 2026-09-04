@@ -2,6 +2,7 @@ from functools import lru_cache
 from ipaddress import ip_address, ip_network
 from pathlib import Path
 import re
+from typing import Literal
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
@@ -89,6 +90,8 @@ class Settings(BaseSettings):
     s3_region: str = "us-east-1"
     s3_bucket: str = "find-me-gamer-artifacts"
     s3_endpoint_url: str | None = None
+    artifact_store: Literal["s3", "filesystem"] = "s3"
+    artifact_directory: Path = Path("/var/lib/find-me-gamer/artifacts")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -160,6 +163,13 @@ class Settings(BaseSettings):
         except ValueError:
             return value
         raise ValueError("S3 bucket is invalid.")
+
+    @field_validator("artifact_directory")
+    @classmethod
+    def require_absolute_artifact_directory(cls, value: Path) -> Path:
+        if not value.is_absolute():
+            raise ValueError("Artifact directory must be absolute.")
+        return value
 
 
 @lru_cache

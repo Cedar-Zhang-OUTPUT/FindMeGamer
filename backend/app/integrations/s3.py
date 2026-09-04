@@ -1,7 +1,5 @@
 from collections.abc import Mapping
 from ipaddress import ip_address
-import json
-import math
 import re
 from typing import Any, Protocol
 from uuid import UUID
@@ -23,18 +21,22 @@ from botocore.exceptions import (
 )
 
 from app.core.config import validate_external_base_url
+from app.integrations.artifacts import (
+    ARTIFACT_PREFIX,
+    MAX_ARTIFACT_JSON_BYTES,
+    artifact_key,
+    serialize_artifact_payload,
+    validate_max_json_bytes,
+)
 from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
 
-ARTIFACT_PREFIX = "acquisition"
 ARTIFACT_RETENTION_TAGGING = "retention=temporary-analysis-30d"
-MAX_ARTIFACT_JSON_BYTES = 5_000_000
 S3_CLIENT_CONFIG = Config(
     connect_timeout=5.0,
     read_timeout=20.0,
     retries={"total_max_attempts": 3, "mode": "standard"},
     max_pool_connections=20,
 )
-_artifact_name = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$")
 _bucket_name = re.compile(
     r"^(?!xn--)(?!sthree-)(?!amzn-s3-demo-)[a-z0-9]" r"(?:[a-z0-9.-]{1,61}[a-z0-9])?$"
 )
@@ -133,11 +135,8 @@ class S3ArtifactStore:
         name: str,
         payload: Mapping[str, Any],
     ) -> str:
-        if not isinstance(job_id, UUID) or job_id.int == 0:
-            raise PermanentIntegrationError("artifact_job_id_invalid")
-        _validate_artifact_name(name)
-        body = _serialize_payload(payload, max_bytes=self._max_json_bytes)
-        key = f"{ARTIFACT_PREFIX}/{job_id}/{name}"
+        key = artifact_key(job_id, name)
+        body = serialize_artifact_payload(payload, max_bytes=self._max_json_bytes)
         try:
             self._client.put_object(
                 Bucket=self._bucket,
@@ -177,66 +176,17 @@ def _validate_configuration(bucket: str, region: str, max_json_bytes: int) -> No
         or "-." in bucket
         or not isinstance(region, str)
         or not _region_name.fullmatch(region)
-        or isinstance(max_json_bytes, bool)
-        or not isinstance(max_json_bytes, int)
-        or not 1 <= max_json_bytes <= 100_000_000
     ):
         raise PermanentIntegrationError("s3_configuration_invalid")
+    try:
+        validate_max_json_bytes(max_json_bytes)
+    except PermanentIntegrationError:
+        raise PermanentIntegrationError("s3_configuration_invalid") from None
     try:
         ip_address(bucket)
     except ValueError:
         return
     raise PermanentIntegrationError("s3_configuration_invalid")
-
-
-def _validate_artifact_name(name: object) -> None:
-    if (
-        not isinstance(name, str)
-        or not name.isascii()
-        or not _artifact_name.fullmatch(name)
-        or ".." in name
-    ):
-        raise PermanentIntegrationError("artifact_name_invalid")
-
-
-def _serialize_payload(payload: object, *, max_bytes: int) -> bytes:
-    if not isinstance(payload, Mapping):
-        raise PermanentIntegrationError("artifact_payload_invalid")
-    try:
-        normalized = _strict_json_value(payload, depth=0)
-        encoded = json.dumps(
-            normalized,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-            allow_nan=False,
-        ).encode("utf-8")
-    except (TypeError, ValueError, RecursionError):
-        raise PermanentIntegrationError("artifact_payload_invalid") from None
-    if len(encoded) > max_bytes:
-        raise PermanentIntegrationError("artifact_payload_too_large")
-    return encoded
-
-
-def _strict_json_value(value: object, *, depth: int) -> object:
-    if depth > 64:
-        raise ValueError("JSON nesting is too deep")
-    if value is None or isinstance(value, (str, bool, int)):
-        return value
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise ValueError("non-finite number")
-        return value
-    if isinstance(value, Mapping):
-        result: dict[str, object] = {}
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise TypeError("JSON object keys must be strings")
-            result[key] = _strict_json_value(item, depth=depth + 1)
-        return result
-    if isinstance(value, list):
-        return [_strict_json_value(item, depth=depth + 1) for item in value]
-    raise TypeError("unsupported JSON value")
 
 
 def _raise_client_error(error: ClientError) -> None:

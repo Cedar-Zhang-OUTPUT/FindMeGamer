@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -86,6 +88,55 @@ def test_external_gateway_settings_have_canonical_server_only_defaults() -> None
     assert settings.s3_region == "us-east-1"
     assert settings.s3_bucket == "find-me-gamer-artifacts"
     assert settings.s3_endpoint_url is None
+    assert settings.artifact_store == "s3"
+    assert settings.artifact_directory == Path("/var/lib/find-me-gamer/artifacts")
+
+
+def test_settings_accept_filesystem_artifacts_with_absolute_directory() -> None:
+    settings = Settings(
+        _env_file=None,
+        workspace_access_key_hash=VALID_WORKSPACE_HASH,
+        artifact_store="filesystem",
+        artifact_directory="/private/tmp/find-me-gamer-artifacts",
+    )
+
+    assert settings.artifact_store == "filesystem"
+    assert settings.artifact_directory == Path("/private/tmp/find-me-gamer-artifacts")
+
+
+@pytest.mark.parametrize("backend", ["local", "file", "S3", ""])
+def test_settings_reject_unknown_artifact_store(backend: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            _env_file=None,
+            workspace_access_key_hash=VALID_WORKSPACE_HASH,
+            artifact_store=backend,
+        )
+
+
+def test_settings_reject_relative_artifact_directory() -> None:
+    with pytest.raises(ValidationError, match="absolute"):
+        Settings(
+            _env_file=None,
+            workspace_access_key_hash=VALID_WORKSPACE_HASH,
+            artifact_store="filesystem",
+            artifact_directory="relative/artifacts",
+        )
+
+
+def test_artifact_store_environment_selects_filesystem(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ARTIFACT_STORE", "filesystem")
+    monkeypatch.setenv("ARTIFACT_DIRECTORY", "/private/tmp/local-real-artifacts")
+
+    settings = Settings(
+        _env_file=None,
+        workspace_access_key_hash=VALID_WORKSPACE_HASH,
+    )
+
+    assert settings.artifact_store == "filesystem"
+    assert settings.artifact_directory == Path("/private/tmp/local-real-artifacts")
 
 
 @pytest.mark.parametrize(

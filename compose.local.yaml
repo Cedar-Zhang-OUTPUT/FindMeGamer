@@ -1,0 +1,55 @@
+services:
+  proxy:
+    profiles: ["proxy"]
+
+  api:
+    environment: &local-app-environment
+      ARTIFACT_STORE: ${ARTIFACT_STORE}
+      ARTIFACT_DIRECTORY: ${ARTIFACT_DIRECTORY}
+      EXTERNAL_BASE_URL: http://127.0.0.1:8000
+      TRUSTED_PROXY_CIDRS: '[]'
+    ports:
+      - target: 8000
+        published: "8000"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: ${FMG_LOCAL_MASTER_KEY}
+        target: /etc/find-me-gamer/master.key
+        read_only: true
+      - type: volume
+        source: artifacts
+        target: /var/lib/find-me-gamer/artifacts
+
+  worker:
+    environment: *local-app-environment
+    volumes:
+      - type: bind
+        source: ${FMG_LOCAL_MASTER_KEY}
+        target: /etc/find-me-gamer/master.key
+        read_only: true
+      - type: volume
+        source: artifacts
+        target: /var/lib/find-me-gamer/artifacts
+
+  beat:
+    profiles: ["beat"]
+    environment: *local-app-environment
+
+networks:
+  backend:
+    name: find-me-gamer-local-backend
+    ipam: !reset {}
+
+volumes:
+  postgres_data:
+    name: find-me-gamer-local-postgres-data
+  redis_data:
+    name: find-me-gamer-local-redis-data
+  caddy_data:
+    name: find-me-gamer-local-caddy-data
+  caddy_config:
+    name: find-me-gamer-local-caddy-config
+  artifacts:
+    name: find-me-gamer-local-artifacts

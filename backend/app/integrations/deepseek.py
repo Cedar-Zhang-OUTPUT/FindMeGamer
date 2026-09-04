@@ -118,12 +118,16 @@ class DeepSeekGateway:
         schema: type[T],
     ) -> T:
         schema_payload = _schema_payload(schema)
-        content = self._request(model, messages, schema_payload)
+        request_messages = [_schema_instruction(schema_payload), *messages]
+        content = self._request(model, request_messages)
         try:
             return schema.model_validate_json(content)
         except (ValidationError, ValueError):
-            repair_messages = [*messages, *_repair_messages(content, schema_payload)]
-        repaired = self._request(model, repair_messages, schema_payload)
+            repair_messages = [
+                *request_messages,
+                *_repair_messages(content, schema_payload),
+            ]
+        repaired = self._request(model, repair_messages)
         try:
             return schema.model_validate_json(repaired)
         except (ValidationError, ValueError):
@@ -133,19 +137,11 @@ class DeepSeekGateway:
         self,
         model: str,
         messages: list[dict[str, Any]],
-        schema_payload: dict[str, Any],
     ) -> str:
         payload = {
             "model": model,
             "messages": messages,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": schema_payload["title"],
-                    "strict": True,
-                    "schema": schema_payload["schema"],
-                },
-            },
+            "response_format": {"type": "json_object"},
         }
         try:
             with streaming_response(
@@ -295,6 +291,23 @@ def _schema_payload(schema: type[T]) -> dict[str, Any]:
     if len(encoded.encode("utf-8")) > MAX_SCHEMA_BYTES:
         raise PermanentIntegrationError("deepseek_input_invalid")
     return {"title": schema.__name__[:64] or "StructuredOutput", "schema": generated}
+
+
+def _schema_instruction(schema_payload: dict[str, Any]) -> dict[str, str]:
+    schema_json = json.dumps(
+        schema_payload["schema"],
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return {
+        "role": "system",
+        "content": (
+            "Return exactly one JSON value that validates against this JSON Schema. "
+            "Return no Markdown, prose, or commentary. "
+            f"JSON Schema: {schema_json}"
+        ),
+    }
 
 
 def _extract_content(envelope: object) -> str:

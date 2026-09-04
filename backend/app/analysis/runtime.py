@@ -27,6 +27,7 @@ from app.integrations.errors import (
     PermanentIntegrationError,
     TransientIntegrationError,
 )
+from app.integrations.filesystem import FilesystemArtifactStore
 from app.integrations.public_pages import PublicPageGateway
 from app.integrations.s3 import S3ArtifactStore
 from app.integrations.steam import SteamGateway
@@ -35,6 +36,18 @@ from app.integrations.youtube import YouTubeGateway
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
 CipherFactory = Callable[[], SecretCipher]
+
+
+def _artifact_store_for(
+    settings: Settings,
+) -> S3ArtifactStore | FilesystemArtifactStore:
+    if settings.artifact_store == "filesystem":
+        return FilesystemArtifactStore(directory=settings.artifact_directory)
+    return S3ArtifactStore(
+        bucket=settings.s3_bucket,
+        region=settings.s3_region,
+        endpoint_url=settings.s3_endpoint_url,
+    )
 
 
 @contextmanager
@@ -120,13 +133,7 @@ class ProductionAnalysisRuntime:
                     steam = stack.enter_context(
                         SteamGateway(base_url=self._settings.steam_store_base_url)
                     )
-                    artifacts = stack.enter_context(
-                        S3ArtifactStore(
-                            bucket=self._settings.s3_bucket,
-                            region=self._settings.s3_region,
-                            endpoint_url=self._settings.s3_endpoint_url,
-                        )
-                    )
+                    artifacts = stack.enter_context(_artifact_store_for(self._settings))
                     deepseek = stack.enter_context(
                         DeepSeekGateway(
                             api_key=secrets_by_service["deepseek"],
@@ -151,13 +158,7 @@ class ProductionAnalysisRuntime:
                             base_url=self._settings.youtube_api_base_url,
                         )
                     )
-                    artifacts = stack.enter_context(
-                        S3ArtifactStore(
-                            bucket=self._settings.s3_bucket,
-                            region=self._settings.s3_region,
-                            endpoint_url=self._settings.s3_endpoint_url,
-                        )
-                    )
+                    artifacts = stack.enter_context(_artifact_store_for(self._settings))
                     deepseek = stack.enter_context(
                         DeepSeekGateway(
                             api_key=secrets_by_service["deepseek"],

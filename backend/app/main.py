@@ -37,6 +37,7 @@ from app.core.rate_limit import (
 from app.core.security import validate_workspace_key_hash
 from app.outreach.rate_limit import SMTPRateLimiter
 from app.outreach.smtp import SMTPGateway
+from app.integrations.connection_probe import ProductionConnectionProbe
 
 
 def create_app(
@@ -79,8 +80,9 @@ def create_app(
         if secret_cipher is not None
         else SecretCipher.from_file(settings.master_key_file)
     )
-    effective_connection_probe = (
-        connection_probe or settings_routes.UnavailableConnectionProbe()
+    effective_connection_probe = connection_probe or ProductionConnectionProbe(
+        deepseek_base_url=settings.deepseek_api_base_url,
+        youtube_base_url=settings.youtube_api_base_url,
     )
     effective_channel_resolver = channel_resolver or build_production_channel_resolver(
         settings=settings,

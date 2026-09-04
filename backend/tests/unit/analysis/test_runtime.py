@@ -165,6 +165,42 @@ def test_runtime_builds_existing_pipeline_and_closes_every_owned_client(
     assert all(instance.closed for instance in ClosableGateway.instances)
 
 
+def test_runtime_selects_filesystem_artifacts_without_constructing_s3(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    ClosableGateway.instances = []
+
+    class Secrets:
+        def load(self, services):
+            return {service: f"{service}-test-key" for service in services}
+
+    class ForbiddenS3:
+        def __init__(self, **_kwargs) -> None:
+            raise AssertionError("filesystem backend must not construct S3")
+
+    for name in ("SteamGateway", "DeepSeekGateway", "FilesystemArtifactStore"):
+        monkeypatch.setattr(f"app.analysis.runtime.{name}", ClosableGateway)
+    monkeypatch.setattr("app.analysis.runtime.S3ArtifactStore", ForbiddenS3)
+    monkeypatch.setattr("app.analysis.runtime.GameAnalysisPipeline", FakePipeline)
+    settings = get_settings().model_copy(
+        update={
+            "artifact_store": "filesystem",
+            "artifact_directory": tmp_path,
+        }
+    )
+    runtime = ProductionAnalysisRuntime(
+        settings=settings,
+        session_factory=lambda: None,
+        secret_provider=Secrets(),
+    )
+
+    with runtime.pipeline_for(TargetType.GAME) as pipeline:
+        artifacts = pipeline.dependencies["artifacts"]
+        assert artifacts.kwargs == {"directory": tmp_path}
+
+    assert artifacts.closed is True
+
+
 def test_runtime_closes_gateways_when_pipeline_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
