@@ -112,7 +112,7 @@ public struct OpenAPIService: APIService, Sendable {
   public func profile(type: ProfileType, id: UUID) async throws -> Profile {
     let value = try await perform {
       try await client.getProfile(
-        .init(path: .init(profile_id: id.uuidString, profile_type: type.rawValue)))
+        .init(path: .init(profile_id: id.uuidString, profile_type: type.profileRouteComponent)))
     }.ok.body.json
     switch (type, value.value1, value.value2) {
     case (.game, let game?, nil): return .game(try DomainMapper.gameProfile(game))
@@ -127,7 +127,7 @@ public struct OpenAPIService: APIService, Sendable {
     let value = try await perform {
       try await client.setProfileFavorite(
         .init(
-          path: .init(profile_id: id.uuidString, profile_type: type.rawValue),
+          path: .init(profile_id: id.uuidString, profile_type: type.profileRouteComponent),
           body: .json(.init(favorite: favorite))))
     }.ok.body.json
     switch (type, value.value1, value.value2) {
@@ -427,6 +427,15 @@ public struct OpenAPIService: APIService, Sendable {
     switch value {
     case .existing_profile(let profile): .existingProfile(try DomainMapper.existingProfile(profile))
     case .job(let job): .job(try DomainMapper.analysisJob(job))
+    }
+  }
+}
+
+private extension ProfileType {
+  var profileRouteComponent: String {
+    switch self {
+    case .game: "games"
+    case .creator: "creators"
     }
   }
 }

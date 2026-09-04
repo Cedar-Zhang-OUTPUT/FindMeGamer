@@ -6,6 +6,32 @@ import Testing
 @testable import FindMeGamerCore
 
 @Suite(.serialized) struct OpenAPIServiceTests {
+  @Test func profileAndFavoriteUsePluralCollectionPaths() async throws {
+    let transport = RecordingTransport()
+    let service = OpenAPIService(
+      baseURL: URL(string: "https://api.example.test")!, transport: transport,
+      keyProvider: { "key" }, correlationIDProvider: { "cid" })
+    let gameID = id("10000000-0000-4000-8000-000000000001")
+    let creatorID = id("40000000-0000-4000-8000-000000000001")
+
+    _ = try await service.profile(type: .game, id: gameID)
+    _ = try await service.profile(type: .creator, id: creatorID)
+    _ = try await service.setFavorite(type: .game, id: gameID, favorite: true)
+    _ = try await service.setFavorite(type: .creator, id: creatorID, favorite: true)
+
+    let requests = await transport.requests
+    #expect(
+      requests.filter { $0.operationID == "getProfile" }.map(\.path) == [
+        "/api/v1/profiles/games/\(gameID.uuidString.lowercased())",
+        "/api/v1/profiles/creators/\(creatorID.uuidString.lowercased())",
+      ])
+    #expect(
+      requests.filter { $0.operationID == "setProfileFavorite" }.map(\.path) == [
+        "/api/v1/profiles/games/\(gameID.uuidString.lowercased())/favorite",
+        "/api/v1/profiles/creators/\(creatorID.uuidString.lowercased())/favorite",
+      ])
+  }
+
   @Test func completeProtocolUsesGeneratedClientAndRoutesEveryMethod() async throws {
     let transport = RecordingTransport()
     let service = OpenAPIService(
