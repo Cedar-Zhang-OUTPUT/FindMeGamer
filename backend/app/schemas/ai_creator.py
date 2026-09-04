@@ -422,13 +422,18 @@ URLValue = Annotated[
     AfterValidator(_validate_url_exact),
 ]
 ContactValidationState = Literal["validated", "unvalidated"]
-ContactEvidenceSource = Literal["channel_description", "linked_public_page"]
+ContactEvidenceSource = Literal[
+    "channel_description",
+    "linked_public_page",
+    "public_web_research",
+]
 
 
 class EmailContactCandidate(StrictAIModel):
     candidate_id: ReferenceText
     kind: Literal["email"]
     value: EmailValue
+    purpose: Annotated[str, Field(min_length=1, max_length=512)] | None = None
     source_type: ContactEvidenceSource
     source_url: URLValue
     validation_state: ContactValidationState
@@ -650,6 +655,16 @@ def bind_creator_contacts(
         return candidate
 
     public_email = selected(synthesis.public_email, "email")
+    if public_email is None:
+        public_email = next(
+            (
+                candidate
+                for candidate in evidence.candidates
+                if isinstance(candidate, EmailContactCandidate)
+                and candidate.source_type == "public_web_research"
+            ),
+            None,
+        )
     linked_site = selected(synthesis.linked_site, "linked_site")
     social_links: list[URLContactCandidate] = []
     selected_social_urls: set[tuple[str, str, int | None, str, str]] = set()

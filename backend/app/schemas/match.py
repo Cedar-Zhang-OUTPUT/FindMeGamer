@@ -19,6 +19,7 @@ class PublicMatchModel(BaseModel):
 
 class MatchCreatorContact(PublicMatchModel):
     email: EmailStr
+    purpose: str | None = None
     source: str
     source_url: str | None
     validation_state: str
@@ -39,6 +40,7 @@ class MatchCreatorCard(PublicMatchModel):
     ) = None
     contact_available: bool
     contact: MatchCreatorContact | None
+    contacts: list[MatchCreatorContact] = Field(default_factory=list)
 
 
 class MatchBriefDimension(PublicMatchModel):

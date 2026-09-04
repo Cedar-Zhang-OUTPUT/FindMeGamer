@@ -262,40 +262,40 @@ def _creator_is_stale(source_status: object) -> bool:
     return isinstance(sources, dict) and _is_stale_status(sources.get("youtube"))
 
 
-def _selected_contact(
+def _available_contacts(
     contacts: list[CreatorContact], *, manual_only: bool = False
-) -> MatchCreatorContact | None:
+) -> list[MatchCreatorContact]:
     active = [value for value in contacts if value.is_active]
-    manual = sorted(
-        (value for value in active if value.is_manual),
-        key=lambda value: (value.created_at, str(value.id)),
+    if manual_only:
+        active = [value for value in active if value.is_manual]
+    validation_rank = {"verified": 3, "valid": 2, "unverified": 1, "invalid": 0}
+    ordered = sorted(
+        active,
+        key=lambda value: (
+            0 if value.is_manual else 1,
+            -value.priority,
+            -validation_rank.get(value.validation_state.casefold(), -1),
+            value.created_at,
+            str(value.id),
+        ),
     )
-    if manual:
-        selected = manual[0]
-        source = "manual"
-    else:
-        if manual_only:
-            return None
-        validation_rank = {"verified": 3, "valid": 2, "unverified": 1, "invalid": 0}
-        discovered = sorted(
-            (value for value in active if not value.is_manual),
-            key=lambda value: (
-                -value.priority,
-                -validation_rank.get(value.validation_state.casefold(), -1),
-                value.created_at,
-                str(value.id),
-            ),
+    projected: list[MatchCreatorContact] = []
+    seen: set[str] = set()
+    for value in ordered:
+        email_key = value.email.casefold()
+        if email_key in seen:
+            continue
+        seen.add(email_key)
+        projected.append(
+            MatchCreatorContact(
+                email=value.email,
+                purpose=value.purpose,
+                source="manual" if value.is_manual else value.source_type,
+                source_url=value.source_url,
+                validation_state=value.validation_state,
+            )
         )
-        if not discovered:
-            return None
-        selected = discovered[0]
-        source = selected.source_type
-    return MatchCreatorContact(
-        email=selected.email,
-        source=source,
-        source_url=selected.source_url,
-        validation_state=selected.validation_state,
-    )
+    return projected
 
 
 def _bounded_count(value: object) -> int | None:
@@ -331,7 +331,7 @@ def _creator_card(creator: CreatorProfile) -> MatchCreatorCard:
     brief = creator.brief if not stale and isinstance(creator.brief, dict) else {}
     metrics = facts.get("recent_metrics")
     metrics = metrics if isinstance(metrics, dict) else {}
-    contact = _selected_contact(list(creator.contacts), manual_only=stale)
+    contacts = _available_contacts(list(creator.contacts), manual_only=stale)
     title = facts.get("title")
     avatar = facts.get("avatar_url")
     performance = _available_text(analysis.get("recent_performance_summary"))
@@ -359,8 +359,9 @@ def _creator_card(creator: CreatorProfile) -> MatchCreatorCard:
             metrics.get("median_views", facts.get("recent_median_views"))
         ),
         performance_summary=performance,
-        contact_available=contact is not None,
-        contact=contact,
+        contact_available=bool(contacts),
+        contact=contacts[0] if contacts else None,
+        contacts=contacts,
     )
 
 

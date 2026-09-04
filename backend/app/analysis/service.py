@@ -37,6 +37,7 @@ from app.schemas.ai_creator import (
     CreatorContactEvidence,
     CreatorSynthesis,
     CreatorVisualAnalysis,
+    EmailContactCandidate,
 )
 from app.schemas.profiles import public_json_object
 
@@ -523,7 +524,9 @@ class CreatorAnalysisService:
                     "social_links",
                 }
             }
-            analysis["public_contact"] = self._public_contact(publication.contacts)
+            analysis["public_contact"] = self._public_contact(
+                publication.contacts, publication.contact_evidence
+            )
             profile.canonical_url = source.canonical_url
             profile.sort_name = self._sort_name(source.title, lease.channel_id)
             profile.current_facts = public_json_object(current_facts)
@@ -561,12 +564,23 @@ class CreatorAnalysisService:
                     CreatorContact.is_manual.is_(False),
                 )
             )
-            discovered_email = publication.contacts.public_email
-            if discovered_email is not None:
+            selected_email = publication.contacts.public_email
+            discovered_emails = [
+                candidate
+                for candidate in publication.contact_evidence.candidates
+                if isinstance(candidate, EmailContactCandidate)
+            ]
+            seen_emails: set[str] = set()
+            for position, discovered_email in enumerate(discovered_emails):
+                email_key = discovered_email.value.casefold()
+                if email_key in seen_emails:
+                    continue
+                seen_emails.add(email_key)
                 session.add(
                     CreatorContact(
                         creator_id=profile.id,
                         email=discovered_email.value,
+                        purpose=discovered_email.purpose,
                         source_type=discovered_email.source_type,
                         source_url=discovered_email.source_url,
                         is_manual=False,
@@ -575,7 +589,13 @@ class CreatorAnalysisService:
                             if discovered_email.validation_state == "validated"
                             else "unverified"
                         ),
-                        priority=10,
+                        priority=(
+                            10
+                            if selected_email is not None
+                            and discovered_email.candidate_id
+                            == selected_email.candidate_id
+                            else max(1, 9 - position)
+                        ),
                         is_active=True,
                     )
                 )
@@ -633,19 +653,31 @@ class CreatorAnalysisService:
         }
 
     @staticmethod
-    def _public_contact(contacts: BoundCreatorContacts) -> dict[str, object]:
+    def _public_contact(
+        contacts: BoundCreatorContacts, evidence: CreatorContactEvidence
+    ) -> dict[str, object]:
         def project(candidate):
             if candidate is None:
                 return None
-            return {
+            projected = {
                 "value": candidate.value,
                 "source_type": candidate.source_type,
                 "source_url": candidate.source_url,
                 "validation_state": candidate.validation_state,
             }
+            if isinstance(candidate, EmailContactCandidate):
+                projected["purpose"] = candidate.purpose
+            return projected
+
+        emails = [
+            project(candidate)
+            for candidate in evidence.candidates
+            if isinstance(candidate, EmailContactCandidate)
+        ]
 
         return {
             "email": project(contacts.public_email),
+            "emails": emails,
             "linked_site": project(contacts.linked_site),
             "social_links": [project(candidate) for candidate in contacts.social_links],
         }

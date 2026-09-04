@@ -242,6 +242,7 @@ Match Result detail:
 - Clicking Creator identity opens the shared current Creator Profile Sheet
 - Individual Send Email action
 - Multi-select checkboxes and a bottom `Send Outreach (N)` action bar
+- When a Creator has multiple active emails, sending requires choosing exactly one address and shows each address's purpose; the client never defaults to emailing all addresses
 - No-email creators remain visible but cannot be selected for sending
 - Previously sent creators cannot be selected again without an explicit Resend action
 - Unscreened Creator Profiles are absent from the result UI
@@ -307,6 +308,7 @@ The workspace uses three Segmented Tabs.
 - Steam
 - YouTube
 - DeepSeek
+- Google AI Studio
 - Each displays `Configured` or `Not Configured`, last test time, Replace Key, and Test Connection
 - Secret plaintext is never returned
 
@@ -372,10 +374,10 @@ Unavailable Steam data remains unavailable; the system never fabricates inaccess
 - Content analysis: primary games, genres, formats, style, pacing, production quality, and livestream/long-form/short-form tendency
 - Audience inference: primary language, likely audience region, and interests, clearly marked as AI inference
 - Promotion fit: common sponsorship patterns, brand safety, suitable game types, and collaboration risks
-- Contact: public email, source, validation status, linked site, and social links
+- Contact: an ordered list of public emails with purpose, source, and validation status, plus linked site and social links
 - Favorite, manual notes, last analyzed, next scheduled analysis, model identifiers, and prompt version
 
-Manual contact email is marked `Manual`, takes precedence over discovered contact information, and is never overwritten by Re-analyze.
+The first contact remains available as a compatibility projection, while the full email list is exposed for display and Outreach selection. Manual contact email is marked `Manual`, takes precedence over discovered contact information, and is never overwritten by Re-analyze.
 
 Match Brief is not embedded into the Creator Profile Sheet because it is specific to one Game and one Match Task.
 
@@ -541,7 +543,7 @@ The API never serializes hidden rank or numeric total score to the macOS client.
 `deliveries`
 
 - Campaign, Send Batch, and Creator IDs
-- Contact email used
+- The single explicitly selected contact email used; a Creator with multiple active emails requires a recipient selection before preview or send
 - Rendered subject, Markdown source, and final HTML
 - Template name/version metadata
 - Send state: queued, sending, sent, failed
@@ -566,7 +568,7 @@ The API never serializes hidden rank or numeric total score to the macOS client.
 
 `service_secrets`
 
-- Encrypted Steam, YouTube, DeepSeek, and SMTP values
+- Encrypted Steam, YouTube, DeepSeek, Google AI Studio, and SMTP values
 - AES-256-GCM ciphertext, nonce, update time, and last connection test status
 - The encryption key is not stored in PostgreSQL
 
@@ -609,8 +611,9 @@ Vision is optional within the pipeline. If the experimental Vision model fails a
 6. Choose about 12 representative official thumbnails, balanced between recency and recent performance.
 7. Use `deepseek-v4-flash-vision-exp` for thumbnail-level visual analysis.
 8. Search the public channel description and linked public websites for a business contact email.
-9. Use `deepseek-v4-pro` for final Creator Profile and Creator Brief synthesis.
-10. Preserve manual email and manual notes while replacing current analyzed fields.
+9. Only when that evidence contains no email, use `gemini-3.8-flash` with Google Search and URL Context for bounded public-web email research; never replace an email already found by the original path.
+10. Use `deepseek-v4-pro` for final Creator Profile and Creator Brief synthesis.
+11. Preserve manual email and manual notes while replacing current analyzed fields.
 
 Version 1 does not download video/audio, extract frames, or use unofficial transcript endpoints. YouTube's official caption download API is unsuitable for arbitrary creators because it requires permission to edit the video.
 
@@ -704,12 +707,13 @@ Contact email availability, favorite state, and prior outreach never affect Matc
 ### 13.2 Compose and confirmation
 
 1. User selects one or more eligible creators from Match Result.
-2. Composer loads the default or chosen Template.
-3. Variables render separately for each Creator.
-4. The user previews the rendered output and may make a send-only override.
-5. The system validates contact email, SMTP configuration, Template variables, CTA labels, and duplicate-send rules.
-6. Final confirmation creates the Send Batch and Deliveries with an Idempotency Key.
-7. Celery sends messages through NetEase enterprise SMTP at the configured rate.
+2. For every Creator with multiple active emails, the user explicitly selects one recipient using its displayed purpose and source.
+3. Composer loads the default or chosen Template.
+4. Variables render separately for each Creator.
+5. The user previews the rendered output and may make a send-only override.
+6. The system validates the selected active contact email, SMTP configuration, Template variables, CTA labels, and duplicate-send rules.
+7. Final confirmation creates one Delivery per Creator in the Send Batch with an Idempotency Key.
+8. Celery sends messages through NetEase enterprise SMTP at the configured rate.
 
 Markdown controls only the body. The backend renders and sanitizes HTML, then appends the system-controlled response block. Template authors cannot remove or replace response endpoints through raw HTML.
 
@@ -789,7 +793,7 @@ Markdown controls only the body. The backend renders and sanitizes HTML, then ap
 
 - Read/update re-analysis intervals
 - Read connection status
-- Replace and test Steam, YouTube, and DeepSeek keys
+- Replace and test Steam, YouTube, DeepSeek, and Google AI Studio keys
 
 #### Public Response
 

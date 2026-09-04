@@ -33,7 +33,13 @@ from tests.unit.analysis.test_ai_schemas import (
     creator_synthesis_payload,
     creator_visual_unavailable_payload,
 )
-from tests.unit.analysis.test_creator_pipeline import FakePages, Page, _source
+from tests.unit.analysis.test_creator_pipeline import (
+    EmailResearchRecord,
+    FakeEmailResearch,
+    FakePages,
+    Page,
+    _source,
+)
 
 
 NOW = datetime(2026, 9, 4, 9, 15, tzinfo=UTC)
@@ -150,6 +156,7 @@ def _profile(factory: sessionmaker[Session]) -> UUID:
                 ),
                 CreatorContact(
                     email="old@example.net",
+                    purpose="Legacy partnerships",
                     source_type="linked_public_page",
                     source_url="https://old.example/contact",
                     is_manual=False,
@@ -234,6 +241,7 @@ def _pipeline(
     youtube: YouTube | None = None,
     artifacts: Artifacts | None = None,
     pages: FakePages | None = None,
+    email_research: FakeEmailResearch | None = None,
     ai: AI | None = None,
     clock=lambda: NOW,
 ) -> CreatorAnalysisPipeline:
@@ -251,6 +259,7 @@ def _pipeline(
             }
         ),
         deepseek=ai or AI(),
+        email_research=email_research,
     )
 
 
@@ -277,6 +286,7 @@ def _snapshot(factory: sessionmaker[Session], profile_id: UUID) -> dict[str, obj
             "contacts": [
                 (
                     contact.email,
+                    contact.purpose,
                     contact.source_type,
                     contact.source_url,
                     contact.is_manual,
@@ -316,10 +326,27 @@ def test_create_publishes_exact_projection_and_job_atomically(
         assert profile.analysis["public_contact"] == {
             "email": {
                 "value": "press@example.com",
+                "purpose": None,
                 "source_type": "channel_description",
                 "source_url": "https://www.youtube.com/channel/UCcreator123",
                 "validation_state": "validated",
             },
+            "emails": [
+                {
+                    "value": "press@example.com",
+                    "purpose": None,
+                    "source_type": "channel_description",
+                    "source_url": "https://www.youtube.com/channel/UCcreator123",
+                    "validation_state": "validated",
+                },
+                {
+                    "value": "partnerships@example.org",
+                    "purpose": None,
+                    "source_type": "linked_public_page",
+                    "source_url": "https://creator.example/about",
+                    "validation_state": "validated",
+                },
+            ],
             "linked_site": {
                 "value": "https://creator.example/about",
                 "source_type": "channel_description",
@@ -435,6 +462,7 @@ def test_reanalysis_preserves_manual_contact_notes_favorite_and_replaces_discove
     }
     assert (
         "team@example.com",
+        None,
         "manual",
         None,
         True,
@@ -445,6 +473,7 @@ def test_reanalysis_preserves_manual_contact_notes_favorite_and_replaces_discove
     assert all(item[0] != "old@example.net" for item in snapshot["contacts"])
     assert (
         "press@example.com",
+        None,
         "channel_description",
         "https://www.youtube.com/channel/UCcreator123",
         False,
@@ -494,6 +523,7 @@ def test_no_contact_publication_replaces_discovered_rows_with_explicit_empty_pro
         assert profile is not None
         assert profile.analysis["public_contact"] == {
             "email": None,
+            "emails": [],
             "linked_site": None,
             "social_links": [],
         }
@@ -505,6 +535,131 @@ def test_no_contact_publication_replaces_discovered_rows_with_explicit_empty_pro
             )
         ).all()
         assert contacts == []
+
+
+def test_public_web_research_email_reaches_library_and_outreach_contact_projection(
+    committed_factory,
+) -> None:
+    job_id = _job(committed_factory)
+
+    class SiteOnlyYouTube(YouTube):
+        def fetch_creator(self, channel_id: str, video_limit: int = 50):
+            return _source().model_copy(
+                update={"description": "https://creator.example/about"}
+            )
+
+    synthesis_payload = creator_synthesis_payload()
+    synthesis_payload["public_email"] = {
+        "status": "unavailable",
+        "reason": "No direct email appeared in the original channel evidence.",
+    }
+    synthesis_payload["social_links"] = {
+        "status": "unavailable",
+        "reason": "No social link appeared in the supplied contact evidence.",
+    }
+    metadata = CreatorMetadataAnalysis.model_validate(
+        creator_metadata_unavailable_payload()
+    )
+    synthesis = CreatorSynthesis.model_validate(synthesis_payload)
+    research = FakeEmailResearch(
+        (
+            EmailResearchRecord(
+                email="agency@example.com",
+                usage="Business inquiries",
+                source="https://agency.example/creator/contact",
+            ),
+            EmailResearchRecord(
+                email="press@example.com",
+                usage="Press requests",
+                source="https://press.example/creator",
+            ),
+        )
+    )
+
+    profile_id = _pipeline(
+        committed_factory,
+        youtube=SiteOnlyYouTube(),
+        pages=FakePages(
+            {
+                "https://creator.example/about": Page(
+                    "https://creator.example/about", "No direct email listed."
+                )
+            }
+        ),
+        email_research=research,
+        ai=AI(structured=[metadata, synthesis]),
+    ).run(job_id)
+
+    with committed_factory() as session:
+        profile = session.get(CreatorProfile, profile_id)
+        contacts = session.scalars(
+            select(CreatorContact)
+            .where(
+                CreatorContact.creator_id == profile_id,
+                CreatorContact.is_manual.is_(False),
+            )
+            .order_by(CreatorContact.priority.desc())
+        ).all()
+        assert profile is not None
+        assert profile.analysis["public_contact"]["email"] == {
+            "value": "agency@example.com",
+            "purpose": "Business inquiries",
+            "source_type": "public_web_research",
+            "source_url": "https://agency.example/creator/contact",
+            "validation_state": "unvalidated",
+        }
+        assert profile.analysis["public_contact"]["emails"] == [
+            {
+                "value": "agency@example.com",
+                "purpose": "Business inquiries",
+                "source_type": "public_web_research",
+                "source_url": "https://agency.example/creator/contact",
+                "validation_state": "unvalidated",
+            },
+            {
+                "value": "press@example.com",
+                "purpose": "Press requests",
+                "source_type": "public_web_research",
+                "source_url": "https://press.example/creator",
+                "validation_state": "unvalidated",
+            },
+        ]
+        assert [(contact.email, contact.purpose) for contact in contacts] == [
+            ("agency@example.com", "Business inquiries"),
+            ("press@example.com", "Press requests"),
+        ]
+        assert all(
+            contact.source_type == "public_web_research"
+            and contact.validation_state == "unverified"
+            and contact.is_active
+            for contact in contacts
+        )
+
+
+def test_public_web_research_failure_preserves_existing_profile_and_contacts(
+    committed_factory,
+) -> None:
+    profile_id = _profile(committed_factory)
+    before = _snapshot(committed_factory, profile_id)
+    job_id = _job(committed_factory)
+
+    class NoContactYouTube(YouTube):
+        def fetch_creator(self, channel_id: str, video_limit: int = 50):
+            return _source().model_copy(update={"description": "No public contact."})
+
+    pipeline = _pipeline(
+        committed_factory,
+        youtube=NoContactYouTube(),
+        pages=FakePages({}),
+        email_research=FakeEmailResearch(
+            TransientIntegrationError("public_page_unavailable")
+        ),
+    )
+
+    with pytest.raises(TransientIntegrationError, match="public_page_unavailable"):
+        pipeline.run(job_id)
+
+    assert _snapshot(committed_factory, profile_id) == before
 
 
 @pytest.mark.parametrize(

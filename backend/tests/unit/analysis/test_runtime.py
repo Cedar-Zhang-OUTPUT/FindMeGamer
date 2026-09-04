@@ -63,6 +63,41 @@ def test_secret_provider_closes_short_session_before_key_io_and_decryption(
     assert events == ["session-open", "session-closed", "cipher-created"]
 
 
+def test_secret_provider_optional_google_ai_key_is_absent_or_decrypted_after_session(
+    session: Session,
+) -> None:
+    events: list[str] = []
+
+    @contextmanager
+    def tracked_factory():
+        events.append("session-open")
+        try:
+            yield session
+        finally:
+            session.commit()
+            events.append("session-closed")
+
+    def cipher_factory():
+        events.append("cipher-created")
+        assert not session.in_transaction()
+        return SecretCipher(bytes(range(32)))
+
+    provider = ProductionSecretProvider(
+        session_factory=tracked_factory,
+        cipher_factory=cipher_factory,
+    )
+
+    assert provider.load_optional("google_ai") is None
+    assert events == ["session-open", "session-closed"]
+
+    _store_secret(session, "google_ai", "google-ai-test-key")
+    session.commit()
+    events.clear()
+
+    assert provider.load_optional("google_ai") == "google-ai-test-key"
+    assert events == ["session-open", "session-closed", "cipher-created"]
+
+
 @pytest.mark.parametrize("missing_service", ["youtube", "deepseek"])
 def test_secret_provider_maps_missing_and_corrupt_secrets_to_safe_configuration_error(
     session: Session, missing_service: str
@@ -132,11 +167,16 @@ def test_runtime_builds_existing_pipeline_and_closes_every_owned_client(
 ) -> None:
     ClosableGateway.instances = []
     loaded: list[tuple[str, ...]] = []
+    optional_loaded: list[str] = []
 
     class Secrets:
         def load(self, services):
             loaded.append(tuple(services))
             return {service: f"{service}-test-key" for service in services}
+
+        def load_optional(self, service):
+            optional_loaded.append(service)
+            return None
 
     for name in (
         "SteamGateway",
@@ -159,8 +199,53 @@ def test_runtime_builds_existing_pipeline_and_closes_every_owned_client(
     with runtime.pipeline_for(target_type) as pipeline:
         assert isinstance(pipeline, FakePipeline)
         assert loaded == [required_services]
+        assert optional_loaded == (
+            ["google_ai"] if target_type is TargetType.CREATOR else []
+        )
         assert len(ClosableGateway.instances) == closable_count
         assert not any(instance.closed for instance in ClosableGateway.instances)
+
+    assert all(instance.closed for instance in ClosableGateway.instances)
+
+
+def test_creator_runtime_adds_google_email_research_only_when_key_is_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ClosableGateway.instances = []
+    loaded: list[tuple[str, ...]] = []
+
+    class Secrets:
+        def load(self, services):
+            loaded.append(tuple(services))
+            return {service: f"{service}-test-key" for service in services}
+
+        def load_optional(self, service):
+            assert service == "google_ai"
+            return "google-ai-test-key"
+
+    for name in (
+        "YouTubeGateway",
+        "DeepSeekGateway",
+        "GeminiEmailResearchGateway",
+        "S3ArtifactStore",
+    ):
+        monkeypatch.setattr(f"app.analysis.runtime.{name}", ClosableGateway)
+    monkeypatch.setattr("app.analysis.runtime.CreatorMapReducePipeline", FakePipeline)
+    runtime = ProductionAnalysisRuntime(
+        settings=get_settings(),
+        session_factory=lambda: None,
+        secret_provider=Secrets(),
+    )
+
+    with runtime.pipeline_for(TargetType.CREATOR) as pipeline:
+        assert isinstance(pipeline, FakePipeline)
+        email_research = pipeline.dependencies["email_research"]
+        assert email_research.kwargs == {
+            "api_key": "google-ai-test-key",
+            "base_url": get_settings().google_ai_api_base_url,
+        }
+        assert loaded == [("youtube", "deepseek")]
+        assert len(ClosableGateway.instances) == 4
 
     assert all(instance.closed for instance in ClosableGateway.instances)
 

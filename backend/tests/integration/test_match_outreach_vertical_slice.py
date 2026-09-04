@@ -439,10 +439,12 @@ def test_match_to_accepted_response_vertical_slice(
     assert recommended["creator"]["id"] == str(creator.id)
     assert recommended["creator"]["contact"] == {
         "email": "vertical.creator@example.com",
+        "purpose": None,
         "source": "manual",
         "source_url": None,
         "validation_state": "verified",
     }
+    assert recommended["creator"]["contacts"] == [recommended["creator"]["contact"]]
     assert recommended["creator"]["subscriber_count"] == 12345
 
     batch_response = auth_client.post(

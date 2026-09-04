@@ -331,11 +331,21 @@ def test_openapi_send_batch_requests_and_responses_are_closed_and_secret_free(
     assert set(components["OutreachSendBatchRequest"]["properties"]) == {
         "match_task_id",
         "creator_ids",
+        "recipient_selections",
         "template_id",
         "subject_override",
         "body_markdown_override",
     }
     assert components["OutreachSendBatchRequest"]["additionalProperties"] is False
+    assert set(components["OutreachRecipientSelection"]["properties"]) == {
+        "creator_id",
+        "email",
+    }
+    assert components["OutreachRecipientSelection"]["additionalProperties"] is False
+    assert components["OutreachRecipientSelection"]["required"] == [
+        "creator_id",
+        "email",
+    ]
     assert (
         components["OutreachSendBatchRequest"]["properties"]["subject_override"]["type"]
         == "string"

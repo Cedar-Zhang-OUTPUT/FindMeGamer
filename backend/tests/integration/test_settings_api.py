@@ -83,7 +83,7 @@ def test_reanalysis_rejects_disabled_out_of_range_or_incomplete_values(
     assert response.json()["error"]["code"] == "request_invalid"
 
 
-@pytest.mark.parametrize("service", ["steam", "youtube", "deepseek"])
+@pytest.mark.parametrize("service", ["steam", "youtube", "deepseek", "google_ai"])
 def test_settings_support_only_approved_connection_services(
     auth_client, service: str
 ) -> None:
@@ -135,18 +135,16 @@ def test_unknown_connection_service_wins_over_body_validation(auth_client) -> No
     assert response.json()["error"]["code"] == "connection_service_unknown"
 
 
-def test_connection_read_never_returns_plaintext(
-    auth_client, session: Session
-) -> None:
-    plaintext = "yt-key-never-store-in-plaintext"
+def test_connection_read_never_returns_plaintext(auth_client, session: Session) -> None:
+    plaintext = "google-ai-key-never-store-in-plaintext"
     auth_client.put(
-        "/api/v1/settings/connections/youtube", json={"secret": plaintext}
+        "/api/v1/settings/connections/google_ai", json={"secret": plaintext}
     )
 
-    body = auth_client.get("/api/v1/settings/connections/youtube").json()
+    body = auth_client.get("/api/v1/settings/connections/google_ai").json()
     session.expire_all()
     stored = session.scalar(
-        select(ServiceSecret).where(ServiceSecret.service == "youtube")
+        select(ServiceSecret).where(ServiceSecret.service == "google_ai")
     )
 
     assert body["configured"] is True
@@ -197,15 +195,17 @@ def test_connection_probe_success_records_safe_status_after_read_transaction_clo
     auth_client, session: Session, connection_probe
 ) -> None:
     auth_client.put(
-        "/api/v1/settings/connections/deepseek",
-        json={"secret": "deepseek-secret"},
+        "/api/v1/settings/connections/google_ai",
+        json={"secret": "google-ai-secret"},
     )
-    connection_probe.expected = ("deepseek", "deepseek-secret")
-    connection_probe.before_test = lambda: (_ for _ in ()).throw(
-        AssertionError("database transaction held during probe")
-    ) if session.in_transaction() else None
+    connection_probe.expected = ("google_ai", "google-ai-secret")
+    connection_probe.before_test = lambda: (
+        (_ for _ in ()).throw(AssertionError("database transaction held during probe"))
+        if session.in_transaction()
+        else None
+    )
 
-    response = auth_client.post("/api/v1/settings/connections/deepseek")
+    response = auth_client.post("/api/v1/settings/connections/google_ai")
 
     assert response.status_code == 200
     assert response.json()["configured"] is True
@@ -238,9 +238,7 @@ def test_connection_probe_exception_is_sanitized_in_api_and_logs(
     connection_probe.error = TimeoutError(
         f"upstream failure includes credential={secret}"
     )
-    auth_client.put(
-        "/api/v1/settings/connections/youtube", json={"secret": secret}
-    )
+    auth_client.put("/api/v1/settings/connections/youtube", json={"secret": secret})
 
     response = auth_client.post("/api/v1/settings/connections/youtube")
 
@@ -263,9 +261,7 @@ def test_connection_decryption_failure_uses_safe_public_error(
     auth_client, session: Session, captured_logs
 ) -> None:
     secret = "corrupted-key-never-expose"
-    auth_client.put(
-        "/api/v1/settings/connections/deepseek", json={"secret": secret}
-    )
+    auth_client.put("/api/v1/settings/connections/deepseek", json={"secret": secret})
     session.expire_all()
     stored = session.scalar(
         select(ServiceSecret).where(ServiceSecret.service == "deepseek")

@@ -27,10 +27,12 @@ class ProductionConnectionProbe:
         *,
         deepseek_base_url: str,
         youtube_base_url: str,
+        google_ai_base_url: str,
         http_client: httpx.Client | None = None,
     ) -> None:
         self._deepseek_base_url = validate_external_base_url(deepseek_base_url)
         self._youtube_base_url = validate_external_base_url(youtube_base_url)
+        self._google_ai_base_url = validate_external_base_url(google_ai_base_url)
         self._http_client = http_client
 
     def test_connection(self, service: str, secret: str) -> bool:
@@ -47,6 +49,11 @@ class ProductionConnectionProbe:
                     f"{self._youtube_base_url}/channels",
                     headers={"X-Goog-Api-Key": secret},
                     params={"part": "id", "id": YOUTUBE_PROBE_CHANNEL_ID},
+                )
+            if service == "google_ai":
+                return self._get_succeeded(
+                    self._google_ai_base_url,
+                    headers={"X-Goog-Api-Key": secret},
                 )
         except httpx.HTTPError:
             return False

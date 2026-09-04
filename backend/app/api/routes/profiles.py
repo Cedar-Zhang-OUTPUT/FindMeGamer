@@ -193,45 +193,45 @@ def _creator_youtube_is_stale(source_status: object) -> bool:
     )
 
 
-def _selected_contact(
+def _available_contacts(
     creator: CreatorProfile, *, manual_only: bool = False
-) -> CreatorContactResponse | None:
+) -> list[CreatorContactResponse]:
     active = [contact for contact in creator.contacts if contact.is_active]
-    manual = sorted(
-        (contact for contact in active if contact.is_manual),
-        key=lambda contact: (contact.created_at, str(contact.id)),
+    if manual_only:
+        active = [contact for contact in active if contact.is_manual]
+    validation_rank = {
+        "verified": 3,
+        "valid": 2,
+        "unverified": 1,
+        "invalid": 0,
+    }
+    ordered = sorted(
+        active,
+        key=lambda contact: (
+            0 if contact.is_manual else 1,
+            -contact.priority,
+            -validation_rank.get(contact.validation_state.casefold(), -1),
+            contact.created_at,
+            str(contact.id),
+        ),
     )
-    if manual:
-        selected = manual[0]
-        source = "manual"
-    else:
-        if manual_only:
-            return None
-        validation_rank = {
-            "verified": 3,
-            "valid": 2,
-            "unverified": 1,
-            "invalid": 0,
-        }
-        discovered = sorted(
-            (contact for contact in active if not contact.is_manual),
-            key=lambda contact: (
-                -contact.priority,
-                -validation_rank.get(contact.validation_state.casefold(), -1),
-                contact.created_at,
-                str(contact.id),
-            ),
+    projected: list[CreatorContactResponse] = []
+    seen: set[str] = set()
+    for contact in ordered:
+        email_key = contact.email.casefold()
+        if email_key in seen:
+            continue
+        seen.add(email_key)
+        projected.append(
+            CreatorContactResponse(
+                email=contact.email,
+                purpose=contact.purpose,
+                source="manual" if contact.is_manual else contact.source_type,
+                source_url=contact.source_url,
+                validation_state=contact.validation_state,
+            )
         )
-        if not discovered:
-            return None
-        selected = discovered[0]
-        source = selected.source_type
-    return CreatorContactResponse(
-        email=selected.email,
-        source=source,
-        source_url=selected.source_url,
-        validation_state=selected.validation_state,
-    )
+    return projected
 
 
 def _game_card(profile: GameProfile) -> GameProfileCard:
@@ -260,6 +260,7 @@ def _game_detail(profile: GameProfile) -> GameProfileDetail:
 
 def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
     stale = _creator_youtube_is_stale(profile.source_status)
+    contacts = _available_contacts(profile, manual_only=stale)
     current_facts = {} if stale else profile.current_facts
     brief = {} if stale else profile.brief
     return CreatorProfileCard(
@@ -273,7 +274,8 @@ def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
         source_status=public_json_object(profile.source_status),
         last_analyzed_at=profile.last_analyzed_at,
         next_analysis_at=profile.next_analysis_at,
-        contact=_selected_contact(profile, manual_only=stale),
+        contact=contacts[0] if contacts else None,
+        contacts=contacts,
     )
 
 

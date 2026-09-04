@@ -39,6 +39,37 @@ def test_initial_migration_creates_core_tables(database_inspector) -> None:
     assert CORE_TABLES <= names
 
 
+def test_creator_contact_purpose_migrates_from_and_back_to_0006(
+    migrated_database: None, alembic_config, database_engine
+) -> None:
+    try:
+        command.downgrade(alembic_config, "20260904_0006")
+        assert "purpose" not in {
+            column["name"]
+            for column in inspect(database_engine).get_columns("creator_contacts")
+        }
+
+        command.upgrade(alembic_config, "head")
+        columns = {
+            column["name"]: column
+            for column in inspect(database_engine).get_columns("creator_contacts")
+        }
+        assert columns["purpose"]["nullable"] is True
+        with database_engine.connect() as connection:
+            assert (
+                connection.scalar(text("SELECT version_num FROM alembic_version"))
+                == "20260904_0007"
+            )
+
+        command.downgrade(alembic_config, "20260904_0006")
+        assert "purpose" not in {
+            column["name"]
+            for column in inspect(database_engine).get_columns("creator_contacts")
+        }
+    finally:
+        command.upgrade(alembic_config, "head")
+
+
 def test_initial_migration_seeds_shared_defaults(session: Session) -> None:
     settings = session.scalar(select(SharedSettings))
     assert settings is not None
@@ -715,7 +746,7 @@ def test_runtime_job_mutation_and_public_state_migration_share_lock_order(
         with database_engine.connect() as verification:
             assert (
                 verification.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260904_0006"
+                == "20260904_0007"
             )
     finally:
         release_worker.set()
@@ -806,7 +837,7 @@ def test_public_state_migration_does_not_deadlock_frozen_old_writer_order(
         with database_engine.connect() as verification:
             assert (
                 verification.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260904_0006"
+                == "20260904_0007"
             )
             assert (
                 verification.scalar(

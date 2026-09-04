@@ -18,7 +18,7 @@ from app.schemas.settings import (
 )
 
 
-ALLOWED_CONNECTION_SERVICES = frozenset({"steam", "youtube", "deepseek"})
+ALLOWED_CONNECTION_SERVICES = frozenset({"steam", "youtube", "deepseek", "google_ai"})
 
 
 class ConnectionProbe(Protocol):

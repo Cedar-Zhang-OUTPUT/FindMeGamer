@@ -413,6 +413,9 @@ def test_preview_and_create_require_complete_smtp_configuration(
         session, [("Alpha", "alpha@example.com")]
     )
     _create_template(auth_client)
+    idempotency_before = session.scalar(
+        select(func.count()).select_from(IdempotencyRecord)
+    )
 
     preview = auth_client.post(
         f"{SEND_BATCH_PATH}/preview", json=_payload(task, creators)
@@ -423,7 +426,10 @@ def test_preview_and_create_require_complete_smtp_configuration(
     assert preview.json()["error"]["code"] == "smtp_not_configured"
     assert created.json()["error"]["code"] == "smtp_not_configured"
     assert session.scalar(select(func.count()).select_from(SendBatch)) == 0
-    assert session.scalar(select(func.count()).select_from(IdempotencyRecord)) == 0
+    assert (
+        session.scalar(select(func.count()).select_from(IdempotencyRecord))
+        == idempotency_before
+    )
 
 
 def test_match_campaign_membership_and_render_validation_are_atomic(
@@ -434,6 +440,9 @@ def test_match_campaign_membership_and_render_validation_are_atomic(
     )
     template = _configure(auth_client)
     outsider = _create_creator(session, "Outsider", "outside@example.com")
+    idempotency_before = session.scalar(
+        select(func.count()).select_from(IdempotencyRecord)
+    )
 
     not_a_member = _create_batch(
         auth_client,
@@ -466,7 +475,10 @@ def test_match_campaign_membership_and_render_validation_are_atomic(
     assert missing_campaign.json()["error"]["code"] == "outreach_campaign_invalid"
     assert session.scalar(select(func.count()).select_from(SendBatch)) == 0
     assert session.scalar(select(func.count()).select_from(Delivery)) == 0
-    assert session.scalar(select(func.count()).select_from(IdempotencyRecord)) == 0
+    assert (
+        session.scalar(select(func.count()).select_from(IdempotencyRecord))
+        == idempotency_before
+    )
 
 
 def test_corrupt_template_snapshot_is_a_safe_atomic_validation_error(
@@ -480,6 +492,9 @@ def test_corrupt_template_snapshot_is_a_safe_atomic_validation_error(
     assert selected is not None
     selected.accepted_label = "   "
     session.flush()
+    idempotency_before = session.scalar(
+        select(func.count()).select_from(IdempotencyRecord)
+    )
 
     response = _create_batch(
         auth_client, _payload(task, creators), "corrupt-template-snapshot"
@@ -489,7 +504,10 @@ def test_corrupt_template_snapshot_is_a_safe_atomic_validation_error(
     assert response.json()["error"]["code"] == "template_invalid"
     assert session.scalar(select(func.count()).select_from(SendBatch)) == 0
     assert session.scalar(select(func.count()).select_from(Delivery)) == 0
-    assert session.scalar(select(func.count()).select_from(IdempotencyRecord)) == 0
+    assert (
+        session.scalar(select(func.count()).select_from(IdempotencyRecord))
+        == idempotency_before
+    )
 
 
 def test_contact_selection_matches_manual_and_stale_profile_policy(
@@ -530,11 +548,121 @@ def test_contact_selection_matches_manual_and_stale_profile_policy(
     with_manual = auth_client.post(
         f"{SEND_BATCH_PATH}/preview", json=_payload(task, creators)
     )
+    stale_discovered_selection = auth_client.post(
+        f"{SEND_BATCH_PATH}/preview",
+        json=_payload(
+            task,
+            creators,
+            recipient_selections=[
+                {"creator_id": str(creator.id), "email": "discovered@example.com"}
+            ],
+        ),
+    )
 
     assert stale_without_manual.status_code == 422
     assert stale_without_manual.json()["error"]["code"] == "recipient_email_unavailable"
     assert with_manual.status_code == 200
     assert with_manual.json()["items"][0]["recipient_email"] == "manual@example.com"
+    assert stale_discovered_selection.status_code == 422
+    assert (
+        stale_discovered_selection.json()["error"]["code"]
+        == "recipient_email_selection_invalid"
+    )
+
+
+def test_multiple_emails_require_one_explicit_valid_recipient_selection(
+    auth_client, session: Session
+) -> None:
+    task, creators, _campaign = _published_match(session, [("Alpha", None)])
+    creator = creators[0]
+    for priority, email in enumerate(("business@example.com", "press@example.com"), 1):
+        session.add(
+            CreatorContact(
+                creator_id=creator.id,
+                email=email,
+                source_type="public_web_research",
+                purpose="Business" if priority == 1 else "Press",
+                validation_state="unverified",
+                priority=priority,
+                is_active=True,
+            )
+        )
+    session.flush()
+    _configure(auth_client)
+
+    missing = auth_client.post(
+        f"{SEND_BATCH_PATH}/preview", json=_payload(task, creators)
+    )
+    invalid = auth_client.post(
+        f"{SEND_BATCH_PATH}/preview",
+        json=_payload(
+            task,
+            creators,
+            recipient_selections=[
+                {"creator_id": str(creator.id), "email": "other@example.com"}
+            ],
+        ),
+    )
+    selected_payload = _payload(
+        task,
+        creators,
+        recipient_selections=[
+            {"creator_id": str(creator.id), "email": "press@example.com"}
+        ],
+    )
+    selected = auth_client.post(
+        f"{SEND_BATCH_PATH}/preview",
+        json=selected_payload,
+    )
+    created = _create_batch(auth_client, selected_payload, "selected-recipient")
+
+    assert missing.status_code == 422
+    assert missing.json()["error"]["code"] == "recipient_email_selection_required"
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "recipient_email_selection_invalid"
+    assert selected.status_code == 200
+    assert len(selected.json()["items"]) == 1
+    assert selected.json()["items"][0]["recipient_email"] == "press@example.com"
+    assert created.status_code == 201
+    assert [item["recipient_email"] for item in created.json()["deliveries"]] == [
+        "press@example.com"
+    ]
+    deliveries = session.scalars(
+        select(Delivery).where(Delivery.creator_id == creator.id)
+    ).all()
+    assert len(deliveries) == 1
+    assert deliveries[0].recipient_email == "press@example.com"
+
+
+def test_recipient_selections_reject_duplicates_and_creators_outside_request(
+    auth_client, session: Session
+) -> None:
+    task, creators, _campaign = _published_match(
+        session,
+        [("Alpha", "alpha@example.com"), ("Beta", "beta@example.com")],
+    )
+    _configure(auth_client)
+    duplicate = [
+        {"creator_id": str(creators[0].id), "email": "alpha@example.com"},
+        {"creator_id": str(creators[0].id), "email": "alpha@example.com"},
+    ]
+    extra = [
+        {"creator_id": str(creators[1].id), "email": "beta@example.com"},
+    ]
+
+    duplicate_response = auth_client.post(
+        f"{SEND_BATCH_PATH}/preview",
+        json=_payload(task, [creators[0]], recipient_selections=duplicate),
+    )
+    extra_response = auth_client.post(
+        f"{SEND_BATCH_PATH}/preview",
+        json=_payload(task, [creators[0]], recipient_selections=extra),
+    )
+
+    assert duplicate_response.status_code == 422
+    assert duplicate_response.json()["error"]["code"] == "request_invalid"
+    assert extra_response.status_code == 422
+    assert extra_response.json()["error"]["code"] == "recipient_email_selection_invalid"
 
 
 def test_create_persists_atomic_secret_free_batch_and_replays_byte_equivalently(
@@ -606,13 +734,19 @@ def test_invalid_recipient_rejects_entire_batch(auth_client, session: Session) -
         session, [("Ready", "ready@example.com"), ("Missing", None)]
     )
     _configure(auth_client)
+    idempotency_before = session.scalar(
+        select(func.count()).select_from(IdempotencyRecord)
+    )
 
     response = _create_batch(auth_client, _payload(task, creators))
 
     assert response.status_code == 422
     assert session.scalar(select(func.count()).select_from(SendBatch)) == 0
     assert session.scalar(select(func.count()).select_from(Delivery)) == 0
-    assert session.scalar(select(func.count()).select_from(IdempotencyRecord)) == 0
+    assert (
+        session.scalar(select(func.count()).select_from(IdempotencyRecord))
+        == idempotency_before
+    )
 
 
 def test_duplicate_send_requires_resend_endpoint(auth_client, session: Session) -> None:

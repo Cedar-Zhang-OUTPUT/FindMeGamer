@@ -30,7 +30,9 @@ from app.schemas.ai_creator_map_reduce import (
 )
 
 from .test_creator_pipeline import (
+    EmailResearchRecord,
     FakeArtifacts,
+    FakeEmailResearch,
     FakePages,
     FakeService,
     FakeYouTube,
@@ -255,12 +257,14 @@ def _twenty_video_source():
     )
 
 
-def _pipeline(*, source=None, ai=None, checkpoints=None):
+def _pipeline(
+    *, source=None, ai=None, checkpoints=None, pages=None, email_research=None
+):
     service = FakeService()
     source = source or _twenty_video_source()
     youtube = FakeYouTube(source, service)
     artifacts = FakeArtifacts(service)
-    pages = FakePages(
+    pages = pages or FakePages(
         {
             "https://creator.example/about": Page(
                 "https://creator.example/about", "Business: team@example.com"
@@ -277,8 +281,14 @@ def _pipeline(*, source=None, ai=None, checkpoints=None):
         deepseek=ai,
         checkpoints=checkpoints,
         max_parallel_calls=5,
+        email_research=email_research,
     )
     return pipeline, service, youtube, artifacts, ai, checkpoints
+
+
+def test_contact_and_dependent_brief_checkpoint_versions_are_v2() -> None:
+    assert CONTACT_NODE_KEY == "contact:v2"
+    assert BRIEF_NODE_KEY == "brief:v2"
 
 
 def test_pipeline_runs_bounded_batches_concurrently_and_finalizes() -> None:
@@ -348,6 +358,51 @@ def test_failed_parallel_wave_harvests_other_successes_before_retry() -> None:
     assert [call[1] for call in batch_calls].count(0) == 2
     assert [call[1] for call in batch_calls].count(1) == 1
     assert youtube.calls == [("UCcreator123", 50)]
+
+
+def test_failed_email_research_is_not_checkpointed_and_retry_reuses_parallel_work() -> (
+    None
+):
+    source = _twenty_video_source().model_copy(
+        update={"description": "No public contact information."}
+    )
+    research = FakeEmailResearch(TransientIntegrationError("gemini_email_unavailable"))
+    ai = ConcurrentAI()
+    pipeline, service, youtube, _, ai, checkpoints = _pipeline(
+        source=source,
+        ai=ai,
+        pages=FakePages({}),
+        email_research=research,
+    )
+
+    with pytest.raises(TransientIntegrationError, match="gemini_email_unavailable"):
+        pipeline.run(service.job_id)
+
+    assert CONTACT_NODE_KEY not in checkpoints.values
+    assert f"{BATCH_NODE_PREFIX}00" in checkpoints.values
+    assert f"{BATCH_NODE_PREFIX}01" in checkpoints.values
+    assert VISUAL_NODE_KEY in checkpoints.values
+    assert not any(key in checkpoints.values for key in REDUCTION_NODE_KEYS.values())
+    calls_before_retry = len(ai.calls)
+    vision_calls_before_retry = ai.vision_calls
+
+    research.result = (
+        EmailResearchRecord(
+            email="creator@example.com",
+            usage="Business inquiries",
+            source="https://agency.example/creator",
+        ),
+    )
+    assert pipeline.run(service.job_id) == service.profile_id
+
+    assert len(research.calls) == 2
+    assert youtube.calls == [("UCcreator123", 50)]
+    assert ai.vision_calls == vision_calls_before_retry
+    assert len(ai.calls) == calls_before_retry + 5
+    assert CONTACT_NODE_KEY in checkpoints.values
+    assert service.publication is not None
+    assert service.publication.contacts.public_email is not None
+    assert service.publication.contacts.public_email.value == "creator@example.com"
 
 
 def test_source_checkpoint_is_curated_and_excludes_raw_provider_envelopes() -> None:

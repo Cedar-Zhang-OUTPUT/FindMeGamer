@@ -122,41 +122,42 @@ def _creator_is_stale(source_status: object) -> bool:
     return isinstance(sources, dict) and is_stale(sources.get("youtube"))
 
 
-def _selected_contact(
+def _available_contacts(
     contacts: list[CreatorContact], *, manual_only: bool
-) -> MatchCreatorContact | None:
+) -> list[MatchCreatorContact]:
     active = [value for value in contacts if value.is_active]
-    manual = sorted(
-        (value for value in active if value.is_manual),
-        key=lambda value: (value.created_at, str(value.id)),
+    if manual_only:
+        active = [value for value in active if value.is_manual]
+    validation_rank = {"verified": 3, "valid": 2, "unverified": 1, "invalid": 0}
+    ordered = sorted(
+        active,
+        key=lambda value: (
+            0 if value.is_manual else 1,
+            -value.priority,
+            -validation_rank.get(value.validation_state.casefold(), -1),
+            value.created_at,
+            str(value.id),
+        ),
     )
-    if manual:
-        selected, source = manual[0], "manual"
-    else:
-        if manual_only:
-            return None
-        validation_rank = {"verified": 3, "valid": 2, "unverified": 1, "invalid": 0}
-        discovered = sorted(
-            (value for value in active if not value.is_manual),
-            key=lambda value: (
-                -value.priority,
-                -validation_rank.get(value.validation_state.casefold(), -1),
-                value.created_at,
-                str(value.id),
-            ),
-        )
-        if not discovered:
-            return None
-        selected, source = discovered[0], discovered[0].source_type
-    try:
-        return MatchCreatorContact(
-            email=selected.email,
-            source=source,
-            source_url=selected.source_url,
-            validation_state=selected.validation_state,
-        )
-    except ValidationError:
-        return None
+    projected: list[MatchCreatorContact] = []
+    seen: set[str] = set()
+    for value in ordered:
+        email_key = value.email.casefold()
+        if email_key in seen:
+            continue
+        try:
+            contact = MatchCreatorContact(
+                email=value.email,
+                purpose=value.purpose,
+                source="manual" if value.is_manual else value.source_type,
+                source_url=value.source_url,
+                validation_state=value.validation_state,
+            )
+        except ValidationError:
+            continue
+        seen.add(email_key)
+        projected.append(contact)
+    return projected
 
 
 def _smtp_identity(session: Session, *, lock: bool) -> _SMTPIdentity:
@@ -296,6 +297,17 @@ def _load_composition(
     for row in session.scalars(contact_statement).all():
         contacts[row.creator_id].append(row)
 
+    selections = {
+        selection.creator_id: str(selection.email)
+        for selection in request.recipient_selections
+    }
+    if not set(selections).issubset(request.creator_ids):
+        raise _error(
+            422,
+            "recipient_email_selection_invalid",
+            "Every recipient selection must belong to a requested Creator.",
+        )
+
     game = session.get(GameProfile, task.game_id)
     if game is None:
         raise _error(409, "match_result_invalid", "The Match result is invalid.")
@@ -321,15 +333,38 @@ def _load_composition(
                 "creator_not_in_match",
                 "Every Creator must belong to the Match result.",
             )
-        selected = _selected_contact(
+        available = _available_contacts(
             contacts[creator_id], manual_only=_creator_is_stale(creator.source_status)
         )
-        if selected is None:
+        if not available:
             raise _error(
                 422,
                 "recipient_email_unavailable",
                 "Every Creator must have an active email address.",
             )
+        requested_email = selections.get(creator_id)
+        if requested_email is None and len(available) > 1:
+            raise _error(
+                422,
+                "recipient_email_selection_required",
+                "Select exactly one active email for every Creator with multiple emails.",
+            )
+        selected = available[0]
+        if requested_email is not None:
+            selected = next(
+                (
+                    contact
+                    for contact in available
+                    if str(contact.email).casefold() == requested_email.casefold()
+                ),
+                None,
+            )
+            if selected is None:
+                raise _error(
+                    422,
+                    "recipient_email_selection_invalid",
+                    "The selected email is not active for this Creator.",
+                )
         current = (
             creator.current_facts if isinstance(creator.current_facts, dict) else {}
         )

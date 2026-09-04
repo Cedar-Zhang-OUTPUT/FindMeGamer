@@ -322,6 +322,24 @@ class SMTPTestResult(OutreachValue):
     last_tested_at: datetime
 
 
+class OutreachRecipientSelection(OutreachValue):
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        strict=False,
+        validate_default=True,
+        hide_input_in_errors=True,
+    )
+
+    creator_id: UUID
+    email: EmailStr
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+
 class OutreachSendBatchRequest(OutreachValue):
     model_config = ConfigDict(
         extra="forbid",
@@ -333,6 +351,9 @@ class OutreachSendBatchRequest(OutreachValue):
 
     match_task_id: UUID
     creator_ids: list[UUID] = Field(min_length=1, max_length=30)
+    recipient_selections: list[OutreachRecipientSelection] = Field(
+        default_factory=list, max_length=30
+    )
     template_id: UUID | None = None
     subject_override: str | SkipJsonSchema[None] = None
     body_markdown_override: str | SkipJsonSchema[None] = None
@@ -342,6 +363,16 @@ class OutreachSendBatchRequest(OutreachValue):
     def require_unique_creators(cls, values: list[UUID]) -> list[UUID]:
         if len(values) != len(set(values)):
             raise ValueError("Creator IDs must be unique")
+        return values
+
+    @field_validator("recipient_selections")
+    @classmethod
+    def require_unique_recipient_creators(
+        cls, values: list[OutreachRecipientSelection]
+    ) -> list[OutreachRecipientSelection]:
+        creator_ids = [value.creator_id for value in values]
+        if len(creator_ids) != len(set(creator_ids)):
+            raise ValueError("Recipient selections must have unique Creator IDs")
         return values
 
     @field_validator("subject_override", "body_markdown_override")
@@ -515,6 +546,7 @@ __all__ = [
     "OutreachTemplateResponse",
     "OutreachTemplateUpdate",
     "OutreachDeliverySummary",
+    "OutreachRecipientSelection",
     "OutreachSendBatchPreview",
     "OutreachSendBatchPreviewItem",
     "OutreachSendBatchRequest",

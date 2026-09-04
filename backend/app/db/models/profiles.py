@@ -78,6 +78,7 @@ class CreatorContact(TimestampMixin, Base):
         ForeignKey("creator_profiles.id", ondelete="CASCADE"), nullable=False, index=True
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False)
+    purpose: Mapped[str | None] = mapped_column(String(512))
     source_type: Mapped[str] = mapped_column(String(32), nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text)
     is_manual: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

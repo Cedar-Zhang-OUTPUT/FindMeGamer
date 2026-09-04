@@ -19,10 +19,11 @@ from app.analysis.creator_metrics import (
 from app.analysis.creator_pipeline import (
     VISION_MODEL,
     CreatorAnalysisPipeline,
+    CreatorEmailResearchGateway,
     DeepSeekCreatorGateway,
     PublicPageGateway,
     YouTubeCreatorGateway,
-    _discover_creator_contacts,
+    _discover_creator_contacts_with_research,
     unavailable_visual_analysis,
 )
 from app.analysis.prompts.common import InvalidVisualAssetInput, render_vision_prompt
@@ -69,14 +70,14 @@ MAX_PARALLEL_CALLS = 5
 SOURCE_NODE_KEY = "source:v1"
 BATCH_NODE_PREFIX = "batch:v1:"
 VISUAL_NODE_KEY = "visual:v1"
-CONTACT_NODE_KEY = "contact:v1"
+CONTACT_NODE_KEY = "contact:v2"
 REDUCTION_NODE_KEYS = {
     "content_format": "reduce:v1:content-format",
     "presentation": "reduce:v1:presentation",
     "performance_audience": "reduce:v1:performance-audience",
     "commercial_safety": "reduce:v1:commercial-safety",
 }
-BRIEF_NODE_KEY = "brief:v1"
+BRIEF_NODE_KEY = "brief:v2"
 
 _NO_IMAGES_REASON = "No usable public static creator thumbnails were supplied."
 _VISION_FAILURE_REASON = (
@@ -228,6 +229,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
         deepseek: MapReduceDeepSeekGateway,
         checkpoints: CreatorCheckpointStore,
         max_parallel_calls: int = MAX_PARALLEL_CALLS,
+        email_research: CreatorEmailResearchGateway | None = None,
     ) -> None:
         if (
             type(max_parallel_calls) is not int
@@ -240,6 +242,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
             artifacts=artifacts,
             public_pages=public_pages,
             deepseek=deepseek,
+            email_research=email_research,
         )
         self._checkpoints = checkpoints
         self._max_parallel_calls = max_parallel_calls
@@ -591,7 +594,11 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
         return unavailable_visual_analysis(_VISION_FAILURE_REASON)
 
     def _contact_checkpoint(self, source: CreatorSource) -> CreatorContactCheckpoint:
-        evidence, status = _discover_creator_contacts(source, pages=self._public_pages)
+        evidence, status = _discover_creator_contacts_with_research(
+            source,
+            pages=self._public_pages,
+            email_research=self._email_research,
+        )
         return CreatorContactCheckpoint(evidence=evidence, status=status)
 
     def _run_parallel(

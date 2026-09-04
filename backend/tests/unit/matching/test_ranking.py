@@ -349,10 +349,20 @@ def _creator_card() -> dict[str, object]:
         "contact_available": True,
         "contact": {
             "email": "creator@example.com",
+            "purpose": None,
             "source": "manual",
             "source_url": None,
             "validation_state": "verified",
         },
+        "contacts": [
+            {
+                "email": "creator@example.com",
+                "purpose": None,
+                "source": "manual",
+                "source_url": None,
+                "validation_state": "verified",
+            }
+        ],
     }
 
 
@@ -499,6 +509,7 @@ def test_fastapi_match_response_contains_only_explicit_closed_fields() -> None:
         "performance_summary",
         "contact_available",
         "contact",
+        "contacts",
     }
     rendered = response.text
     assert all(

@@ -622,6 +622,17 @@
             "title": "Email",
             "type": "string"
           },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
           "source": {
             "title": "Source",
             "type": "string"
@@ -699,6 +710,13 @@
                 "type": "null"
               }
             ]
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/CreatorContactResponse"
+            },
+            "title": "Contacts",
+            "type": "array"
           },
           "current_facts": {
             "$ref": "#/components/schemas/PublicJSONObject"
@@ -791,6 +809,13 @@
                 "type": "null"
               }
             ]
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/CreatorContactResponse"
+            },
+            "title": "Contacts",
+            "type": "array"
           },
           "current_facts": {
             "$ref": "#/components/schemas/PublicJSONObject"
@@ -1338,6 +1363,13 @@
             "title": "Contact Available",
             "type": "boolean"
           },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/MatchCreatorContact"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
           "favorite": {
             "title": "Favorite",
             "type": "boolean"
@@ -1424,6 +1456,17 @@
             "format": "email",
             "title": "Email",
             "type": "string"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
           },
           "source": {
             "title": "Source",
@@ -2565,6 +2608,27 @@
         "title": "OutreachDeliverySummary",
         "type": "object"
       },
+      "OutreachRecipientSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "creator_id": {
+            "format": "uuid",
+            "title": "Creator Id",
+            "type": "string"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "creator_id",
+          "email"
+        ],
+        "title": "OutreachRecipientSelection",
+        "type": "object"
+      },
       "OutreachSMTPError": {
         "additionalProperties": false,
         "properties": {
@@ -2781,6 +2845,14 @@
             "format": "uuid",
             "title": "Match Task Id",
             "type": "string"
+          },
+          "recipient_selections": {
+            "items": {
+              "$ref": "#/components/schemas/OutreachRecipientSelection"
+            },
+            "maxItems": 30,
+            "title": "Recipient Selections",
+            "type": "array"
           },
           "subject_override": {
             "title": "Subject Override",

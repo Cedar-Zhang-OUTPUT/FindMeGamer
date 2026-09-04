@@ -29,6 +29,7 @@ from app.integrations.errors import (
     TransientIntegrationError,
 )
 from app.integrations.filesystem import FilesystemArtifactStore
+from app.integrations.gemini_email import GeminiEmailResearchGateway
 from app.integrations.public_pages import PublicPageGateway
 from app.integrations.s3 import S3ArtifactStore
 from app.integrations.steam import SteamGateway
@@ -73,6 +74,8 @@ def _owned_resources():
 class SecretProvider(Protocol):
     def load(self, services: Iterable[str]) -> dict[str, str]: ...
 
+    def load_optional(self, service: str) -> str | None: ...
+
 
 class ProductionSecretProvider:
     def __init__(
@@ -89,7 +92,10 @@ class ProductionSecretProvider:
         if (
             not required
             or len(required) != len(set(required))
-            or any(service not in {"youtube", "deepseek"} for service in required)
+            or any(
+                service not in {"youtube", "deepseek", "google_ai"}
+                for service in required
+            )
         ):
             raise PermanentIntegrationError("analysis_configuration_invalid")
         with self._session_factory() as session:
@@ -108,6 +114,25 @@ class ProductionSecretProvider:
         try:
             cipher = self._cipher_factory()
             return {service: cipher.decrypt(encrypted[service]) for service in required}
+        except Exception:
+            raise PermanentIntegrationError("analysis_configuration_invalid") from None
+
+    def load_optional(self, service: str) -> str | None:
+        if service not in {"youtube", "deepseek", "google_ai"}:
+            raise PermanentIntegrationError("analysis_configuration_invalid")
+        with self._session_factory() as session:
+            row = session.scalar(
+                select(ServiceSecret).where(ServiceSecret.service == service)
+            )
+            encrypted = (
+                EncryptedValue(ciphertext=bytes(row.ciphertext), nonce=bytes(row.nonce))
+                if row is not None
+                else None
+            )
+        if encrypted is None:
+            return None
+        try:
+            return self._cipher_factory().decrypt(encrypted)
         except Exception:
             raise PermanentIntegrationError("analysis_configuration_invalid") from None
 
@@ -153,6 +178,9 @@ class ProductionAnalysisRuntime:
                     secrets_by_service = self._secret_provider.load(
                         ("youtube", "deepseek")
                     )
+                    google_ai_key = self._secret_provider.load_optional("google_ai")
+                    if google_ai_key is not None:
+                        secrets_by_service["google_ai"] = google_ai_key
                     youtube = stack.enter_context(
                         YouTubeGateway(
                             api_key=secrets_by_service["youtube"],
@@ -166,6 +194,16 @@ class ProductionAnalysisRuntime:
                             base_url=self._settings.deepseek_api_base_url,
                         )
                     )
+                    email_research = (
+                        stack.enter_context(
+                            GeminiEmailResearchGateway(
+                                api_key=secrets_by_service["google_ai"],
+                                base_url=self._settings.google_ai_api_base_url,
+                            )
+                        )
+                        if "google_ai" in secrets_by_service
+                        else None
+                    )
                     yield CreatorMapReducePipeline(
                         service=CreatorAnalysisService(
                             session_factory=self._session_factory
@@ -174,6 +212,7 @@ class ProductionAnalysisRuntime:
                         artifacts=artifacts,
                         public_pages=PublicPageGateway(),
                         deepseek=deepseek,
+                        email_research=email_research,
                         checkpoints=CreatorAnalysisCheckpointStore(
                             session_factory=self._session_factory
                         ),

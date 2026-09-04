@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     steam_store_base_url: str = "https://store.steampowered.com/api"
     youtube_api_base_url: str = "https://www.googleapis.com/youtube/v3"
     deepseek_api_base_url: str = "https://api.deepseek.com"
+    google_ai_api_base_url: str = (
+        "https://generativelanguage.googleapis.com/v1beta/models"
+    )
     external_base_url: str = "https://find-me-gamer.example.invalid"
     s3_region: str = "us-east-1"
     s3_bucket: str = "find-me-gamer-artifacts"
@@ -132,6 +135,7 @@ class Settings(BaseSettings):
         "steam_store_base_url",
         "youtube_api_base_url",
         "deepseek_api_base_url",
+        "google_ai_api_base_url",
         "external_base_url",
         "s3_endpoint_url",
     )

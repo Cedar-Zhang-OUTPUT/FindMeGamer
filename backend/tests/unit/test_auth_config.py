@@ -84,6 +84,10 @@ def test_external_gateway_settings_have_canonical_server_only_defaults() -> None
     assert settings.steam_store_base_url == "https://store.steampowered.com/api"
     assert settings.youtube_api_base_url == "https://www.googleapis.com/youtube/v3"
     assert settings.deepseek_api_base_url == "https://api.deepseek.com"
+    assert (
+        settings.google_ai_api_base_url
+        == "https://generativelanguage.googleapis.com/v1beta/models"
+    )
     assert settings.external_base_url == "https://find-me-gamer.example.invalid"
     assert settings.s3_region == "us-east-1"
     assert settings.s3_bucket == "find-me-gamer-artifacts"
@@ -147,6 +151,11 @@ def test_artifact_store_environment_selects_filesystem(
         ("deepseek_api_base_url", "https://user@example.com"),
         ("deepseek_api_base_url", "https://api.deepseek.com?key=secret"),
         ("deepseek_api_base_url", "https://api.deepseek.com/#fragment"),
+        ("google_ai_api_base_url", "https://user@example.com/v1beta/models"),
+        (
+            "google_ai_api_base_url",
+            "https://generativelanguage.googleapis.com/v1beta/models?key=secret",
+        ),
         ("external_base_url", "http://find-me-gamer.example.com"),
         ("external_base_url", "https://user@example.com"),
         ("s3_endpoint_url", "http://s3.example.com"),
@@ -172,6 +181,7 @@ def test_external_gateway_settings_allow_loopback_http_and_strip_trailing_slash(
         steam_store_base_url="http://127.0.0.1:18080/steam/",
         youtube_api_base_url="http://localhost:18081/youtube/v3/",
         deepseek_api_base_url="http://[::1]:18082/v1/",
+        google_ai_api_base_url="http://localhost:18083/v1beta/models/",
         s3_endpoint_url="http://localhost:4566/",
         external_base_url="http://localhost:8000/",
     )
@@ -179,6 +189,7 @@ def test_external_gateway_settings_allow_loopback_http_and_strip_trailing_slash(
     assert settings.steam_store_base_url == "http://127.0.0.1:18080/steam"
     assert settings.youtube_api_base_url == "http://localhost:18081/youtube/v3"
     assert settings.deepseek_api_base_url == "http://[::1]:18082/v1"
+    assert settings.google_ai_api_base_url == "http://localhost:18083/v1beta/models"
     assert settings.s3_endpoint_url == "http://localhost:4566"
     assert settings.external_base_url == "http://localhost:8000"
 

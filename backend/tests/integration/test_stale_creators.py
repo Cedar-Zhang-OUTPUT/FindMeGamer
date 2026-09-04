@@ -483,6 +483,7 @@ def test_stale_creator_card_and_detail_hide_expired_content_and_discovered_conta
     assert card["brief"] == {}
     assert card["contact"] == {
         "email": "manual@example.com",
+        "purpose": None,
         "source": "manual",
         "source_url": None,
         "validation_state": "unverified",

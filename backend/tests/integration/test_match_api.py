@@ -397,6 +397,19 @@ def test_match_detail_groups_hidden_order_and_projects_current_creator_contact_o
         is_active=True,
     )
     session.add(contact)
+    session.add(
+        CreatorContact(
+            creator_id=creator.id,
+            email="press@example.com",
+            purpose="Press requests",
+            source_type="public_web_research",
+            source_url="https://creator.example/press",
+            is_manual=False,
+            validation_state="unverified",
+            priority=10,
+            is_active=True,
+        )
+    )
     screening = MatchScreeningRecord(
         match_task_id=task.id,
         creator_id=creator.id,
@@ -505,6 +518,12 @@ def test_match_detail_groups_hidden_order_and_projects_current_creator_contact_o
     assert current_visible["recent_average_views"] == 322
     assert current_visible["recent_median_views"] == 301
     assert current_visible["performance_summary"] == "Steady recent performance."
+    assert current_visible["contact"]["email"] == "manual@example.com"
+    assert [contact["email"] for contact in current_visible["contacts"]] == [
+        "manual@example.com",
+        "press@example.com",
+    ]
+    assert current_visible["contacts"][1]["purpose"] == "Press requests"
 
     creator.source_status = {"youtube": "stale", "freshness": "stale"}
     session.flush()
@@ -518,6 +537,9 @@ def test_match_detail_groups_hidden_order_and_projects_current_creator_contact_o
     visible = body["other_matches"][0]
     assert visible["creator"]["name"] == "Current Creator"
     assert visible["creator"]["contact"]["email"] == "manual@example.com"
+    assert [contact["email"] for contact in visible["creator"]["contacts"]] == [
+        "manual@example.com"
+    ]
     assert visible["creator"]["subscriber_count"] is None
     assert visible["creator"]["recent_average_views"] is None
     assert visible["outreach"]["send_state"] == "sent"

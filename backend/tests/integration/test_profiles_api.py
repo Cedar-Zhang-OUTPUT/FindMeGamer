@@ -203,7 +203,7 @@ def test_game_card_and_detail_are_distinct_typed_projections(
     assert "updated_at" not in detail
 
 
-def test_creator_card_and_detail_include_only_selected_contact(
+def test_creator_card_and_detail_include_ordered_active_contacts_and_selected_contact(
     auth_client, session: Session
 ) -> None:
     creator = add_creator(
@@ -227,8 +227,18 @@ def test_creator_card_and_detail_include_only_selected_contact(
                 email="selected@example.com",
                 source_type="website",
                 source_url="https://creator.example/contact",
+                purpose="Business inquiries",
                 validation_state="verified",
                 priority=10,
+                is_active=True,
+            ),
+            CreatorContact(
+                email="press@example.com",
+                source_type="public_web_research",
+                source_url="https://creator.example/press",
+                purpose="Press requests",
+                validation_state="unverified",
+                priority=5,
                 is_active=True,
             ),
         ]
@@ -242,6 +252,7 @@ def test_creator_card_and_detail_include_only_selected_contact(
         "email": "selected@example.com",
         "source": "website",
         "source_url": "https://creator.example/contact",
+        "purpose": "Business inquiries",
         "validation_state": "verified",
     }
     assert card == {
@@ -257,6 +268,16 @@ def test_creator_card_and_detail_include_only_selected_contact(
         "last_analyzed_at": "2026-08-30T04:05:00Z",
         "next_analysis_at": "2026-09-13T04:05:00Z",
         "contact": expected_contact,
+        "contacts": [
+            expected_contact,
+            {
+                "email": "press@example.com",
+                "source": "public_web_research",
+                "source_url": "https://creator.example/press",
+                "purpose": "Press requests",
+                "validation_state": "unverified",
+            },
+        ],
     }
     assert detail == card | {
         "analysis": {"content": {"primary_genres": ["strategy"]}},
@@ -775,6 +796,7 @@ def test_discovered_contact_selection_is_deterministic(
 
     assert detail.json()["contact"] == {
         "email": "selected@example.com",
+        "purpose": None,
         "source": "social",
         "source_url": "https://social.example/creator",
         "validation_state": "verified",
@@ -812,6 +834,7 @@ def test_manual_contact_update_preserves_discovered_contacts_and_updates_notes(
     assert first.json()["contact"]["source"] == "manual"
     assert second.json()["contact"] == {
         "email": "second@example.com",
+        "purpose": None,
         "source": "manual",
         "source_url": None,
         "validation_state": "unverified",
@@ -869,6 +892,7 @@ def test_clearing_manual_contact_falls_back_to_discovered_and_can_clear_notes(
     assert response.status_code == 200
     assert response.json()["contact"] == {
         "email": "fallback@example.com",
+        "purpose": None,
         "source": "youtube",
         "source_url": creator.canonical_url,
         "validation_state": "verified",

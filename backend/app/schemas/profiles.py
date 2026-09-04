@@ -313,6 +313,7 @@ class CreatorManualUpdate(BaseModel):
 
 class CreatorContactResponse(BaseModel):
     email: str
+    purpose: str | None = None
     source: str
     source_url: str | None
     validation_state: str
@@ -364,6 +365,7 @@ class CreatorProfileCard(PublicProfileResponse):
     last_analyzed_at: datetime | None
     next_analysis_at: datetime | None
     contact: CreatorContactResponse | None
+    contacts: list[CreatorContactResponse] = Field(default_factory=list)
 
 
 class GameProfileDetail(GameProfileCard):

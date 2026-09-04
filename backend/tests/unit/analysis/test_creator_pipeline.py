@@ -51,6 +51,33 @@ class Page:
     content_type: str = "text/html"
 
 
+@dataclass(frozen=True)
+class EmailResearchRecord:
+    email: str
+    usage: str
+    source: str
+
+
+class FakeEmailResearch:
+    def __init__(
+        self,
+        result: tuple[EmailResearchRecord, ...] | BaseException = (),
+    ) -> None:
+        self.result = result
+        self.calls: list[tuple[CreatorSource, tuple[str, ...]]] = []
+
+    def find_public_emails(
+        self,
+        source: CreatorSource,
+        *,
+        existing_contacts: tuple[str, ...] = (),
+    ) -> tuple[EmailResearchRecord, ...]:
+        self.calls.append((source, existing_contacts))
+        if isinstance(self.result, BaseException):
+            raise self.result
+        return self.result
+
+
 class FakePages:
     def __init__(self, pages: dict[str, Page | BaseException] | None = None) -> None:
         self.pages = pages or {}
@@ -206,6 +233,7 @@ def _pipeline(
     structured: list[object] | None = None,
     vision: list[object] | None = None,
     pages: FakePages | None = None,
+    email_research: FakeEmailResearch | None = None,
     completed_profile_id: UUID | None = None,
 ):
     service = FakeService(completed_profile_id)
@@ -231,8 +259,156 @@ def _pipeline(
         artifacts=artifacts,
         public_pages=page_gateway,
         deepseek=ai,
+        email_research=email_research,
     )
     return pipeline, service, youtube, artifacts, page_gateway, ai
+
+
+def test_existing_email_never_calls_public_web_research() -> None:
+    research = FakeEmailResearch(AssertionError("research must not be called"))
+    pipeline, service, _, _, _, _ = _pipeline(email_research=research)
+
+    pipeline.run(service.job_id)
+
+    assert research.calls == []
+
+
+def test_site_only_contact_calls_research_and_binds_first_enhanced_email() -> None:
+    source = _source().model_copy(
+        update={"description": "Website: https://creator.example/about"}
+    )
+    pages = FakePages(
+        {
+            "https://creator.example/about": Page(
+                "https://creator.example/about", "No email is listed here."
+            )
+        }
+    )
+    research = FakeEmailResearch(
+        (
+            EmailResearchRecord(
+                email="Agency@Example.com",
+                usage="Business inquiries",
+                source="https://agency.example/creator/contact",
+            ),
+        )
+    )
+    pipeline, service, _, _, _, ai = _pipeline(
+        source=source,
+        pages=pages,
+        email_research=research,
+        structured=[_metadata(), _synthesis(contacts=False)],
+    )
+
+    pipeline.run(service.job_id)
+
+    assert len(research.calls) == 1
+    assert research.calls[0][0] == source
+    assert research.calls[0][1] == ("https://creator.example/about",)
+    assert service.publication is not None
+    candidates = service.publication.contact_evidence.candidates
+    assert candidates[0].model_dump(mode="json") == {
+        "candidate_id": "contact.email.0",
+        "kind": "email",
+        "value": "Agency@Example.com",
+        "purpose": "Business inquiries",
+        "source_type": "public_web_research",
+        "source_url": "https://agency.example/creator/contact",
+        "validation_state": "unvalidated",
+    }
+    assert service.publication.contacts.public_email == candidates[0]
+    assert service.publication.contact_status == "available"
+    assert "contact.email.0" in ai.structured_calls[-1][1][-1].content
+
+
+def test_research_rejects_invalid_source_url_and_keeps_unavailable() -> None:
+    source = _source().model_copy(update={"description": "No public contacts."})
+    research = FakeEmailResearch(
+        (
+            EmailResearchRecord(
+                email="creator@example.com",
+                usage="Business inquiries",
+                source="http://127.0.0.1/private",
+            ),
+        )
+    )
+    pipeline, service, _, _, _, _ = _pipeline(
+        source=source,
+        pages=FakePages({}),
+        email_research=research,
+        structured=[_metadata(), _synthesis(contacts=False)],
+    )
+
+    pipeline.run(service.job_id)
+
+    assert service.publication is not None
+    assert service.publication.contact_evidence.candidates == ()
+    assert service.publication.contact_status == "unavailable"
+    assert service.publication.contacts.public_email is None
+
+
+def test_successful_empty_research_result_is_a_normal_unavailable_contact() -> None:
+    source = _source().model_copy(update={"description": "No public contacts."})
+    research = FakeEmailResearch(())
+    pipeline, service, _, _, _, _ = _pipeline(
+        source=source,
+        pages=FakePages({}),
+        email_research=research,
+        structured=[_metadata(), _synthesis(contacts=False)],
+    )
+
+    pipeline.run(service.job_id)
+
+    assert len(research.calls) == 1
+    assert service.publication is not None
+    assert service.publication.contact_evidence.candidates == ()
+    assert service.publication.contact_status == "unavailable"
+
+
+def test_research_emails_are_prioritized_deduplicated_and_bounded() -> None:
+    urls = tuple(f"https://site{index}.example/about" for index in range(10))
+    source = _source().model_copy(update={"description": " ".join(urls)})
+    pages = FakePages({url: Page(url, "No email listed.") for url in urls[:5]})
+    research = FakeEmailResearch(
+        (
+            EmailResearchRecord(
+                email="First@Example.com",
+                usage="Business",
+                source="https://directory.example/first",
+            ),
+            EmailResearchRecord(
+                email="first@example.com",
+                usage="Duplicate",
+                source="https://directory.example/duplicate",
+            ),
+            EmailResearchRecord(
+                email="second@example.com",
+                usage="Agency",
+                source="https://directory.example/second",
+            ),
+        )
+    )
+    pipeline, service, _, _, _, _ = _pipeline(
+        source=source,
+        pages=pages,
+        email_research=research,
+        structured=[_metadata(), _synthesis(contacts=False)],
+    )
+
+    pipeline.run(service.job_id)
+
+    assert service.publication is not None
+    candidates = service.publication.contact_evidence.candidates
+    assert len(candidates) == 10
+    assert [candidate.kind for candidate in candidates[:2]] == ["email", "email"]
+    assert [candidate.value for candidate in candidates[:2]] == [
+        "First@Example.com",
+        "second@example.com",
+    ]
+    assert [candidate.purpose for candidate in candidates[:2]] == [
+        "Business",
+        "Agency",
+    ]
 
 
 def test_pipeline_uses_exact_bundles_selected_thumbnails_and_raw_before_ai() -> None:

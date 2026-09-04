@@ -528,6 +528,11 @@
             "title": "Email",
             "type": "string"
           },
+          "purpose": {
+            "nullable": true,
+            "title": "Purpose",
+            "type": "string"
+          },
           "source": {
             "title": "Source",
             "type": "string"
@@ -585,6 +590,13 @@
               }
             ],
             "nullable": true
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/CreatorContactResponse"
+            },
+            "title": "Contacts",
+            "type": "array"
           },
           "current_facts": {
             "$ref": "#/components/schemas/PublicJSONObject"
@@ -663,6 +675,13 @@
               }
             ],
             "nullable": true
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/CreatorContactResponse"
+            },
+            "title": "Contacts",
+            "type": "array"
           },
           "current_facts": {
             "$ref": "#/components/schemas/PublicJSONObject"
@@ -1148,6 +1167,13 @@
             "title": "Contact Available",
             "type": "boolean"
           },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/MatchCreatorContact"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
           "favorite": {
             "title": "Favorite",
             "type": "boolean"
@@ -1209,6 +1235,11 @@
           "email": {
             "format": "email",
             "title": "Email",
+            "type": "string"
+          },
+          "purpose": {
+            "nullable": true,
+            "title": "Purpose",
             "type": "string"
           },
           "source": {
@@ -2207,6 +2238,27 @@
         "title": "OutreachDeliverySummary",
         "type": "object"
       },
+      "OutreachRecipientSelection": {
+        "additionalProperties": false,
+        "properties": {
+          "creator_id": {
+            "format": "uuid",
+            "title": "Creator Id",
+            "type": "string"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "creator_id",
+          "email"
+        ],
+        "title": "OutreachRecipientSelection",
+        "type": "object"
+      },
       "OutreachSMTPError": {
         "additionalProperties": false,
         "properties": {
@@ -2417,6 +2469,14 @@
             "format": "uuid",
             "title": "Match Task Id",
             "type": "string"
+          },
+          "recipient_selections": {
+            "items": {
+              "$ref": "#/components/schemas/OutreachRecipientSelection"
+            },
+            "maxItems": 30,
+            "title": "Recipient Selections",
+            "type": "array"
           },
           "subject_override": {
             "title": "Subject Override",
@@ -5295,5 +5355,5 @@
       }
     }
   },
-  "x-find-me-gamer-source-sha256": "cb4579387a4b22b7975adc7074b9c3866e6c8acef4947a53f468d62e56b31efa"
+  "x-find-me-gamer-source-sha256": "2e5f1ee3128e39f26d941eea626d29189a309e1efbaea81e5c436c1eae0848ff"
 }

@@ -100,6 +100,21 @@ class PublicPageGateway(Protocol):
     def fetch_page(self, url: str) -> PublicPage: ...
 
 
+class EmailResearchRecord(Protocol):
+    email: str
+    usage: str
+    source: str
+
+
+class CreatorEmailResearchGateway(Protocol):
+    def find_public_emails(
+        self,
+        source: CreatorSource,
+        *,
+        existing_contacts: tuple[str, ...] = (),
+    ) -> tuple[EmailResearchRecord, ...]: ...
+
+
 class DeepSeekCreatorGateway(Protocol):
     def complete_structured(
         self, model: str, messages: list[Message], schema: type[T]
@@ -123,12 +138,14 @@ class CreatorAnalysisPipeline:
         artifacts: ArtifactStore,
         public_pages: PublicPageGateway,
         deepseek: DeepSeekCreatorGateway,
+        email_research: CreatorEmailResearchGateway | None = None,
     ) -> None:
         self._service = service
         self._youtube = youtube
         self._artifacts = artifacts
         self._public_pages = public_pages
         self._deepseek = deepseek
+        self._email_research = email_research
 
     def run(self, job_id: UUID) -> UUID:
         lease = self._service.start(job_id)
@@ -152,8 +169,10 @@ class CreatorAnalysisPipeline:
         )
         representative_videos = tuple(select_representative_thumbnails(source.videos))
         visual = self._visual_analysis(source, representative_videos)
-        contact_evidence, contact_status = _discover_creator_contacts(
-            source, pages=self._public_pages
+        contact_evidence, contact_status = _discover_creator_contacts_with_research(
+            source,
+            pages=self._public_pages,
+            email_research=self._email_research,
         )
         synthesis_bundle = build_creator_synthesis_bundle(
             source, metadata, visual, contact_evidence
@@ -390,6 +409,72 @@ def _discover_creator_contacts(
         else "unavailable" if not candidates else "available"
     )
     return CreatorContactEvidence(candidates=tuple(candidates)), status
+
+
+def _discover_creator_contacts_with_research(
+    source: CreatorSource,
+    *,
+    pages: PublicPageGateway,
+    email_research: CreatorEmailResearchGateway | None,
+) -> tuple[CreatorContactEvidence, str]:
+    evidence, status = _discover_creator_contacts(source, pages=pages)
+    if email_research is None or any(
+        candidate.kind == "email" for candidate in evidence.candidates
+    ):
+        return evidence, status
+
+    records = email_research.find_public_emails(
+        source,
+        existing_contacts=tuple(candidate.value for candidate in evidence.candidates),
+    )
+    if not isinstance(records, tuple):
+        raise TypeError("email research gateway returned invalid records")
+
+    research_candidates: list[EmailContactCandidate] = []
+    email_keys: set[str] = set()
+    for record in records:
+        try:
+            value = record.email
+            usage = record.usage
+            source_url = record.source
+        except AttributeError:
+            raise TypeError(
+                "email research gateway returned an invalid record"
+            ) from None
+        if not all(isinstance(item, str) for item in (value, usage, source_url)):
+            continue
+        try:
+            normalized = validate_email(value, check_deliverability=False).normalized
+        except EmailNotValidError:
+            continue
+        key = normalized.casefold()
+        if key in email_keys:
+            continue
+        try:
+            candidate = EmailContactCandidate(
+                candidate_id=f"contact.email.{len(research_candidates)}",
+                kind="email",
+                value=value,
+                purpose=usage.strip()[:512] or None,
+                source_type="public_web_research",
+                source_url=source_url,
+                validation_state="unvalidated",
+            )
+        except ValueError:
+            continue
+        email_keys.add(key)
+        research_candidates.append(candidate)
+        if len(research_candidates) >= MAX_CONTACT_CANDIDATES:
+            break
+
+    if not research_candidates:
+        return evidence, status
+    merged = CreatorContactEvidence(
+        candidates=tuple(
+            (*research_candidates, *evidence.candidates)[:MAX_CONTACT_CANDIDATES]
+        )
+    )
+    return merged, "partial" if status == "partial" else "available"
 
 
 def _ordered_contacts(text: str) -> list[tuple[str, str]]:
