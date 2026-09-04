@@ -73,6 +73,7 @@ def test_deepseek_first_structured_request_uses_json_object_with_actual_schema()
     assert requests[0].url.path == "/chat/completions"
     assert requests[0].headers["authorization"] == "Bearer deepseek-secret"
     assert payload["response_format"] == {"type": "json_object"}
+    assert payload["thinking"] == {"type": "disabled"}
     assert "max_tokens" not in payload
     instruction = payload["messages"][0]
     assert instruction["role"] == "system"
@@ -293,6 +294,10 @@ def test_deepseek_repairs_once_without_mutating_caller_messages() -> None:
     assert all(
         json.loads(request.read())["max_tokens"] == 6_144 for request in requests
     )
+    assert all(
+        json.loads(request.read())["thinking"] == {"type": "disabled"}
+        for request in requests
+    )
 
 
 def test_deepseek_first_vision_request_uses_json_object_with_actual_schema() -> None:
@@ -316,6 +321,7 @@ def test_deepseek_first_vision_request_uses_json_object_with_actual_schema() -> 
     assert result.title == "Visual"
     payload = json.loads(requests[0].read())
     assert payload["response_format"] == {"type": "json_object"}
+    assert payload["thinking"] == {"type": "disabled"}
     instruction = payload["messages"][0]
     assert instruction["role"] == "system"
     prefix = (

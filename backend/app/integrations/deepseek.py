@@ -174,6 +174,9 @@ class DeepSeekGateway:
             "model": model,
             "messages": messages,
             "response_format": {"type": "json_object"},
+            # V4 defaults to thinking, whose reasoning tokens consume this same
+            # budget before any schema JSON is emitted.
+            "thinking": {"type": "disabled"},
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
