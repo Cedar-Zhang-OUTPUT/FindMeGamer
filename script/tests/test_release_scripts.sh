@@ -116,6 +116,15 @@ if tool == "codesign":
     raise SystemExit(12 if mode == "signing-failure" else 0)
 
 if tool == "xcrun":
+    if arguments[0] == "swift-stdlib-tool":
+        if mode == "runtime-copy-failure":
+            raise SystemExit(23)
+        destination = pathlib.Path(arguments[arguments.index("--destination") + 1])
+        destination.mkdir(parents=True, exist_ok=True)
+        (destination / "libswiftCompatibilitySpan.dylib").write_text("runtime fixture")
+        raise SystemExit(0)
+    if arguments[0] == "install_name_tool":
+        raise SystemExit(0)
     if arguments[:2] == ["notarytool", "history"]:
         if mode == "profile-failure":
             raise SystemExit(14)
@@ -280,6 +289,8 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     subprocess.run(["/usr/bin/ditto", "-x", "-k", str(archive), str(extracted)], check=True)
     app = extracted / "FindMeGamer.app"
     assert (app / "Contents" / "_CodeSignature" / "notary-ticket").is_file()
+    assert (app / "Contents" / "Frameworks" / "libswiftCompatibilitySpan.dylib").is_file()
+    assert any(call["tool"] == "xcrun" and call["args"][:3] == ["install_name_tool", "-add_rpath", "@executable_path/../Frameworks"] for call in recorded)
     with (app / "Contents" / "Info.plist").open("rb") as stream:
         info = plistlib.load(stream)
     assert info == {
@@ -340,6 +351,7 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
         "bundle-verification-failure",
         "gatekeeper-failure",
         "plist-failure",
+        "runtime-copy-failure",
     ):
         failed = build(failure_mode)
         assert failed.returncode != 0, failure_mode
@@ -357,7 +369,7 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     adhoc_calls = calls(log)
     assert any(call["tool"] == "codesign" and "-" in call["args"] for call in adhoc_calls)
     assert not any(call["tool"] in {"security", "spctl"} for call in adhoc_calls)
-    assert not any(call["tool"] == "xcrun" for call in adhoc_calls)
+    assert not any(call["tool"] == "xcrun" and call["args"][0] in {"notarytool", "stapler"} for call in adhoc_calls)
     adhoc_verified = run(
         [str(verify_script), str(archive), "--allow-adhoc"], base_environment
     )

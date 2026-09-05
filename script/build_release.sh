@@ -248,6 +248,17 @@ plist_value() {
   "$(plist_value CFBundleVersion)" == "$app_version" &&
   "$(plist_value FMGAPIBaseURL)" == "$service_base_url" ]] || fail "staged bundle metadata is invalid"
 
+# SwiftPM leaves back-deployment runtime libraries in the developer toolchain.
+# Package the libraries Apple identifies so macOS 14 Macs do not need Xcode.
+frameworks_dir="${app_contents}/Frameworks"
+mkdir -p "$frameworks_dir"
+chmod 755 "$frameworks_dir"
+runtime_identity="${developer_identity:--}"
+"$xcrun_bin" swift-stdlib-tool --copy --scan-executable "$app_binary" --platform macosx \
+  --destination "$frameworks_dir" --sign "$runtime_identity" || fail "Swift runtime library packaging failed"
+"$xcrun_bin" install_name_tool -add_rpath '@executable_path/../Frameworks' "$app_binary" ||
+  fail "bundled Swift runtime search path could not be configured"
+
 if [[ "$adhoc_release" == "1" ]]; then
   "$codesign_bin" --force --sign - --timestamp=none --entitlements "$entitlements" "$app_binary" \
     >/dev/null 2>&1 || fail "ad hoc executable signing failed"

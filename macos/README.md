@@ -74,6 +74,9 @@ aside before rebuilding. Demo data remains an explicit development option throug
 The existing `script/build_release.sh` Developer ID + notarized ZIP workflow remains
 available for wider distribution.
 
+Both release formats embed and sign any Swift back-deployment libraries identified by
+Apple's `swift-stdlib-tool`; installing Xcode is not required to run the app.
+
 ## Multi-email recipient safety
 
 Creator Profiles preserve and display the service-provided email order, purpose, source, and

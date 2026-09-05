@@ -40,6 +40,9 @@ and live cloud acceptance are separate follow-up work.
   and native LaunchServices launch passed on the build Mac. Both `arm64` and
   `x86_64` slices declare macOS 14.0 as their minimum system version. No Intel
   Mac was available for a separate runtime test.
+- Apple's `swift-stdlib-tool` identifies and embeds the required Swift
+  compatibility runtime under `Contents/Frameworks`; the app includes its
+  relative runtime search path, so colleagues do not need Xcode installed.
 - Independent code review found no blocking issues within the internal Demo
   scope. The source history was checked for accidental credentials and local
   data before upload.
@@ -55,4 +58,4 @@ ad-hoc signed and is not notarized; managed Macs may need IT approval for the
 per-app Open Anyway exception.
 
 DMG SHA-256:
-`4128aa46e23d967b3f6215455d3366636edf55d853f765ae0802719e96b9e953`
+`30d6c29607a854021eed7b7369fcfd98023b255b5b2bc326231311deb19af5a4`
