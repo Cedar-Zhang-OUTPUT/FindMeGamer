@@ -3,3 +3,9 @@ macos/.build/
 /dist/
 /release/
 /.local/
+/.playwright-cli/
+/output/
+/outputs/
+.DS_Store
+__pycache__/
+*.py[cod]

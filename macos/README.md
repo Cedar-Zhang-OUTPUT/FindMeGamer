@@ -38,8 +38,41 @@ Enter the Workspace Access Key in the app. Enter SMTP and provider credentials o
 Never commit credentials to this repository. If the service becomes unavailable, the existing
 workspace stays visible in read-only offline mode; use Retry when connectivity returns.
 
-The local runner produces an unsigned app for development. Coworker distribution through a
-signed and notarized build belongs to the deployment and release plan.
+## Internal DMG distribution
+
+Build the internal ad hoc signed release, without a Developer ID or notarization:
+
+```sh
+./script/build_dmg.sh
+./script/verify_release.sh release/FindMeGamer-0.1.0.dmg --allow-adhoc
+(cd release && shasum -a 256 -c FindMeGamer-0.1.0.dmg.sha256)
+```
+
+The DMG contains `FindMeGamer.app`, an Applications shortcut,
+and English installation instructions. Drag the app to Applications, eject the image, and
+launch it. If macOS blocks the first launch, use **System Settings > Privacy & Security >
+Open Anyway**, then confirm Open. Only approve the build received from the trusted team;
+there is no need to disable Gatekeeper globally. Company device policies can restrict this
+override. See [Apple's instructions](https://support.apple.com/en-us/102445).
+
+The default is a universal Apple Silicon + Intel macOS 14+ client in real-service mode,
+connected to `http://127.0.0.1:8000`. A backend must run on the same Mac; the DMG does not
+include it, credentials, or sample data. Backend startup instructions are in
+[`docs/local-real.md`](../docs/local-real.md). Use the Workspace Access Key from that
+backend. Once the cloud service is deployed, rebuild with its HTTPS address:
+
+```sh
+APP_VERSION=0.1.1 SERVICE_BASE_URL=https://workspace.example.com ./script/build_dmg.sh
+```
+
+`RELEASE_ARCHITECTURES=native` builds only the current Mac architecture. Set
+`SWIFT_SCRATCH_PATH` to an existing SwiftPM build directory to reuse build caches. Existing
+versioned artifacts are never overwritten; choose a new version or move the prior artifacts
+aside before rebuilding. Demo data remains an explicit development option through
+`./script/build_and_run.sh --demo`.
+
+The existing `script/build_release.sh` Developer ID + notarized ZIP workflow remains
+available for wider distribution.
 
 ## Multi-email recipient safety
 

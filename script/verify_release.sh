@@ -40,7 +40,7 @@ validate_https_origin() {
   esac
 }
 
-[[ $# -eq 1 || $# -eq 2 ]] || fail "usage: $0 release/FindMeGamer-<x.y.z>.zip [--allow-adhoc]"
+[[ $# -eq 1 || $# -eq 2 ]] || fail "usage: $0 release/FindMeGamer-<x.y.z>.<zip|dmg> [--allow-adhoc]"
 archive="$1"
 allow_adhoc="no"
 if [[ $# -eq 2 ]]; then
@@ -55,9 +55,10 @@ release_dir="${repository_root}/release"
 archive_parent="$(cd "$(dirname "$archive")" && pwd -P)" || fail "release archive parent is invalid"
 archive_name="$(basename "$archive")"
 [[ "$archive_parent" == "$release_dir" ]] || fail "release archive must be inside the repository release directory"
-[[ "$archive_name" =~ ^FindMeGamer-((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))\.zip$ ]] ||
+[[ "$archive_name" =~ ^FindMeGamer-((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))\.(zip|dmg)$ ]] ||
   fail "release archive name is invalid"
 archive_version="${BASH_REMATCH[1]}"
+archive_format="${BASH_REMATCH[5]}"
 sidecar="${archive}.sha256"
 [[ -f "$sidecar" && ! -L "$sidecar" ]] || fail "release checksum sidecar must be a regular non-symlink file"
 
@@ -70,8 +71,9 @@ if [[ "$test_mode" == "1" ]]; then
   plutil_bin="${FMG_PLUTIL_BIN:?FMG_PLUTIL_BIN is required in test mode}"
   ditto_bin="${FMG_DITTO_BIN:?FMG_DITTO_BIN is required in test mode}"
   shasum_bin="${FMG_SHASUM_BIN:?FMG_SHASUM_BIN is required in test mode}"
+  hdiutil_bin="${FMG_HDIUTIL_BIN:-/usr/bin/hdiutil}"
 else
-  [[ -z "${FMG_CODESIGN_BIN:-}${FMG_XCRUN_BIN:-}${FMG_SPCTL_BIN:-}${FMG_PLUTIL_BIN:-}${FMG_DITTO_BIN:-}${FMG_SHASUM_BIN:-}" ]] ||
+  [[ -z "${FMG_CODESIGN_BIN:-}${FMG_XCRUN_BIN:-}${FMG_SPCTL_BIN:-}${FMG_PLUTIL_BIN:-}${FMG_DITTO_BIN:-}${FMG_SHASUM_BIN:-}${FMG_HDIUTIL_BIN:-}" ]] ||
     fail "command overrides are allowed only in release test mode"
   codesign_bin="/usr/bin/codesign"
   xcrun_bin="/usr/bin/xcrun"
@@ -79,6 +81,7 @@ else
   plutil_bin="/usr/bin/plutil"
   ditto_bin="/usr/bin/ditto"
   shasum_bin="/usr/bin/shasum"
+  hdiutil_bin="/usr/bin/hdiutil"
 fi
 
 [[ "$(wc -l <"$sidecar" | tr -d ' ')" == "1" ]] || fail "release checksum sidecar format is invalid"
@@ -95,9 +98,13 @@ verification_dir="$(mktemp -d "${temporary_base%/}/fmg-release-verify.XXXXXX")" 
   fail "private verification directory could not be created"
 [[ -d "$verification_dir" && ! -L "$verification_dir" && "$verification_dir" == "${temporary_base%/}/fmg-release-verify."* ]] ||
   fail "private verification path is invalid"
+mounted=0
 cleanup() {
   cleanup_status=$?
   trap - EXIT INT TERM
+  if [[ "$mounted" == "1" ]]; then
+    "$hdiutil_bin" detach "${verification_dir}/mounted" >/dev/null || cleanup_status=1
+  fi
   if [[ -d "$verification_dir" && ! -L "$verification_dir" && "$verification_dir" == "${temporary_base%/}/fmg-release-verify."* ]]; then
     rm -rf -- "$verification_dir"
   fi
@@ -106,13 +113,26 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-"$ditto_bin" -x -k "$archive" "$verification_dir" >/dev/null 2>&1 || fail "release archive extraction failed"
+payload_dir="$verification_dir"
+if [[ "$archive_format" == "dmg" ]]; then
+  "$hdiutil_bin" verify "$archive" >/dev/null || fail "disk image verification failed"
+  payload_dir="${verification_dir}/mounted"
+  mkdir "$payload_dir"
+  "$hdiutil_bin" attach "$archive" -readonly -nobrowse -mountpoint "$payload_dir" >/dev/null || fail "disk image mount failed"
+  mounted=1
+  [[ -L "${payload_dir}/Applications" && "$(readlink "${payload_dir}/Applications")" == "/Applications" &&
+    -f "${payload_dir}/Read Me.txt" ]] || fail "disk image installation instructions are missing"
+else
+  "$ditto_bin" -x -k "$archive" "$verification_dir" >/dev/null 2>&1 || fail "release archive extraction failed"
+fi
 shopt -s nullglob dotglob
-top_level=("$verification_dir"/*)
+top_level=("$payload_dir"/*)
 shopt -u nullglob dotglob
-[[ ${#top_level[@]} -eq 1 && "${top_level[0]}" == "${verification_dir}/FindMeGamer.app" &&
-  -d "${top_level[0]}" && ! -L "${top_level[0]}" ]] || fail "release archive top-level shape is invalid"
-app_bundle="${top_level[0]}"
+if [[ "$archive_format" == "zip" ]]; then
+  [[ ${#top_level[@]} -eq 1 && "${top_level[0]}" == "${payload_dir}/FindMeGamer.app" ]] || fail "release archive top-level shape is invalid"
+fi
+app_bundle="${payload_dir}/FindMeGamer.app"
+[[ -d "$app_bundle" && ! -L "$app_bundle" ]] || fail "release app bundle is missing"
 app_binary="${app_bundle}/Contents/MacOS/FindMeGamer"
 info_plist="${app_bundle}/Contents/Info.plist"
 [[ -f "$app_binary" && ! -L "$app_binary" && -x "$app_binary" ]] || fail "release executable is missing"
@@ -129,7 +149,9 @@ plist_value() {
 }
 api_base_url="$(plist_value FMGAPIBaseURL)" || fail "release API base URL is missing"
 if [[ "$allow_adhoc" == "yes" ]]; then
-  validate_https_origin "$api_base_url" yes || fail "release API base URL is invalid"
+  if [[ "$api_base_url" != "http://127.0.0.1:8000" && "$api_base_url" != "http://localhost:8000" ]]; then
+    validate_https_origin "$api_base_url" yes || fail "release API base URL is invalid"
+  fi
 else
   validate_https_origin "$api_base_url" no || fail "release API base URL is invalid"
 fi

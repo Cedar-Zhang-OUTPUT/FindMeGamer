@@ -152,6 +152,27 @@ if tool == "ditto":
     completed = subprocess.run(["/usr/bin/ditto", *arguments], check=False)
     raise SystemExit(completed.returncode)
 
+if tool == "lipo":
+    if arguments[0] == "-create":
+        shutil.copy2(arguments[1], arguments[-1])
+    elif arguments[1:] != ["-verify_arch", "arm64", "x86_64"]:
+        raise SystemExit(22)
+    raise SystemExit(0)
+
+if tool == "hdiutil":
+    if arguments[0] == "create":
+        if mode == "dmg-failure":
+            raise SystemExit(21)
+        source = arguments[arguments.index("-srcfolder") + 1]
+        raise SystemExit(subprocess.run(["/usr/bin/ditto", "-c", "-k", source, arguments[-1]]).returncode)
+    if arguments[0] == "verify":
+        raise SystemExit(0)
+    if arguments[0] == "attach":
+        destination = arguments[arguments.index("-mountpoint") + 1]
+        raise SystemExit(subprocess.run(["/usr/bin/ditto", "-x", "-k", arguments[1], destination]).returncode)
+    if arguments[0] == "detach":
+        raise SystemExit(0)
+
 if tool == "shasum":
     completed = subprocess.run(["/usr/bin/shasum", *arguments], check=False)
     raise SystemExit(completed.returncode)
@@ -165,7 +186,7 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     tools = test_root / "tools"
     tools.mkdir()
     tool_paths: dict[str, Path] = {}
-    for name in ("swift", "security", "codesign", "xcrun", "spctl", "plutil", "ditto", "shasum"):
+    for name in ("swift", "security", "codesign", "xcrun", "spctl", "plutil", "ditto", "shasum", "hdiutil", "lipo"):
         path = tools / name
         path.write_text(fake_tool_source, encoding="utf-8")
         path.chmod(0o700)
@@ -270,6 +291,7 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
         "CFBundleShortVersionString": version,
         "CFBundleVersion": version,
         "FMGAPIBaseURL": "https://service.example.com",
+        "FMGDemoMode": False,
         "LSMinimumSystemVersion": "14.0",
         "NSPrincipalClass": "NSApplication",
     }
@@ -392,6 +414,44 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     assert run([str(verify_script), str(archive), "--allow-adhoc"], base_environment).returncode != 0
 
     remove_artifacts()
+    dmg = release_dir / f"FindMeGamer-{version}.dmg"
+    dmg_environment = base_environment | {
+        "FMG_HDIUTIL_BIN": str(tool_paths["hdiutil"]),
+        "FMG_LIPO_BIN": str(tool_paths["lipo"]),
+        "RELEASE_ARCHITECTURES": "universal",
+    }
+    dmg_environment.pop("SERVICE_BASE_URL")
+    dmg_script = root / "script" / "build_dmg.sh"
+    result = run(["bash", str(dmg_script)], dmg_environment)
+    assert result.returncode == 0, result.stderr
+    assert dmg.is_file() and Path(str(dmg) + ".sha256").is_file()
+    dmg_contents = test_root / "dmg-contents"
+    subprocess.run(["/usr/bin/ditto", "-x", "-k", str(dmg), str(dmg_contents)], check=True)
+    assert os.readlink(dmg_contents / "Applications") == "/Applications"
+    assert "Open Anyway" in (dmg_contents / "Read Me.txt").read_text()
+    with (dmg_contents / "FindMeGamer.app" / "Contents" / "Info.plist").open("rb") as stream:
+        dmg_info = plistlib.load(stream)
+    assert dmg_info["FMGAPIBaseURL"] == "http://127.0.0.1:8000"
+    assert dmg_info["FMGDemoMode"] is False
+    assert "NSAllowsArbitraryLoads" not in dmg_info.get("NSAppTransportSecurity", {})
+    universal_calls = [call for call in calls(log) if call["tool"] == "swift"][-4:]
+    assert all("arm64-apple-macosx14.0" in call["args"] for call in universal_calls[:2])
+    assert all("x86_64-apple-macosx14.0" in call["args"] for call in universal_calls[2:])
+    assert any(call["tool"] == "lipo" and "-verify_arch" in call["args"] for call in calls(log))
+    checked_dmg = run([str(verify_script), str(dmg), "--allow-adhoc"], dmg_environment)
+    assert checked_dmg.returncode == 0, checked_dmg.stderr
+    digest_before = dmg.read_bytes()
+    assert run(["bash", str(dmg_script)], dmg_environment).returncode != 0
+    assert dmg.read_bytes() == digest_before
+    dmg.unlink()
+    Path(str(dmg) + ".sha256").unlink()
+    for extra in (
+        {"FMG_RELEASE_FAKE_MODE": "dmg-failure"},
+        {"SERVICE_BASE_URL": "http://44.233.174.193:8000"},
+    ):
+        failed = run(["bash", str(dmg_script)], dmg_environment | extra)
+        assert failed.returncode != 0 and not dmg.exists(), failed.stderr
+
     if release_dir.exists() and not any(release_dir.iterdir()):
         release_dir.rmdir()
 

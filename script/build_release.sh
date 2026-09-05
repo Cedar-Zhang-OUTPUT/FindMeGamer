@@ -52,8 +52,13 @@ validate_https_origin() {
 [[ $# -eq 0 ]] || fail "usage: SERVICE_BASE_URL=<https-origin> APP_VERSION=<x.y.z> $0"
 
 adhoc_release="${ADHOC_RELEASE:-0}"
+release_format="${RELEASE_FORMAT:-zip}"
+release_architectures="${RELEASE_ARCHITECTURES:-native}"
 test_mode="${FMG_RELEASE_TEST_MODE:-0}"
 [[ "$adhoc_release" == "0" || "$adhoc_release" == "1" ]] || fail "ADHOC_RELEASE must be 0 or 1"
+[[ "$release_format" == "zip" || "$release_format" == "dmg" ]] || fail "RELEASE_FORMAT must be zip or dmg"
+[[ "$release_format" != "dmg" || "$adhoc_release" == "1" ]] || fail "DMG currently supports internal ad hoc releases"
+[[ "$release_architectures" == "native" || "$release_architectures" == "universal" ]] || fail "RELEASE_ARCHITECTURES must be native or universal"
 [[ "$test_mode" == "0" || "$test_mode" == "1" ]] || fail "release test mode must be 0 or 1"
 
 service_base_url="${SERVICE_BASE_URL:-}"
@@ -61,7 +66,9 @@ app_version="${APP_VERSION:-}"
 [[ "$app_version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ && ${#app_version} -le 64 ]] ||
   fail "APP_VERSION must contain exactly three decimal components"
 if [[ "$adhoc_release" == "1" ]]; then
-  validate_https_origin "$service_base_url" yes || fail "SERVICE_BASE_URL must be one safe HTTPS origin"
+  if [[ "$service_base_url" != "http://127.0.0.1:8000" && "$service_base_url" != "http://localhost:8000" ]]; then
+    validate_https_origin "$service_base_url" yes || fail "SERVICE_BASE_URL must be one safe HTTPS origin or local development port 8000"
+  fi
 else
   validate_https_origin "$service_base_url" no || fail "SERVICE_BASE_URL must be one safe HTTPS origin"
 fi
@@ -71,7 +78,7 @@ repository_root="$(cd "$script_dir/.." && pwd)"
 package_dir="${repository_root}/macos"
 entitlements="${package_dir}/FindMeGamer.entitlements"
 release_dir="${repository_root}/release"
-archive_name="FindMeGamer-${app_version}.zip"
+archive_name="FindMeGamer-${app_version}.${release_format}"
 final_archive="${release_dir}/${archive_name}"
 final_sidecar="${final_archive}.sha256"
 [[ -f "$entitlements" && ! -L "$entitlements" ]] || fail "release entitlements are missing"
@@ -87,8 +94,10 @@ if [[ "$test_mode" == "1" ]]; then
   plutil_bin="${FMG_PLUTIL_BIN:?FMG_PLUTIL_BIN is required in test mode}"
   ditto_bin="${FMG_DITTO_BIN:?FMG_DITTO_BIN is required in test mode}"
   shasum_bin="${FMG_SHASUM_BIN:?FMG_SHASUM_BIN is required in test mode}"
+  hdiutil_bin="${FMG_HDIUTIL_BIN:-/usr/bin/hdiutil}"
+  lipo_bin="${FMG_LIPO_BIN:-/usr/bin/lipo}"
 else
-  [[ -z "${FMG_SWIFT_BIN:-}${FMG_SECURITY_BIN:-}${FMG_CODESIGN_BIN:-}${FMG_XCRUN_BIN:-}${FMG_SPCTL_BIN:-}${FMG_PLUTIL_BIN:-}${FMG_DITTO_BIN:-}${FMG_SHASUM_BIN:-}" ]] ||
+  [[ -z "${FMG_SWIFT_BIN:-}${FMG_SECURITY_BIN:-}${FMG_CODESIGN_BIN:-}${FMG_XCRUN_BIN:-}${FMG_SPCTL_BIN:-}${FMG_PLUTIL_BIN:-}${FMG_DITTO_BIN:-}${FMG_SHASUM_BIN:-}${FMG_HDIUTIL_BIN:-}${FMG_LIPO_BIN:-}" ]] ||
     fail "command overrides are allowed only in release test mode"
   swift_bin="$(command -v swift)"
   security_bin="/usr/bin/security"
@@ -98,6 +107,8 @@ else
   plutil_bin="/usr/bin/plutil"
   ditto_bin="/usr/bin/ditto"
   shasum_bin="/usr/bin/shasum"
+  hdiutil_bin="/usr/bin/hdiutil"
+  lipo_bin="/usr/bin/lipo"
 fi
 
 developer_identity=""
@@ -120,12 +131,31 @@ if [[ "$adhoc_release" == "0" ]]; then
 fi
 
 echo "Building release binary"
-"$swift_bin" build --package-path "$package_dir" -c release >/dev/null || fail "Swift release build failed"
-build_bin_dir="$("$swift_bin" build --package-path "$package_dir" -c release --show-bin-path 2>/dev/null)" ||
-  fail "Swift release binary path lookup failed"
-[[ "$build_bin_dir" == /* && "$build_bin_dir" != *$'\n'* ]] || fail "Swift release binary path is invalid"
-build_binary="${build_bin_dir}/FindMeGamer"
-[[ -f "$build_binary" && ! -L "$build_binary" && -x "$build_binary" ]] || fail "Swift release executable is missing"
+swift_options=()
+if [[ -n "${SWIFT_SCRATCH_PATH:-}" ]]; then
+  swift_options+=(--scratch-path "$SWIFT_SCRATCH_PATH")
+fi
+architectures=(native)
+if [[ "$release_architectures" == "universal" ]]; then
+  # Multi-architecture SwiftPM selects Xcode's build system, which cannot resolve
+  # this package's OpenAPI plugin. Compile native SwiftPM slices, then use lipo.
+  architectures=(arm64 x86_64)
+fi
+build_binaries=()
+for architecture in "${architectures[@]}"; do
+  architecture_options=()
+  if [[ "$architecture" != "native" ]]; then
+    architecture_options=(--triple "${architecture}-apple-macosx14.0")
+  fi
+  "$swift_bin" build --package-path "$package_dir" -c release ${swift_options[@]+"${swift_options[@]}"} \
+    ${architecture_options[@]+"${architecture_options[@]}"} || fail "Swift release build failed"
+  build_bin_dir="$("$swift_bin" build --package-path "$package_dir" -c release ${swift_options[@]+"${swift_options[@]}"} \
+    ${architecture_options[@]+"${architecture_options[@]}"} --show-bin-path 2>/dev/null)" || fail "Swift release binary path lookup failed"
+  [[ "$build_bin_dir" == /* && "$build_bin_dir" != *$'\n'* ]] || fail "Swift release binary path is invalid"
+  build_binary="${build_bin_dir}/FindMeGamer"
+  [[ -f "$build_binary" && ! -L "$build_binary" && -x "$build_binary" ]] || fail "Swift release executable is missing"
+  build_binaries+=("$build_binary")
+done
 
 umask 077
 temporary_base="${TMPDIR:-/tmp}"
@@ -163,7 +193,12 @@ app_macos="${app_contents}/MacOS"
 app_binary="${app_macos}/FindMeGamer"
 info_plist="${app_contents}/Info.plist"
 mkdir -p "$app_macos"
-cp "$build_binary" "$app_binary"
+if [[ "$release_architectures" == "universal" ]]; then
+  "$lipo_bin" -create "${build_binaries[@]}" -output "$app_binary" || fail "universal binary assembly failed"
+  "$lipo_bin" "$app_binary" -verify_arch arm64 x86_64 || fail "universal binary slices are missing"
+else
+  cp "${build_binaries[0]}" "$app_binary"
+fi
 chmod 755 "$app_binary"
 service_base_url_xml="$(xml_escape "$service_base_url")"
 cat >"$info_plist" <<PLIST
@@ -187,6 +222,8 @@ cat >"$info_plist" <<PLIST
   <string>${app_version}</string>
   <key>FMGAPIBaseURL</key>
   <string>${service_base_url_xml}</string>
+  <key>FMGDemoMode</key>
+  <false/>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>NSPrincipalClass</key>
@@ -194,6 +231,8 @@ cat >"$info_plist" <<PLIST
 </dict>
 </plist>
 PLIST
+chmod 755 "$app_bundle" "$app_contents" "$app_macos"
+chmod 644 "$info_plist"
 "$plutil_bin" -lint "$info_plist" >/dev/null 2>&1 || fail "staged bundle plist is invalid"
 
 plist_value() {
@@ -249,8 +288,37 @@ publish_dir="$(mktemp -d "${release_dir}/.FindMeGamer-${app_version}.publish.XXX
   fail "private publish staging path is invalid"
 temporary_final_archive="${publish_dir}/${archive_name}"
 temporary_final_sidecar="${temporary_final_archive}.sha256"
-"$ditto_bin" -c -k --keepParent "$app_bundle" "$temporary_final_archive" >/dev/null 2>&1 ||
-  fail "final post-staple archive failed"
+if [[ "$release_format" == "dmg" ]]; then
+  ln -s /Applications "${staging_dir}/Applications"
+  cat >"${staging_dir}/Read Me.txt" <<README
+Find Me Gamer ${app_version} - Internal Preview
+
+Requires macOS 14 Sonoma or later.
+
+1. Drag FindMeGamer.app to Applications.
+2. Eject this disk image and open Find Me Gamer from Applications.
+3. If macOS blocks the first launch, open System Settings > Privacy & Security,
+   choose Open Anyway for Find Me Gamer, and confirm Open. This internal build
+   uses an ad hoc signature and is not notarized by Apple. Only use a build from
+   your trusted team. Do not disable Gatekeeper globally.
+
+This is the real-service client, not sample-data mode.
+Service address: ${service_base_url}
+For the local address, the backend must be running on the same Mac.
+Enter the Workspace Access Key supplied with that backend. Without a running
+backend, analysis, matching, and outreach will not work.
+Provider and SMTP credentials belong in Settings; none are included in this app.
+
+Source and releases: https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer
+README
+  chmod 644 "${staging_dir}/Read Me.txt"
+  "$hdiutil_bin" create -volname "Find Me Gamer ${app_version}" -srcfolder "$staging_dir" \
+    -format UDZO -fs HFS+ "$temporary_final_archive" >/dev/null || fail "disk image creation failed"
+  "$hdiutil_bin" verify "$temporary_final_archive" >/dev/null || fail "disk image verification failed"
+else
+  "$ditto_bin" -c -k --keepParent "$app_bundle" "$temporary_final_archive" >/dev/null 2>&1 ||
+    fail "final post-staple archive failed"
+fi
 archive_hash="$("$shasum_bin" -a 256 "$temporary_final_archive" 2>/dev/null | awk '{print $1}')" ||
   fail "release checksum failed"
 [[ "$archive_hash" =~ ^[0-9a-f]{64}$ ]] || fail "release checksum is invalid"
