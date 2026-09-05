@@ -176,9 +176,59 @@ public struct RecipientPreview: Identifiable, Sendable, Equatable, Hashable {
   public let html: String
 }
 
+public struct OutreachRecipientContact: Sendable, Equatable, Hashable {
+  public let email: String
+  public let purpose: String?
+  public let source: String
+  public let sourceURL: String?
+  public let validationState: String
+
+  public init(
+    email: String,
+    purpose: String? = nil,
+    source: String,
+    sourceURL: String? = nil,
+    validationState: String
+  ) {
+    self.email = email
+    self.purpose = purpose
+    self.source = source
+    self.sourceURL = sourceURL
+    self.validationState = validationState
+  }
+}
+
+public struct OutreachRecipientContext: Identifiable, Sendable, Equatable, Hashable {
+  public var id: UUID { creatorID }
+  public let creatorID: UUID
+  public let creatorName: String
+  public let contacts: [OutreachRecipientContact]
+
+  public init(
+    creatorID: UUID,
+    creatorName: String,
+    contacts: [OutreachRecipientContact]
+  ) {
+    self.creatorID = creatorID
+    self.creatorName = creatorName
+    self.contacts = contacts
+  }
+}
+
+public struct OutreachRecipientSelection: Sendable, Equatable, Hashable {
+  public let creatorID: UUID
+  public let email: String
+
+  public init(creatorID: UUID, email: String) {
+    self.creatorID = creatorID
+    self.email = email
+  }
+}
+
 public struct SendBatchDraft: Sendable, Equatable, Hashable {
   public let matchTaskID: UUID
   public let creatorIDs: [UUID]
+  public let recipientSelections: [OutreachRecipientSelection]
   public let templateID: UUID?
   public let subjectOverride: String?
   public let bodyMarkdownOverride: String?
@@ -186,12 +236,14 @@ public struct SendBatchDraft: Sendable, Equatable, Hashable {
   public init(
     matchTaskID: UUID,
     creatorIDs: [UUID],
+    recipientSelections: [OutreachRecipientSelection] = [],
     templateID: UUID? = nil,
     subjectOverride: String? = nil,
     bodyMarkdownOverride: String? = nil
   ) {
     self.matchTaskID = matchTaskID
     self.creatorIDs = creatorIDs
+    self.recipientSelections = recipientSelections
     self.templateID = templateID
     self.subjectOverride = subjectOverride
     self.bodyMarkdownOverride = bodyMarkdownOverride

@@ -15,6 +15,7 @@ struct SettingsModelTests {
       .value(connection(.steam, configured: true)),
       .value(connection(.youtube)),
       .value(connection(.deepSeek)),
+      .value(connection(.googleAI)),
     ])
     let model = SettingsModel(api: api, appearanceStore: SettingsPreferenceStore())
     let probe = SettingsObservationProbe()
@@ -44,7 +45,7 @@ struct SettingsModelTests {
     #expect(model.creatorIntervalDays == 14)
     #expect(model.gameIntervalDays == 30)
     #expect(!model.hasDisableScheduleControl)
-    #expect(model.connectionServices == [.steam, .youtube, .deepSeek])
+    #expect(model.connectionServices == [.steam, .youtube, .deepSeek, .googleAI])
 
     model.setAppearanceMode(.dark)
     model.setFontSize(.extraLarge)
@@ -331,14 +332,17 @@ struct SettingsModelTests {
   }
 
   @MainActor
-  @Test func connectionsExposeThreeServicesAndReplaceTestWithoutLeakingInputs() async {
+  @Test func connectionsExposeFourServicesAndReplaceTestWithoutLeakingInputs() async {
     let steamInitial = connection(.steam, configured: false, status: .notTested)
     let youtubeInitial = connection(.youtube, configured: true, status: .notTested)
     let deepInitial = connection(.deepSeek, configured: false, status: .notTested)
+    let googleInitial = connection(.googleAI, configured: false, status: .notTested)
     let steamCanonical = connection(.steam, configured: true, status: .success, at: 200)
     let steamGate = SettingsGate<ConnectionStatus>()
     let api = SettingsAPI(
-      connectionLoadOutcomes: [.value(steamInitial), .value(youtubeInitial), .value(deepInitial)],
+      connectionLoadOutcomes: [
+        .value(steamInitial), .value(youtubeInitial), .value(deepInitial), .value(googleInitial),
+      ],
       connectionReplaceOutcomes: [
         .failure(
           APIError(
@@ -349,8 +353,8 @@ struct SettingsModelTests {
     let model = SettingsModel(api: api, appearanceStore: SettingsPreferenceStore())
     await model.loadConnections()
 
-    #expect(await api.connectionLoadCalls == [.steam, .youtube, .deepSeek])
-    #expect(model.connectionServices == [.steam, .youtube, .deepSeek])
+    #expect(await api.connectionLoadCalls == [.steam, .youtube, .deepSeek, .googleAI])
+    #expect(model.connectionServices == [.steam, .youtube, .deepSeek, .googleAI])
     #expect(model.connectionStatus(for: .steam) == steamInitial)
     let reflectedLabels = Mirror(reflecting: steamInitial).children.compactMap(\.label)
     #expect(!reflectedLabels.contains("secret"))
@@ -388,6 +392,42 @@ struct SettingsModelTests {
   }
 
   @MainActor
+  @Test func googleAIStudioUsesExactServiceContractAndExistingCredentialFlow() async {
+    let initial = connection(.googleAI, configured: false)
+    let configured = connection(.googleAI, configured: true)
+    let api = SettingsAPI(
+      connectionLoadOutcomes: [
+        .value(connection(.steam)), .value(connection(.youtube)), .value(connection(.deepSeek)),
+        .value(initial),
+      ],
+      connectionReplaceOutcomes: [.value(configured)],
+      connectionTestOutcomes: [.value(testResult(.success, at: 220))])
+    let model = SettingsModel(api: api, appearanceStore: SettingsPreferenceStore())
+
+    #expect(ConnectionService.googleAI.rawValue == "google_ai")
+    #expect(ConnectionService.googleAI.displayName == "Google AI Studio")
+    #expect(ConnectionService.googleAI.credentialName == "Gemini API Key")
+
+    await model.loadConnections()
+    #expect(model.connectionStatus(for: .googleAI) == initial)
+
+    model.updateConnectionSecret(serviceCanary, for: .googleAI)
+    await model.replaceConnection(.googleAI)
+    #expect(
+      await api.connectionReplaceCalls == [
+        ConnectionReplaceCall(service: .googleAI, secret: serviceCanary)
+      ])
+    #expect(model.connectionSecret(for: .googleAI).isEmpty)
+    #expect(model.canTestConnection(.googleAI))
+
+    await model.testConnection(.googleAI)
+    #expect(await api.connectionTestCalls == [.googleAI])
+    #expect(model.connectionStatus(for: .googleAI)?.lastTestStatus == .success)
+    #expect(
+      model.connectionStatus(for: .googleAI)?.lastTestedAt == Date(timeIntervalSince1970: 220))
+  }
+
+  @MainActor
   @Test func successfulConnectionMutationFencesAnOlderStatusRead() async {
     let initial = connection(.steam, configured: false, status: .notTested)
     let stale = connection(.steam, configured: false, status: .failed, at: 300)
@@ -396,7 +436,8 @@ struct SettingsModelTests {
     let api = SettingsAPI(
       connectionLoadOutcomes: [
         .value(initial), .value(connection(.youtube)), .value(connection(.deepSeek)),
-        .gated(staleGate), .value(connection(.youtube)), .value(connection(.deepSeek)),
+        .value(connection(.googleAI)), .gated(staleGate), .value(connection(.youtube)),
+        .value(connection(.deepSeek)), .value(connection(.googleAI)),
       ],
       connectionReplaceOutcomes: [.value(canonical)])
     let model = SettingsModel(api: api, appearanceStore: SettingsPreferenceStore())
@@ -420,6 +461,7 @@ struct SettingsModelTests {
     let api = SettingsAPI(
       connectionLoadOutcomes: [
         .gated(steamGate), .value(connection(.youtube)), .value(connection(.deepSeek)),
+        .value(connection(.googleAI)),
       ],
       connectionTestOutcomes: [
         .value(testResult(.success, at: 320)), .value(testResult(.success, at: 321)),
@@ -713,7 +755,7 @@ struct SettingsModelTests {
       model.smtpActionError, model.smtpLoadError, model.reanalysisLoadError,
       model.reanalysisActionError,
       model.connectionError(for: .steam), model.connectionError(for: .youtube),
-      model.connectionError(for: .deepSeek),
+      model.connectionError(for: .deepSeek), model.connectionError(for: .googleAI),
     ].compactMap { $0 }.joined(separator: " ")
     let exposesSMTP = publicCopy.contains(smtpCanary)
     let exposesService = publicCopy.contains(serviceCanary)

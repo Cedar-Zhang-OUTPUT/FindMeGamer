@@ -60,15 +60,24 @@ public struct SMTPSettingsDraft: Sendable, Equatable, Hashable {
 
 public enum ConnectionService: String, Sendable, Equatable, Hashable, CaseIterable {
   case deepSeek = "deepseek"
+  case googleAI = "google_ai"
   case steam
   case youtube
   case s3
   public var displayName: String {
     switch self {
     case .deepSeek: "DeepSeek"
+    case .googleAI: "Google AI Studio"
     case .steam: "Steam"
     case .youtube: "YouTube"
     case .s3: "S3"
+    }
+  }
+
+  public var credentialName: String {
+    switch self {
+    case .googleAI: "Gemini API Key"
+    default: "API Key"
     }
   }
 }

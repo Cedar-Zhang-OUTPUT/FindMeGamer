@@ -18,6 +18,7 @@ struct LibraryHeader: View {
   @Bindable var model: LibraryModel
   let activeAnalysisJobCount: Int
   let writesEnabled: Bool
+  let onSelectProfileType: (ProfileType) -> Void
   let onAnalyzeRequest: () -> Void
 
   var body: some View {
@@ -49,7 +50,7 @@ struct LibraryHeader: View {
               "Profile Type",
               selection: Binding(
                 get: { model.selectedType },
-                set: { model.selectType($0) })
+                set: { onSelectProfileType($0) })
             ) {
               ForEach(LibraryLayout.profileTypes, id: \.self) { type in
                 Text("\(type.displayName) Profiles").tag(type)

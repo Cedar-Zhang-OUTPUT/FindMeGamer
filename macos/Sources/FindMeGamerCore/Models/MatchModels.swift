@@ -86,6 +86,18 @@ public struct MatchCreatorContact: Sendable, Equatable, Hashable {
   public let source: String
   public let sourceURL: String?
   public let validationState: String
+  public let purpose: String?
+
+  public init(
+    email: String, source: String, sourceURL: String?, validationState: String,
+    purpose: String? = nil
+  ) {
+    self.email = email
+    self.source = source
+    self.sourceURL = sourceURL
+    self.validationState = validationState
+    self.purpose = purpose
+  }
 }
 
 public struct MatchCreatorCard: Identifiable, Sendable, Equatable, Hashable {
@@ -96,11 +108,33 @@ public struct MatchCreatorCard: Identifiable, Sendable, Equatable, Hashable {
   public let favorite: Bool
   public let contactAvailable: Bool
   public let contact: MatchCreatorContact?
+  public let contacts: [MatchCreatorContact]
   public let avatarURL: String?
   public let performanceSummary: String?
   public let subscriberCount: Int?
   public let recentAverageViews: Int?
   public let recentMedianViews: Int?
+
+  public init(
+    id: UUID, name: String, youtubeChannelID: String, canonicalURL: String, favorite: Bool,
+    contactAvailable: Bool, contact: MatchCreatorContact?, avatarURL: String?,
+    performanceSummary: String?, subscriberCount: Int?, recentAverageViews: Int?,
+    recentMedianViews: Int?, contacts: [MatchCreatorContact]? = nil
+  ) {
+    self.id = id
+    self.name = name
+    self.youtubeChannelID = youtubeChannelID
+    self.canonicalURL = canonicalURL
+    self.favorite = favorite
+    self.contactAvailable = contactAvailable
+    self.contact = contact
+    self.contacts = contacts ?? contact.map { [$0] } ?? []
+    self.avatarURL = avatarURL
+    self.performanceSummary = performanceSummary
+    self.subscriberCount = subscriberCount
+    self.recentAverageViews = recentAverageViews
+    self.recentMedianViews = recentMedianViews
+  }
 }
 
 public struct MatchDimensionOutcomes: Sendable, Equatable, Hashable {

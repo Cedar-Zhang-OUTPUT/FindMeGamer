@@ -45,6 +45,30 @@ struct MatchRecipientSelection: Equatable {
     }
     return ordered
   }
+
+  func orderedRecipients(in result: MatchResult) -> [OutreachRecipientContext] {
+    var seen = Set<UUID>()
+    var ordered: [OutreachRecipientContext] = []
+    for candidate in result.recommendedMatches + result.otherMatches
+    where selectedIDs.contains(candidate.id) && seen.insert(candidate.id).inserted {
+      ordered.append(Self.recipientContext(candidate))
+    }
+    return ordered
+  }
+
+  static func recipientContext(_ candidate: MatchCandidate) -> OutreachRecipientContext {
+    OutreachRecipientContext(
+      creatorID: candidate.creator.id,
+      creatorName: candidate.creator.name,
+      contacts: candidate.creator.contacts.map {
+        OutreachRecipientContact(
+          email: $0.email,
+          purpose: $0.purpose,
+          source: $0.source,
+          sourceURL: $0.sourceURL,
+          validationState: $0.validationState)
+      })
+  }
 }
 
 struct MatchResultView: View {
@@ -52,7 +76,7 @@ struct MatchResultView: View {
   @Bindable var model: MatchModel
   let writesEnabled: Bool
   let onOpenProfile: (ProfileType, UUID) -> Void
-  let onComposeOutreach: (UUID, [UUID]) -> Void
+  let onComposeOutreach: (UUID, [OutreachRecipientContext]) -> Void
   let onResendDelivery: (UUID) -> Void
 
   @State private var otherExpanded = false
@@ -156,7 +180,7 @@ struct MatchResultView: View {
       BatchOutreachBar(
         selectedCount: selection.count, writesEnabled: writesEnabled,
         onSend: {
-          onComposeOutreach(result.id, selection.orderedIDs(in: result))
+          onComposeOutreach(result.id, selection.orderedRecipients(in: result))
         })
     }
   }
@@ -214,7 +238,10 @@ struct MatchResultView: View {
           isSelected: selectionBinding(for: candidate.source),
           writesEnabled: writesEnabled,
           onOpenProfile: { onOpenProfile(.creator, candidate.id) },
-          onSend: { onComposeOutreach(result.id, [candidate.id]) },
+          onSend: {
+            onComposeOutreach(
+              result.id, [MatchRecipientSelection.recipientContext(candidate.source)])
+          },
           onResend: onResendDelivery)
       }
     }

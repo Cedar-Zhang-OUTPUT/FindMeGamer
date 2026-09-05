@@ -3,6 +3,7 @@ import Foundation
 actor DemoAPIService: APIService {
   private var games: [GameProfile]
   private var creators: [CreatorProfile]
+  private var discoveredContactsByCreatorID: [UUID: [CreatorContact]]
   private var analysisJobs: [AnalysisJob]
   private var matches: [MatchResult]
   private var campaigns: [OutreachCampaign]
@@ -15,6 +16,13 @@ actor DemoAPIService: APIService {
     let fixtures = DemoFixtures.make()
     games = fixtures.games
     creators = fixtures.creators
+    discoveredContactsByCreatorID = Dictionary(
+      uniqueKeysWithValues: fixtures.creators.map { creator in
+        (
+          creator.id,
+          creator.contacts.filter { $0.availability == .discovered }
+        )
+      })
     analysisJobs = fixtures.analysisJobs
     matches = fixtures.matches
     campaigns = fixtures.campaigns
@@ -77,6 +85,9 @@ actor DemoAPIService: APIService {
           focus: ["Indie", "First Look", "Reviews"],
           performance: "Newly analyzed local demo profile."),
         at: 0)
+      discoveredContactsByCreatorID[profileID] = creators[0].contacts.filter {
+        $0.availability == .discovered
+      }
     }
 
     let job = AnalysisJob(
@@ -177,20 +188,33 @@ actor DemoAPIService: APIService {
     }
     let old = creators[index]
     let normalized = email?.trimmingCharacters(in: .whitespacesAndNewlines)
-    let contact =
+    let previousManualContact = old.contacts.first { $0.availability == .manual }
+    let manualContact =
       normalized.flatMap { value -> CreatorContact? in
         guard !value.isEmpty else { return nil }
         return CreatorContact(
           email: value, availability: .manual, source: "manual", sourceURL: nil,
-          validationState: "demo")
-      } ?? old.contact
+          validationState: "unverified", purpose: previousManualContact?.purpose)
+      }
+    let canonicalDiscoveredContacts =
+      discoveredContactsByCreatorID[id]
+      ?? old.contacts.filter { $0.availability == .discovered }
+    discoveredContactsByCreatorID[id] = canonicalDiscoveredContacts
+    let visibleDiscoveredContacts = canonicalDiscoveredContacts.filter {
+      guard let manualContact else { return true }
+      return $0.email.caseInsensitiveCompare(manualContact.email) != .orderedSame
+    }
+    let contacts =
+      manualContact.map { [$0] + visibleDiscoveredContacts } ?? canonicalDiscoveredContacts
+    let primaryContact = manualContact ?? canonicalDiscoveredContacts.first
     let updated = CreatorProfile(
       id: old.id, name: old.name, youtubeChannelID: old.youtubeChannelID,
       canonicalURL: old.canonicalURL, favorite: old.favorite,
       currentFacts: old.currentFacts, brief: old.brief, sourceStatus: old.sourceStatus,
       lastAnalyzedAt: old.lastAnalyzedAt, nextAnalysisAt: old.nextAnalysisAt,
-      contact: contact, manualNotes: notes, analysis: old.analysis,
-      modelMetadata: old.modelMetadata, promptMetadata: old.promptMetadata)
+      contact: primaryContact, manualNotes: notes, analysis: old.analysis,
+      modelMetadata: old.modelMetadata, promptMetadata: old.promptMetadata,
+      contacts: contacts)
     creators[index] = updated
     return updated
   }
@@ -213,7 +237,7 @@ actor DemoAPIService: APIService {
 
   func match(id: UUID) async throws -> MatchResult {
     guard let result = matches.first(where: { $0.id == id }) else { throw notFound("Match") }
-    return result
+    return DemoFixtures.refreshingCreators(in: result, from: creators)
   }
 
   func retryMatch(id: UUID, idempotencyKey: String) async throws -> MatchTask {
@@ -316,7 +340,34 @@ actor DemoAPIService: APIService {
   }
 
   func previewSendBatch(_ request: SendBatchDraft) async throws -> [RecipientPreview] {
+    guard (1...30).contains(request.creatorIDs.count),
+      Set(request.creatorIDs).count == request.creatorIDs.count,
+      request.recipientSelections.count <= 30
+    else {
+      throw APIError(
+        code: "request_invalid",
+        message: "Creator IDs must be non-empty, unique, and within the supported batch size.",
+        retryable: false)
+    }
     let result = try await match(id: request.matchTaskID)
+    let matchCreatorIDs = Set(
+      (result.recommendedMatches + result.otherMatches).map(\.id)
+    )
+    guard Set(request.creatorIDs).isSubset(of: matchCreatorIDs) else {
+      throw APIError(
+        code: "creator_not_in_match",
+        message: "Every Creator must belong to the Match result.",
+        retryable: false)
+    }
+    let selectedCreatorIDs = request.recipientSelections.map(\.creatorID)
+    guard Set(selectedCreatorIDs).count == selectedCreatorIDs.count,
+      Set(selectedCreatorIDs).isSubset(of: Set(request.creatorIDs))
+    else {
+      throw APIError(
+        code: "recipient_email_selection_invalid",
+        message: "Every recipient selection must belong to one requested Creator.",
+        retryable: false)
+    }
     guard
       let template = request.templateID.flatMap({ id in templates.first { $0.id == id } })
         ?? templates.first(where: \.isDefault)
@@ -338,10 +389,47 @@ actor DemoAPIService: APIService {
       let markdown = DemoFixtures.render(bodySource, creator: creator.name, game: result.game.name)
       return RecipientPreview(
         creatorID: creator.id, creatorName: creator.name,
-        recipientEmail: creator.contact?.email ?? "demo@example.test",
+        recipientEmail: try recipientEmail(for: creator, request: request),
         subject: subject, markdown: markdown,
         html: "<p>\(DemoFixtures.escapedHTML(markdown))</p>")
     }
+  }
+
+  private func recipientEmail(
+    for creator: CreatorProfile,
+    request: SendBatchDraft
+  ) throws -> String {
+    let contacts = creator.contacts.filter {
+      !$0.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    guard !contacts.isEmpty else {
+      throw APIError(
+        code: "recipient_email_unavailable",
+        message: "Every Creator must have an active email address.",
+        retryable: false)
+    }
+
+    let requestedEmail = request.recipientSelections.first {
+      $0.creatorID == creator.id
+    }?.email
+    guard requestedEmail != nil || contacts.count == 1 else {
+      throw APIError(
+        code: "recipient_email_selection_required",
+        message: "Select exactly one active email for every Creator with multiple emails.",
+        retryable: false)
+    }
+    guard let requestedEmail else { return contacts[0].email }
+    guard
+      let selected = contacts.first(where: {
+        $0.email.caseInsensitiveCompare(requestedEmail) == .orderedSame
+      })
+    else {
+      throw APIError(
+        code: "recipient_email_selection_invalid",
+        message: "The selected email is not active for this Creator.",
+        retryable: false)
+    }
+    return selected.email
   }
 
   func createSendBatch(_ request: SendBatchDraft, idempotencyKey: String) async throws
@@ -532,7 +620,13 @@ private struct DemoFixtures {
         id: id(201), name: "Tactical Cedar", channelID: "UCTacticalCedarDemo",
         url: "https://youtube.com/@tacticalcedar", favorite: true,
         subscribers: 184_000, focus: ["Strategy", "Tactics", "Reviews"],
-        performance: "Reliable 45K–70K views on strategy deep dives."),
+        performance: "Reliable 45K–70K views on strategy deep dives.",
+        additionalContacts: [
+          CreatorContact(
+            email: "tacticalcedar.press@example.test", availability: .discovered,
+            source: "public_web_research", sourceURL: "https://tacticalcedar.example/contact",
+            validationState: "unverified", purpose: "Press")
+        ]),
       creator(
         id: id(202), name: "Indie Orbit", channelID: "UCIndieOrbitDemo",
         url: "https://youtube.com/@indieorbit", favorite: true,
@@ -655,7 +749,8 @@ private struct DemoFixtures {
 
   static func creator(
     id: UUID, name: String, channelID: String, url: String, favorite: Bool,
-    subscribers: Int, focus: [String], performance: String
+    subscribers: Int, focus: [String], performance: String,
+    additionalContacts: [CreatorContact] = []
   ) -> CreatorProfile {
     let facts: JSONObject = [
       "description": .string(
@@ -726,17 +821,20 @@ private struct DemoFixtures {
         ]),
       ]),
     ]
+    let primaryContact = CreatorContact(
+      email: "\(slug(name))@example.test", availability: .discovered,
+      source: "channel_about", sourceURL: url, validationState: "demo",
+      purpose: "Partnerships")
     return CreatorProfile(
       id: id, name: name, youtubeChannelID: channelID, canonicalURL: url,
       favorite: favorite, currentFacts: facts, brief: brief,
       sourceStatus: ["status": .string("fresh")],
       lastAnalyzedAt: date(dayOffset: -2), nextAnalysisAt: date(dayOffset: 5),
-      contact: CreatorContact(
-        email: "\(slug(name))@example.test", availability: .discovered,
-        source: "channel_about", sourceURL: url, validationState: "demo"),
+      contact: primaryContact,
       manualNotes: nil, analysis: analysis,
       modelMetadata: ["model": .string("demo-fixture")],
-      promptMetadata: ["language": .string("English")])
+      promptMetadata: ["language": .string("English")],
+      contacts: [primaryContact] + additionalContacts)
   }
 
   static func match(
@@ -759,6 +857,47 @@ private struct DemoFixtures {
       otherMatches: candidates.filter { $0.group == .other })
   }
 
+  static func refreshingCreators(
+    in result: MatchResult,
+    from profiles: [CreatorProfile]
+  ) -> MatchResult {
+    let profilesByID = Dictionary(uniqueKeysWithValues: profiles.map { ($0.id, $0) })
+    func refresh(_ value: MatchCandidate) -> MatchCandidate {
+      guard let profile = profilesByID[value.id] else { return value }
+      let refreshedCreator = candidate(
+        profile, group: value.group, label: value.label
+      ).creator
+      return MatchCandidate(
+        creator: refreshedCreator,
+        group: value.group,
+        label: value.label,
+        dimensionOutcomes: value.dimensionOutcomes,
+        reasons: value.reasons,
+        brief: value.brief,
+        outreach: value.outreach)
+    }
+
+    return MatchResult(
+      id: result.id,
+      game: result.game,
+      status: result.status,
+      stage: result.stage,
+      completedUnits: result.completedUnits,
+      totalUnits: result.totalUnits,
+      resultCount: result.resultCount,
+      retryable: result.retryable,
+      failure: result.failure,
+      correlationID: result.correlationID,
+      supersedesID: result.supersedesID,
+      createdAt: result.createdAt,
+      updatedAt: result.updatedAt,
+      startedAt: result.startedAt,
+      completedAt: result.completedAt,
+      state: result.state,
+      recommendedMatches: result.recommendedMatches.map(refresh),
+      otherMatches: result.otherMatches.map(refresh))
+  }
+
   static func candidate(
     _ creator: CreatorProfile, group: MatchGroup, label: MatchLabel
   ) -> MatchCandidate {
@@ -772,15 +911,20 @@ private struct DemoFixtures {
       creator: MatchCreatorCard(
         id: creator.id, name: creator.name, youtubeChannelID: creator.youtubeChannelID,
         canonicalURL: creator.canonicalURL, favorite: creator.favorite,
-        contactAvailable: creator.contact != nil,
+        contactAvailable: !creator.contacts.isEmpty,
         contact: creator.contact.map {
           MatchCreatorContact(
             email: $0.email, source: $0.source, sourceURL: $0.sourceURL,
-            validationState: $0.validationState)
+            validationState: $0.validationState, purpose: $0.purpose)
         },
         avatarURL: nil, performanceSummary: text(creator.brief["performance_context"]),
         subscriberCount: subscribers, recentAverageViews: subscribers.map { $0 / 3 },
-        recentMedianViews: subscribers.map { $0 / 4 }),
+        recentMedianViews: subscribers.map { $0 / 4 },
+        contacts: creator.contacts.map {
+          MatchCreatorContact(
+            email: $0.email, source: $0.source, sourceURL: $0.sourceURL,
+            validationState: $0.validationState, purpose: $0.purpose)
+        }),
       group: group, label: label,
       dimensionOutcomes: MatchDimensionOutcomes(
         contentFit: label == .limited ? "Partial" : "Strong",
@@ -859,7 +1003,8 @@ private struct DemoFixtures {
       canonicalURL: profile.canonicalURL, favorite: profile.favorite,
       currentFacts: profile.currentFacts, brief: profile.brief,
       sourceStatus: profile.sourceStatus, lastAnalyzedAt: profile.lastAnalyzedAt,
-      nextAnalysisAt: profile.nextAnalysisAt, contact: profile.contact)
+      nextAnalysisAt: profile.nextAnalysisAt, contact: profile.contact,
+      contacts: profile.contacts)
   }
 
   static func replacingFavorite(_ profile: GameProfile, favorite: Bool) -> GameProfile {
@@ -880,7 +1025,8 @@ private struct DemoFixtures {
       sourceStatus: profile.sourceStatus, lastAnalyzedAt: profile.lastAnalyzedAt,
       nextAnalysisAt: profile.nextAnalysisAt, contact: profile.contact,
       manualNotes: profile.manualNotes, analysis: profile.analysis,
-      modelMetadata: profile.modelMetadata, promptMetadata: profile.promptMetadata)
+      modelMetadata: profile.modelMetadata, promptMetadata: profile.promptMetadata,
+      contacts: profile.contacts)
   }
 
   static func replacingDefault(_ template: OutreachTemplate, isDefault: Bool)

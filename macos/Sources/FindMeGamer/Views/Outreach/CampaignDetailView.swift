@@ -30,6 +30,17 @@ struct CampaignDetailView: View {
     .task(id: campaignID) {
       await model.openCampaign(id: campaignID)
     }
+    .toolbar {
+      ToolbarItem {
+        Button {
+          Task { await model.refreshCampaignsAndSelectedDetail() }
+        } label: {
+          Label("Refresh Campaign", systemImage: "arrow.clockwise")
+        }
+        .disabled(model.isLoadingCampaigns || model.isLoadingCampaignDetail)
+        .help("Refresh Campaign")
+      }
+    }
   }
 
   private var displayedCampaign: OutreachCampaign? {

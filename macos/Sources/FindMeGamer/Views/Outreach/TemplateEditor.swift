@@ -13,8 +13,10 @@ struct TemplateEditor: View {
   @Bindable var model: OutreachManagementModel
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var confirmation: Confirmation?
   @State private var workspaceMode = TemplateWorkspaceMode.edit
+  @State private var workspaceDirection = WorkspaceMotionDirection.stationary
 
   var body: some View {
     Group {
@@ -25,7 +27,7 @@ struct TemplateEditor: View {
       } else {
         VStack(spacing: 0) {
           HStack(spacing: WorkspaceDesign.spaceM) {
-            Picker("Template workspace", selection: $workspaceMode) {
+            Picker("Template workspace", selection: workspaceModeSelection) {
               ForEach(TemplateWorkspaceMode.allCases) { mode in
                 Text(mode.rawValue).tag(mode)
               }
@@ -48,12 +50,17 @@ struct TemplateEditor: View {
 
           Divider()
 
-          switch workspaceMode {
-          case .edit:
-            editor
-          case .preview:
-            preview
+          ZStack {
+            workspaceContent
+              .id(workspaceMode)
+              .transition(
+                WorkspaceMotionPolicy.transition(
+                  direction: workspaceDirection,
+                  role: .switcher,
+                  reduceMotion: reduceMotion))
           }
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .clipped()
         }
       }
     }
@@ -73,6 +80,32 @@ struct TemplateEditor: View {
         Text(confirmation.message)
       }
     }
+  }
+
+  @ViewBuilder private var workspaceContent: some View {
+    switch workspaceMode {
+    case .edit:
+      editor
+    case .preview:
+      preview
+    }
+  }
+
+  private var workspaceModeSelection: Binding<TemplateWorkspaceMode> {
+    Binding(
+      get: { workspaceMode },
+      set: { mode in
+        guard mode != workspaceMode else { return }
+        workspaceDirection = WorkspaceMotionPolicy.direction(
+          from: workspaceMode,
+          to: mode,
+          ordered: TemplateWorkspaceMode.allCases)
+        withAnimation(
+          WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)
+        ) {
+          workspaceMode = mode
+        }
+      })
   }
 
   private var editor: some View {

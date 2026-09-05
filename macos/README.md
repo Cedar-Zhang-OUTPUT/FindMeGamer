@@ -40,3 +40,11 @@ workspace stays visible in read-only offline mode; use Retry when connectivity r
 
 The local runner produces an unsigned app for development. Coworker distribution through a
 signed and notarized build belongs to the deployment and release plan.
+
+## Multi-email recipient safety
+
+Creator Profiles preserve and display the service-provided email order, purpose, source, and
+validation state. Outreach with one active address can proceed without an explicit selection.
+When a Creator has multiple active addresses, the composer requires the user to choose exactly
+one before preview or send; it never defaults to the first address and never sends to every
+address. The server-rendered preview must confirm that exact selection before sending is enabled.

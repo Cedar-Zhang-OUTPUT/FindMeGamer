@@ -26,6 +26,8 @@ public enum TemplatePreviewState: Sendable, Equatable {
 @MainActor
 @Observable
 public final class OutreachManagementModel {
+  static let campaignPollingInterval = Duration.seconds(3)
+
   public static let allowedVariables = [
     "{{creator_name}}", "{{channel_name}}", "{{game_name}}", "{{steam_url}}",
     "{{game_summary}}", "{{match_reason}}", "{{sender_name}}",
@@ -106,6 +108,9 @@ public final class OutreachManagementModel {
   @ObservationIgnored private var templateMutationGeneration: UInt64 = 0
   @ObservationIgnored private var previewGeneration: UInt64 = 0
   @ObservationIgnored private var previewTask: Task<Void, Never>?
+  @ObservationIgnored private var campaignPollingTask: Task<Void, Never>?
+  @ObservationIgnored private var campaignPollingGeneration: UInt64 = 0
+  @ObservationIgnored private var trackedCampaignIDs: Set<UUID> = []
   @ObservationIgnored private var resendKeys: [UUID: String] = [:]
   @ObservationIgnored private var suppressedResendIDs: Set<UUID> = []
 
@@ -121,17 +126,35 @@ public final class OutreachManagementModel {
 
   deinit {
     previewTask?.cancel()
+    campaignPollingTask?.cancel()
   }
 
   public func loadCampaigns() async {
     guard !isLoadingCampaigns else { return }
     await drainCampaignsThroughRequiredRefreshes()
+    updateCampaignPolling()
   }
 
-  public func refreshCampaignsAfterAcceptedSend() async {
+  public func refreshCampaignsAfterAcceptedSend(_ batch: SendBatch? = nil) async {
+    if let batch, Self.requiresStatusRefresh(batch) {
+      trackedCampaignIDs.insert(batch.campaignID)
+    }
     campaignRefreshRequired = true
-    guard !isLoadingCampaigns else { return }
+    guard !isLoadingCampaigns else {
+      updateCampaignPolling()
+      return
+    }
     await drainCampaignsThroughRequiredRefreshes()
+    updateCampaignPolling()
+  }
+
+  public func refreshCampaignsAndSelectedDetail() async {
+    await loadCampaigns()
+    if let selectedCampaignID {
+      await openCampaign(id: selectedCampaignID)
+    } else {
+      updateCampaignPolling()
+    }
   }
 
   private func drainCampaignsThroughRequiredRefreshes() async {
@@ -173,6 +196,12 @@ public final class OutreachManagementModel {
     campaignGeneration &+= 1
     let generation = campaignGeneration
     isLoadingCampaignDetail = true
+    defer {
+      if selectedCampaignID == id, campaignGeneration == generation {
+        isLoadingCampaignDetail = false
+      }
+      updateCampaignPolling()
+    }
 
     do {
       let campaign = try await api.campaign(id: id)
@@ -185,10 +214,6 @@ public final class OutreachManagementModel {
     } catch {
       guard selectedCampaignID == id, campaignGeneration == generation else { return }
       campaignError = Self.message(from: error, fallback: "Could not load Campaign details.")
-    }
-
-    if selectedCampaignID == id, campaignGeneration == generation {
-      isLoadingCampaignDetail = false
     }
   }
 
@@ -469,6 +494,99 @@ public final class OutreachManagementModel {
           Self.message(from: error, fallback: "Could not preview this Template."))
       }
     }
+  }
+
+  private func updateCampaignPolling() {
+    reconcileTrackedCampaignIDs()
+    guard requiresCampaignPolling else {
+      stopCampaignPolling()
+      return
+    }
+    guard campaignPollingTask == nil else { return }
+
+    campaignPollingGeneration &+= 1
+    let generation = campaignPollingGeneration
+    let clock = self.clock
+    campaignPollingTask = Task { @MainActor [weak self] in
+      do {
+        try await clock.sleep(for: Self.campaignPollingInterval)
+        try Task.checkCancellation()
+      } catch {
+        return
+      }
+      guard let self, self.campaignPollingGeneration == generation else { return }
+      await self.campaignPollingTimerFired(generation: generation)
+    }
+  }
+
+  private func campaignPollingTimerFired(generation: UInt64) async {
+    guard campaignPollingGeneration == generation, requiresCampaignPolling else {
+      finishCampaignPollingCycle(generation: generation)
+      return
+    }
+
+    if !campaigns.isEmpty || !trackedCampaignIDs.isEmpty {
+      await loadCampaigns()
+    }
+    if let selectedCampaignID {
+      await openCampaign(id: selectedCampaignID)
+    }
+    finishCampaignPollingCycle(generation: generation)
+  }
+
+  private func finishCampaignPollingCycle(generation: UInt64) {
+    guard campaignPollingGeneration == generation else { return }
+    campaignPollingTask = nil
+    updateCampaignPolling()
+  }
+
+  private func stopCampaignPolling() {
+    guard campaignPollingTask != nil else { return }
+    campaignPollingGeneration &+= 1
+    campaignPollingTask?.cancel()
+    campaignPollingTask = nil
+  }
+
+  private var requiresCampaignPolling: Bool {
+    !trackedCampaignIDs.isEmpty
+      || campaigns.contains(where: { Self.requiresStatusRefresh($0.state) })
+      || selectedCampaign.map(Self.requiresStatusRefresh) == true
+  }
+
+  private func reconcileTrackedCampaignIDs() {
+    for campaign in campaigns
+    where trackedCampaignIDs.contains(campaign.id)
+      && !Self.requiresStatusRefresh(campaign.state)
+    {
+      trackedCampaignIDs.remove(campaign.id)
+    }
+    if let selectedCampaign, trackedCampaignIDs.contains(selectedCampaign.id),
+      !Self.requiresStatusRefresh(selectedCampaign)
+    {
+      trackedCampaignIDs.remove(selectedCampaign.id)
+    }
+  }
+
+  private static func requiresStatusRefresh(_ campaign: OutreachCampaign) -> Bool {
+    requiresStatusRefresh(campaign.state)
+      || campaign.sendBatches.contains(where: requiresStatusRefresh)
+  }
+
+  private static func requiresStatusRefresh(_ batch: SendBatch) -> Bool {
+    requiresStatusRefresh(batch.state)
+      || batch.deliveries.contains(where: { requiresStatusRefresh($0.sendState) })
+  }
+
+  private static func requiresStatusRefresh(_ state: CampaignState) -> Bool {
+    state == .queued || state == .sending
+  }
+
+  private static func requiresStatusRefresh(_ state: SendBatchState) -> Bool {
+    state == .queued || state == .sending
+  }
+
+  private static func requiresStatusRefresh(_ state: SendState) -> Bool {
+    state == .queued || state == .sending
   }
 
   private func nextIdempotencyKey() -> String {

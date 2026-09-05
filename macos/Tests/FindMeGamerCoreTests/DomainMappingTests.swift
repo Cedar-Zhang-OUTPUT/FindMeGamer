@@ -43,12 +43,30 @@ import Testing
     let manual = try DomainMapper.creatorCard(
       decode(
         Components.Schemas.CreatorProfileCard.self,
-        creatorCardJSON(contact: [
-          "email": "manual@example.com",
-          "source": "manual",
-          "source_url": NSNull(),
-          "validation_state": "valid",
-        ])
+        creatorCardJSON(
+          contact: [
+            "email": "manual@example.com",
+            "purpose": "Preferred",
+            "source": "manual",
+            "source_url": NSNull(),
+            "validation_state": "valid",
+          ],
+          contacts: [
+            [
+              "email": "manual@example.com",
+              "purpose": "Preferred",
+              "source": "manual",
+              "source_url": NSNull(),
+              "validation_state": "valid",
+            ],
+            [
+              "email": "press@example.com",
+              "purpose": NSNull(),
+              "source": "linked_website",
+              "source_url": "https://signal.example/contact",
+              "validation_state": "unverified",
+            ],
+          ])
       )
     )
     let discovered = try DomainMapper.creatorCard(
@@ -68,10 +86,32 @@ import Testing
         creatorCardJSON(contact: NSNull())
       )
     )
+    let explicitlyEmpty = try DomainMapper.creatorCard(
+      decode(
+        Components.Schemas.CreatorProfileCard.self,
+        creatorCardJSON(
+          contact: [
+            "email": "legacy@example.com",
+            "source": "manual",
+            "source_url": NSNull(),
+            "validation_state": "valid",
+          ],
+          contacts: [])
+      )
+    )
     #expect(manual.contact?.availability == .manual)
+    #expect(manual.contact?.purpose == "Preferred")
+    #expect(manual.contacts.map(\.email) == ["manual@example.com", "press@example.com"])
+    #expect(manual.contacts.map(\.purpose) == ["Preferred", nil])
+    #expect(manual.contacts.map(\.availability) == [.manual, .discovered])
     #expect(discovered.contact?.availability == .discovered)
+    #expect(discovered.contacts.map(\.email) == ["public@example.com"])
     #expect(unavailable.contact == nil)
+    #expect(unavailable.contacts.isEmpty)
     #expect(unavailable.contactAvailability == .unavailable)
+    #expect(explicitlyEmpty.contact?.email == "legacy@example.com")
+    #expect(explicitlyEmpty.contacts.isEmpty)
+    #expect(explicitlyEmpty.contactAvailability == .unavailable)
 
     let creator = try DomainMapper.creatorProfile(
       decode(
@@ -80,6 +120,9 @@ import Testing
       )
     )
     #expect(creator.manualNotes == "Met at PAX")
+    #expect(creator.contact?.email == "manual@example.com")
+    #expect(creator.contacts.map(\.email) == ["manual@example.com", "agency@example.com"])
+    #expect(creator.contacts.map(\.purpose) == ["Preferred", "Representation"])
     #expect(creator.analysis["audience"] == .object(["region": .string("US")]))
     #expect(creator.modelMetadata["model"] == .string("deepseek-v4-pro"))
     #expect(creator.promptMetadata["version"] == .integer(3))
@@ -155,6 +198,12 @@ import Testing
     #expect(result.recommendedMatches[0].group == .recommended)
     #expect(result.recommendedMatches[0].outreach.sendState == .sent)
     #expect(result.recommendedMatches[0].outreach.responseState == .accepted)
+    #expect(
+      result.recommendedMatches[0].creator.contacts.map(\.email)
+        == ["creator2@example.com", "creator2-press@example.com"])
+    #expect(
+      result.recommendedMatches[0].creator.contacts.map(\.purpose)
+        == ["Preferred", nil])
     #expect(result.recommendedMatches[0].brief.brandSafety.analysis == "Suitable")
     #expect(result.recommendedMatches[0].dimensionOutcomes.performanceFit == "Good")
 
@@ -248,8 +297,8 @@ private func decode<T: Decodable>(_ type: T.Type, _ object: Any) throws -> T {
   return try decoder.decode(type, from: data)
 }
 
-private func creatorCardJSON(contact: Any) -> [String: Any] {
-  [
+private func creatorCardJSON(contact: Any, contacts: Any? = nil) -> [String: Any] {
+  var value: [String: Any] = [
     "type": "creator",
     "id": "10000000-0000-4000-8000-000000000002",
     "name": "Signal Channel",
@@ -263,15 +312,37 @@ private func creatorCardJSON(contact: Any) -> [String: Any] {
     "next_analysis_at": NSNull(),
     "contact": contact,
   ]
+  if let contacts {
+    value["contacts"] = contacts
+  }
+  return value
 }
 
 private func creatorDetailJSON() -> [String: Any] {
-  var value = creatorCardJSON(contact: [
-    "email": "manual@example.com",
-    "source": "manual",
-    "source_url": NSNull(),
-    "validation_state": "valid",
-  ])
+  var value = creatorCardJSON(
+    contact: [
+      "email": "manual@example.com",
+      "purpose": "Preferred",
+      "source": "manual",
+      "source_url": NSNull(),
+      "validation_state": "valid",
+    ],
+    contacts: [
+      [
+        "email": "manual@example.com",
+        "purpose": "Preferred",
+        "source": "manual",
+        "source_url": NSNull(),
+        "validation_state": "valid",
+      ],
+      [
+        "email": "agency@example.com",
+        "purpose": "Representation",
+        "source": "linked_website",
+        "source_url": "https://signal.example/contact",
+        "validation_state": "unverified",
+      ],
+    ])
   value["analysis"] = ["audience": ["region": "US"]]
   value["model_metadata"] = ["model": "deepseek-v4-pro"]
   value["prompt_metadata"] = ["version": 3]
@@ -389,9 +460,26 @@ private func matchItemJSON(name: String, suffix: String, label: String, group: S
       "contact_available": true,
       "contact": [
         "email": "creator\(suffix)@example.com",
+        "purpose": "Preferred",
         "source": "manual",
         "source_url": NSNull(),
         "validation_state": "valid",
+      ],
+      "contacts": [
+        [
+          "email": "creator\(suffix)@example.com",
+          "purpose": "Preferred",
+          "source": "manual",
+          "source_url": NSNull(),
+          "validation_state": "valid",
+        ],
+        [
+          "email": "creator\(suffix)-press@example.com",
+          "purpose": NSNull(),
+          "source": "linked_website",
+          "source_url": "https://creator\(suffix).example/contact",
+          "validation_state": "unverified",
+        ],
       ],
       "avatar_url": NSNull(),
       "performance_summary": "Steady views",

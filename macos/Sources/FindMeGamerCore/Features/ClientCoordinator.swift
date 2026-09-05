@@ -201,6 +201,7 @@ public final class ClientCoordinator {
         retryable: false)
     }
     await refreshLibraryIfSelected(.creator)
+    await match.refreshSelectedResult()
     return profile
   }
 
@@ -239,7 +240,7 @@ public final class ClientCoordinator {
   }
 
   public func sendBatchAccepted(_ batch: SendBatch) async {
-    async let campaigns: Void = outreach.refreshCampaignsAfterAcceptedSend()
+    async let campaigns: Void = outreach.refreshCampaignsAfterAcceptedSend(batch)
     if let matchID = batch.matchTaskID, match.selectedMatchID == matchID {
       async let result: Void = match.openResult(id: matchID)
       _ = await (campaigns, result)
@@ -278,7 +279,7 @@ public final class ClientCoordinator {
     case .outreach:
       switch outreach.selectedTab {
       case .campaigns:
-        await outreach.loadCampaigns()
+        await outreach.refreshCampaignsAndSelectedDetail()
       case .templates:
         await outreach.loadTemplates()
       case .emailSettings:

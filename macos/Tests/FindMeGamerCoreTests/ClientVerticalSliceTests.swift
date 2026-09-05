@@ -6,7 +6,7 @@ import Testing
 @Suite(.serialized)
 struct ClientVerticalSliceTests {
   @MainActor
-  @Test func realModelsCompleteAnalyzeMatchComposeAndCampaignFlow() async {
+  @Test func realModelsCompleteAnalyzeMatchComposeAndCampaignFlow() async throws {
     let heldCampaignRead = VerticalSliceGate<CampaignPage>()
     let api = VerticalSliceAPI(heldFirstCampaignRead: heldCampaignRead)
     let keys = TestKeySequence([
@@ -76,7 +76,25 @@ struct ClientVerticalSliceTests {
     #expect(await heldCampaignRead.waitUntilEntered())
 
     let orderedCreatorIDs = [fixtureID(12), fixtureID(11)]
-    await coordinator.composer.load(matchID: result.id, creatorIDs: orderedCreatorIDs)
+    let candidates = result.recommendedMatches + result.otherMatches
+    let recipients = orderedCreatorIDs.compactMap { creatorID -> OutreachRecipientContext? in
+      guard let creator = candidates.first(where: { $0.id == creatorID })?.creator else {
+        return nil
+      }
+      return OutreachRecipientContext(
+        creatorID: creator.id,
+        creatorName: creator.name,
+        contacts: creator.contacts.map {
+          OutreachRecipientContact(
+            email: $0.email,
+            purpose: $0.purpose,
+            source: $0.source,
+            sourceURL: $0.sourceURL,
+            validationState: $0.validationState)
+        })
+    }
+    #expect(recipients.map(\.creatorID) == orderedCreatorIDs)
+    await coordinator.composer.load(matchID: result.id, recipients: recipients)
     #expect(coordinator.composer.selectedTemplate?.name == "Default Outreach")
     #expect(coordinator.composer.previews.map(\.creatorID) == orderedCreatorIDs)
     #expect(
@@ -103,6 +121,48 @@ struct ClientVerticalSliceTests {
     #expect(await api.campaignListCallCount == 2)
     #expect(await api.matchCallCount == matchCallsBeforeAcceptedRefresh + 1)
     #expect(accepted.deliveries.isEmpty)
+
+    let matchCallsBeforeManualUpdate = await api.matchCallCount
+    let updatedProfile = try await coordinator.updateCreatorManual(
+      id: fixtureID(11), email: "alpha.manual@example.test", notes: "Prefer partnerships")
+    #expect(
+      updatedProfile.contacts.map(\.email) == [
+        "alpha.manual@example.test", "alpha.plays@example.test",
+      ])
+    #expect(await api.matchCallCount == matchCallsBeforeManualUpdate + 1)
+    guard case .available(let refreshedResult) = coordinator.match.resultState,
+      let refreshedAlpha = refreshedResult.recommendedMatches.first(where: {
+        $0.id == fixtureID(11)
+      })
+    else {
+      Issue.record("Expected the selected Match to refresh after a manual email update")
+      return
+    }
+    #expect(refreshedAlpha.creator.contacts.map(\.email) == updatedProfile.contacts.map(\.email))
+
+    let refreshedRecipient = OutreachRecipientContext(
+      creatorID: refreshedAlpha.id,
+      creatorName: refreshedAlpha.creator.name,
+      contacts: refreshedAlpha.creator.contacts.map {
+        OutreachRecipientContact(
+          email: $0.email,
+          purpose: $0.purpose,
+          source: $0.source,
+          sourceURL: $0.sourceURL,
+          validationState: $0.validationState)
+      })
+    await coordinator.composer.load(matchID: refreshedResult.id, recipients: [refreshedRecipient])
+    #expect(coordinator.composer.recipientIDsRequiringSelection == [fixtureID(11)])
+    #expect(coordinator.composer.previews.isEmpty)
+
+    await coordinator.composer.selectRecipientEmail(
+      "alpha.manual@example.test", creatorID: fixtureID(11))
+    #expect(coordinator.composer.selectedPreview?.recipientEmail == "alpha.manual@example.test")
+    #expect(
+      await api.previewCalls.last?.recipientSelections == [
+        OutreachRecipientSelection(
+          creatorID: fixtureID(11), email: "alpha.manual@example.test")
+      ])
   }
 
   @MainActor
@@ -166,6 +226,7 @@ private actor VerticalSliceAPI: APIService {
   }
 
   private var analyzedAlpha = false
+  private var alphaManualEmail: String?
   private var campaigns: [CampaignSummary] = []
   private let heldFirstCampaignRead: VerticalSliceGate<CampaignPage>?
   private(set) var profileListCallCount = 0
@@ -173,6 +234,7 @@ private actor VerticalSliceAPI: APIService {
   private(set) var campaignListCallCount = 0
   private(set) var settingsWriteCount = 0
   private(set) var sendCalls: [SendCall] = []
+  private(set) var previewCalls: [SendBatchDraft] = []
 
   init(heldFirstCampaignRead: VerticalSliceGate<CampaignPage>? = nil) {
     self.heldFirstCampaignRead = heldFirstCampaignRead
@@ -189,7 +251,10 @@ private actor VerticalSliceAPI: APIService {
     case .creator:
       var items: [ProfileCard] = [.creator(creatorCard(id: fixtureID(10), name: "Legacy Creator"))]
       if analyzedAlpha {
-        items.append(.creator(creatorCard(id: fixtureID(11), name: "Alpha Plays")))
+        items.append(
+          .creator(
+            creatorCard(
+              id: fixtureID(11), name: "Alpha Plays", manualEmail: alphaManualEmail)))
       }
       return ProfileCardPage(items: items, nextCursor: nil)
     }
@@ -218,7 +283,7 @@ private actor VerticalSliceAPI: APIService {
   func match(id: UUID) async throws -> MatchResult {
     matchCallCount += 1
     #expect(id == fixtureID(30))
-    return availableMatchResult()
+    return availableMatchResult(alphaManualEmail: alphaManualEmail)
   }
 
   func listTemplates() async throws -> [OutreachTemplate] {
@@ -226,13 +291,17 @@ private actor VerticalSliceAPI: APIService {
   }
 
   func previewSendBatch(_ request: SendBatchDraft) async throws -> [RecipientPreview] {
-    request.creatorIDs.map { creatorID in
+    previewCalls.append(request)
+    return request.creatorIDs.map { creatorID in
       let name = creatorID == fixtureID(11) ? "Alpha Plays" : "Beta Studio"
+      let selectedEmail = request.recipientSelections.first {
+        $0.creatorID == creatorID
+      }?.email
       return RecipientPreview(
         creatorID: creatorID,
         creatorName: name,
-        recipientEmail:
-          "\(name.lowercased().replacingOccurrences(of: " ", with: "."))@example.test",
+        recipientEmail: selectedEmail
+          ?? "\(name.lowercased().replacingOccurrences(of: " ", with: "."))@example.test",
         subject: "Hello \(name)",
         markdown: "A server-rendered note for \(name).",
         html: "<p>A server-rendered note for \(name).</p>")
@@ -255,6 +324,14 @@ private actor VerticalSliceAPI: APIService {
       requestedAt: fixtureDate(50),
       state: .queued,
       deliveries: [])
+  }
+
+  func updateCreatorManual(id: UUID, email: String?, notes: String) async throws
+    -> CreatorProfile
+  {
+    #expect(id == fixtureID(11))
+    alphaManualEmail = email
+    return creatorProfile(id: id, name: "Alpha Plays", manualEmail: email, notes: notes)
   }
 
   func listCampaigns(cursor: String?) async throws -> CampaignPage {
@@ -436,8 +513,9 @@ private func creatorName(_ card: ProfileCard) -> String? {
   return creator.name
 }
 
-private func creatorCard(id: UUID, name: String) -> CreatorProfileCard {
-  CreatorProfileCard(
+private func creatorCard(id: UUID, name: String, manualEmail: String? = nil) -> CreatorProfileCard {
+  let contacts = creatorContacts(name: name, manualEmail: manualEmail)
+  return CreatorProfileCard(
     id: id,
     name: name,
     youtubeChannelID: "UC\(id.uuidString.suffix(8))",
@@ -448,12 +526,51 @@ private func creatorCard(id: UUID, name: String) -> CreatorProfileCard {
     sourceStatus: [:],
     lastAnalyzedAt: fixtureDate(10),
     nextAnalysisAt: fixtureDate(20),
-    contact: CreatorContact(
-      email: "creator@example.test",
+    contact: contacts.first,
+    contacts: contacts)
+}
+
+private func creatorProfile(
+  id: UUID, name: String, manualEmail: String?, notes: String
+) -> CreatorProfile {
+  let card = creatorCard(id: id, name: name, manualEmail: manualEmail)
+  return CreatorProfile(
+    id: card.id,
+    name: card.name,
+    youtubeChannelID: card.youtubeChannelID,
+    canonicalURL: card.canonicalURL,
+    favorite: card.favorite,
+    currentFacts: card.currentFacts,
+    brief: card.brief,
+    sourceStatus: card.sourceStatus,
+    lastAnalyzedAt: card.lastAnalyzedAt,
+    nextAnalysisAt: card.nextAnalysisAt,
+    contact: card.contact,
+    manualNotes: notes,
+    analysis: [:],
+    modelMetadata: [:],
+    promptMetadata: [:],
+    contacts: card.contacts)
+}
+
+private func creatorContacts(name: String, manualEmail: String?) -> [CreatorContact] {
+  let discovered = CreatorContact(
+    email: "\(name.lowercased().replacingOccurrences(of: " ", with: "."))@example.test",
+    availability: .discovered,
+    source: "channel_about",
+    sourceURL: "https://example.test/contact",
+    validationState: "valid",
+    purpose: "Partnerships")
+  guard let manualEmail else { return [discovered] }
+  return [
+    CreatorContact(
+      email: manualEmail,
       availability: .manual,
       source: "manual",
       sourceURL: nil,
-      validationState: "valid"))
+      validationState: "unverified"),
+    discovered,
+  ]
 }
 
 private func gameCard() -> GameProfileCard {
@@ -552,7 +669,7 @@ private func matchCompletionBatch() -> JobChangeBatch {
     hasActiveJobs: false)
 }
 
-private func availableMatchResult() -> MatchResult {
+private func availableMatchResult(alphaManualEmail: String? = nil) -> MatchResult {
   MatchResult(
     id: fixtureID(30),
     game: matchGame(),
@@ -571,17 +688,23 @@ private func availableMatchResult() -> MatchResult {
     completedAt: fixtureDate(31),
     state: .available,
     recommendedMatches: [
-      candidate(id: fixtureID(11), name: "Alpha Plays", group: .recommended, label: .strong)
+      candidate(
+        id: fixtureID(11), name: "Alpha Plays", group: .recommended, label: .strong,
+        manualEmail: alphaManualEmail)
     ],
     otherMatches: [
       candidate(id: fixtureID(12), name: "Beta Studio", group: .other, label: .limited)
     ])
 }
 
-private func candidate(id: UUID, name: String, group: MatchGroup, label: MatchLabel)
+private func candidate(
+  id: UUID, name: String, group: MatchGroup, label: MatchLabel,
+  manualEmail: String? = nil
+)
   -> MatchCandidate
 {
-  MatchCandidate(
+  let contacts = creatorContacts(name: name, manualEmail: manualEmail)
+  return MatchCandidate(
     creator: MatchCreatorCard(
       id: id,
       name: name,
@@ -589,16 +712,27 @@ private func candidate(id: UUID, name: String, group: MatchGroup, label: MatchLa
       canonicalURL: "https://youtube.com/channel/UC\(id.uuidString.suffix(8))",
       favorite: false,
       contactAvailable: true,
-      contact: MatchCreatorContact(
-        email: "creator@example.test",
-        source: "manual",
-        sourceURL: nil,
-        validationState: "valid"),
+      contact: contacts.first.map {
+        MatchCreatorContact(
+          email: $0.email,
+          source: $0.source,
+          sourceURL: $0.sourceURL,
+          validationState: $0.validationState,
+          purpose: $0.purpose)
+      },
       avatarURL: nil,
       performanceSummary: "Consistent recent views",
       subscriberCount: 120_000,
       recentAverageViews: 42_000,
-      recentMedianViews: 38_000),
+      recentMedianViews: 38_000,
+      contacts: contacts.map {
+        MatchCreatorContact(
+          email: $0.email,
+          source: $0.source,
+          sourceURL: $0.sourceURL,
+          validationState: $0.validationState,
+          purpose: $0.purpose)
+      }),
     group: group,
     label: label,
     dimensionOutcomes: MatchDimensionOutcomes(

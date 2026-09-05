@@ -33,18 +33,44 @@ enum SidebarGlyphContrastPolicy {
 
 struct SidebarDestinationIcon: View {
   @Environment(\.controlActiveState) private var controlActiveState
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   let glyph: SidebarGlyph
   let isSelected: Bool
 
   var body: some View {
+    let blend = WorkspaceMotionPolicy.selectionBlend(isSelected: isSelected)
+
+    ZStack {
+      glyphCanvas(selected: false)
+        .opacity(blend.unselectedOpacity)
+      glyphCanvas(selected: true)
+        .opacity(blend.selectedOpacity)
+    }
+    .frame(width: 20, height: 20)
+    .scaleEffect(
+      isSelected
+        ? 1
+        : WorkspaceMotionPolicy.profile(
+          for: .selectionFeedback,
+          reduceMotion: reduceMotion
+        ).inactiveScale
+    )
+    .animation(
+      WorkspaceMotionPolicy.animation(for: .selectionFeedback, reduceMotion: reduceMotion),
+      value: isSelected
+    )
+    .accessibilityHidden(true)
+  }
+
+  private func glyphCanvas(selected: Bool) -> some View {
     Canvas { context, size in
       let scale = min(size.width, size.height) / 20
       context.scaleBy(x: scale, y: scale)
 
       let colors = colors(
         for: SidebarGlyphContrastPolicy.mode(
-          isSelected: isSelected,
+          isSelected: selected,
           isControlActive: controlActiveState != .inactive))
       let stroke = StrokeStyle(lineWidth: 1.55, lineCap: .round, lineJoin: .round)
 
@@ -55,7 +81,8 @@ struct SidebarDestinationIcon: View {
           lineColor: colors.line,
           detailColor: colors.detail,
           quietColor: colors.quiet,
-          stroke: stroke)
+          stroke: stroke,
+          isSelected: selected)
       case .matchOrbit:
         drawMatchOrbit(
           in: &context,
@@ -69,7 +96,8 @@ struct SidebarDestinationIcon: View {
           lineColor: colors.line,
           detailColor: colors.detail,
           quietColor: colors.quiet,
-          stroke: stroke)
+          stroke: stroke,
+          isSelected: selected)
       case .settingsControls:
         drawSettingsControls(
           in: &context,
@@ -79,8 +107,6 @@ struct SidebarDestinationIcon: View {
           stroke: stroke)
       }
     }
-    .frame(width: 20, height: 20)
-    .accessibilityHidden(true)
   }
 
   private func colors(for mode: SidebarGlyphContrastMode) -> (
@@ -102,7 +128,8 @@ struct SidebarDestinationIcon: View {
     lineColor: Color,
     detailColor: Color,
     quietColor: Color,
-    stroke: StrokeStyle
+    stroke: StrokeStyle,
+    isSelected: Bool
   ) {
     let cells = [
       CGRect(x: 2.25, y: 2.25, width: 6.25, height: 6.25),
@@ -155,7 +182,8 @@ struct SidebarDestinationIcon: View {
     lineColor: Color,
     detailColor: Color,
     quietColor: Color,
-    stroke: StrokeStyle
+    stroke: StrokeStyle,
+    isSelected: Bool
   ) {
     var signal = Path()
     signal.move(to: CGPoint(x: 2.25, y: 14.6))

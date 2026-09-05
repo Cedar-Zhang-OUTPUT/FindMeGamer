@@ -20,6 +20,102 @@ struct JobPollerTests {
     await poller.stop()
   }
 
+  @Test(arguments: [SubmittedJobKind.analysis, .match])
+  func submittedJobRefreshRecoversFromInitialFailureAndPollsToTerminal(
+    kind: SubmittedJobKind
+  ) async throws {
+    let jobID = UUID(uuidString: "11000000-0000-0000-0000-000000000001")!
+    let gameID = UUID(uuidString: "11000000-0000-0000-0000-000000000002")!
+    let queued: JobChange
+    let terminal: JobChange
+    switch kind {
+    case .analysis:
+      queued = .analysis(analysis(id: jobID, status: .queued))
+      terminal = .analysis(analysis(id: jobID, status: .succeeded))
+    case .match:
+      queued = .match(match(id: jobID, gameID: gameID, status: .queued))
+      terminal = .match(match(id: jobID, gameID: gameID, status: .succeeded))
+    }
+
+    let api = JobAPI(
+      steps: [
+        .page(page(cursor: "initial")),
+        .failure,
+        .page(page(items: [queued], cursor: "queued")),
+        .page(page(items: [terminal], cursor: "terminal")),
+      ])
+    let clock = ManualClock()
+    let poller = JobPoller(api: api, clock: clock)
+    let events = EventProbe(stream: poller.events)
+
+    await poller.start()
+    try await waitUntil { await api.callCount == 1 }
+
+    await poller.refreshNow()
+    try await waitUntil {
+      let callCount = await api.callCount
+      let pendingSleepCount = await clock.pendingSleepCount
+      return callCount == 2 && pendingSleepCount == 1
+    }
+    #expect(await clock.requestedDurations == [.seconds(1)])
+
+    await clock.advance(by: .seconds(1))
+    try await waitUntil {
+      let pendingSleepCount = await clock.pendingSleepCount
+      return events.count == 1 && pendingSleepCount == 1
+    }
+    #expect(events.values[0].changes == [queued])
+    #expect(events.values[0].hasActiveJobs)
+    #expect(await clock.requestedDurations == [.seconds(1), .seconds(3)])
+
+    await clock.advance(by: .seconds(3))
+    try await waitUntil { events.count == 2 }
+    #expect(events.values[1].changes == [terminal])
+    #expect(!events.values[1].hasActiveJobs)
+    #expect(await api.callCount == 4)
+    #expect(await api.calls.map(\.changedAfter) == [nil, "initial", "initial", "queued"])
+    #expect(await clock.pendingSleepCount == 0)
+
+    await poller.stop()
+    events.cancel()
+  }
+
+  @Test func transientFailureRetriesAreBoundedAndDoNotSpinForever() async throws {
+    let api = JobAPI(
+      steps: [
+        .page(page(cursor: "stable")),
+        .failure,
+        .failure,
+        .failure,
+        .failure,
+      ])
+    let clock = ManualClock()
+    let poller = JobPoller(api: api, clock: clock)
+
+    await poller.start()
+    try await waitUntil { await api.callCount == 1 }
+    await poller.refreshNow()
+
+    for (callCount, delay) in zip(2...4, [1, 2, 4]) {
+      try await waitUntil {
+        let currentCallCount = await api.callCount
+        let pendingSleepCount = await clock.pendingSleepCount
+        return currentCallCount == callCount && pendingSleepCount == 1
+      }
+      await clock.advance(by: .seconds(delay))
+    }
+
+    try await waitUntil { await api.callCount == 5 }
+    await drainTasks()
+    #expect(await clock.requestedDurations == [.seconds(1), .seconds(2), .seconds(4)])
+    #expect(await clock.pendingSleepCount == 0)
+
+    await clock.advance(by: .seconds(60))
+    await drainTasks()
+    #expect(await api.callCount == 5)
+    await poller.stop()
+  }
+
   @Test func activeRegistrySurvivesEmptyPageAndStopsSchedulingAfterTerminalChange() async throws {
     let jobID = UUID(uuidString: "10000000-0000-0000-0000-000000000001")!
     let api = JobAPI(
@@ -324,6 +420,11 @@ struct JobPollerTests {
 enum LaterPageFailure: Sendable {
   case failure
   case cancellation
+}
+
+enum SubmittedJobKind: Sendable {
+  case analysis
+  case match
 }
 
 private struct JobListCall: Sendable, Equatable {

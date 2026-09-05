@@ -97,6 +97,100 @@ struct OutreachManagementModelTests {
   }
 
   @MainActor
+  @Test func acceptedQueuedBatchPollsCampaignsToTerminalWithoutSceneReactivation() async {
+    let clock = ManualClock()
+    let campaignID = id(5)
+    let queued = campaignSummary(id: campaignID, game: "Queued", state: .queued)
+    let sending = campaignSummary(id: campaignID, game: "Sending", state: .sending)
+    let completed = campaignSummary(id: campaignID, game: "Completed", state: .completed)
+    let api = ManagementAPI(
+      campaignPageOutcomes: [
+        .value(CampaignPage(items: [queued], cursor: nil, hasMore: false)),
+        .value(CampaignPage(items: [sending], cursor: nil, hasMore: false)),
+        .value(CampaignPage(items: [completed], cursor: nil, hasMore: false)),
+      ])
+    let model = OutreachManagementModel(api: api, clock: clock)
+
+    await model.refreshCampaignsAfterAcceptedSend(
+      sendBatch(campaignID: campaignID, state: .queued, deliveryState: .queued))
+    #expect(model.campaigns == [queued])
+    #expect(await waitUntil { await clock.pendingSleepCount == 1 })
+
+    await clock.advance(by: .seconds(3))
+    #expect(await waitUntil { await api.campaignPageCalls.count == 2 })
+    #expect(model.campaigns == [sending])
+    #expect(await waitUntil { await clock.pendingSleepCount == 1 })
+
+    await clock.advance(by: .seconds(3))
+    #expect(await waitUntil { await api.campaignPageCalls.count == 3 })
+    #expect(model.campaigns == [completed])
+    #expect(await waitUntil { await clock.pendingSleepCount == 0 })
+
+    await clock.advance(by: .seconds(30))
+    await Task.yield()
+    #expect(await api.campaignPageCalls.count == 3)
+    #expect(await clock.requestedDurations == [.seconds(3), .seconds(3)])
+  }
+
+  @MainActor
+  @Test func selectedQueuedDeliveryPollsToSentOrFailedAndStopsAtTerminal() async {
+    for terminalState in [SendState.sent, .failed] {
+      let clock = ManualClock()
+      let campaignID = terminalState == .sent ? id(6) : id(7)
+      let queued = campaignWithStatus(
+        id: campaignID, campaignState: .sending, batchState: .sending,
+        deliveryState: .queued)
+      let terminal = campaignWithStatus(
+        id: campaignID,
+        campaignState: terminalState == .sent ? .completed : .failed,
+        batchState: terminalState == .sent ? .sent : .failed,
+        deliveryState: terminalState)
+      let api = ManagementAPI(campaignOutcomes: [.value(queued), .value(terminal)])
+      let model = OutreachManagementModel(api: api, clock: clock)
+
+      await model.openCampaign(id: campaignID)
+      #expect(model.selectedCampaign == queued)
+      #expect(await waitUntil { await clock.pendingSleepCount == 1 })
+
+      await clock.advance(by: .seconds(3))
+      #expect(await waitUntil { await api.campaignCalls.count == 2 })
+      #expect(model.selectedCampaign == terminal)
+      #expect(await waitUntil { await clock.pendingSleepCount == 0 })
+
+      await clock.advance(by: .seconds(30))
+      await Task.yield()
+      #expect(await api.campaignCalls.count == 2)
+      #expect(await clock.requestedDurations == [.seconds(3)])
+    }
+  }
+
+  @MainActor
+  @Test func explicitCampaignRefreshReloadsListAndSelectedDetail() async {
+    let campaignID = id(8)
+    let oldSummary = campaignSummary(id: campaignID, game: "Old")
+    let refreshedSummary = campaignSummary(id: campaignID, game: "Refreshed")
+    let oldDetail = campaign(id: campaignID, game: "Old", deliveries: [delivery(id: id(81))])
+    let refreshedDetail = campaign(
+      id: campaignID, game: "Refreshed", deliveries: [delivery(id: id(82))])
+    let api = ManagementAPI(
+      campaignPageOutcomes: [
+        .value(CampaignPage(items: [oldSummary], cursor: nil, hasMore: false)),
+        .value(CampaignPage(items: [refreshedSummary], cursor: nil, hasMore: false)),
+      ],
+      campaignOutcomes: [.value(oldDetail), .value(refreshedDetail)])
+    let model = OutreachManagementModel(api: api, clock: ManualClock())
+    await model.loadCampaigns()
+    await model.openCampaign(id: campaignID)
+
+    await model.refreshCampaignsAndSelectedDetail()
+
+    #expect(model.campaigns == [refreshedSummary])
+    #expect(model.selectedCampaign == refreshedDetail)
+    #expect(await api.campaignPageCalls == [nil, nil])
+    #expect(await api.campaignCalls == [campaignID, campaignID])
+  }
+
+  @MainActor
   @Test func newerCampaignSelectionFencesHeldOldSuccessAndFailure() async {
     let aID = id(10)
     let bID = id(11)
@@ -806,11 +900,38 @@ private func game(id: UUID = id(900), name: String) -> CampaignGame {
     coverURL: nil)
 }
 
-private func campaignSummary(id identifier: UUID, game name: String) -> CampaignSummary {
+private func campaignSummary(
+  id identifier: UUID, game name: String, state: CampaignState = .completed
+) -> CampaignSummary {
   CampaignSummary(
-    id: identifier, matchTaskID: id(901), game: game(name: name), state: .completed,
+    id: identifier, matchTaskID: id(901), game: game(name: name), state: state,
     sendBatchCount: 1, metrics: metrics(), createdAt: Date(timeIntervalSince1970: 10),
     latestActivityAt: Date(timeIntervalSince1970: 20))
+}
+
+private func sendBatch(
+  campaignID: UUID, state: SendBatchState, deliveryState: SendState
+) -> SendBatch {
+  SendBatch(
+    id: id(902), campaignID: campaignID, matchTaskID: id(901), templateID: id(903),
+    templateName: "Default", templateVersion: 1, requestedCreatorIDs: [id(904)],
+    requestedAt: Date(timeIntervalSince1970: 11), state: state,
+    deliveries: [delivery(id: id(905), sendState: deliveryState)])
+}
+
+private func campaignWithStatus(
+  id identifier: UUID,
+  campaignState: CampaignState,
+  batchState: SendBatchState,
+  deliveryState: SendState
+) -> OutreachCampaign {
+  let batch = sendBatch(
+    campaignID: identifier, state: batchState, deliveryState: deliveryState)
+  return OutreachCampaign(
+    id: identifier, matchTaskID: id(901), game: game(name: "Status Campaign"),
+    state: campaignState, sendBatchCount: 1, metrics: metrics(),
+    createdAt: Date(timeIntervalSince1970: 10),
+    latestActivityAt: Date(timeIntervalSince1970: 20), sendBatches: [batch])
 }
 
 private func campaign(id identifier: UUID, game name: String, deliveries: [Delivery])
@@ -826,13 +947,15 @@ private func campaign(id identifier: UUID, game name: String, deliveries: [Deliv
     latestActivityAt: Date(timeIntervalSince1970: 20), sendBatches: [batch])
 }
 
-private func delivery(id identifier: UUID, resends: UUID? = nil) -> Delivery {
+private func delivery(
+  id identifier: UUID, resends: UUID? = nil, sendState: SendState = .sent
+) -> Delivery {
   Delivery(
     id: identifier, campaignID: id(60), sendBatchID: id(902), creatorID: id(904),
     creator: OutreachCreator(
       id: id(904), name: "Creator", youtubeChannelID: "UC-demo",
       canonicalURL: "https://youtube.com/channel/UC-demo", avatarURL: nil),
-    recipientEmail: "creator@example.test", sendState: .sent, responseState: .noResponse,
+    recipientEmail: "creator@example.test", sendState: sendState, responseState: .noResponse,
     resendsDeliveryID: resends, supersededByDeliveryID: nil, isCurrent: true,
     templateName: "Default", templateVersion: 1, renderedSubject: "Subject",
     renderedMarkdown: "Body", renderedHTML: "<p>Body</p>", senderName: "Sender",

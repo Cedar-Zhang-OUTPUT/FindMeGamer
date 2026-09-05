@@ -15,12 +15,14 @@ enum DomainMapper {
   static func creatorCard(_ value: Components.Schemas.CreatorProfileCard) throws
     -> CreatorProfileCard
   {
-    CreatorProfileCard(
+    let preferredContact = contact(value.contact?.value1)
+    return CreatorProfileCard(
       id: try uuid(value.id), name: value.name, youtubeChannelID: value.youtube_channel_id,
       canonicalURL: value.canonical_url, favorite: value.favorite,
       currentFacts: try json(value.current_facts), brief: try json(value.brief),
       sourceStatus: try json(value.source_status), lastAnalyzedAt: value.last_analyzed_at,
-      nextAnalysisAt: value.next_analysis_at, contact: contact(value.contact?.value1))
+      nextAnalysisAt: value.next_analysis_at, contact: preferredContact,
+      contacts: contacts(value.contacts, fallback: preferredContact))
   }
 
   static func gameProfile(_ value: Components.Schemas.GameProfileDetail) throws -> GameProfile {
@@ -37,14 +39,17 @@ enum DomainMapper {
   static func creatorProfile(_ value: Components.Schemas.CreatorProfileDetail) throws
     -> CreatorProfile
   {
-    CreatorProfile(
+    let preferredContact = contact(value.contact?.value1)
+    return CreatorProfile(
       id: try uuid(value.id), name: value.name, youtubeChannelID: value.youtube_channel_id,
       canonicalURL: value.canonical_url, favorite: value.favorite,
       currentFacts: try json(value.current_facts), brief: try json(value.brief),
       sourceStatus: try json(value.source_status), lastAnalyzedAt: value.last_analyzed_at,
-      nextAnalysisAt: value.next_analysis_at, contact: contact(value.contact?.value1),
+      nextAnalysisAt: value.next_analysis_at, contact: preferredContact,
       manualNotes: value.manual_notes, analysis: try json(value.analysis),
-      modelMetadata: try json(value.model_metadata), promptMetadata: try json(value.prompt_metadata)
+      modelMetadata: try json(value.model_metadata),
+      promptMetadata: try json(value.prompt_metadata),
+      contacts: contacts(value.contacts, fallback: preferredContact)
     )
   }
 
@@ -283,18 +288,17 @@ enum DomainMapper {
     let b = value.match_brief
     let d = value.dimension_outcomes
     let o = value.outreach
+    let preferredContact = c.contact.map { matchContact($0.value1) }
     return MatchCandidate(
       creator: MatchCreatorCard(
         id: try uuid(c.id), name: c.name, youtubeChannelID: c.youtube_channel_id,
         canonicalURL: c.canonical_url, favorite: c.favorite,
         contactAvailable: c.contact_available,
-        contact: c.contact.map {
-          MatchCreatorContact(
-            email: $0.value1.email, source: $0.value1.source,
-            sourceURL: $0.value1.source_url, validationState: $0.value1.validation_state)
-        }, avatarURL: c.avatar_url, performanceSummary: c.performance_summary,
+        contact: preferredContact, avatarURL: c.avatar_url,
+        performanceSummary: c.performance_summary,
         subscriberCount: c.subscriber_count, recentAverageViews: c.recent_average_views,
-        recentMedianViews: c.recent_median_views),
+        recentMedianViews: c.recent_median_views,
+        contacts: matchContacts(c.contacts, fallback: preferredContact)),
       group: try matchGroup(value.result_group.rawValue),
       label: try matchLabel(value.qualitative_label.rawValue),
       dimensionOutcomes: MatchDimensionOutcomes(
@@ -387,11 +391,38 @@ enum DomainMapper {
   private static func contact(_ value: Components.Schemas.CreatorContactResponse?)
     -> CreatorContact?
   {
-    value.map {
-      CreatorContact(
-        email: $0.email, availability: $0.source == "manual" ? .manual : .discovered,
-        source: $0.source, sourceURL: $0.source_url, validationState: $0.validation_state)
-    }
+    value.map(contact)
+  }
+
+  private static func contact(_ value: Components.Schemas.CreatorContactResponse)
+    -> CreatorContact
+  {
+    CreatorContact(
+      email: value.email, availability: value.source == "manual" ? .manual : .discovered,
+      source: value.source, sourceURL: value.source_url,
+      validationState: value.validation_state, purpose: value.purpose)
+  }
+
+  private static func contacts(
+    _ values: [Components.Schemas.CreatorContactResponse]?, fallback: CreatorContact?
+  ) -> [CreatorContact] {
+    guard let values else { return fallback.map { [$0] } ?? [] }
+    return values.map(contact)
+  }
+
+  private static func matchContact(_ value: Components.Schemas.MatchCreatorContact)
+    -> MatchCreatorContact
+  {
+    MatchCreatorContact(
+      email: value.email, source: value.source, sourceURL: value.source_url,
+      validationState: value.validation_state, purpose: value.purpose)
+  }
+
+  private static func matchContacts(
+    _ values: [Components.Schemas.MatchCreatorContact]?, fallback: MatchCreatorContact?
+  ) -> [MatchCreatorContact] {
+    guard let values else { return fallback.map { [$0] } ?? [] }
+    return values.map(matchContact)
   }
 
   private static func json(_ value: Components.Schemas.PublicJSONObject) throws -> JSONObject {

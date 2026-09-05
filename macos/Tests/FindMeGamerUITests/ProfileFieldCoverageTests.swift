@@ -78,6 +78,7 @@ import Testing
         == ["Strong fit for thoughtful launches."])
     #expect(field("Positioning", in: presentation.briefFields)?.values == ["Analytical creator."])
     #expect(presentation.contact?.availability == .discovered)
+    #expect(presentation.contacts.map(\.email) == ["hello@creator.example"])
     #expect(presentation.staleWarning == nil)
 
     let visible = creatorVisibleStrings(presentation)
@@ -87,6 +88,25 @@ import Testing
     ] {
       #expect(!visible.contains(where: { $0.contains(poison) }))
     }
+  }
+
+  @Test func creatorPresentationPreservesAllContactMetadataInServerOrder() {
+    let preferred = CreatorContact(
+      email: "business@creator.example", availability: .manual, source: "manual",
+      sourceURL: nil, validationState: "valid", purpose: "Partnerships")
+    let press = CreatorContact(
+      email: "press@creator.example", availability: .discovered,
+      source: "public_web_research", sourceURL: "https://creator.example/contact",
+      validationState: "unverified", purpose: "Press")
+    let presentation = CreatorProfilePresentation(
+      profile: replacingCreator(
+        creatorProfile(), contact: preferred, contacts: [preferred, press]))
+
+    #expect(presentation.contact?.email == preferred.email)
+    #expect(presentation.contacts.map(\.email) == [preferred.email, press.email])
+    #expect(presentation.contacts.map(\.purpose) == ["Partnerships", "Press"])
+    #expect(presentation.contacts.map(\.source) == ["manual", "public_web_research"])
+    #expect(presentation.contacts.map(\.validationState) == ["valid", "unverified"])
   }
 
   @Test func presentationLinksRequireAbsoluteHostBearingHTTPURLs() {
@@ -151,6 +171,7 @@ import Testing
       #expect(allAnalysisIsSuppressed)
       #expect(stale.briefFields.isEmpty)
       #expect(stale.contact == nil)
+      #expect(stale.contacts.isEmpty)
     }
 
     let manualContact = CreatorContact(
@@ -398,7 +419,7 @@ private func gameProfile() -> FindMeGamerCore.GameProfile {
 }
 
 private func creatorProfile() -> FindMeGamerCore.CreatorProfile {
-  FindMeGamerCore.CreatorProfile(
+  return FindMeGamerCore.CreatorProfile(
     id: UUID(uuidString: "20000000-0000-4000-8000-000000000002")!, name: "Demo Creator",
     youtubeChannelID: "UC-demo", canonicalURL: "https://youtube.com/channel/UC-demo",
     favorite: false,
@@ -482,16 +503,27 @@ private func replacingCreator(
   currentFacts: JSONObject? = nil,
   sourceStatus: JSONObject? = nil,
   contact: CreatorContact?? = nil,
+  contacts: [CreatorContact]? = nil,
   manualNotes: String?? = nil
 ) -> FindMeGamerCore.CreatorProfile {
-  FindMeGamerCore.CreatorProfile(
+  let resolvedContact = contact ?? profile.contact
+  let resolvedContacts: [CreatorContact]
+  if let contacts {
+    resolvedContacts = contacts
+  } else if contact != nil {
+    resolvedContacts = resolvedContact.map { [$0] } ?? []
+  } else {
+    resolvedContacts = profile.contacts
+  }
+  return FindMeGamerCore.CreatorProfile(
     id: id ?? profile.id, name: profile.name, youtubeChannelID: profile.youtubeChannelID,
     canonicalURL: profile.canonicalURL, favorite: profile.favorite,
     currentFacts: currentFacts ?? profile.currentFacts, brief: profile.brief,
     sourceStatus: sourceStatus ?? profile.sourceStatus, lastAnalyzedAt: profile.lastAnalyzedAt,
-    nextAnalysisAt: profile.nextAnalysisAt, contact: contact ?? profile.contact,
+    nextAnalysisAt: profile.nextAnalysisAt, contact: resolvedContact,
     manualNotes: manualNotes ?? profile.manualNotes, analysis: profile.analysis,
-    modelMetadata: profile.modelMetadata, promptMetadata: profile.promptMetadata)
+    modelMetadata: profile.modelMetadata, promptMetadata: profile.promptMetadata,
+    contacts: resolvedContacts)
 }
 
 private func gameCard(id: UUID, favorite: Bool) -> FindMeGamerCore.GameProfileCard {
