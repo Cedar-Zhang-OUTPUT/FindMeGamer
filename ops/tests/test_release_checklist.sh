@@ -338,6 +338,14 @@ with tempfile.TemporaryDirectory(prefix="fmg-task9-test.") as temporary:
     shutil.rmtree(destination)
     completed = checklist.read_text()
 
+    public_ip_origin = "https://44.233.174.193"
+    checklist.write_text(completed.replace(origin, public_ip_origin), encoding="utf-8")
+    public_ip_result = run(recorder, base_env | {"SERVICE_BASE_URL": public_ip_origin}, version)
+    assert public_ip_result.returncode == 0, public_ip_result.stderr
+    assert public_ip_origin in (destination / "release-checklist.md").read_text()
+    shutil.rmtree(destination)
+    checklist.write_text(completed, encoding="utf-8")
+
     # Mutable checklist values are validated before any external capture.
     calls_before_field_validation = log.read_text()
     invalid_completed_checklists = [
@@ -446,6 +454,10 @@ with tempfile.TemporaryDirectory(prefix="fmg-task9-test.") as temporary:
         (version, base_env | {"FMG_EC2_HOST": "operator@localhost"}, "SSH"),
         (version, base_env | {"WORKSPACE_ACCESS_KEY": "SECRET-CANARY"}, "sensitive"),
     ]
+    invalid_cases.extend(
+        (version, base_env | {"SERVICE_BASE_URL": f"https://{address}"}, "HTTPS")
+        for address in ("127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254", "0.0.0.0", "224.0.0.1", "256.1.2.3", "44.233.174", "044.233.174.193")
+    )
     for supplied_version, env, stage in invalid_cases:
         failed = run(recorder, env, supplied_version)
         assert failed.returncode != 0 and stage.lower() in failed.stderr.lower()

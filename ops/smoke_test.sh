@@ -9,6 +9,25 @@ fail() {
   exit 1
 }
 
+ipv4_is_public() {
+  local address="$1"
+  local first second third fourth octet
+  [[ "$address" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || return 1
+  IFS='.' read -r first second third fourth <<<"$address"
+  for octet in "$first" "$second" "$third" "$fourth"; do
+    [[ "$octet" =~ ^(0|[1-9][0-9]{0,2})$ ]] || return 1
+    (( 10#$octet <= 255 )) || return 1
+  done
+  first=$((10#$first))
+  second=$((10#$second))
+  [[ "$first" -ne 0 && "$first" -ne 10 && "$first" -ne 127 && "$first" -lt 224 ]] || return 1
+  [[ "$first" -ne 169 || "$second" -ne 254 ]] || return 1
+  [[ "$first" -ne 172 || "$second" -lt 16 || "$second" -gt 31 ]] || return 1
+  [[ "$first" -ne 192 || "$second" -ne 168 ]] || return 1
+  [[ "$first" -ne 100 || "$second" -lt 64 || "$second" -gt 127 ]] || return 1
+  [[ "$first" -ne 198 || "$second" -lt 18 || "$second" -gt 19 ]] || return 1
+}
+
 file_mode() {
   if [[ "$(uname -s)" == "Darwin" ]]; then
     stat -f '%Lp' "$1"
@@ -50,7 +69,9 @@ for host_label in "${host_labels[@]}"; do
   [[ "$host_label" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$ ]] ||
     fail "base URL must be one safe HTTPS origin"
 done
-[[ ! "$base_host" =~ ^[0-9.]+$ ]] || fail "base URL must not use a literal IP address"
+if [[ "$base_host" =~ ^[0-9.]+$ ]]; then
+  ipv4_is_public "$base_host" || fail "base URL IP must be a valid public IPv4 address"
+fi
 if [[ -n "$base_port" ]]; then
   base_port_value=$((10#$base_port))
   [[ "$base_port_value" -ge 1 && "$base_port_value" -le 65535 ]] ||
@@ -115,19 +136,7 @@ safe_error_suffix() {
 }
 
 ipv4_is_safe() {
-  local address="$1"
-  local first second third fourth remainder octet numeric
-  IFS='.' read -r first second third fourth remainder <<<"$address"
-  [[ -n "$first" && -n "$second" && -n "$third" && -n "$fourth" && -z "$remainder" ]] || return 1
-  for octet in "$first" "$second" "$third" "$fourth"; do
-    [[ "$octet" =~ ^[0-9]{1,3}$ ]] || return 1
-    numeric=$((10#$octet))
-    [[ "$numeric" -le 255 ]] || return 1
-  done
-  first=$((10#$first))
-  second=$((10#$second))
-  [[ "$first" -ne 0 && "$first" -ne 127 ]] || return 1
-  [[ "$first" -ne 169 || "$second" -ne 254 ]] || return 1
+  ipv4_is_public "$1"
 }
 
 remote_ip_is_safe() {

@@ -30,7 +30,7 @@ x-service-defaults: &service-defaults
 services:
   proxy:
     <<: *service-defaults
-    image: caddy:2-alpine
+    image: caddy:2.11.4-alpine
     depends_on:
       api:
         condition: service_healthy

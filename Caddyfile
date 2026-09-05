@@ -1,4 +1,15 @@
+{
+	default_sni {$SERVICE_DOMAIN:localhost}
+}
+
 {$SERVICE_DOMAIN:localhost} {
+	tls {
+		issuer acme https://acme-v02.api.letsencrypt.org/directory {
+			profile shortlived
+			disable_tlsalpn_challenge
+		}
+	}
+
 	@backend path /api/* /r/* /health/live /health/ready
 
 	handle @backend {

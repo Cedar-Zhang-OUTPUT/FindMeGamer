@@ -315,6 +315,26 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     assert any(call["tool"] == "spctl" and "--type" in call["args"] and "execute" in call["args"] for call in verify_calls)
     assert any(call["tool"] == "xcrun" and call["args"][:2] == ["stapler", "validate"] for call in verify_calls)
 
+    # Bundle verification accepts trusted HTTPS public IPv4 origins, not private IPs.
+    for service_origin, allowed in (
+        ("https://44.233.174.193", True),
+        ("https://44.233.174.193:8443", True),
+        *((f"https://{address}", False) for address in (
+            "127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.1.1",
+            "169.254.169.254", "0.0.0.0", "224.0.0.1", "256.1.2.3",
+            "44.233.174", "044.233.174.193",
+        )),
+    ):
+        changed_info = info | {"FMGAPIBaseURL": service_origin}
+        with (app / "Contents" / "Info.plist").open("wb") as stream:
+            plistlib.dump(changed_info, stream)
+        rearchive(app, archive)
+        checked = run([str(verify_script), str(archive)], base_environment)
+        assert (checked.returncode == 0) is allowed, (service_origin, checked.stderr)
+    with (app / "Contents" / "Info.plist").open("wb") as stream:
+        plistlib.dump(info, stream)
+    rearchive(app, archive)
+
     original_sidecar = sidecar.read_bytes()
     sidecar.write_text("0" * 64 + f"  {archive.name}\n", encoding="utf-8")
     log.write_text("", encoding="utf-8")
@@ -335,10 +355,23 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
         base_environment | {"SERVICE_BASE_URL": "http://service.example.com"},
         base_environment | {"SERVICE_BASE_URL": "https://service.example.com/path"},
         base_environment | {"APP_VERSION": "1.2"},
+        *(base_environment | {"SERVICE_BASE_URL": f"https://{address}"} for address in (
+            "127.0.0.1", "10.0.0.1", "172.16.0.1", "192.168.1.1",
+            "169.254.169.254", "0.0.0.0", "224.0.0.1", "256.1.2.3",
+            "44.233.174", "044.233.174.193",
+        )),
     ):
         result = run([str(build_script)], bad_environment)
         assert result.returncode != 0 and not archive.exists() and not sidecar.exists()
     assert run([str(build_script), "unexpected"], base_environment).returncode != 0
+
+    public_ip_build = run(
+        [str(build_script)], base_environment | {"SERVICE_BASE_URL": "https://44.233.174.193"}
+    )
+    assert public_ip_build.returncode == 0, public_ip_build.stderr
+    public_ip_checked = run([str(verify_script), str(archive)], base_environment)
+    assert public_ip_checked.returncode == 0, public_ip_checked.stderr
+    remove_artifacts()
 
     for failure_mode in (
         "build-failure",
@@ -455,6 +488,13 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     digest_before = dmg.read_bytes()
     assert run(["bash", str(dmg_script)], dmg_environment).returncode != 0
     assert dmg.read_bytes() == digest_before
+    dmg.unlink()
+    Path(str(dmg) + ".sha256").unlink()
+    public_ip_environment = dmg_environment | {"SERVICE_BASE_URL": "https://44.233.174.193"}
+    public_ip_dmg = run(["bash", str(dmg_script)], public_ip_environment)
+    assert public_ip_dmg.returncode == 0, public_ip_dmg.stderr
+    public_ip_verified = run([str(verify_script), str(dmg), "--allow-adhoc"], public_ip_environment)
+    assert public_ip_verified.returncode == 0, public_ip_verified.stderr
     dmg.unlink()
     Path(str(dmg) + ".sha256").unlink()
     for extra in (

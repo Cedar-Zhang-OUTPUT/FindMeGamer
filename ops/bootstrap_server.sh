@@ -95,7 +95,7 @@ install_master_key_if_absent() {
   if [[ ! -e "$target" ]]; then
     pending_temp="$(mktemp "$etc_dir/.master.key.XXXXXX")"
     chmod 0600 "$pending_temp"
-    openssl rand -base64 32 >"$pending_temp"
+    openssl rand -base64 32 | tr -d '\n' >"$pending_temp"
     chmod 0600 "$pending_temp"
     mv "$pending_temp" "$target"
     pending_temp=""
