@@ -4,7 +4,7 @@
 
 - Origin: `https://44.233.174.193` (fixed EC2 Elastic IP, publicly trusted TLS).
 - Instance: `i-041e77ab08c86ff1d`, `us-west-2`.
-- Runtime commit: `6de8177494536d9db7bc1a05005b609d32fbad5d`.
+- Runtime commit: `660e66280ae5c0cf0859ace5db4ec8341f488d91`.
 - Services: API, Worker, Beat, PostgreSQL 17, Redis 7, Caddy 2.11.4.
 - Database migration: `20260904_0007` (head).
 - S3 bucket: `zhangyue-data-493392056671-us-west-2`.
@@ -19,10 +19,9 @@ attempts remain in task history for traceability.
 
 See [deployment procedure](ec2-internal-demo.md) for maintenance-window updates,
 the server's local Git-bundle mirror, protected configuration, and TLS renewal.
-Test-only logging-fixture changes after the runtime commit do not change the
-deployed application.
+Later handoff-documentation changes do not change the deployed application.
 
-## Verified real flow
+## Initial deployment: verified real flow
 
 | Check | Evidence |
 | --- | --- |
@@ -40,7 +39,7 @@ deployed application.
 The restore rehearsal used a separate temporary database, which was removed
 after verification; the application database was not restored over. Its source
 backup was `backups/20260905T125145Z-cbbf82fc8e80-regular.dump`.
-The final runtime deployment also created the pre-migration backup
+The initial runtime deployment also created the pre-migration backup
 `backups/20260905T130640Z-6de817749453-pre-migration.dump`.
 
 The real Creator smoke test initially exposed list fields exceeding the existing
@@ -48,6 +47,68 @@ schema limits. The bounded fix adds explicit list selection instructions and
 safe field-specific validation feedback to the existing single repair request.
 It does not increase retry counts or remove validation. Independent review and
 the real retry flow passed. Safe diagnostics omit keys and model output bodies.
+
+## Backend vision-delivery update
+
+Runtime `4faa3bc13af01069ab98f49bb1a6e1b140af3442` downloads public raster images
+on EC2 and supplies their Base64 contents to DeepSeek. DeepSeek no longer needs
+to download Steam/YouTube image URLs itself. No new service, schema migration,
+client API change, or client rebuild is needed.
+
+Each image is restricted to public HTTPS destinations, with DNS-pinned
+connections, redirect revalidation, a 4 MiB size limit, and a 15-second download
+deadline. At most four image downloads run concurrently; the aggregate inline
+image payload is limited to 24 MiB. Provider credentials are not sent to image
+hosts. A failed download retains the existing nonfatal visual-analysis fallback.
+
+TDD and independent review passed. Verification includes 539 analysis, worker,
+gateway, publication, and reanalysis regression tests against isolated PostgreSQL
+17 / Redis 7; 13 integration-fixture tests; and the full isolated Docker
+Analyze → Library → Match → Outreach → Yes/No flow. The integration provider
+requires inline image contents and rejects bare external image URLs. Its SMTP
+capture is isolated; this did not send real email.
+
+The maintenance-window deployment completed with all six services healthy and
+created the pre-migration backup
+`backups/20260905T132632Z-4faa3bc13af0-pre-migration.dump`.
+
+The live Game run then exposed synthesis evidence-reference retries: final
+Game Brief evidence has no `observation` field, and final synthesis must cite
+the current synthesis catalog rather than copy raw image references from the
+visual-stage output. The bounded follow-up `660e66280ae5c0cf0859ace5db4ec8341f488d91`
+clarifies these existing constraints in `game-synthesis-v2`; it changes neither
+schemas, validation, retry counts, nor Creator analysis. Its TDD cases first
+failed, then passed; independent review and 542 isolated regression tests passed,
+and the complete Docker end-to-end suite passed again in 70 seconds.
+
+The first Game reanalysis (`5779be1b-9062-46cc-a8ef-5477bca83c2a`) exhausted its
+existing semantic-validation retries. The previous Profile's `last_analyzed_at`
+was unchanged, confirming failed reanalysis did not overwrite it. The follow-up
+was deployed after the task ended and the active-job list was empty. Its backup
+is `backups/20260905T133749Z-660e66280ae5-pre-migration.dump`.
+
+Real reanalysis verification passed for both existing Profile identities:
+
+| Profile | Successful job | Verified result |
+| --- | --- | --- |
+| Hades | `eae843df-3bc8-4610-b51d-4d7a08c0dba9` | `visual_analysis=available`, `vision_available=true`, `game-synthesis-v2`; updated at 13:39:04 UTC |
+| Northernlion | `f9d2c120-54cd-4bb6-be86-d92b29215a61` | `visual_analysis=available`, `vision_available=true`; updated at 13:28:35 UTC |
+
+These flags come from schema-validated visual output with references bound to
+the actual image inputs, not merely successful HTTP requests. Both tasks
+succeeded and replaced their prior analysis timestamps without changing Profile
+IDs. The corrected Game run completed in about 48 seconds without task retries.
+
+Match `8ebde41d-4dc0-4379-beea-9b0a1521e424` then succeeded against the updated
+Profiles, with `result_state=available`, one Creator result, and a populated
+Match Brief. The client DMG remains unchanged; existing cloud-connected clients
+can refresh these Profiles directly.
+
+Final post-deployment HTTPS smoke passed for health, authentication, settings,
+Library, changed-job polling, Match history, and read-only public response
+handling. All six services are healthy. Local authenticated verification used
+the operator's configured HTTP/HTTPS proxy after direct Shanghai-to-US timeout
+observations; a proxied health probe returned HTTP 200 in about 1.4 seconds.
 
 ## Client installation and first connection
 
@@ -94,12 +155,6 @@ private backup; it is required to decrypt provider configuration after restorati
   stored settings. Add it in **Settings → Connections → Google AI Studio →
   Replacement Gemini API Key → Replace Credential**, confirm, then **Test
   Connection**. This shared configuration enables the email-research fallback.
-- **Vision is degraded for this verification.** A bounded live replay confirmed
-  that DeepSeek returned HTTP 400 because it could not download a YouTube
-  thumbnail from `i.ytimg.com`. The documented request format is supported; the
-  existing nonfatal `unavailable` result was retained, and metadata-based analysis
-  and Match completed. Do not describe these Profiles as having successful image
-  analysis. An image-relay approach can be evaluated separately.
 - Shanghai-to-US direct connections were intermittently slower than the smoke
   script's short connection timeout. The real authenticated API flow completed;
   colleagues may need their normal company proxy/VPN depending on their network.
