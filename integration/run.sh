@@ -157,6 +157,8 @@ fi
 started_at=$SECONDS
 run_compose "$COMPOSE_BUILD_TIMEOUT_SECONDS" build api worker beat
 images_built=1
+run_compose "$COMPOSE_COMMAND_TIMEOUT_SECONDS" run --rm --no-deps --entrypoint python api \
+  /integration/tests/test_fake_external.py
 workspace_hash="$(run_compose "$COMPOSE_COMMAND_TIMEOUT_SECONDS" run --rm --no-deps --entrypoint python api -c \
   'from app.core.security import hash_workspace_key; print(hash_workspace_key("integration-workspace-key"))')"
 [[ "$workspace_hash" == '$argon2id$'* ]] || { echo "failed to generate synthetic workspace hash" >&2; exit 1; }

@@ -104,6 +104,71 @@ def creator_synthesis() -> dict[str, object]:
     return result
 
 
+CREATOR_REDUCTION_FIELDS = {
+    "CreatorContentFormatReduction": (
+        "content_summary",
+        "primary_games",
+        "genres",
+        "formats",
+        "livestream_tendency",
+        "long_form_tendency",
+        "short_form_tendency",
+        "representative_video_context",
+        "suitable_game_types",
+    ),
+    "CreatorPresentationReduction": ("style", "pacing", "production_quality"),
+    "CreatorPerformanceAudienceReduction": (
+        "recent_performance_summary",
+        "engagement_summary",
+        "publishing_frequency_context",
+        "audience_inference",
+    ),
+    "CreatorCommercialSafetyReduction": (
+        "sponsorship_patterns",
+        "brand_safety",
+        "collaboration_risks",
+    ),
+    "CreatorBriefSynthesis": (
+        "public_email",
+        "linked_site",
+        "social_links",
+        "creator_brief",
+    ),
+}
+
+
+def creator_video_batch() -> dict[str, object]:
+    sections = {
+        "content_format": (
+            "content_focus",
+            "primary_games",
+            "genres",
+            "formats",
+            "format_tendencies",
+            "representative_video_context",
+        ),
+        "presentation": ("style_and_pacing", "production_signals"),
+        "performance_audience": (
+            "recent_performance",
+            "engagement",
+            "publishing_cadence",
+            "audience_signals",
+        ),
+        "commercial_safety": (
+            "sponsorship_signals",
+            "brand_safety_signals",
+            "collaboration_risks",
+        ),
+    }
+    return {
+        "english_language_check": True,
+        **{
+            section: {field: unavailable() for field in fields}
+            for section, fields in sections.items()
+        },
+    }
+
+
 def game_extraction() -> dict[str, object]:
     fields = (
         "short_summary",
@@ -212,6 +277,22 @@ def ranking(creator_ids: list[str]) -> dict[str, object]:
 def append_log(line: str) -> None:
     with (STATE / "calls.log").open("a", encoding="utf-8") as stream:
         stream.write(f"{line}\n")
+
+
+def requested_schema(body: dict[str, object]) -> str | None:
+    # DeepSeek uses JSON-object mode and carries the schema in its system prompt.
+    # Keep the old envelope readable for older standalone harness clients too.
+    schema_name = body.get("response_format", {}).get("json_schema", {}).get("name")
+    if schema_name:
+        return schema_name
+    for message in body.get("messages", []):
+        content = message.get("content")
+        if message.get("role") != "system" or not isinstance(content, str):
+            continue
+        _, marker, encoded = content.partition("JSON Schema: ")
+        if marker:
+            return json.loads(encoded).get("title")
+    return None
 
 
 def block_until_process_stops(marker: str) -> None:
@@ -346,7 +427,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         length = int(self.headers.get("Content-Length", "0"))
         body = json.loads(self.rfile.read(length) if length else b"{}")
-        schema_name = body.get("response_format", {}).get("json_schema", {}).get("name")
+        schema_name = requested_schema(body)
         messages = json.dumps(body.get("messages", []), separators=(",", ":"))
         creator_ids = list(dict.fromkeys(UUID_PATTERN.findall(messages)))
         append_log(f"deepseek {schema_name}")
@@ -354,6 +435,17 @@ class Handler(BaseHTTPRequestHandler):
             payload = creator_metadata()
         elif schema_name == "CreatorSynthesis":
             payload = creator_synthesis()
+        elif schema_name == "CreatorVideoBatchDigest":
+            payload = creator_video_batch()
+        elif schema_name in CREATOR_REDUCTION_FIELDS:
+            synthesis = creator_synthesis()
+            payload = {
+                "english_language_check": True,
+                **{
+                    field: synthesis[field]
+                    for field in CREATOR_REDUCTION_FIELDS[schema_name]
+                },
+            }
         elif schema_name == "GameExtraction":
             payload = game_extraction()
         elif schema_name == "GameSynthesis":

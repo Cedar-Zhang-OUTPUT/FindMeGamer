@@ -1,14 +1,19 @@
 from __future__ import annotations
 
 import json
+from email import policy
+from email.parser import BytesParser
+from html import unescape
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import time
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from urllib.parse import urlencode, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -199,6 +204,170 @@ def assert_no_numeric_match_keys(value: object) -> None:
             assert_no_numeric_match_keys(nested)
 
 
+def assert_library_profile(kind: str, profile_id: str, query: str) -> None:
+    path = f"/api/v1/profiles/{kind}"
+    detail = request_json("GET", f"{path}/{profile_id}")
+    assert detail["id"] == profile_id
+    request_json("PATCH", f"{path}/{profile_id}/favorite", payload={"favorite": True})
+    listed = request_json(
+        "GET", path + "?" + urlencode({"only_collection": "true", "query": query})
+    )
+    assert profile_id in {item["id"] for item in listed["items"]}
+    request_json("PATCH", f"{path}/{profile_id}/favorite", payload={"favorite": False})
+    collected = request_json("GET", path + "?only_collection=true")
+    assert profile_id not in {item["id"] for item in collected["items"]}
+
+
+def outreach_scenario(match_id: str, creator_ids: list[str]) -> None:
+    smtp = request_json(
+        "PUT",
+        "/api/v1/outreach/smtp",
+        payload={
+            "host": "smtp.integration.invalid",
+            "port": 465,
+            "encryption": "tls",
+            "username": "sender@example.com",
+            "password": "synthetic-smtp-integration-key",
+            "from_name": "Integration Team",
+            "reply_to": "reply@example.com",
+            "emails_per_minute": 60,
+        },
+    )
+    assert smtp["configured"] and "password" not in smtp
+    template = request_json(
+        "POST",
+        "/api/v1/outreach/templates",
+        payload={
+            "name": "Integration invitation",
+            "subject_template": "{{creator_name}} and {{game_name}}",
+            "body_markdown": "Hello {{creator_name}}. {{match_reason}} {{steam_url}} From {{sender_name}}.",
+            "accepted_label": "Yes, count me in",
+            "declined_label": "No, thank you",
+        },
+    )
+    expected_recipients = {}
+    for index, creator_id in enumerate(creator_ids):
+        email = f"creator{index}@example.com"
+        profile = request_json(
+            "PATCH",
+            f"/api/v1/profiles/creators/{creator_id}/manual",
+            payload={"contact_email": email, "notes": "Integration contact."},
+        )
+        assert email in {contact["email"] for contact in profile["contacts"]}
+        expected_recipients[email] = "accepted" if index == 0 else "declined"
+    payload = {
+        "match_task_id": match_id,
+        "creator_ids": creator_ids,
+        "template_id": template["id"],
+        "recipient_selections": [
+            {"creator_id": creator_id, "email": f"creator{index}@example.com"}
+            for index, creator_id in enumerate(creator_ids)
+        ],
+    }
+    preview = request_json(
+        "POST", "/api/v1/outreach/send-batches/preview", payload=payload
+    )
+    assert {item["recipient_email"] for item in preview["items"]} == set(
+        expected_recipients
+    )
+    assert not state_file_exists("smtp-*.eml"), "preview sent email"
+    batch = request_json(
+        "POST",
+        "/api/v1/outreach/send-batches",
+        payload=payload,
+        idempotency_key="integration-outreach-send",
+    )
+    repeated = request_json(
+        "POST",
+        "/api/v1/outreach/send-batches",
+        payload=payload,
+        idempotency_key="integration-outreach-send",
+    )
+    assert repeated["id"] == batch["id"]
+    campaign_path = f"/api/v1/outreach/campaigns/{batch['campaign_id']}"
+
+    def sent_campaign():
+        campaign = request_json("GET", campaign_path)
+        return campaign if campaign["state"] == "completed" else False
+
+    campaign = wait_for(
+        "queued Outreach deliveries sent by Worker", sent_campaign, timeout=60
+    )
+    assert campaign["metrics"] == {
+        "sent_creators": 2,
+        "accepted": 0,
+        "declined": 0,
+        "no_response": 2,
+        "failed": 0,
+        "response_rate": 0.0,
+    }
+    captured = json.loads(
+        compose(
+            "exec",
+            "-T",
+            "api",
+            "python",
+            "-c",
+            "import json,pathlib; print(json.dumps([p.read_text() for p in sorted(pathlib.Path('/integration-state').glob('smtp-*.eml'))]))",
+        ).stdout
+    )
+    assert len(captured) == 2, "idempotent send created duplicate emails"
+    for raw_message in captured:
+        message = BytesParser(policy=policy.default).parsebytes(raw_message.encode())
+        recipient = str(message["To"])
+        choice = expected_recipients[recipient]
+        html = message.get_body(preferencelist=("html",)).get_content()
+        links = re.findall(r'href="([^\"]+/r/[^\"]+)"', html)
+        urls = {urlsplit(unescape(link)).query: unescape(link) for link in links}
+        assert set(urls) == {"choice=accepted", "choice=declined"}
+        target = urls[f"choice={choice}"]
+        assert target.startswith(BASE_URL + "/r/")
+        with urlopen(target, timeout=10) as response:
+            confirmation = response.read().decode()
+        assert "Confirm response" in confirmation
+        assert "Yes, count me in" in confirmation and "No, thank you" in confirmation
+        # Link-preview GETs must not record a response; only an explicit POST does.
+        before = request_json("GET", campaign_path)
+        matching = [
+            d
+            for b in before["send_batches"]
+            for d in b["deliveries"]
+            if d["recipient_email"] == recipient
+        ]
+        assert matching[0]["response_state"] == "no_response"
+        for posted_choice in (
+            choice,
+            choice,
+            "declined" if choice == "accepted" else "accepted",
+        ):
+            request = Request(
+                BASE_URL + urlsplit(target).path,
+                data=urlencode({"choice": posted_choice}).encode(),
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                method="POST",
+            )
+            with urlopen(request, timeout=10) as response:
+                assert (
+                    f"Your final response is {choice.title()}."
+                    in response.read().decode()
+                )
+    final = request_json("GET", campaign_path)
+    assert final["metrics"] == {
+        "sent_creators": 2,
+        "accepted": 1,
+        "declined": 1,
+        "no_response": 0,
+        "failed": 0,
+        "response_rate": 1.0,
+    }
+    assert len(final["send_batches"]) == 1
+    assert_no_numeric_match_keys(request_json("GET", f"/api/v1/matches/{match_id}"))
+    assert "synthetic-smtp-integration-key" not in json.dumps(final)
+    print(
+        "PASS: Library → Match → Outreach preview/send → Yes/No and duplicate prevention"
+    )
+
+
 def recovery_scenario() -> None:
     wait_for("six healthy integration services", health_probe, timeout=150)
     configure_fake_secrets()
@@ -238,6 +407,8 @@ def recovery_scenario() -> None:
     )
     game_done = wait_for("Game Analyze", lambda: wait_job(game["id"]), timeout=120)
     game_id = game_done["profile_id"]
+    assert_library_profile("games", game_id, "Strategy")
+    assert_library_profile("creators", creator_one_id, "Creator")
 
     match = request_json(
         "POST",
@@ -291,6 +462,7 @@ def recovery_scenario() -> None:
         "exec", "-T", "api", "cat", "/integration-state/calls.log"
     ).stdout.splitlines()
     assert checkpoint_calls.count(f"pairwise-call {first_checkpoint_id}") == 1
+    outreach_scenario(match_id, [creator_one_id, creator_two_id])
 
     sql(
         f"UPDATE creator_profiles SET next_analysis_at=now()-interval '1 day' WHERE id='{creator_one_id}'"
@@ -347,11 +519,17 @@ def recovery_scenario() -> None:
     for expected in (
         "youtube channels",
         "steam appdetails",
-        "deepseek CreatorSynthesis",
+        "deepseek CreatorVideoBatchDigest",
+        "deepseek CreatorContentFormatReduction",
+        "deepseek CreatorPresentationReduction",
+        "deepseek CreatorPerformanceAudienceReduction",
+        "deepseek CreatorCommercialSafetyReduction",
+        "deepseek CreatorBriefSynthesis",
         "deepseek ScreeningOutput",
         "deepseek PairwiseMatchBrief",
         "deepseek FinalRankingOutput",
         "s3 put_object",
+        "smtp send_message",
     ):
         assert expected in call_log, expected
     for forbidden in (
