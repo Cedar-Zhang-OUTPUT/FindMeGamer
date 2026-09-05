@@ -30,7 +30,6 @@ from app.integrations.artifacts import (
 )
 from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
 
-ARTIFACT_RETENTION_TAGGING = "retention=temporary-analysis-30d"
 S3_CLIENT_CONFIG = Config(
     connect_timeout=5.0,
     read_timeout=20.0,
@@ -143,7 +142,6 @@ class S3ArtifactStore:
                 Key=key,
                 Body=body,
                 ContentType="application/json",
-                Tagging=ARTIFACT_RETENTION_TAGGING,
             )
         except ClientError as error:
             _raise_client_error(error)

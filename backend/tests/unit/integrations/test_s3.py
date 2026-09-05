@@ -8,11 +8,7 @@ from botocore.stub import Stubber
 import pytest
 
 from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
-from app.integrations.s3 import (
-    ARTIFACT_RETENTION_TAGGING,
-    MAX_ARTIFACT_JSON_BYTES,
-    S3ArtifactStore,
-)
+from app.integrations.s3 import MAX_ARTIFACT_JSON_BYTES, S3ArtifactStore
 
 
 class RecordingS3Client:
@@ -31,7 +27,7 @@ class RecordingS3Client:
         self.closed = True
 
 
-def test_s3_put_json_uses_exact_deterministic_bytes_key_content_type_and_tag() -> None:
+def test_s3_put_json_uses_prefix_lifecycle_without_object_tagging() -> None:
     client = RecordingS3Client()
     job_id = UUID("12345678-1234-5678-1234-567812345678")
     store = S3ArtifactStore(bucket="analysis-artifacts", s3_client=client)
@@ -45,7 +41,6 @@ def test_s3_put_json_uses_exact_deterministic_bytes_key_content_type_and_tag() -
             "Key": key,
             "Body": b'{"a":"\xe6\xb8\xb8\xe6\x88\x8f","z":1}',
             "ContentType": "application/json",
-            "Tagging": ARTIFACT_RETENTION_TAGGING,
         }
     ]
 
@@ -190,7 +185,6 @@ def test_s3_stubber_classifies_retryable_service_errors_as_transient(
         "Key": key,
         "Body": b'{"ok":true}',
         "ContentType": "application/json",
-        "Tagging": ARTIFACT_RETENTION_TAGGING,
     }
     with Stubber(client) as stubber:
         stubber.add_client_error(
@@ -232,9 +226,10 @@ def test_s3_endpoint_failure_is_transient_and_redacted(caplog) -> None:
     secret = "s3-endpoint-secret-canary"
     client.error = EndpointConnectionError(endpoint_url=f"https://s3.example/{secret}")
 
-    with caplog.at_level(logging.DEBUG), pytest.raises(
-        TransientIntegrationError, match="s3_unavailable"
-    ) as caught:
+    with (
+        caplog.at_level(logging.DEBUG),
+        pytest.raises(TransientIntegrationError, match="s3_unavailable") as caught,
+    ):
         S3ArtifactStore(bucket="analysis-artifacts", s3_client=client).put_json(
             uuid4(), "source.json", {"private": secret}
         )
