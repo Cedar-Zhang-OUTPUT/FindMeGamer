@@ -9,13 +9,7 @@ struct SettingsView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
-      WorkspacePageHeader(WorkspacePageCopy.settings) {
-        WorkspaceStatusLozenge(
-          title: model.workspaceStatus,
-          systemImage: model.workspaceStatus == "Connected"
-            ? "checkmark.circle.fill" : "wifi.slash",
-          tone: model.workspaceStatus == "Connected" ? .success : .warning)
-      }
+      WorkspacePageHeader(WorkspacePageCopy.settings)
 
       GeometryReader { geometry in
         VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
@@ -101,31 +95,16 @@ struct SettingsView: View {
   }
 
   private var selectedContent: some View {
-    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-      VStack(alignment: .leading, spacing: 6) {
-        Text(category.title)
-          .font(.system(.title2, design: .rounded, weight: .bold))
-          .foregroundStyle(StudioPalette.ink)
-          .accessibilityAddTraits(.isHeader)
-        Text(category.subtitle)
-          .font(.subheadline)
-          .foregroundStyle(.secondary)
-          .fixedSize(horizontal: false, vertical: true)
+    Form {
+      switch category {
+      case .appearance: AppearanceSettings(model: model)
+      case .connections: ConnectionsSettings(model: model)
+      case .reanalysis: ReanalysisSettings(model: model)
+      case .workspace: WorkspaceSettings(model: model)
       }
-      .padding(.horizontal, 4)
-
-      Form {
-        switch category {
-        case .appearance: AppearanceSettings(model: model)
-        case .connections: ConnectionsSettings(model: model)
-        case .reanalysis: ReanalysisSettings(model: model)
-        case .workspace: WorkspaceSettings(model: model)
-        }
-      }
-      .formStyle(.grouped)
-      .scrollContentBackground(.hidden)
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+    .formStyle(.grouped)
+    .scrollContentBackground(.hidden)
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 }
@@ -139,15 +118,6 @@ private enum SettingsCategory: String, CaseIterable {
     case .connections: "Connections"
     case .reanalysis: "Auto-refresh"
     case .workspace: "Workspace"
-    }
-  }
-
-  var subtitle: String {
-    switch self {
-    case .appearance: "Make this Mac comfortable to work on. Changes apply immediately."
-    case .connections: "Choose a service to manage its shared credential or test its connection."
-    case .reanalysis: "Keep profiles current. Game and creator refresh schedules are independent."
-    case .workspace: "Connection details and access for this Mac."
     }
   }
 

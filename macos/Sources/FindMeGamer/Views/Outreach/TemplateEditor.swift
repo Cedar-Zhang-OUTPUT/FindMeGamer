@@ -22,13 +22,13 @@ struct TemplateEditor: View {
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var confirmation: Confirmation?
   @State private var workspaceDirection = WorkspaceMotionDirection.stationary
+  @State private var messageEditing = OutreachTextEditing()
 
   var body: some View {
     Group {
       if model.templateDraft == nil {
         ContentUnavailableView(
-          "Select a Template", systemImage: "doc.text",
-          description: Text("Choose a Template from the list or create a new one."))
+          "Select a template", systemImage: "doc.text")
       } else {
         VStack(spacing: 0) {
           HStack(spacing: WorkspaceDesign.spaceM) {
@@ -141,29 +141,21 @@ struct TemplateEditor: View {
             Text("Message")
               .font(.callout.weight(.medium))
             Spacer()
-            Menu("Insert Variable") {
-              ForEach(OutreachManagementModel.allowedVariables, id: \.self) { variable in
-                Button(variable) {
-                  model.insertVariable(variable)
-                }
-              }
-            }
+            OutreachVariableMenu(editing: messageEditing)
           }
-          TextEditor(text: bodyMarkdown)
-            .accessibilityLabel("Template Message")
-            .font(.system(size: 15))
-            .lineSpacing(5)
-            .scrollContentBackground(.hidden)
-            .frame(minHeight: 260)
-            .padding(16)
-            .modifier(OutreachWritingSurface())
+          OutreachMessageEditor(
+            text: bodyMarkdown, editing: messageEditing, accessibilityLabel: "Template Message"
+          )
+          .frame(minHeight: 260)
+          .padding(16)
+          .modifier(OutreachWritingSurface())
         }
 
-        DisclosureGroup("Response button labels", isExpanded: $presentation.showsResponseLabels) {
+        OutreachResponseButtons(
+          accepted: model.templateDraft?.acceptedLabel ?? "",
+          declined: model.templateDraft?.declinedLabel ?? "")
+        DisclosureGroup("Edit response labels", isExpanded: $presentation.showsResponseLabels) {
           VStack(alignment: .leading, spacing: 12) {
-            Text("These two buttons are included in every email and track the creator’s response.")
-              .font(.caption)
-              .foregroundStyle(.secondary)
             field("Accept label") {
               TextField("Accepted CTA Label", text: acceptedLabel)
                 .textFieldStyle(OutreachDraftFieldStyle())
@@ -262,29 +254,24 @@ struct TemplateEditor: View {
 
   @ViewBuilder private var preview: some View {
     VStack(spacing: 0) {
-      HStack {
-        Text("Server Preview")
-          .font(.callout.weight(.medium))
-        Image(systemName: "envelope.open")
-          .foregroundStyle(StudioPalette.blue)
-          .accessibilityHidden(true)
-        Spacer()
-      }
-      .padding(12)
-      Divider()
-
       switch model.previewState {
       case .idle:
         ContentUnavailableView(
-          "No Preview", systemImage: "envelope.open",
-          description: Text("Select a saved Template to preview it."))
-      case .saveFirst(let message):
+          "No preview", systemImage: "envelope.open")
+      case .saveFirst:
         ContentUnavailableView {
-          Label("Save first", systemImage: "square.and.arrow.down")
+          Label("Unsaved template", systemImage: "doc.badge.ellipsis")
         } description: {
-          Text(message)
+          if let error = model.templateActionError {
+            Text(error)
+          } else if !model.templateValidationMessages.isEmpty {
+            Text(model.templateValidationMessages.joined(separator: "\n"))
+          }
         } actions: {
-          Button("Return to editing") { presentation.mode = .edit }
+          Button("Save & preview") { confirmation = .save }
+            .buttonStyle(.borderedProminent)
+            .disabled(!writesEnabled || !model.canSaveTemplate)
+          Button("Edit template") { presentation.mode = .edit }
         }
       case .loading:
         ProgressView("Rendering Preview…")
@@ -306,7 +293,7 @@ struct TemplateEditor: View {
         } actions: {
           Button("Try Again") { model.retryTemplatePreview() }
             .disabled(model.isTemplateActionInFlight)
-          Button("Return to editing") { presentation.mode = .edit }
+          Button("Edit template") { presentation.mode = .edit }
         }
       }
     }

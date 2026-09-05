@@ -53,11 +53,13 @@ struct CreatorProfileCard: View {
                 .foregroundStyle(.secondary)
             }
 
-            Text(presentation.performanceSummary ?? "Open this profile to explore their work.")
-              .font(.callout)
-              .foregroundStyle(.secondary)
-              .lineSpacing(2)
-              .lineLimit(2)
+            if let summary = presentation.performanceSummary {
+              Text(summary)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineSpacing(2)
+                .lineLimit(2)
+            }
 
             if !presentation.tags.isEmpty {
               LibraryTagRow(tags: presentation.tags, tint: identityColor)
@@ -82,7 +84,7 @@ struct CreatorProfileCard: View {
           }
           .padding(16)
           .padding(.top, 2)
-          .frame(maxWidth: .infinity, minHeight: 182, alignment: .topLeading)
+          .frame(maxWidth: .infinity, minHeight: 160, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
@@ -138,11 +140,6 @@ struct CreatorProfileCard: View {
 
       Spacer()
 
-      Text("CREATOR")
-        .font(.system(size: 9, weight: .bold, design: .rounded))
-        .tracking(1.6)
-        .foregroundStyle(StudioPalette.ink.opacity(0.65))
-        .padding(.bottom, 8)
     }
     .padding(.horizontal, 16)
     .padding(.bottom, 2)
@@ -168,7 +165,8 @@ struct CreatorProfileCard: View {
     .clipShape(
       UnevenRoundedRectangle(
         topLeadingRadius: WorkspaceDesign.cardCornerRadius,
-        topTrailingRadius: WorkspaceDesign.cardCornerRadius))
+        topTrailingRadius: WorkspaceDesign.cardCornerRadius)
+    )
     .accessibilityHidden(true)
   }
 
@@ -210,7 +208,7 @@ struct CreatorProfileCard: View {
     if let subscriberCount = presentation.subscriberCount {
       Text(subscriberCount, format: .number) + Text(" subscribers")
     } else {
-      Text("Subscribers unavailable.")
+      Text("Subscribers —")
     }
   }
 }

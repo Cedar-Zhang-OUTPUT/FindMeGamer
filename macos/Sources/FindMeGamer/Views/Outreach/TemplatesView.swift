@@ -35,7 +35,7 @@ struct TemplatesView: View {
         ContentUnavailableView {
           Label("No Templates", systemImage: "doc.text")
         } description: {
-          Text(model.templatesError ?? "Create a Template to start writing outreach.")
+          if let error = model.templatesError { Text(error) }
         } actions: {
           if model.templatesError != nil {
             Button("Try Again") {
@@ -163,13 +163,6 @@ struct TemplatesView: View {
       .listStyle(.sidebar)
       .scrollContentBackground(.hidden)
       .disabled(model.isTemplateActionInFlight || model.hasUnsavedTemplateChanges)
-
-      if model.hasUnsavedTemplateChanges {
-        Text("Save or discard your edits before switching templates.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .padding(16)
-      }
 
       if let error = model.templatesError {
         VStack(alignment: .leading, spacing: 8) {

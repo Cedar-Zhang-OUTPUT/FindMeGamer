@@ -8,7 +8,8 @@ enum LibraryCopy {
   static let empty = "No profiles found."
 
   static func profileCount(_ count: Int, type: ProfileType, hasMore: Bool) -> String {
-    let noun = type == .game
+    let noun =
+      type == .game
       ? (count == 1 ? "game" : "games")
       : (count == 1 ? "creator" : "creators")
     return "\(count) \(noun)\(hasMore ? " loaded" : "")"
@@ -23,6 +24,7 @@ enum LibraryBadge {
 
 struct LibraryHeader: View {
   @Bindable var model: LibraryModel
+  let analysisJobCount: Int
   let activeAnalysisJobCount: Int
   let writesEnabled: Bool
   let onSelectProfileType: (ProfileType) -> Void
@@ -32,7 +34,22 @@ struct LibraryHeader: View {
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
       WorkspacePageHeader(WorkspacePageCopy.library) {
-        VStack(alignment: .trailing, spacing: 6) {
+        HStack(spacing: 10) {
+          if analysisJobCount > 0 {
+            Button(action: onAnalysisActivity) {
+              HStack(spacing: 6) {
+                if activeAnalysisJobCount > 0 {
+                  ProgressView().controlSize(.mini)
+                } else {
+                  Image(systemName: "clock")
+                }
+                Text("Activity · \(analysisJobCount)")
+              }
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("library.activity")
+            .accessibilityLabel("Analysis activity, \(activeAnalysisJobCount) in progress")
+          }
           Button(action: onAnalyzeRequest) {
             Label(LibraryCopy.analyzeRequest, systemImage: "plus")
           }
@@ -41,12 +58,6 @@ struct LibraryHeader: View {
           .accessibilityIdentifier(LibraryAccessibility.analyzeRequest)
           .help("Request analysis for a game or creator profile")
 
-          if let count = LibraryBadge.visibleCount(for: activeAnalysisJobCount) {
-            Button("\(count) analysis requests in progress", action: onAnalysisActivity)
-              .buttonStyle(.plain)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
         }
       }
 

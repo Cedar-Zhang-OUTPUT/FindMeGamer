@@ -5,9 +5,9 @@ import Testing
 @testable import FindMeGamerCore
 
 @Suite struct ModernWorkspacePresentationTests {
-  @Test func workspaceUsesOneEditorialIntentPerDestination() {
+  @Test func workspaceHeadersIdentifyTheDestinationWithoutInstructionalSubtitles() {
     #expect(WorkspacePageCopy.all.map(\.id) == AppDestination.allCases.map(\.rawValue))
-    #expect(WorkspacePageCopy.all.allSatisfy { !$0.title.isEmpty && !$0.subtitle.isEmpty })
+    #expect(WorkspacePageCopy.all.map(\.title) == ["Library", "Match", "Outreach", "Settings"])
     #expect(Set(WorkspacePageCopy.all.map(\.title)).count == WorkspacePageCopy.all.count)
   }
 

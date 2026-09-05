@@ -101,13 +101,11 @@ struct ProfileInsightCard: View {
   private var tone: ProfileStoryTone { .forField(field.label) }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: 7) {
       HStack(spacing: 9) {
         Image(systemName: ProfileStoryTone.symbol(for: field.label))
           .font(.system(size: 13, weight: .semibold))
           .foregroundStyle(tone.color)
-          .frame(width: 30, height: 30)
-          .background(tone.color.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
           .accessibilityHidden(true)
         Text(field.label)
           .font(.subheadline.weight(.semibold))
@@ -141,7 +139,7 @@ struct ProfileInsightCard: View {
               }
               Text(value)
                 .font(.callout)
-                .lineSpacing(3)
+                .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
             }
           }
@@ -154,23 +152,14 @@ struct ProfileInsightCard: View {
           .fixedSize(horizontal: false, vertical: true)
       }
     }
-    .padding(18)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    .background(tone.color.opacity(0.055), in: RoundedRectangle(cornerRadius: 19))
-    .overlay(alignment: .top) {
-      RoundedRectangle(cornerRadius: 2)
-        .fill(tone.color.opacity(0.35))
-        .frame(width: 28, height: 3)
-        .offset(y: 0)
-        .accessibilityHidden(true)
-    }
+    .frame(maxWidth: .infinity, alignment: .topLeading)
     .textSelection(.enabled)
   }
 }
 
 struct ProfileEvidenceSection<Content: View>: View {
   let title: String
-  let subtitle: String
+  var subtitle: String? = nil
   let symbol: String
   let tone: ProfileStoryTone
   @ViewBuilder let content: () -> Content
@@ -186,9 +175,13 @@ struct ProfileEvidenceSection<Content: View>: View {
           .frame(width: 34, height: 34)
           .background(tone.color.opacity(0.1), in: RoundedRectangle(cornerRadius: 11))
           .accessibilityHidden(true)
-        VStack(alignment: .leading, spacing: 3) {
-          Text(title).font(.headline)
-          Text(subtitle).font(.caption).foregroundStyle(.secondary)
+        Text(title).font(.subheadline.weight(.semibold))
+        Spacer(minLength: 8)
+        if let subtitle {
+          Text(subtitle)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
         }
       }
       .padding(.vertical, 5)

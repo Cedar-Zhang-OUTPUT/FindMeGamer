@@ -9,14 +9,16 @@ struct ProfileHeader: View {
   let isReanalyzeInFlight: Bool
   let onFavorite: () -> Void
   let onReanalyze: () -> Void
+  var isCompact = false
+
+  @State private var isShowingAnalysisDetails = false
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 15) {
+    VStack(alignment: .leading, spacing: 10) {
       identity
-      ProfileMetricStrip(metrics: sourceMetrics)
-      analysisSchedule
+      if !isCompact { ProfileMetricStrip(metrics: sourceMetrics) }
     }
-    .padding(20)
+    .padding(isCompact ? 12 : 16)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background {
       ZStack(alignment: .trailing) {
@@ -39,18 +41,13 @@ struct ProfileHeader: View {
   }
 
   private var identity: some View {
-    HStack(alignment: .center, spacing: 18) {
+    HStack(alignment: .center, spacing: 14) {
       identityArtwork
 
-      VStack(alignment: .leading, spacing: 9) {
+      VStack(alignment: .leading, spacing: 7) {
         VStack(alignment: .leading, spacing: 5) {
-          Text(type == .game ? "GAME PROFILE" : "CREATOR PROFILE")
-            .font(.system(size: 10, weight: .bold, design: .rounded))
-            .tracking(1.5)
-            .foregroundStyle(identityColor)
-
           Text(name)
-            .font(.system(size: 28, weight: .bold, design: .rounded))
+            .font(.system(size: isCompact ? 21 : 25, weight: .bold, design: .rounded))
             .tracking(-0.75)
             .foregroundStyle(StudioPalette.ink)
             .fixedSize(horizontal: false, vertical: true)
@@ -103,6 +100,12 @@ struct ProfileHeader: View {
           .controlSize(.small)
           .accessibilityLabel("Updating Profile")
       }
+      Button("Analysis Details") { isShowingAnalysisDetails.toggle() }
+        .buttonStyle(.borderless)
+        .popover(isPresented: $isShowingAnalysisDetails) {
+          analysisSchedule.padding(16)
+        }
+        .accessibilityIdentifier("profile.analysisDetails")
     }
     .controlSize(.small)
   }
@@ -118,7 +121,7 @@ struct ProfileHeader: View {
         refreshLabel
       }
     }
-    .font(.system(size: 10))
+    .font(.caption)
     .foregroundStyle(.secondary)
     .textSelection(.enabled)
   }
@@ -154,7 +157,7 @@ struct ProfileHeader: View {
         ZStack {
           Circle().stroke(identityColor.opacity(0.18), lineWidth: 1)
           artworkContent
-            .frame(width: 76, height: 76)
+            .frame(width: isCompact ? 40 : 60, height: isCompact ? 40 : 60)
             .clipShape(Circle())
           Circle()
             .fill(StudioPalette.surface)
@@ -164,12 +167,12 @@ struct ProfileHeader: View {
                 .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(identityColor)
             }
-            .offset(x: 30, y: 29)
+            .offset(x: isCompact ? 17 : 25, y: isCompact ? 17 : 25)
         }
-        .frame(width: 88, height: 88)
+        .frame(width: isCompact ? 48 : 68, height: isCompact ? 48 : 68)
       } else {
         artworkContent
-          .frame(width: 98, height: 82)
+          .frame(width: isCompact ? 56 : 82, height: isCompact ? 48 : 66)
           .clipShape(RoundedRectangle(cornerRadius: 18))
           .rotationEffect(.degrees(-3))
           .overlay {

@@ -5,6 +5,14 @@ import Testing
 @testable import FindMeGamerCore
 
 @Suite struct LibraryTaskStateTests {
+  @Test func emptyStatesOfferConcreteActionsWithoutRepeatingTheirInstructions() {
+    #expect(LibraryEmptyContext.search.detail == nil)
+    #expect(LibraryEmptyContext.search.actionTitle == "Clear Search")
+    #expect(LibraryEmptyContext.favorites.actionTitle == "Browse All Profiles")
+    #expect(LibraryEmptyContext.firstProfile.detail == "YouTube channels · Steam games")
+    #expect(LibraryEmptyContext.firstProfile.actionTitle == "Analyze Profile")
+  }
+
   @Test func noMatchesClearsSearchWithoutDiscardingCollectionContext() {
     #expect(LibraryEmptyContext.resolve(query: "strategy", onlyCollection: true) == .search)
     #expect(LibraryEmptyContext.resolve(query: "strategy", onlyCollection: false) == .search)

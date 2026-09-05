@@ -27,14 +27,9 @@ struct SidebarView: View {
                 startPoint: .topLeading, endPoint: .bottomTrailing),
               in: RoundedRectangle(cornerRadius: 14))
 
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Find Me Gamer")
-              .font(.system(size: 15, weight: .bold, design: .rounded))
-              .foregroundStyle(StudioPalette.ink)
-            Text("Games meet their people.")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
+          Text("Find Me Gamer")
+            .font(.system(size: 15, weight: .bold, design: .rounded))
+            .foregroundStyle(StudioPalette.ink)
 
           Spacer(minLength: 0)
         }

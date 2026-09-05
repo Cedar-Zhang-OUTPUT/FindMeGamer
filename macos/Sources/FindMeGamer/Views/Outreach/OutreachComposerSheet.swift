@@ -19,6 +19,7 @@ struct OutreachComposerSheet: View {
   @State private var stage = OutreachComposerStage.message
   @State private var confirmation: ComposerConfirmation?
   @State private var reportedBatchID: UUID?
+  @State private var messageEditing = OutreachTextEditing()
 
   var body: some View {
     VStack(spacing: 0) {
@@ -71,7 +72,7 @@ struct OutreachComposerSheet: View {
   }
 
   private var header: some View {
-    VStack(alignment: .leading, spacing: 18) {
+    VStack(alignment: .leading, spacing: 12) {
       HStack(alignment: .center, spacing: 12) {
         Image(systemName: "paperplane")
           .font(.system(size: 22, weight: .light))
@@ -79,8 +80,8 @@ struct OutreachComposerSheet: View {
           .frame(width: 42, height: 42)
           .background(StudioPalette.blue.opacity(0.09), in: RoundedRectangle(cornerRadius: 13))
           .accessibilityHidden(true)
-        Text("Compose outreach")
-          .font(.system(size: 27, weight: .semibold, design: .rounded))
+        Text("New outreach")
+          .font(.system(size: 22, weight: .semibold, design: .rounded))
           .tracking(-0.6)
           .foregroundStyle(StudioPalette.ink)
         Spacer()
@@ -123,7 +124,7 @@ struct OutreachComposerSheet: View {
         }
       }
     }
-    .padding(24)
+    .padding(20)
     .fixedSize(horizontal: false, vertical: true)
   }
 
@@ -154,7 +155,7 @@ struct OutreachComposerSheet: View {
       VStack(spacing: 0) {
         if !workspaceWritesEnabled {
           Label(
-            "Offline — you can edit this draft, but sending is unavailable.",
+            "Offline · Sending unavailable",
             systemImage: "wifi.slash"
           )
           .font(.caption)
@@ -166,11 +167,6 @@ struct OutreachComposerSheet: View {
         case .recipients:
           ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-              stageHeading(
-                "Choose where your message goes",
-                detail:
-                  "One email per creator. Review the purpose and source before choosing an address."
-              )
               recipientEmailSection
             }
             .padding(24)
@@ -189,10 +185,6 @@ struct OutreachComposerSheet: View {
   private var editor: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        stageHeading(
-          "Write a message worth opening",
-          detail: "Personalized variables will be resolved for each creator in the next step.")
-
         HStack {
           Label(
             "\(model.creatorIDs.count) \(model.creatorIDs.count == 1 ? "recipient" : "recipients")",
@@ -201,16 +193,19 @@ struct OutreachComposerSheet: View {
           .font(.callout)
           .foregroundStyle(.secondary)
           Spacer()
-          Button("Review addresses") { move(to: .recipients) }
-        }
-
-        if !model.recipientIDsRequiringSelection.isEmpty {
-          Label(
-            "Choose an email for \(model.recipientIDsRequiringSelection.count) \(model.recipientIDsRequiringSelection.count == 1 ? "creator" : "creators") before reviewing.",
-            systemImage: "envelope.badge"
-          )
-          .font(.caption)
-          .foregroundStyle(.orange)
+          Button {
+            move(to: .recipients)
+          } label: {
+            if model.recipientIDsRequiringSelection.isEmpty {
+              Text("Addresses")
+            } else {
+              Label(
+                "\(model.recipientIDsRequiringSelection.count) need an address",
+                systemImage: "envelope.badge"
+              )
+              .foregroundStyle(StudioPalette.amber)
+            }
+          }
         }
 
         Picker("Template", selection: templateSelection) {
@@ -228,32 +223,22 @@ struct OutreachComposerSheet: View {
         }
 
         VStack(alignment: .leading, spacing: 6) {
-          Text("Message")
-            .font(.callout.weight(.medium))
-          TextEditor(text: bodyBinding)
-            .accessibilityLabel("Composer Message")
-            .font(.system(size: 15))
-            .lineSpacing(5)
-            .scrollContentBackground(.hidden)
-            .frame(minHeight: 260)
-            .padding(16)
-            .modifier(OutreachWritingSurface())
+          HStack {
+            Text("Message").font(.callout.weight(.medium))
+            Spacer()
+            OutreachVariableMenu(editing: messageEditing)
+          }
+          OutreachMessageEditor(
+            text: bodyBinding, editing: messageEditing, accessibilityLabel: "Composer Message"
+          )
+          .frame(minHeight: 260)
+          .padding(16)
+          .modifier(OutreachWritingSurface())
         }
 
-        DisclosureGroup("Personalization & response buttons") {
-          VStack(alignment: .leading, spacing: 8) {
-            Text(
-              "Use {{creator_name}}, {{game_name}}, and {{sender_name}} in your message. Markdown formatting is supported."
-            )
-            if let template = model.selectedTemplate {
-              Text(
-                "Response buttons: “\(template.acceptedLabel)” and “\(template.declinedLabel)”. These are managed by the selected template and tracked by the system."
-              )
-            }
-          }
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .padding(.top, 6)
+        if let template = model.selectedTemplate {
+          OutreachResponseButtons(
+            accepted: template.acceptedLabel, declined: template.declinedLabel)
         }
       }
       .frame(maxWidth: 760, alignment: .leading)
@@ -267,19 +252,18 @@ struct OutreachComposerSheet: View {
     if !model.recipientContexts.isEmpty {
       VStack(alignment: .leading, spacing: 0) {
         VStack(alignment: .leading, spacing: 12) {
-          if !model.recipientIDsRequiringSelection.isEmpty {
-            Label(
-              "Choose exactly one email for each Creator with multiple addresses.",
-              systemImage: "envelope.badge"
-            )
-            .font(.caption)
-            .foregroundStyle(.orange)
-          }
-
           ForEach(model.recipientContexts) { recipient in
             VStack(alignment: .leading, spacing: 6) {
-              Text(recipient.creatorName)
-                .font(.system(.title3, design: .rounded, weight: .semibold))
+              HStack {
+                Text(recipient.creatorName)
+                  .font(.system(.title3, design: .rounded, weight: .semibold))
+                Spacer()
+                if model.recipientIDsRequiringSelection.contains(recipient.creatorID) {
+                  Text("Choose an address")
+                    .font(.callout)
+                    .foregroundStyle(StudioPalette.amber)
+                }
+              }
 
               if recipient.contacts.count == 1, let contact = recipient.contacts.first {
                 Label(contact.email, systemImage: "checkmark.circle.fill")
@@ -288,37 +272,8 @@ struct OutreachComposerSheet: View {
                   .textSelection(.enabled)
                 contactMetadata(contact)
               } else {
-                Menu {
-                  ForEach(Array(recipient.contacts.enumerated()), id: \.offset) { _, contact in
-                    Button {
-                      Task {
-                        await model.selectRecipientEmail(
-                          contact.email, creatorID: recipient.creatorID)
-                      }
-                    } label: {
-                      Text(contactMenuTitle(contact))
-                    }
-                  }
-                } label: {
-                  HStack {
-                    Text(model.selectedEmail(for: recipient.creatorID) ?? "Choose one email…")
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                      .font(.caption2)
-                  }
-                  .contentShape(Rectangle())
-                }
-                .menuStyle(.borderlessButton)
-                .accessibilityLabel("Email for \(recipient.creatorName)")
-                .accessibilityIdentifier(
-                  OutreachComposerAccessibility.recipientEmail(recipient.creatorID))
-
-                if let selectedEmail = model.selectedEmail(for: recipient.creatorID),
-                  let selectedContact = recipient.contacts.first(where: {
-                    $0.email == selectedEmail
-                  })
-                {
-                  contactMetadata(selectedContact)
+                ForEach(Array(recipient.contacts.enumerated()), id: \.offset) { _, contact in
+                  recipientChoice(contact, recipient: recipient)
                 }
               }
             }
@@ -335,40 +290,66 @@ struct OutreachComposerSheet: View {
 
   @ViewBuilder
   private func contactMetadata(_ contact: OutreachRecipientContact) -> some View {
-    HStack(spacing: 6) {
-      if let purpose = contact.purpose,
-        !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      {
-        Text(purpose)
-      }
-      Text(contact.source)
-      Text(contact.validationState)
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 8) { contactFacts(contact) }
+      VStack(alignment: .leading, spacing: 4) { contactFacts(contact) }
     }
-    .font(.caption2)
+    .font(.callout)
     .foregroundStyle(.secondary)
   }
 
-  private func contactMenuTitle(_ contact: OutreachRecipientContact) -> String {
-    var parts = [contact.email]
+  @ViewBuilder private func contactFacts(_ contact: OutreachRecipientContact) -> some View {
     if let purpose = contact.purpose,
       !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     {
-      parts.append(purpose)
+      Text(purpose).foregroundStyle(StudioPalette.ink)
     }
-    parts.append(contact.source)
-    parts.append(contact.validationState)
-    return parts.joined(separator: " — ")
+    Text(contact.source.replacingOccurrences(of: "_", with: " ").capitalized)
+    Label(
+      contact.validationState.replacingOccurrences(of: "_", with: " ").capitalized,
+      systemImage: contact.validationState.lowercased() == "valid"
+        ? "checkmark.seal" : "info.circle"
+    )
+    .foregroundStyle(
+      contact.validationState.lowercased() == "valid"
+        || contact.validationState.lowercased() == "demo"
+        ? Color.secondary : StudioPalette.amber)
+  }
+
+  private func recipientChoice(
+    _ contact: OutreachRecipientContact, recipient: OutreachRecipientContext
+  ) -> some View {
+    let selected =
+      model.selectedEmail(for: recipient.creatorID)?.caseInsensitiveCompare(contact.email)
+      == .orderedSame
+    return Button {
+      Task { await model.selectRecipientEmail(contact.email, creatorID: recipient.creatorID) }
+    } label: {
+      HStack(alignment: .top, spacing: 10) {
+        Image(systemName: selected ? "largecircle.fill.circle" : "circle")
+          .foregroundStyle(selected ? StudioPalette.blue : Color.secondary)
+          .font(.system(size: 18))
+        VStack(alignment: .leading, spacing: 5) {
+          Text(contact.email).font(.body).foregroundStyle(StudioPalette.ink)
+          contactMetadata(contact)
+        }
+        Spacer(minLength: 0)
+      }
+      .padding(12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(
+        selected ? StudioPalette.blue.opacity(0.07) : .clear, in: RoundedRectangle(cornerRadius: 10)
+      )
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(selected ? .isSelected : [])
+    .accessibilityIdentifier(
+      "\(OutreachComposerAccessibility.recipientEmail(recipient.creatorID)).\(contact.email)")
   }
 
   private var reviewWorkspace: some View {
     VStack(alignment: .leading, spacing: 0) {
-      stageHeading(
-        "Review the email each creator will receive",
-        detail:
-          "These previews are rendered by the server. Sending queues one email per selected creator."
-      )
-      .padding(24)
-
       if let error = model.previewError {
         HStack(alignment: .top) {
           errorBanner(error)
@@ -423,7 +404,7 @@ struct OutreachComposerSheet: View {
         ContentUnavailableView {
           Label("Preview required", systemImage: "envelope.open")
         } description: {
-          Text("Your draft is kept. Render an up-to-date preview before sending.")
+          Text("Preview must match the current draft.")
         } actions: {
           if model.previewError == nil {
             Button("Render Preview") { Task { await model.refreshPreview() } }
@@ -460,7 +441,7 @@ struct OutreachComposerSheet: View {
         }
         switch stage {
         case .recipients:
-          Button("Continue to message") { move(to: .message) }
+          Button("Write message") { move(to: .message) }
             .buttonStyle(.borderedProminent)
             .disabled(!model.recipientIDsRequiringSelection.isEmpty || model.isSending)
         case .message:
@@ -468,7 +449,11 @@ struct OutreachComposerSheet: View {
             .buttonStyle(.borderedProminent)
             .disabled(!canReview)
         case .review:
-          Button(model.sendError == nil ? "Send Outreach" : "Retry Send") {
+          Button(
+            model.sendError == nil
+              ? "Send \(model.creatorIDs.count) \(model.creatorIDs.count == 1 ? "email" : "emails")"
+              : "Retry send"
+          ) {
             guard canSend else { return }
             confirmation = .send
           }
@@ -522,16 +507,6 @@ struct OutreachComposerSheet: View {
     }
   }
 
-  private func stageHeading(_ title: String, detail: String) -> some View {
-    VStack(alignment: .leading, spacing: 7) {
-      Text(title)
-        .font(.system(.title3, design: .rounded, weight: .semibold))
-        .foregroundStyle(StudioPalette.ink)
-      Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(
-        horizontal: false, vertical: true)
-    }
-  }
-
   private var confirmationPresented: Binding<Bool> {
     Binding(get: { confirmation != nil }, set: { if !$0 { confirmation = nil } })
   }
@@ -549,7 +524,7 @@ struct OutreachComposerSheet: View {
   private var confirmationMessage: String {
     switch confirmation {
     case .send:
-      "The server will accept this batch and queue delivery. A queued email cannot be recalled here."
+      "Queues one email per creator. Queued emails cannot be recalled here."
     case .discard:
       "Your unsent message and email selections will be discarded. No email will be sent."
     case .replaceTemplate:

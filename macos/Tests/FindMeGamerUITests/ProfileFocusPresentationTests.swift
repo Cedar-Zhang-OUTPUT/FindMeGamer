@@ -35,6 +35,34 @@ import Testing
     #expect(ProfileDetailDestination.available(for: .creator) == [.overview, .evidence, .contacts])
   }
 
+  @Test func overviewGroupingPutsExactRiskTextBeforeSecondaryContextWithoutDroppingFields() {
+    let risk = ProfileDisplayField(
+      label: "Collaboration Risks", values: ["A qualified risk, not an app verdict.", "Timing matters."],
+      annotation: "AI Inference · Confidence: Low")
+    let fields = [
+      field("Audience"), field("Positioning"), field("Promotion Fit"), risk,
+      field("Brand Safety"), field("Content Focus"), field("Unknown Future Field"),
+    ]
+    let groups = ProfileOverviewGrouping(primary: fields)
+
+    #expect(groups.positioning.map(\.label) == ["Positioning"])
+    #expect(groups.focus.map(\.label) == ["Promotion Fit"])
+    #expect(groups.risks == [risk, field("Brand Safety")])
+    #expect(groups.context.map(\.label) == ["Audience", "Content Focus", "Unknown Future Field"])
+    #expect(
+      groups.positioning.count + groups.focus.count + groups.risks.count + groups.context.count
+        == fields.count)
+  }
+
+  @Test func gameGroupingKeepsFullGameplayAndRiskFieldsWithoutInventingCollaborationScores() {
+    let fields = [field("Positioning"), field("Core Gameplay Loop"), field("Promotion Risks")]
+    let groups = ProfileOverviewGrouping(primary: fields)
+    #expect(groups.focus == [field("Core Gameplay Loop")])
+    #expect(groups.risks == [field("Promotion Risks")])
+    #expect(groups.context.isEmpty)
+    #expect(ProfileOverviewGrouping(primary: []).positioning.isEmpty)
+  }
+
   private func field(_ label: String) -> ProfileDisplayField {
     ProfileDisplayField(label: label, values: ["Sample"], annotation: nil)
   }

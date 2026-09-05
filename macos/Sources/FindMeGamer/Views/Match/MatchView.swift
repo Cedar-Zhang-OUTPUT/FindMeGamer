@@ -48,6 +48,7 @@ struct MatchView: View {
   let onResendDelivery: (UUID) -> Void
   var acceptedBatch: SendBatch? = nil
   var onViewCampaign: (UUID) -> Void = { _ in }
+  var onAddProfile: (ProfileType) -> Void = { _ in }
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -67,13 +68,7 @@ struct MatchView: View {
       VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXL) {
         WorkspacePageHeader(WorkspacePageCopy.match) {
           if focus != .newMatch {
-            Button("New match", systemImage: "plus") {
-              withAnimation(
-                WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)
-              ) {
-                focus = .newMatch
-              }
-            }
+            Button("New match", systemImage: "plus", action: startNewMatch)
             .buttonStyle(.bordered)
           }
         }
@@ -81,9 +76,14 @@ struct MatchView: View {
         if let focusedTask {
           MatchTaskFocusCard(
             model: model, task: focusedTask, writesEnabled: writesEnabled,
-            onOpenGame: { onOpenProfile(.game, focusedTask.game.id) })
+            onOpenGame: { onOpenProfile(.game, focusedTask.game.id) },
+            onNewMatch: startNewMatch,
+            onAddCreators: { onAddProfile(.creator) },
+            onFocusTask: { focus = .task($0) })
         } else {
-          MatchHero(model: model, writesEnabled: writesEnabled, onSubmit: submit)
+          MatchHero(
+            model: model, writesEnabled: writesEnabled, onSubmit: submit,
+            onAddGame: { onAddProfile(.game) })
         }
 
         MatchHistoryList(
@@ -104,13 +104,25 @@ struct MatchView: View {
           matchID: matchID, model: model, writesEnabled: writesEnabled,
           onOpenProfile: onOpenProfile, onComposeOutreach: onComposeOutreach,
           onResendDelivery: onResendDelivery,
-          acceptedBatch: acceptedBatch, onViewCampaign: onViewCampaign)
+          acceptedBatch: acceptedBatch, onViewCampaign: onViewCampaign,
+          onAddCreators: { onAddProfile(.creator) })
       }
     }
     .task {
       async let games: Void = model.loadGames()
       async let history: Void = model.loadHistory()
       _ = await (games, history)
+    }
+  }
+
+  private func startNewMatch() {
+    if let focusedTask,
+      let game = model.games.first(where: { $0.id == focusedTask.game.id })
+    {
+      model.selectedGame = game
+    }
+    withAnimation(WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)) {
+      focus = .newMatch
     }
   }
 

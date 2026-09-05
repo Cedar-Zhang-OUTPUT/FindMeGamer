@@ -1,14 +1,16 @@
 import SwiftUI
 
 struct FactSection: View {
-  let title: String
+  var title: String? = nil
   let fields: [ProfileDisplayField]
 
   var body: some View {
     VStack(alignment: .leading, spacing: 18) {
-      Text(title)
-        .font(.title3.weight(.semibold))
-        .accessibilityAddTraits(.isHeader)
+      if let title {
+        Text(title)
+          .font(.title3.weight(.semibold))
+          .accessibilityAddTraits(.isHeader)
+      }
 
       if fields.isEmpty {
         Text("Not available")

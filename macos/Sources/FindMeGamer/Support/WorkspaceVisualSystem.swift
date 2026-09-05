@@ -4,32 +4,14 @@ import SwiftUI
 
 struct WorkspacePageDescriptor: Equatable, Identifiable {
   let id: String
-  let eyebrow: String
   let title: String
-  let subtitle: String
 }
 
 enum WorkspacePageCopy {
-  static let library = WorkspacePageDescriptor(
-    id: "library",
-    eyebrow: "LIBRARY",
-    title: "Your profile library",
-    subtitle: "Find a game or creator. Open a profile to understand the fit.")
-  static let match = WorkspacePageDescriptor(
-    id: "match",
-    eyebrow: "MATCH",
-    title: "Find your next collaboration",
-    subtitle: "Start with a game. Review the creators who fit, then make contact.")
-  static let outreach = WorkspacePageDescriptor(
-    id: "outreach",
-    eyebrow: "OUTREACH",
-    title: "Keep the conversation moving",
-    subtitle: "Follow deliveries and replies. Prepare your message when you need it.")
-  static let settings = WorkspacePageDescriptor(
-    id: "settings",
-    eyebrow: "WORKSPACE",
-    title: "Workspace settings",
-    subtitle: "Adjust one part of your workspace without losing your place.")
+  static let library = WorkspacePageDescriptor(id: "library", title: "Library")
+  static let match = WorkspacePageDescriptor(id: "match", title: "Match")
+  static let outreach = WorkspacePageDescriptor(id: "outreach", title: "Outreach")
+  static let settings = WorkspacePageDescriptor(id: "settings", title: "Settings")
 
   static let all = [library, match, outreach, settings]
 }
@@ -92,54 +74,16 @@ struct WorkspacePageHeader<Actions: View>: View {
     }
     .fixedSize(horizontal: false, vertical: true)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(alignment: .trailing) {
-      StudioCoverArt()
-        .frame(width: 280, height: 112)
-        .mask(
-          LinearGradient(
-            stops: [
-              .init(color: .clear, location: 0),
-              .init(color: .black.opacity(0.45), location: 0.6),
-              .init(color: .black.opacity(0.45), location: 0.85),
-              .init(color: .clear, location: 1),
-            ], startPoint: .leading, endPoint: .trailing)
-        )
-        .mask(
-          LinearGradient(
-            stops: [
-              .init(color: .clear, location: 0),
-              .init(color: .black, location: 0.18),
-              .init(color: .black, location: 0.75),
-              .init(color: .clear, location: 1),
-            ], startPoint: .top, endPoint: .bottom)
-        )
-        .opacity(0.32)
-    }
     .accessibilityElement(children: .contain)
   }
 
   private var heading: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      HStack(spacing: 6) {
-        Circle().fill(StudioPalette.blue).frame(width: 5, height: 5)
-        Text(descriptor.eyebrow)
-          .font(.system(size: 9, weight: .bold, design: .monospaced))
-          .tracking(2)
-          .foregroundStyle(StudioPalette.blue)
-      }
-      .accessibilityHidden(true)
-      Text(descriptor.title)
-        .font(.system(size: 28, weight: .bold, design: .rounded))
-        .foregroundStyle(StudioPalette.ink)
-        .tracking(-0.8)
-        .fixedSize(horizontal: false, vertical: true)
-        .accessibilityAddTraits(.isHeader)
-      Text(descriptor.subtitle)
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: 580, alignment: .leading)
-    }
+    Text(descriptor.title)
+      .font(.system(size: 25, weight: .bold, design: .rounded))
+      .foregroundStyle(StudioPalette.ink)
+      .tracking(-0.6)
+      .fixedSize(horizontal: false, vertical: true)
+      .accessibilityAddTraits(.isHeader)
   }
 }
 

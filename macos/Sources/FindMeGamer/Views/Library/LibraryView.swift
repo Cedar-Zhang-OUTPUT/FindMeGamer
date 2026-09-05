@@ -190,6 +190,7 @@ struct LibraryView: View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
       LibraryHeader(
         model: model,
+        analysisJobCount: analyzeModel.jobs.count,
         activeAnalysisJobCount: analyzeModel.activeJobCount,
         writesEnabled: writesEnabled,
         onSelectProfileType: selectProfileType,
@@ -297,7 +298,11 @@ struct LibraryView: View {
     return ContentUnavailableView {
       Label(context.title, systemImage: context == .search ? "magnifyingglass" : "square.stack")
     } description: {
-      Text(context.detail)
+      if context == .search {
+        Text("“\(model.query)”")
+      } else if let detail = context.detail {
+        Text(detail)
+      }
     } actions: {
       Button(context.actionTitle) {
         switch context {

@@ -51,9 +51,6 @@ struct RenderedEmailPreview: View {
         }
 
         VStack(alignment: .leading, spacing: 8) {
-          Text("Message")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
           renderedMarkdown
             .font(.system(size: 15))
             .lineSpacing(6)
@@ -61,22 +58,7 @@ struct RenderedEmailPreview: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
 
-        VStack(alignment: .leading, spacing: 10) {
-          Label("System-managed response buttons", systemImage: "lock.fill")
-            .font(.callout.weight(.medium))
-          Text("These response actions are inserted and tracked by the system.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-          HStack(spacing: 10) {
-            Button(acceptedLabel) {}
-              .disabled(true)
-            Button(declinedLabel) {}
-              .disabled(true)
-          }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(StudioPalette.blue.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+        OutreachResponseButtons(accepted: acceptedLabel, declined: declinedLabel)
       }
       .padding(26)
       .frame(maxWidth: 720, alignment: .leading)

@@ -16,11 +16,8 @@ struct AnalyzeRequestInspector: View {
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
       HStack(alignment: .top) {
-        VStack(alignment: .leading, spacing: 4) {
-          Text("Analyze a profile").font(.title3.weight(.semibold))
-            .accessibilityAddTraits(.isHeader)
-          Text("From source to shared knowledge.").font(.caption).foregroundStyle(.secondary)
-        }
+        Text("Analyze Profile").font(.title3.weight(.semibold))
+          .accessibilityAddTraits(.isHeader)
         Spacer(minLength: 4)
         Button {
           model.inspectorPresented = false
@@ -40,7 +37,7 @@ struct AnalyzeRequestInspector: View {
 
       if !writesEnabled {
         Label(
-          "Reconnect to submit or retry. Existing activity is still available.",
+          "Offline · Analysis unavailable",
           systemImage: "wifi.slash"
         )
         .font(.caption).foregroundStyle(.secondary)
@@ -66,7 +63,6 @@ struct AnalyzeRequestInspector: View {
   private var requestForm: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
       VStack(alignment: .leading, spacing: 8) {
-        Text("What are you adding?").font(.headline)
         Picker("Profile Type", selection: $model.targetType) {
           Text("Creator").tag(ProfileType.creator)
           Text("Game").tag(ProfileType.game)
@@ -85,8 +81,6 @@ struct AnalyzeRequestInspector: View {
         .disabled(model.isSubmitting)
         .accessibilityIdentifier(AnalyzeAccessibility.url)
         .onSubmit(submit)
-        Text("The analysis will be saved to your shared Library.")
-          .font(.caption).foregroundStyle(.secondary)
       }
       if let message = model.validationMessage ?? model.actionError {
         messageBanner(message)
@@ -108,17 +102,8 @@ struct AnalyzeRequestInspector: View {
       )
       .accessibilityIdentifier(AnalyzeAccessibility.submit)
 
-      Divider()
-      VStack(alignment: .leading, spacing: 8) {
-        Text("You can keep working").font(.subheadline.weight(.medium))
-        Text(
-          "Requests continue when you close this panel. Check Activity to open completed profiles or retry a failed request."
-        )
+      Label("Shared Library", systemImage: "person.2")
         .font(.caption).foregroundStyle(.secondary)
-        if !model.jobs.isEmpty {
-          Button("View Activity (\(model.jobs.count))") { setPhase(.activity) }.buttonStyle(.link)
-        }
-      }
     }
   }
 
@@ -128,18 +113,12 @@ struct AnalyzeRequestInspector: View {
       if model.jobs.isEmpty {
         ContentUnavailableView {
           Label("No requests yet", systemImage: "tray")
-        } description: {
-          Text("Add a source page to create your first profile.")
         } actions: {
           Button("New Request") { setPhase(.request) }.buttonStyle(.borderedProminent)
         }
       } else {
-        VStack(alignment: .leading, spacing: 4) {
-          Text(model.activeJobCount > 0 ? "\(model.activeJobCount) in progress" : "Recent requests")
-            .font(.headline)
-          Text("Open a completed profile to review what was learned.").font(.caption)
-            .foregroundStyle(.secondary)
-        }
+        Text(model.activeJobCount > 0 ? "\(model.activeJobCount) in progress" : "Recent requests")
+          .font(.headline)
         ForEach(model.jobs.filter { retainedActivityIDs.contains($0.id) }) { job in
           jobRow(job)
           Divider()
@@ -155,9 +134,6 @@ struct AnalyzeRequestInspector: View {
             }
           }
         }
-        Button("Edit Source / New Request") { setPhase(.request) }.buttonStyle(.bordered)
-        Text("Your last source URL is kept when you return.").font(.caption).foregroundStyle(
-          .secondary)
       }
     }
   }
@@ -204,8 +180,6 @@ struct AnalyzeRequestInspector: View {
     WorkspaceSurface(style: .quiet) {
       VStack(alignment: .leading, spacing: 10) {
         Label("Already in your Library", systemImage: "checkmark.circle").font(.headline)
-        Text("Review the saved profile, or request a fresh analysis.").font(.caption)
-          .foregroundStyle(.secondary)
         HStack {
           Button("Open Profile") {
             let route = AnalyzeProfileRoute(existingProfile: profile)

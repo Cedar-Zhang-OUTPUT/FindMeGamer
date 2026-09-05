@@ -8,42 +8,44 @@ struct ReanalysisSettings: View {
   @State private var isShowingSaveConfirmation = false
 
   var body: some View {
-    Section("Re-analysis") {
+    Section("Auto-refresh") {
       if model.isLoadingReanalysis && model.sharedSettings == nil {
         ProgressView("Loading intervals…")
       }
 
       Stepper(value: gameInterval, in: 1...90) {
-        LabeledContent("Game Interval", value: "\(model.gameIntervalDays) days")
+        LabeledContent("Games · 1–90 days", value: "Every \(model.gameIntervalDays) days")
       }
       .disabled(model.isSavingReanalysis)
 
       Stepper(value: creatorInterval, in: 1...30) {
-        LabeledContent("Creator Interval", value: "\(model.creatorIntervalDays) days")
+        LabeledContent("Creators · 1–30 days", value: "Every \(model.creatorIntervalDays) days")
       }
       .disabled(model.isSavingReanalysis)
 
-      Text(
-        "Creator profiles refresh automatically at least every 30 days. These schedules are shared with your workspace."
-      )
-      .font(.caption)
-      .foregroundStyle(.secondary)
-
-      Button("Save Re-analysis Settings") {
-        isShowingSaveConfirmation = true
-      }
-      .buttonStyle(.borderedProminent)
-      .disabled(!writesEnabled || !model.canSaveReanalysis)
-
-      if model.isSavingReanalysis {
-        ProgressView("Saving shared schedules…")
-      } else if model.sharedSettings != nil {
-        Text(
-          model.canSaveReanalysis
-            ? "You have unsaved interval changes." : "These intervals are saved for your workspace."
-        )
+      Label("Workspace-shared schedules", systemImage: "person.2")
         .font(.caption)
         .foregroundStyle(.secondary)
+
+      HStack {
+        Button {
+          isShowingSaveConfirmation = true
+        } label: {
+          HStack(spacing: 6) {
+            if model.isSavingReanalysis { ProgressView().controlSize(.mini) }
+            Text(model.isSavingReanalysis ? "Saving…" : "Save")
+          }
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(!writesEnabled || !model.canSaveReanalysis)
+
+        if !model.isSavingReanalysis, model.sharedSettings != nil {
+          Label(
+            model.canSaveReanalysis ? "Unsaved" : "Saved",
+            systemImage: model.canSaveReanalysis ? "circle.fill" : "checkmark"
+          )
+          .font(.caption).foregroundStyle(.secondary)
+        }
       }
 
       if let error = model.reanalysisLoadError {
@@ -63,7 +65,7 @@ struct ReanalysisSettings: View {
           .foregroundStyle(.red)
       }
 
-      DisclosureGroup("View profile refresh activity") {
+      DisclosureGroup("Refresh activity") {
         activityRow("Game", activity: model.gameActivity, error: model.activityError(for: .game))
         activityRow(
           "Creator", activity: model.creatorActivity, error: model.activityError(for: .creator))
@@ -106,10 +108,10 @@ struct ReanalysisSettings: View {
     _ title: String, activity: ProfileAnalysisActivity, error: String?
   ) -> some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text("\(title) Profile Activity")
+      Text(title)
         .font(.headline)
-      LabeledContent("Latest Profile Analysis", value: formatted(activity.latestAnalysis))
-      LabeledContent("Next Profile Re-analysis", value: formatted(activity.nextReanalysis))
+      LabeledContent("Last analysis", value: formatted(activity.latestAnalysis))
+      LabeledContent("Next refresh", value: formatted(activity.nextReanalysis))
       if let error {
         Text(error)
           .foregroundStyle(.secondary)

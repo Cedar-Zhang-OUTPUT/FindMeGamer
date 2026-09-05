@@ -14,12 +14,12 @@ struct CampaignsView: View {
       } else if model.campaigns.isEmpty {
         ContentUnavailableView {
           Label(
-            model.campaignsError == nil ? "Start a conversation" : "Campaigns unavailable",
+            model.campaignsError == nil ? "No campaigns yet" : "Campaigns unavailable",
             systemImage: "paperplane")
         } description: {
           Text(
             model.campaignsError
-              ?? "Find creators for a game, select the people you want to reach, then compose your outreach. Delivery and replies will appear here."
+              ?? "Your first outreach will appear here."
           )
         } actions: {
           if model.campaignsError == nil, let onStartMatch {
@@ -33,14 +33,12 @@ struct CampaignsView: View {
       } else {
         VStack(alignment: .leading, spacing: 12) {
           HStack(alignment: .firstTextBaseline) {
-            Text("Track your conversations")
-              .font(.system(.title3, design: .rounded, weight: .semibold))
-            Spacer()
             Text(
               "\(model.campaigns.count) \(model.campaigns.count == 1 ? "campaign" : "campaigns")"
             )
             .font(.caption)
             .foregroundStyle(.secondary)
+            Spacer()
           }
           .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
 
@@ -129,9 +127,10 @@ private struct CampaignRow: View {
               .tracking(-0.4)
               .foregroundStyle(StudioPalette.ink)
               .lineLimit(2)
-            Text("Latest activity \(campaign.latestActivityAt, style: .relative)")
+            Text(campaign.latestActivityAt, style: .relative)
               .font(.caption)
               .foregroundStyle(.secondary)
+              .accessibilityLabel("Latest activity \(campaign.latestActivityAt.formatted())")
             WorkspaceStatusLozenge(
               title: campaign.state.displayName,
               systemImage: statusImage,

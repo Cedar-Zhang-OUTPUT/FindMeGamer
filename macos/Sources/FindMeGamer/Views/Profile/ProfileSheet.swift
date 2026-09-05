@@ -37,7 +37,8 @@ struct ProfileSheet: View {
         isFavoriteInFlight: state.isFavoriteInFlight,
         isReanalyzeInFlight: state.isReanalyzeInFlight,
         onFavorite: favorite,
-        onReanalyze: reanalyze
+        onReanalyze: reanalyze,
+        isCompact: destination != .overview
       )
 
       StudioSectionTabs(
@@ -58,7 +59,7 @@ struct ProfileSheet: View {
         .foregroundStyle(.secondary)
       }
 
-      if let warning = staleWarning {
+      if let warning = staleWarning, destination != .overview {
         Label(warning, systemImage: "exclamationmark.triangle.fill")
           .foregroundStyle(.orange)
           .font(.subheadline)
@@ -144,7 +145,13 @@ struct ProfileSheet: View {
         isSaving: state.isManualSaveInFlight,
         onSave: saveManual,
         destination: destination,
-        hasUnsavedChanges: state.hasUnsavedManualChanges)
+        hasUnsavedChanges: state.hasUnsavedManualChanges,
+        manualEditorMode: state.manualEditorMode,
+        onEditManual: state.beginManualEditing,
+        onDiscardManual: state.discardManualEditing,
+        onReanalyze: reanalyze,
+        isReanalyzing: state.isReanalyzeInFlight,
+        onOpenContacts: { destination = .contacts })
     }
   }
 

@@ -13,6 +13,8 @@ enum MatchInkControlColors {
 
 /// The illustration is a metaphor for connecting a game with creators, not match data.
 struct MatchConnectionArtwork: View {
+  var width: CGFloat = 144
+
   var body: some View {
     ZStack {
       Circle()
@@ -56,6 +58,8 @@ struct MatchConnectionArtwork: View {
         .offset(x: -65, y: -63)
     }
     .frame(width: 224, height: 186)
+    .scaleEffect(width / 224)
+    .frame(width: width, height: width * 186 / 224)
     .accessibilityHidden(true)
     .allowsHitTesting(false)
   }

@@ -37,6 +37,49 @@ struct MatchHistoryVisibility {
   }
 }
 
+enum MatchTaskSuccessorPolicy {
+  /// Follow explicit replacement links only, never infer them from game names or dates.
+  static func latestSuccessor(of task: MatchTask, in tasks: [MatchTask]) -> MatchTask? {
+    var current = task
+    var visited: Set<UUID> = [task.id]
+    while true {
+      let successors = tasks.filter { $0.supersedesID == current.id }
+      guard !successors.isEmpty else { return current.id == task.id ? nil : current }
+      guard successors.count == 1, let next = successors.first,
+        visited.insert(next.id).inserted
+      else { return nil }
+      current = next
+    }
+  }
+}
+
+enum MatchResultActionState: Equatable {
+  case ready
+  case refreshing
+  case refreshRequired
+  case readOnly
+
+  init(resultState: MatchResultViewState, writesEnabled: Bool) {
+    switch resultState {
+    case .loading: self = .refreshing
+    case .failed: self = .refreshRequired
+    default: self = writesEnabled ? .ready : .readOnly
+    }
+  }
+
+  var statusLabel: String? {
+    switch self {
+    case .ready: nil
+    case .refreshing: "Refreshing…"
+    case .refreshRequired: "Refresh required"
+    case .readOnly: "Read-only"
+    }
+  }
+
+  var showsRetry: Bool { self == .refreshRequired }
+  func showsBar(selectedCount: Int) -> Bool { selectedCount > 0 || self != .ready }
+}
+
 enum MatchResultInteractionPolicy {
   /// Retained results are readable context, never authority for sending or selecting recipients.
   static func canAct(

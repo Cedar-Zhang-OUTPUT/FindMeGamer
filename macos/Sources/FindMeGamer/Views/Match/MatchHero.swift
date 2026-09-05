@@ -6,7 +6,7 @@ struct MatchHeroPolicy: Equatable {
   let submitEnabled: Bool
 
   init(hasSelection: Bool, writesEnabled: Bool, canSubmit: Bool) {
-    showsSubmit = hasSelection
+    showsSubmit = true
     submitEnabled = hasSelection && writesEnabled && canSubmit
   }
 
@@ -20,6 +20,7 @@ struct MatchHero: View {
   @Bindable var model: MatchModel
   let writesEnabled: Bool
   let onSubmit: () -> Void
+  var onAddGame: () -> Void = {}
 
   private var policy: MatchHeroPolicy {
     MatchHeroPolicy(
@@ -28,32 +29,16 @@ struct MatchHero: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
+    VStack(alignment: .leading, spacing: 16) {
       ViewThatFits(in: .horizontal) {
-        HStack(alignment: .center, spacing: 24) {
-          introduction.frame(minWidth: 310, maxWidth: .infinity, alignment: .leading)
-          MatchConnectionArtwork()
+        HStack(alignment: .center, spacing: 20) {
+          controls.frame(minWidth: 310, maxWidth: .infinity, alignment: .leading)
+          MatchConnectionArtwork(width: 112)
         }
-        introduction
-      }
-
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .center, spacing: WorkspaceDesign.spaceM) {
-          gameSelector
-            .frame(maxWidth: .infinity, alignment: .leading)
-          submit
-        }
-        VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-          gameSelector
-          submit
-        }
+        controls
       }
 
       gameLoadingAndFeedback
-
-      Label("No emails are sent. You choose who to contact.", systemImage: "checkmark.shield")
-        .font(.caption)
-        .foregroundStyle(Color.white.opacity(0.7))
 
       if let actionError = model.actionError {
         Label(actionError, systemImage: "exclamationmark.triangle")
@@ -62,28 +47,25 @@ struct MatchHero: View {
           .textSelection(.enabled)
       }
     }
-    .padding(28)
+    .padding(24)
     .frame(maxWidth: .infinity, alignment: .leading)
     .modifier(MatchInkSurface())
   }
 
-  private var introduction: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Text("FIND YOUR PEOPLE")
-        .font(.system(size: 10, weight: .bold, design: .rounded))
-        .tracking(2)
-        .foregroundStyle(Color(red: 0.61, green: 0.92, blue: 0.81))
-      Text("Great games.\nThe right voices.")
-        .font(.system(size: 34, weight: .semibold, design: .rounded))
-        .tracking(-1.2)
-        .fixedSize(horizontal: false, vertical: true)
-      Text(
-        "Start with a game. Discover the creators whose content and audience make it a natural fit."
-      )
-      .font(.callout)
-      .foregroundStyle(Color.white.opacity(0.72))
-      .fixedSize(horizontal: false, vertical: true)
-      .frame(maxWidth: 470, alignment: .leading)
+  private var controls: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      Label("Game", systemImage: "gamecontroller")
+        .font(.headline)
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 12) {
+          gameSelector
+          submit
+        }
+        VStack(alignment: .leading, spacing: 12) {
+          gameSelector
+          submit
+        }
+      }
     }
   }
 
@@ -157,12 +139,10 @@ struct MatchHero: View {
       }
       .controlSize(.small)
     } else if !model.isLoadingGames && model.games.isEmpty {
-      Label(
-        "Add a Game Profile through Analyze Profile in Library to get started.",
-        systemImage: "info.circle"
-      )
-      .foregroundStyle(Color.white.opacity(0.75))
-      .font(.callout)
+      Button("Add game", systemImage: "plus", action: onAddGame)
+        .buttonStyle(.bordered)
+        .disabled(!writesEnabled)
+        .accessibilityIdentifier("match.add-game")
     }
   }
 

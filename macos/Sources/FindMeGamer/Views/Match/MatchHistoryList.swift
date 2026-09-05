@@ -40,6 +40,7 @@ struct MatchHistoryList: View {
   }
 
   var body: some View {
+    if history.totalCount > 0 || model.isLoadingHistory || model.historyError != nil {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
       HStack(spacing: 8) {
         Text("Recent matches").font(.headline)
@@ -64,16 +65,7 @@ struct MatchHistoryList: View {
         }
         .controlSize(.small)
       }
-      if history.visible.isEmpty && !model.isLoadingHistory {
-        Text(
-          focusedTaskID == nil
-            ? "Your matches will stay here, so you can return to a shortlist at any time."
-            : "Other matches will appear here. Your current task stays above."
-        )
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .padding(.vertical, WorkspaceDesign.spaceM)
-      } else {
+      if !history.visible.isEmpty {
         LazyVStack(spacing: 0) {
           ForEach(history.visible) { task in
             MatchHistoryRow(
@@ -85,6 +77,7 @@ struct MatchHistoryList: View {
       }
     }
     .accessibilityIdentifier(MatchAccessibility.history)
+    }
   }
 }
 
@@ -150,9 +143,9 @@ private struct MatchHistoryRow: View {
       .font(.caption)
       .foregroundStyle(.secondary)
     case .succeeded(let count):
-      Text("\(count) creators · Ready").font(.caption).foregroundStyle(.secondary)
+      Text("\(count) creators").font(.caption).foregroundStyle(.secondary)
     case .failed:
-      Label("Needs attention", systemImage: "exclamationmark.circle")
+      Label("Failed", systemImage: "exclamationmark.circle")
         .font(.caption)
         .foregroundStyle(.red)
     case .superseded:

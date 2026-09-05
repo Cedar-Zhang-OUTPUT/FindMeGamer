@@ -72,11 +72,8 @@ struct AuthenticatedRootView: View {
           VStack(spacing: 0) {
             if session.workspaceSession?.workspaceName == "Find Me Gamer Demo" {
               HStack(spacing: WorkspaceDesign.spaceS) {
-                Label("Demo workspace", systemImage: "testtube.2")
+                Label("Demo · No real email sent", systemImage: "testtube.2")
                   .font(.caption.weight(.medium))
-                  .foregroundStyle(.secondary)
-                Text("No real email will be sent")
-                  .font(.caption)
                   .foregroundStyle(.secondary)
                 Spacer()
               }
@@ -246,6 +243,19 @@ struct AuthenticatedRootView: View {
           onViewCampaign: { campaignID in
             navigation.openCampaign(id: campaignID)
             sidebarSelection.wrappedValue = .outreach
+          },
+          onAddProfile: { type in
+            if coordinator.analyze.isSubmitting {
+              analyzePhase = .activity
+            } else {
+              coordinator.analyze.targetType = type
+              coordinator.library.selectType(type)
+              analyzePhase = .request
+            }
+            // Reuse the existing request draft and jobs; navigating here never
+            // clears a source URL or starts an analysis without submission.
+            sidebarSelection.wrappedValue = .library
+            coordinator.analyze.inspectorPresented = true
           }
         )
         .modifier(WorkspacePageEntrance(direction: destinationDirection))

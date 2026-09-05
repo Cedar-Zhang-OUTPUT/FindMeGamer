@@ -279,6 +279,7 @@ import Testing
     let recorder = ProfileManualSaveRecorder()
     let gate = ProfileActionGate()
     let state = ProfileSheetState(profile: .creator(creator))
+    state.beginManualEditing()
     state.manualDraft.email = " submitted@studio.example "
     state.manualDraft.notes = "Submitted note"
 
@@ -304,6 +305,7 @@ import Testing
     #expect(state.manualDraft.email == "newer@studio.example")
     #expect(state.manualDraft.notes == "Newer unsaved note")
     #expect(state.hasUnsavedManualChanges)
+    #expect(state.manualEditorMode == .editing)
     #expect(state.actionSuccessMessage == "Contact and notes saved.")
   }
 
@@ -317,6 +319,9 @@ import Testing
       creator, contact: canonicalContact, manualNotes: "Canonical server note")
     let state = ProfileSheetState(profile: .creator(creator))
     #expect(!state.hasUnsavedManualChanges)
+    #expect(state.manualEditorMode == .summary)
+    state.beginManualEditing()
+    #expect(state.manualEditorMode == .editing)
     state.manualDraft.email = " submitted@studio.example "
     state.manualDraft.notes = "Submitted note"
 
@@ -327,12 +332,14 @@ import Testing
     #expect(state.manualDraft.email == "canonical@studio.example")
     #expect(state.manualDraft.notes == "Canonical server note")
     #expect(!state.hasUnsavedManualChanges)
+    #expect(state.manualEditorMode == .summary)
     #expect(state.actionSuccessMessage == "Contact and notes saved.")
   }
 
   @MainActor
   @Test func failedManualSaveRetainsDraftAndDoesNotReportSuccess() async {
     let state = ProfileSheetState(profile: .creator(creatorProfile()))
+    state.beginManualEditing()
     state.manualDraft.email = "draft@studio.example"
     state.manualDraft.notes = "Keep this draft while I resolve the connection."
     let draft = state.manualDraft
@@ -343,6 +350,42 @@ import Testing
     #expect(state.hasUnsavedManualChanges)
     #expect(state.actionMessage != nil)
     #expect(state.actionSuccessMessage == nil)
+    #expect(state.manualEditorMode == .editing)
+  }
+
+  @MainActor
+  @Test func discardingAFailedManualSaveClearsObsoleteErrorWithoutSaving() async {
+    let state = ProfileSheetState(profile: .creator(creatorProfile()))
+    let original = state.manualDraft
+    state.beginManualEditing()
+    state.manualDraft.notes = "A discarded draft"
+    await state.saveManual { _, _, _ in throw CancellationError() }
+    #expect(state.actionMessage != nil)
+    state.discardManualEditing()
+    #expect(state.manualEditorMode == .summary)
+    #expect(state.manualDraft == original)
+    #expect(state.actionMessage == nil)
+    #expect(state.actionSuccessMessage == nil)
+    #expect(state.creatorOverride == nil)
+  }
+
+  @MainActor
+  @Test func contactSummaryOnlyReturnsAfterExplicitDiscardOrSuccessfulSave() {
+    let state = ProfileSheetState(profile: .creator(creatorProfile()))
+    let savedDraft = state.manualDraft
+    #expect(state.manualEditorMode == .summary)
+    state.beginManualEditing()
+    state.manualDraft.email = "draft@studio.example"
+    state.manualDraft.notes = "Unsaved notes survive section navigation."
+    #expect(state.hasUnsavedManualChanges)
+    // Re-entering editing (including after navigating back) must not reinitialize the draft.
+    state.beginManualEditing()
+    #expect(state.manualDraft.email == "draft@studio.example")
+    #expect(state.manualDraft.notes == "Unsaved notes survive section navigation.")
+    state.discardManualEditing()
+    #expect(state.manualDraft == savedDraft)
+    #expect(state.manualEditorMode == .summary)
+    #expect(!state.hasUnsavedManualChanges)
   }
 }
 

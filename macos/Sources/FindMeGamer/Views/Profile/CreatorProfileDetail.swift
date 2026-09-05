@@ -8,6 +8,15 @@ struct CreatorProfileDetail: View {
   let onSave: () -> Void
   var destination: ProfileDetailDestination = .overview
   var hasUnsavedChanges = true
+  var manualEditorMode: ProfileManualEditorMode = .summary
+  var onEditManual: () -> Void = {}
+  var onDiscardManual: () -> Void = {}
+  var onReanalyze: () -> Void = {}
+  var isReanalyzing = false
+  var onOpenContacts: () -> Void = {}
+
+  @State private var isConfirmingDiscard = false
+  @State private var notesExpanded = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
@@ -16,38 +25,45 @@ struct CreatorProfileDetail: View {
         if presentation.staleWarning == nil {
           ProfileOverview(fields: presentation.briefFields, type: .creator)
         } else {
-          ContentUnavailableView(
-            "Refresh this creator profile",
-            systemImage: "arrow.clockwise",
-            description: Text(
-              "Use Re-analyze above to request fresh YouTube data. Your manual contacts and notes are still available."
-            ))
+          ContentUnavailableView {
+            Label("YouTube data is stale", systemImage: "arrow.clockwise")
+          } actions: {
+            Button(isReanalyzing ? "Requesting…" : "Re-analyze", action: onReanalyze)
+              .buttonStyle(.borderedProminent)
+              .disabled(!writesEnabled || isReanalyzing)
+            Button("Contacts & Notes", action: onOpenContacts)
+          }
         }
       case .evidence:
-        WorkspaceSectionHeader(
-          "Sources & Analysis",
-          subtitle: "Source facts, AI analysis, and audience inference are labeled separately.")
         ProfileEvidenceSection(
-          title: "YouTube source facts", subtitle: "Public channel data · not inferred",
+          title: "Source Facts", subtitle: "YouTube",
           symbol: "play.rectangle", tone: .identity
         ) {
           sourceColumn
         }
         analysisColumn
       case .contacts:
-        WorkspaceSectionHeader(
-          "Contacts & Notes",
-          subtitle:
-            "Review each address and its purpose. Add your own contact without replacing discovered sources."
-        )
         contactSection
-        manualEditor
+        if manualEditorMode == .editing || hasUnsavedChanges {
+          manualEditor
+        } else {
+          manualSummary
+        }
       }
+    }
+    .confirmationDialog(
+      "Discard contact and note edits?", isPresented: $isConfirmingDiscard,
+      titleVisibility: .visible
+    ) {
+      Button("Discard Changes", role: .destructive, action: onDiscardManual)
+      Button("Keep Editing", role: .cancel) {}
+    } message: {
+      Text("Your saved contact and notes are unchanged.")
     }
   }
 
   private var sourceColumn: some View {
-    FactSection(title: "Source Facts", fields: presentation.sourceFacts)
+    FactSection(fields: presentation.sourceFacts)
       .frame(maxWidth: .infinity, alignment: .topLeading)
   }
 
@@ -58,23 +74,23 @@ struct CreatorProfileDetail: View {
           ![.audienceInference, .promotionFit, .contact, .creatorBrief].contains($0)
         }, id: \.self
       ) { section in
-        evidenceSection(section, title: "AI Analysis — \(section.title)")
+        evidenceSection(section)
       }
-      evidenceSection(.audienceInference, title: "AI Inference — Audience")
-      evidenceSection(.promotionFit, title: "AI Analysis — Promotion Fit")
+      evidenceSection(.audienceInference)
+      evidenceSection(.promotionFit)
     }
     .frame(maxWidth: .infinity, alignment: .topLeading)
   }
 
-  private func evidenceSection(_ section: CreatorProfileSection, title: String) -> some View {
+  private func evidenceSection(_ section: CreatorProfileSection) -> some View {
     ProfileEvidenceSection(
       title: section.title,
       subtitle: section == .audienceInference
-        ? "AI inference · not verified demographics"
-        : "AI interpretation of the available evidence",
+        ? "AI Inference · unverified demographics"
+        : "AI Analysis",
       symbol: evidenceSymbol(section), tone: evidenceTone(section)
     ) {
-      FactSection(title: title, fields: presentation.sections[section] ?? [])
+      FactSection(fields: presentation.sections[section] ?? [])
     }
   }
 
@@ -98,45 +114,83 @@ struct CreatorProfileDetail: View {
   }
 
   private var contactSection: some View {
-    VStack(alignment: .leading, spacing: 12) {
+    VStack(alignment: .leading, spacing: 0) {
       if presentation.contacts.isEmpty {
-        Label("No contact address yet. Add the one you use below.", systemImage: "envelope.open")
+        Label("No contacts", systemImage: "envelope.open")
           .font(.callout)
           .foregroundStyle(.secondary)
-          .padding(18)
+          .padding(.vertical, 12)
           .frame(maxWidth: .infinity, alignment: .leading)
-          .background(StudioPalette.blue.opacity(0.045), in: RoundedRectangle(cornerRadius: 18))
       } else {
-        ForEach(Array(presentation.contacts.enumerated()), id: \.offset) { _, contact in
+        ForEach(Array(presentation.contacts.enumerated()), id: \.offset) { index, contact in
+          if index > 0 { Divider() }
           ProfileContactCard(contact: contact)
         }
       }
     }
   }
 
-  private var manualEditor: some View {
+  private var manualSummary: some View {
     VStack(alignment: .leading, spacing: 14) {
-      HStack(spacing: 10) {
-        Image(systemName: "square.and.pencil")
-          .font(.system(size: 16, weight: .medium))
-          .foregroundStyle(StudioPalette.coral)
-          .frame(width: 36, height: 36)
-          .background(StudioPalette.coral.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
-        VStack(alignment: .leading, spacing: 2) {
-          Text("Your contact & notes").font(.headline)
-          Text("Context only you can add.").font(.caption).foregroundStyle(.secondary)
+      if !manualDraft.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        DisclosureGroup(isExpanded: $notesExpanded) {
+          Text(manualDraft.notes)
+            .font(.callout)
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 8)
+        } label: {
+          VStack(alignment: .leading, spacing: 5) {
+            Text("Notes").font(.subheadline.weight(.semibold))
+            if !notesExpanded {
+              Text(manualDraft.notes)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            }
+          }
         }
       }
+      Button(action: onEditManual) {
+        Label(
+          presentation.contacts.isEmpty ? "Add Contact & Notes" : "Edit Contact & Notes",
+          systemImage: "square.and.pencil")
+      }
+      .buttonStyle(.bordered)
+      .accessibilityIdentifier("profile.manual.edit")
+    }
+    .padding(.top, 8)
+  }
+
+  private var manualEditor: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      Text("Edit Contact & Notes").font(.headline)
       VStack(alignment: .leading, spacing: 10) {
-        Text("Manual Email")
-          .font(.subheadline.weight(.medium))
+        HStack {
+          Text("Manual Email").font(.subheadline.weight(.medium))
+          Spacer()
+          if presentation.contacts.contains(where: { $0.availability == .manual }),
+            manualDraft.normalizedEmail != nil
+          {
+            Button("Remove Manual Email", role: .destructive) { manualDraft.email = "" }
+              .buttonStyle(.borderless)
+              .font(.caption)
+              .disabled(isSaving)
+          }
+        }
         TextField("name@example.com", text: $manualDraft.email)
           .textContentType(.emailAddress)
           .accessibilityIdentifier("profile.manual.email")
           .accessibilityLabel("Manual Email")
-        Text("Leave the email empty to remove your manual override. Discovered contacts are kept.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+        if presentation.contacts.contains(where: { $0.availability == .manual }),
+          manualDraft.normalizedEmail == nil
+        {
+          Label(
+            "Saving removes your manual email. Discovered contacts stay.",
+            systemImage: "minus.circle")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
 
         Text("Notes")
           .font(.caption)
@@ -156,6 +210,11 @@ struct CreatorProfileDetail: View {
               .font(.caption)
           }
           HStack {
+            Button("Cancel") {
+              if hasUnsavedChanges { isConfirmingDiscard = true } else { onDiscardManual() }
+            }
+            .disabled(isSaving)
+            .accessibilityIdentifier("profile.manual.cancel")
             Spacer()
             if isSaving {
               ProgressView().controlSize(.small)
@@ -184,15 +243,8 @@ private struct ProfileContactCard: View {
   let contact: CreatorContactPresentation
 
   var body: some View {
-    HStack(alignment: .top, spacing: 14) {
-      Image(systemName: contact.availability == .manual ? "pencil" : "envelope")
-        .font(.system(size: 17, weight: .medium))
-        .foregroundStyle(StudioPalette.blue)
-        .frame(width: 42, height: 42)
-        .background(StudioPalette.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
-        .accessibilityHidden(true)
-
-      VStack(alignment: .leading, spacing: 9) {
+    HStack(alignment: .top, spacing: 12) {
+      VStack(alignment: .leading, spacing: 6) {
         if let purpose = contact.purpose,
           !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         {
@@ -202,35 +254,26 @@ private struct ProfileContactCard: View {
             .accessibilityLabel("Purpose: \(purpose)")
         }
         Text(contact.email)
-          .font(.system(.headline, design: .rounded))
+          .font(.system(.body, design: .rounded, weight: .semibold))
           .textSelection(.enabled)
           .fixedSize(horizontal: false, vertical: true)
 
         ViewThatFits(in: .horizontal) {
-          HStack(spacing: 8) {
+          HStack(spacing: 10) {
             availability
             validation
+            source
           }
-          VStack(alignment: .leading, spacing: 7) {
-            availability
-            validation
-          }
-        }
-
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-          Text("Source").foregroundStyle(.secondary)
-          if let sourceURL = contact.sourceURL {
-            Link(contact.source, destination: sourceURL)
-          } else {
-            Text(contact.source).foregroundStyle(.secondary)
+          VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 10) { availability; validation }
+            source
           }
         }
         .font(.caption)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
     }
-    .padding(18)
-    .background(StudioPalette.blue.opacity(0.04), in: RoundedRectangle(cornerRadius: 19))
+    .padding(.vertical, 12)
     .accessibilityElement(children: .contain)
   }
 
@@ -238,9 +281,6 @@ private struct ProfileContactCard: View {
     Text(contact.availability.displayName)
       .font(.caption)
       .foregroundStyle(.secondary)
-      .padding(.horizontal, 8)
-      .padding(.vertical, 4)
-      .background(StudioPalette.blue.opacity(0.075), in: Capsule())
       .accessibilityLabel("Availability: \(contact.availability.displayName)")
   }
 
@@ -248,5 +288,15 @@ private struct ProfileContactCard: View {
     Text("Validation: \(contact.validationState)")
       .font(.caption)
       .foregroundStyle(.secondary)
+  }
+
+  private var source: some View {
+    Group {
+      if let sourceURL = contact.sourceURL {
+        Link("Source: \(contact.source)", destination: sourceURL)
+      } else {
+        Text("Source: \(contact.source)").foregroundStyle(.secondary)
+      }
+    }
   }
 }

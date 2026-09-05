@@ -74,20 +74,65 @@ import Testing
       !MatchResultInteractionPolicy.canAct(
         on: focusID(2), state: .available(result), writesEnabled: true))
   }
+
+  @Test func actionBarAppearsForSelectionOrAnActionableBlockingStateWithoutTeachingCopy() {
+    let ready = MatchResultActionState(resultState: .available(focusResult(id: 1)), writesEnabled: true)
+    #expect(ready == .ready)
+    #expect(!ready.showsBar(selectedCount: 0))
+    #expect(ready.showsBar(selectedCount: 2))
+    #expect(ready.statusLabel == nil)
+    #expect(!ready.showsRetry)
+
+    let refreshing = MatchResultActionState(resultState: .loading, writesEnabled: true)
+    #expect(refreshing == .refreshing)
+    #expect(refreshing.showsBar(selectedCount: 0))
+    #expect(!refreshing.showsRetry)
+
+    let failed = MatchResultActionState(resultState: .failed("Offline"), writesEnabled: true)
+    #expect(failed == .refreshRequired)
+    #expect(failed.statusLabel == "Refresh required")
+    #expect(failed.showsBar(selectedCount: 0))
+    #expect(failed.showsRetry)
+
+    let readOnly = MatchResultActionState(
+      resultState: .available(focusResult(id: 1)), writesEnabled: false)
+    #expect(readOnly == .readOnly)
+    #expect(readOnly.showsBar(selectedCount: 0))
+    #expect(!readOnly.showsRetry)
+  }
+
+  @Test func latestMatchActionFollowsExplicitReplacementLinksNotNewerSameGameTasks() {
+    let original = focusTask(id: 1, gameID: 11)
+    let unrelated = focusTask(id: 9, gameID: 11)
+    #expect(MatchTaskSuccessorPolicy.latestSuccessor(of: original, in: [original, unrelated]) == nil)
+
+    let replacement = focusTask(id: 2, gameID: 11, supersedesID: original.id)
+    let latest = focusTask(id: 3, gameID: 11, supersedesID: replacement.id)
+    #expect(
+      MatchTaskSuccessorPolicy.latestSuccessor(
+        of: original, in: [unrelated, latest, original, replacement])?.id == latest.id)
+
+    let ambiguous = focusTask(id: 4, gameID: 11, supersedesID: original.id)
+    #expect(
+      MatchTaskSuccessorPolicy.latestSuccessor(
+        of: original, in: [original, replacement, ambiguous]) == nil)
+    let cycle = focusTask(id: 1, gameID: 11, supersedesID: replacement.id)
+    #expect(MatchTaskSuccessorPolicy.latestSuccessor(of: cycle, in: [cycle, replacement]) == nil)
+  }
 }
 
 private func focusID(_ value: Int) -> UUID {
   UUID(uuidString: String(format: "00000000-0000-4000-8000-%012d", value))!
 }
 
-private func focusTask(id: Int, gameID: Int) -> MatchTask {
+private func focusTask(id: Int, gameID: Int, supersedesID: UUID? = nil) -> MatchTask {
   MatchTask(
     id: focusID(id),
     game: MatchGameHeader(
       id: focusID(gameID), name: "Game \(gameID)", steamAppID: "730",
       canonicalURL: "https://store.steampowered.com/app/730", coverURL: nil),
     status: .queued, stage: .screening, completedUnits: 0, totalUnits: 0,
-    resultCount: 0, retryable: false, failure: nil, correlationID: nil, supersedesID: nil,
+    resultCount: 0, retryable: false, failure: nil, correlationID: nil, supersedesID: supersedesID,
     createdAt: Date(timeIntervalSince1970: Double(id)),
     updatedAt: Date(timeIntervalSince1970: Double(id)), startedAt: nil, completedAt: nil)
 }

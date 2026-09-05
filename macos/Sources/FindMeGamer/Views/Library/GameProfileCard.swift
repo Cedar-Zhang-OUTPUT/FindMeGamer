@@ -95,10 +95,6 @@ struct GameProfileCard: View {
       Button(action: onOpen) {
         VStack(alignment: .leading, spacing: 0) {
           VStack(alignment: .leading, spacing: 6) {
-            Text("GAME")
-              .font(.system(size: 9, weight: .bold, design: .rounded))
-              .tracking(1.7)
-              .foregroundStyle(.white.opacity(0.75))
             Text(presentation.name)
               .font(.system(size: 23, weight: .semibold, design: .rounded))
               .tracking(-0.5)
@@ -140,11 +136,13 @@ struct GameProfileCard: View {
               topTrailingRadius: WorkspaceDesign.cardCornerRadius))
 
           VStack(alignment: .leading, spacing: WorkspaceDesign.spaceS) {
-            Text(presentation.summary ?? "Summary unavailable.")
-              .font(.callout)
-              .foregroundStyle(.secondary)
-              .lineSpacing(2)
-              .lineLimit(3)
+            if let summary = presentation.summary {
+              Text(summary)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineSpacing(2)
+                .lineLimit(3)
+            }
 
             Spacer(minLength: 0)
 

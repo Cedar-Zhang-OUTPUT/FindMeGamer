@@ -90,7 +90,7 @@ struct CreatorMatchRow: View {
   let onSend: () -> Void
   let onResend: (UUID) -> Void
 
-  @State private var detailsExpanded = false
+  @State private var evidenceSection: MatchEvidenceSection?
   @State private var isHovered = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -104,7 +104,7 @@ struct CreatorMatchRow: View {
 
   var body: some View {
     WorkspaceSurface(style: .card) {
-      VStack(alignment: .leading, spacing: 20) {
+      VStack(alignment: .leading, spacing: 14) {
         ViewThatFits(in: .horizontal) {
           HStack(alignment: .center, spacing: 24) {
             identity.frame(minWidth: 230, maxWidth: .infinity, alignment: .leading)
@@ -117,17 +117,11 @@ struct CreatorMatchRow: View {
         }
 
         if let primaryReason = previewPolicy.primaryReason {
-          HStack(alignment: .top, spacing: 11) {
-            Image(systemName: "quote.opening")
-              .font(.system(size: 20, weight: .bold))
-              .foregroundStyle(StudioPalette.blue.opacity(0.65))
-            Text(primaryReason)
-              .font(.body)
-              .foregroundStyle(.primary)
-              .lineLimit(3)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-          .frame(maxWidth: .infinity, alignment: .leading)
+          Text(primaryReason)
+            .font(.body)
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
 
         fitSignals
@@ -137,12 +131,15 @@ struct CreatorMatchRow: View {
             Image(systemName: "flag")
               .foregroundStyle(StudioPalette.coral)
             VStack(alignment: .leading, spacing: 3) {
-              Text("Keep in mind").font(.caption.weight(.semibold))
               Text(firstRisk).font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
               if presentation.brief.risks.count > 1 {
-                Text("\(presentation.brief.risks.count - 1) more in match evidence")
-                  .font(.caption).foregroundStyle(.secondary)
+                Button("All risks · \(presentation.brief.risks.count)") {
+                  showEvidence(.summary)
+                }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .foregroundStyle(StudioPalette.coral)
               }
             }
           }
@@ -160,34 +157,19 @@ struct CreatorMatchRow: View {
           }
         }
 
-        if detailsExpanded {
+        if evidenceSection != nil {
           Divider()
-          VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-            if let performanceSummary = presentation.performanceSummary {
-              Text(performanceSummary)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            if let recentMedianViews = presentation.recentMedianViews {
-              statistic("Recent median views", value: recentMedianViews)
-            }
-            if !presentation.reasons.isEmpty {
-              VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXS) {
-                Text("Match Reasons")
-                  .font(.headline)
-                ForEach(presentation.reasons, id: \.self) { reason in
-                  Label(reason, systemImage: "circle.fill")
-                    .labelStyle(MatchReasonLabelStyle())
-                }
-              }
-            }
-
-            MatchBriefView(presentation: presentation.brief)
-          }
+          MatchBriefView(
+            presentation: presentation.brief,
+            selectedSection: Binding(
+              get: { evidenceSection ?? .summary },
+              set: { showEvidence($0) }),
+            additionalReasons: MatchEvidenceDisplayPolicy.additionalReasons(presentation.reasons),
+            performanceSummary: presentation.performanceSummary,
+            recentMedianViews: presentation.recentMedianViews)
         }
       }
-      .padding(22)
+      .padding(18)
       .background(isSelected ? StudioPalette.blue.opacity(0.035) : .clear)
     }
     .overlay {
@@ -265,7 +247,7 @@ struct CreatorMatchRow: View {
 
   private var fitSignals: some View {
     LazyVGrid(
-      columns: [GridItem(.adaptive(minimum: 140), spacing: 8)], alignment: .leading, spacing: 8
+      columns: [GridItem(.adaptive(minimum: 170), spacing: 8)], alignment: .leading, spacing: 8
     ) {
       fitSignal("Content", value: candidate.dimensionOutcomes.contentFit, category: .content)
       fitSignal("Audience", value: candidate.dimensionOutcomes.audienceFit, category: .audience)
@@ -277,38 +259,48 @@ struct CreatorMatchRow: View {
   private func fitSignal(_ label: String, value: String, category: MatchEvidenceCategory)
     -> some View
   {
-    HStack(alignment: .top, spacing: 7) {
-      Image(systemName: category.symbol)
-        .foregroundStyle(category.color)
-        .frame(width: 16)
-      VStack(alignment: .leading, spacing: 3) {
-        Text(label).font(.caption).foregroundStyle(.secondary)
-        Text(value).font(.caption.weight(.semibold))
+    Button {
+      showEvidence(MatchEvidenceSection(category: category))
+    } label: {
+      HStack(alignment: .firstTextBaseline, spacing: 5) {
+        Text(label).foregroundStyle(.secondary)
+        Text(value).fontWeight(.semibold)
           .fixedSize(horizontal: false, vertical: true)
+        Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
+          .foregroundStyle(category.color)
       }
-      Spacer(minLength: 0)
+      .font(.caption)
+      .padding(.horizontal, 9)
+      .padding(.vertical, 7)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+      .background(category.color.opacity(0.065), in: RoundedRectangle(cornerRadius: 8))
     }
-    .padding(10)
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-    .background(category.color.opacity(0.055), in: RoundedRectangle(cornerRadius: 10))
+    .buttonStyle(.plain)
+    .help("\(label) evidence")
     .accessibilityElement(children: .combine)
   }
 
   private var detailsButton: some View {
     Button {
       withAnimation(WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)) {
-        detailsExpanded.toggle()
+        evidenceSection = evidenceSection == nil ? .summary : nil
       }
     } label: {
       Label(
-        detailsExpanded ? "Close match evidence" : "Explore fit & evidence",
-        systemImage: detailsExpanded ? "chevron.up" : "chevron.down")
+        evidenceSection != nil ? "Close evidence" : "Evidence",
+        systemImage: evidenceSection != nil ? "chevron.up" : "chevron.down")
     }
     .buttonStyle(.plain)
     .font(.callout)
     .foregroundStyle(StudioPalette.blue)
-    .accessibilityValue(detailsExpanded ? "Expanded" : "Collapsed")
+    .accessibilityValue(evidenceSection != nil ? "Expanded" : "Collapsed")
     .help("Read the full match reasoning, fit dimensions, risks, and evidence")
+  }
+
+  private func showEvidence(_ section: MatchEvidenceSection) {
+    withAnimation(WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)) {
+      evidenceSection = section
+    }
   }
 
   @ViewBuilder private var statistics: some View {
@@ -360,7 +352,7 @@ struct CreatorMatchRow: View {
 
   @ViewBuilder private var contactSummary: some View {
     if candidate.creator.contacts.count > 1 {
-      Text("\(candidate.creator.contacts.count) contact options")
+      Text("\(candidate.creator.contacts.count) emails")
         .font(.caption)
         .foregroundStyle(.secondary)
     } else if let contact = candidate.creator.contacts.first(where: {
@@ -406,21 +398,12 @@ struct CreatorMatchRow: View {
         .help("Explicitly resend this existing delivery")
     }
 
-    if let responseState = candidate.outreach.responseState {
+    if let responseState = candidate.outreach.responseState,
+      responseState != .accepted && responseState != .declined
+    {
       Text("Response: \(responseState.displayName)")
         .font(.caption)
         .foregroundStyle(.secondary)
-    }
-  }
-}
-
-private struct MatchReasonLabelStyle: LabelStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      configuration.icon
-        .font(.system(size: 5))
-        .foregroundStyle(Color.accentColor)
-      configuration.title
     }
   }
 }

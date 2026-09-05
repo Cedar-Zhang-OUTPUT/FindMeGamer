@@ -60,7 +60,7 @@ struct ConnectionsSettings: View {
         .textFieldStyle(.roundedBorder)
         .disabled(model.isConnectionActionInFlight(service))
 
-      Text("Replacing this credential affects everyone in the workspace.")
+      Label("Workspace-shared credential", systemImage: "person.2")
         .font(.caption)
         .foregroundStyle(.secondary)
 
@@ -84,7 +84,7 @@ struct ConnectionsSettings: View {
         VStack(alignment: .leading, spacing: 8) {
           Label(error, systemImage: "exclamationmark.triangle")
             .foregroundStyle(.red)
-          Button("Reload Connection Status") {
+          Button("Reload Status") {
             Task { await model.loadConnections() }
           }
           .disabled(model.isLoadingConnection(service))

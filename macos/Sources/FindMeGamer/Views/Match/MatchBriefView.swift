@@ -40,95 +40,112 @@ struct MatchBriefPresentation: Equatable {
   }
 }
 
+enum MatchEvidenceSection: String, CaseIterable, Identifiable {
+  case summary, content, audience, performance, promotion, safety
+
+  var id: String { rawValue }
+
+  init(category: MatchEvidenceCategory) {
+    switch category {
+    case .content: self = .content
+    case .audience: self = .audience
+    case .performance: self = .performance
+    case .promotion: self = .promotion
+    case .safety: self = .safety
+    }
+  }
+
+  var category: MatchEvidenceCategory? {
+    switch self {
+    case .summary: nil
+    case .content: .content
+    case .audience: .audience
+    case .performance: .performance
+    case .promotion: .promotion
+    case .safety: .safety
+    }
+  }
+
+  var title: String {
+    switch self {
+    case .summary: "Summary"
+    case .content: "Content"
+    case .audience: "Audience"
+    case .performance: "Performance"
+    case .promotion: "Promotion"
+    case .safety: "Brand safety"
+    }
+  }
+}
+
+enum MatchEvidenceDisplayPolicy {
+  /// The first reason remains fully visible above the detail panel.
+  static func additionalReasons(_ reasons: [String]) -> [String] { Array(reasons.dropFirst()) }
+}
+
 struct MatchBriefView: View {
   let presentation: MatchBriefPresentation
+  @Binding var selectedSection: MatchEvidenceSection
+  var additionalReasons: [String] = []
+  var performanceSummary: String?
+  var recentMedianViews: Int?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 20) {
-      VStack(alignment: .leading, spacing: 4) {
-        Text("Behind the fit")
-          .font(.system(.title3, design: .rounded, weight: .semibold))
-        Text("Five perspectives. Explore the reasoning that matters to you.")
-          .font(.callout).foregroundStyle(.secondary)
-      }
-      VStack(alignment: .leading, spacing: 10) {
-        ForEach(presentation.dimensions) { dimension in
-          MatchEvidenceDimensionView(dimension: dimension)
-        }
+    VStack(alignment: .leading, spacing: 16) {
+      ViewThatFits(in: .horizontal) {
+        sectionPicker.pickerStyle(.segmented).labelsHidden().fixedSize()
+        sectionPicker.pickerStyle(.menu)
       }
 
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 240), spacing: 14, alignment: .top)],
-        alignment: .leading, spacing: 14
-      ) {
-        if !presentation.strengths.isEmpty {
-          MatchTextList(
-            title: "What works", values: presentation.strengths, color: StudioPalette.mint
-          )
-          .padding(16)
-          .frame(maxWidth: .infinity, alignment: .topLeading)
-          .background(StudioPalette.mint.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
+      if let category = selectedSection.category,
+        let dimension = presentation.dimensions.first(where: { $0.title == category.title })
+      {
+        VStack(alignment: .leading, spacing: 14) {
+          Text(dimension.analysis)
+            .font(.callout)
+            .fixedSize(horizontal: false, vertical: true)
+          if selectedSection == .performance {
+            if let performanceSummary {
+              Text(performanceSummary).font(.callout).foregroundStyle(.secondary)
+            }
+            if let recentMedianViews {
+              LabeledContent("Recent median views", value: recentMedianViews.formatted())
+                .font(.callout)
+            }
+          }
+          MatchTextList(title: "Evidence", values: dimension.evidence, color: category.color)
         }
-        if !presentation.risks.isEmpty {
-          MatchTextList(
-            title: "Keep in mind", values: presentation.risks, color: StudioPalette.coral
-          )
-          .padding(16)
-          .frame(maxWidth: .infinity, alignment: .topLeading)
-          .background(StudioPalette.coral.opacity(0.055), in: RoundedRectangle(cornerRadius: 12))
-        }
+      } else {
+        summary
       }
-      MatchTextList(title: "Supporting evidence", values: presentation.evidence)
-      MatchTextList(title: "Additional match reasons", values: presentation.matchReasons)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .textSelection(.enabled)
   }
-}
 
-private struct MatchEvidenceDimensionView: View {
-  let dimension: MatchBriefDimensionPresentation
-  @State private var expanded = false
-
-  private var category: MatchEvidenceCategory {
-    MatchEvidenceCategory.allCases.first { $0.title == dimension.title } ?? .content
-  }
-
-  var body: some View {
-    DisclosureGroup(isExpanded: $expanded) {
-      VStack(alignment: .leading, spacing: 12) {
-        Text(dimension.analysis)
-          .font(.callout)
-          .fixedSize(horizontal: false, vertical: true)
-        MatchTextList(title: "Evidence", values: dimension.evidence, color: category.color)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-      .padding(.top, 10)
-      .padding(.leading, 43)
-    } label: {
-      HStack(alignment: .top, spacing: 11) {
-        Image(systemName: category.symbol)
-          .font(.system(size: 14, weight: .medium))
-          .foregroundStyle(category.color)
-          .frame(width: 32, height: 32)
-          .background(category.color.opacity(0.09), in: RoundedRectangle(cornerRadius: 9))
-        VStack(alignment: .leading, spacing: 5) {
-          Text(dimension.title).font(.subheadline.weight(.semibold))
-          if !expanded {
-            Text(dimension.analysis)
-              .font(.callout)
-              .foregroundStyle(.secondary)
-              .lineLimit(2)
-              .fixedSize(horizontal: false, vertical: true)
-          }
-        }
-        Spacer(minLength: 0)
+  private var sectionPicker: some View {
+    Picker("Evidence", selection: $selectedSection) {
+      ForEach(MatchEvidenceSection.allCases) { section in
+        Text(section.title).tag(section)
       }
     }
-    .padding(12)
-    .background(Color.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 12))
-    .tint(category.color)
+  }
+
+  private var summary: some View {
+    VStack(alignment: .leading, spacing: 18) {
+      MatchTextList(title: "More reasons", values: additionalReasons)
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 220), spacing: 20, alignment: .top)],
+        alignment: .leading, spacing: 14
+      ) {
+        MatchTextList(title: "Strengths", values: presentation.strengths, color: StudioPalette.mint)
+        // The first risk remains visible in the candidate row above this panel.
+        MatchTextList(
+          title: "More risks", values: Array(presentation.risks.dropFirst()), color: StudioPalette.coral)
+      }
+      MatchTextList(title: "Supporting evidence", values: presentation.evidence)
+      MatchTextList(title: "Additional match reasons", values: presentation.matchReasons)
+    }
   }
 }
 

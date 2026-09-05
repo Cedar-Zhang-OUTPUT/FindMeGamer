@@ -14,17 +14,16 @@ enum LibraryEmptyContext: Equatable {
   var title: String {
     switch self {
     case .search: "No matching profiles"
-    case .favorites: "Your favorites start here"
-    case .firstProfile: "Build your first profile"
+    case .favorites: "No favorites yet"
+    case .firstProfile: "No profiles yet"
     }
   }
 
-  var detail: String {
+  var detail: String? {
     switch self {
-    case .search: "Try another name or clear your search. Your other filters will stay in place."
-    case .favorites: "Save profiles with the heart button to find them here later."
-    case .firstProfile:
-      "Add a YouTube channel or Steam game page to turn a source into a reusable profile."
+    case .search: nil
+    case .favorites: "Favorite profiles with the heart button."
+    case .firstProfile: "YouTube channels · Steam games"
     }
   }
 

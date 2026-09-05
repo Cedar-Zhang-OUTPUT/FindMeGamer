@@ -44,53 +44,80 @@ struct ProfileOverviewPresentation {
   }
 }
 
+/// Reorders existing fields for reading, without summarizing, scoring, or hiding risk text.
+struct ProfileOverviewGrouping {
+  let positioning: [ProfileDisplayField]
+  let focus: [ProfileDisplayField]
+  let risks: [ProfileDisplayField]
+  let context: [ProfileDisplayField]
+
+  init(primary: [ProfileDisplayField]) {
+    let riskLabels: Set<String> = ["Brand Safety", "Collaboration Risks", "Promotion Risks"]
+    let focusLabels: Set<String> = ["Promotion Fit", "Core Gameplay Loop"]
+    positioning = primary.filter { $0.label == "Positioning" }
+    focus = primary.filter { focusLabels.contains($0.label) }
+    risks = primary.filter { riskLabels.contains($0.label) }
+    context = primary.filter {
+      $0.label != "Positioning" && !focusLabels.contains($0.label) && !riskLabels.contains($0.label)
+    }
+  }
+}
+
 struct ProfileOverview: View {
   let fields: [ProfileDisplayField]
   let type: ProfileType
 
   var body: some View {
     let presentation = ProfileOverviewPresentation(fields: fields, type: type)
-    let positioning = presentation.primary.first { $0.label == "Positioning" }
-    let insights = presentation.primary.filter { $0.label != "Positioning" }
-    VStack(alignment: .leading, spacing: 20) {
-      if let positioning {
-        VStack(alignment: .leading, spacing: 9) {
-          Label(
-            type == .game ? "THE GAME, IN A FEW WORDS" : "MEET THE CREATOR",
-            systemImage: "text.quote"
-          )
-          .font(.system(size: 10, weight: .bold, design: .rounded))
-          .tracking(1.2)
-          .foregroundStyle(StudioPalette.coral)
+    let groups = ProfileOverviewGrouping(primary: presentation.primary)
+    VStack(alignment: .leading, spacing: 18) {
+      ForEach(Array(groups.positioning.enumerated()), id: \.offset) { _, positioning in
+        VStack(alignment: .leading, spacing: 6) {
           ForEach(Array(positioning.values.enumerated()), id: \.offset) { _, value in
             Text(value)
-              .font(.system(size: 23, weight: .medium, design: .rounded))
-              .tracking(-0.45)
-              .lineSpacing(3)
+              .font(.system(size: 20, weight: .medium, design: .rounded))
+              .tracking(-0.3)
+              .lineSpacing(2)
               .fixedSize(horizontal: false, vertical: true)
           }
           if let annotation = positioning.annotation {
             Text(annotation).font(.caption2).foregroundStyle(.secondary)
           }
         }
-        .padding(.vertical, 7)
         .textSelection(.enabled)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Positioning")
       }
 
-      if !insights.isEmpty {
-        LazyVGrid(
-          columns: [GridItem(.adaptive(minimum: 245), spacing: 12, alignment: .leading)],
-          alignment: .leading, spacing: 12
-        ) {
-          ForEach(Array(insights.enumerated()), id: \.offset) { _, field in
+      ForEach(Array(groups.focus.enumerated()), id: \.offset) { _, field in
+        ProfileInsightCard(field: field)
+      }
+
+      if !groups.risks.isEmpty {
+        VStack(alignment: .leading, spacing: 12) {
+          ForEach(Array(groups.risks.enumerated()), id: \.offset) { _, field in
             ProfileInsightCard(field: field)
           }
         }
-      } else if positioning == nil {
+        .padding(13)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(StudioPalette.amber.opacity(0.055), in: RoundedRectangle(cornerRadius: 13))
+        .accessibilityIdentifier("profile.overview.risks")
+      }
+
+      if !groups.context.isEmpty {
+        Divider()
+        LazyVGrid(
+          columns: [GridItem(.adaptive(minimum: 250), spacing: 24, alignment: .leading)],
+          alignment: .leading, spacing: 18
+        ) {
+          ForEach(Array(groups.context.enumerated()), id: \.offset) { _, field in
+            ProfileInsightCard(field: field)
+          }
+        }
+      } else if presentation.primary.isEmpty {
         Label(
-          "The brief is not available yet. Explore the source facts in Sources & Analysis.",
+          "Brief unavailable",
           systemImage: "text.magnifyingglass"
         )
         .foregroundStyle(.secondary)
@@ -99,13 +126,10 @@ struct ProfileOverview: View {
 
       if !presentation.additional.isEmpty {
         ProfileEvidenceSection(
-          title: "More from the brief",
-          subtitle: type == .game
-            ? "Themes, style, and more ways to tell the story"
-            : "Formats, style, and the wider context",
+          title: "More Details",
           symbol: "square.stack.3d.up", tone: .identity
         ) {
-          FactSection(title: "Complete Brief", fields: presentation.additional)
+          FactSection(fields: presentation.additional)
         }
         .accessibilityIdentifier("profile.completeBrief")
       }

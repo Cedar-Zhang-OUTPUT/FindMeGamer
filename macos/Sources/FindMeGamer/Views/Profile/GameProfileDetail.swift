@@ -16,12 +16,8 @@ struct GameProfileDetail: View {
       case .overview, .contacts:
         ProfileOverview(fields: presentation.briefFields, type: .game)
       case .evidence:
-        WorkspaceSectionHeader(
-          "Sources & Analysis",
-          subtitle:
-            "Source facts and AI interpretation remain separate so you can judge the evidence.")
         ProfileEvidenceSection(
-          title: "Steam source facts", subtitle: "Store details · not inferred",
+          title: "Source Facts", subtitle: "Steam",
           symbol: "gamecontroller", tone: .identity
         ) {
           sourceColumn
@@ -32,7 +28,7 @@ struct GameProfileDetail: View {
   }
 
   private var sourceColumn: some View {
-    FactSection(title: "Source Facts", fields: presentation.sourceFacts)
+    FactSection(fields: presentation.sourceFacts)
       .frame(maxWidth: .infinity, alignment: .topLeading)
   }
 
@@ -42,13 +38,10 @@ struct GameProfileDetail: View {
         GameProfileSection.allCases.filter { $0 != .gameBrief }, id: \.self
       ) { section in
         ProfileEvidenceSection(
-          title: section.title, subtitle: "AI interpretation of the available evidence",
+          title: section.title, subtitle: "AI Analysis",
           symbol: evidenceSymbol(section), tone: evidenceTone(section)
         ) {
-          FactSection(
-            title: "AI Analysis — \(section.title)",
-            fields: presentation.sections[section] ?? []
-          )
+          FactSection(fields: presentation.sections[section] ?? [])
         }
       }
     }

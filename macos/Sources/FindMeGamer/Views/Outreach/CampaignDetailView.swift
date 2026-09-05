@@ -69,18 +69,9 @@ struct CampaignDetailView: View {
           }
         }
 
-        VStack(alignment: .leading, spacing: 5) {
-          Text("Delivery & responses")
-            .font(.system(.title3, design: .rounded, weight: .semibold))
-          Text("Check individual outcomes. Open a message to see what was sent.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-        }
-
         if campaign.sendBatches.isEmpty {
           ContentUnavailableView(
-            "No Send Batches", systemImage: "tray",
-            description: Text("This Campaign has no send history yet."))
+            "No deliveries yet", systemImage: "tray")
         } else {
           ForEach(campaign.sendBatches) { batch in
             SendBatchSection(
@@ -137,11 +128,6 @@ struct CampaignDetailView: View {
     fixedWidth: Bool
   ) -> some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXS) {
-      Text("CAMPAIGN")
-        .font(.caption2.weight(.bold))
-        .tracking(1.4)
-        .foregroundStyle(StudioPalette.blue)
-
       Text(campaign.game.name)
         .font(.system(size: 29, weight: .semibold, design: .rounded))
         .tracking(-0.7)
@@ -216,7 +202,6 @@ private struct SendBatchSection: View {
             Text(batch.templateName ?? "Send Batch")
               .font(.system(.headline, design: .rounded))
             HStack(spacing: 8) {
-              Text("Version \(batch.templateVersion ?? 0)")
               Text(batch.requestedAt, style: .date)
             }
             .font(.caption)
@@ -273,10 +258,13 @@ private struct DeliveryRow: View {
       }
 
       if delivery.renderedSubject != nil || delivery.renderedMarkdown != nil {
-        DisclosureGroup("View sent message") {
+        DisclosureGroup {
           VStack(alignment: .leading, spacing: 10) {
             if let subject = delivery.renderedSubject {
-              Text(subject).font(.callout.weight(.medium))
+              Text(subject)
+                .font(.callout.weight(.medium))
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
             }
             if let markdown = delivery.renderedMarkdown {
               Text(EmailMarkdownPresentation.attributed(markdown))
@@ -288,6 +276,10 @@ private struct DeliveryRow: View {
           .frame(maxWidth: .infinity, alignment: .leading)
           .textSelection(.enabled)
           .padding(.top, 8)
+        } label: {
+          Text(delivery.renderedSubject ?? "Sent message")
+            .font(.callout.weight(.medium))
+            .lineLimit(2)
         }
       }
       if let failure = delivery.smtpFailure {
@@ -296,16 +288,27 @@ private struct DeliveryRow: View {
           .foregroundStyle(.red)
           .textSelection(.enabled)
       }
-      HStack(spacing: 12) {
-        if let sentAt = delivery.sentAt {
+      DisclosureGroup {
+        VStack(alignment: .leading, spacing: 5) {
+          if let version = delivery.templateVersion {
+            Text("Template version \(version)")
+          }
+          if let sentAt = delivery.sentAt { Text("Sent \(sentAt.formatted())") }
+          if let failedAt = delivery.failedAt { Text("Failed \(failedAt.formatted())") }
+          if let createdAt = delivery.createdAt { Text("Created \(createdAt.formatted())") }
+          if let respondedAt = delivery.respondedAt { Text("Responded \(respondedAt.formatted())") }
+        }
+      } label: {
+        if let respondedAt = delivery.respondedAt {
+          Text("Responded \(respondedAt, style: .relative)")
+        } else if let sentAt = delivery.sentAt {
           Text("Sent \(sentAt, style: .relative)")
         } else if let failedAt = delivery.failedAt {
           Text("Failed \(failedAt, style: .relative)")
         } else if let createdAt = delivery.createdAt {
           Text("Created \(createdAt, style: .relative)")
-        }
-        if let respondedAt = delivery.respondedAt {
-          Text("Responded \(respondedAt, style: .relative)")
+        } else {
+          Text("Delivery details")
         }
       }
       .font(.caption)
