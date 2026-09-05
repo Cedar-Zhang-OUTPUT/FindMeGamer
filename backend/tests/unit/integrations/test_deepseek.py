@@ -25,6 +25,13 @@ class LargeGameExtraction(GameExtraction):
     deepseek_max_tokens: ClassVar[int] = 6_144
 
 
+@pytest.fixture(autouse=True)
+def enabled_deepseek_logger(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Earlier migration tests can disable existing loggers via fileConfig;
+    # caplog changes levels but does not restore this separate disabled flag.
+    monkeypatch.setattr(logging.getLogger("app.integrations.deepseek"), "disabled", False)
+
+
 def test_deepseek_rejects_invalid_structured_output() -> None:
     calls = 0
 
