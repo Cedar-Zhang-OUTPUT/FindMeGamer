@@ -42,7 +42,7 @@ jq -e '
 
 jq -e '.services.postgres.image == "postgres:17-alpine"' <<<"$rendered"
 jq -e '.services.redis.image == "redis:7-alpine"' <<<"$rendered"
-jq -e '.services.proxy.image == "caddy:2-alpine"' <<<"$rendered"
+jq -e '.services.proxy.image == "caddy:2.11.4-alpine"' <<<"$rendered"
 jq -e '
   [.services.api, .services.worker, .services.beat] |
   all(.build.context | endswith("/backend")) and
@@ -86,3 +86,10 @@ grep -Fq '@backend path /api/* /r/* /health/live /health/ready' Caddyfile
 grep -Fq 'reverse_proxy api:8000' Caddyfile
 grep -Fq 'Cache-Control "no-store"' Caddyfile
 grep -Fq 'X-Content-Type-Options "nosniff"' Caddyfile
+
+# A public-IP deployment must request a trusted ACME IP certificate rather than
+# Caddy's local CA, including for clients that omit SNI behind EC2's EIP NAT.
+grep -Fq 'default_sni {$SERVICE_DOMAIN:localhost}' Caddyfile
+grep -Fq 'issuer acme https://acme-v02.api.letsencrypt.org/directory' Caddyfile
+grep -Fq 'profile shortlived' Caddyfile
+grep -Fq 'disable_tlsalpn_challenge' Caddyfile

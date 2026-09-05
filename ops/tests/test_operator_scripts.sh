@@ -231,6 +231,9 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
 
     for blocked_remote in (
         "127.0.0.1",
+        "10.0.0.1",
+        "172.16.0.1",
+        "192.168.1.1",
         "169.254.1.2",
         "0.0.0.0",
         "::",
@@ -314,6 +317,19 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
         for call in port_calls[1:]
     )
 
+    public_ip_log = test_root / "curl-public-ip.log"
+    public_ip_smoke = run(
+        [str(smoke_script), "https://44.233.174.193"],
+        smoke_environment | {
+            "FMG_FAKE_CURL_LOG": str(public_ip_log),
+            "FMG_FAKE_CURL_REMOTE_IP": "44.233.174.193",
+        },
+    )
+    assert public_ip_smoke.returncode == 0, public_ip_smoke.stderr
+    public_ip_calls = [json.loads(line) for line in public_ip_log.read_text().splitlines()]
+    assert all(call[-1].startswith("https://44.233.174.193/") for call in public_ip_calls)
+    assert all("--insecure" not in call and "-k" not in call for call in public_ip_calls)
+
     def smoke_failure(environment: dict[str, str], base: str = "https://smoke.test") -> None:
         result = run([str(smoke_script), base], environment)
         assert result.returncode != 0
@@ -342,6 +358,8 @@ with tempfile.TemporaryDirectory(prefix="fmg-task7-test.") as temporary:
     smoke_failure(smoke_environment, "https://localhost")
     smoke_failure(smoke_environment, "https://operator.invalid")
     smoke_failure(smoke_environment, "https://smoke.test:70000")
+    for blocked_ip in ("10.0.0.1", "172.16.0.1", "192.168.1.1", "169.254.169.254", "0.0.0.0", "224.0.0.1", "256.1.2.3", "44.233.174", "044.233.174.193"):
+        smoke_failure(smoke_environment, f"https://{blocked_ip}")
     smoke_failure(smoke_environment | {"FMG_FAKE_CURL_MODE": "malformed"})
     smoke_failure(smoke_environment | {"FMG_FAKE_CURL_MODE": "unhealthy"})
 

@@ -42,6 +42,10 @@ test "$(file_mode "$etc_dir/master.key")" = "600"
 test "$(file_mode "$etc_dir/app.env")" = "600"
 cmp -s "$repo_root/.env.example" "$etc_dir/app.env"
 
+# SecretCipher.from_file requires strict base64: 32 bytes encode to exactly
+# 44 characters, without the trailing newline emitted by openssl rand.
+test "$(wc -c <"$etc_dir/master.key" | tr -d ' ')" = "44" ||
+  fail "master key must contain exactly 44 base64 bytes with no trailing newline"
 openssl base64 -d -A -in "$etc_dir/master.key" \
   >"$test_root/decoded-master-key"
 test "$(wc -c <"$test_root/decoded-master-key" | tr -d ' ')" = "32"
