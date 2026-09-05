@@ -523,7 +523,25 @@ def test_map_reduce_prompt_versions_are_stage_specific() -> None:
         CREATOR_BRIEF_PROMPT_VERSION,
     }
     assert len(versions) == 6
+    assert CREATOR_BRIEF_PROMPT_VERSION == "creator-brief-v1"
     assert all(
-        version.startswith("creator-") and version.endswith("-v1")
-        for version in versions
+        version.startswith("creator-") and version.endswith("-v2")
+        for version in versions - {CREATOR_BRIEF_PROMPT_VERSION}
     )
+
+
+def test_map_and_reducers_explicitly_select_within_list_limits() -> None:
+    digest = CreatorVideoBatchDigest.model_validate(_batch_payload())
+    bundles = [
+        build_creator_video_batch_bundle(sample_creator_source(), batch_index=0),
+        build_creator_content_format_bundle([digest]),
+        build_creator_presentation_bundle([digest]),
+        build_creator_performance_audience_bundle([digest]),
+        build_creator_commercial_safety_bundle([digest]),
+    ]
+    for bundle in bundles:
+        rules = "\n".join(m.content for m in bundle.messages if m.role == "system")
+        assert "at most 3 items" in rules
+        assert "values" in rules and "evidence" in rules
+        assert "strongest" in rules
+        assert "Do not concatenate" in rules

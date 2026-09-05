@@ -154,7 +154,7 @@ class DeepSeekGateway:
             _log_schema_failure(schema_payload, "initial", error)
             repair_messages = [
                 *request_messages,
-                *_repair_messages(content, schema_payload),
+                *_repair_messages(content, schema_payload, error),
             ]
         repaired = self._request(
             model,
@@ -378,9 +378,9 @@ def _schema_location_names(value: object) -> set[str]:
     return names
 
 
-def _log_schema_failure(
-    schema_payload: dict[str, Any], attempt: str, error: ValueError
-) -> None:
+def _safe_validation_errors(
+    schema_payload: dict[str, Any], error: ValueError
+) -> list[dict[str, Any]]:
     allowed_names = _schema_location_names(schema_payload["schema"])
     errors = (
         error.errors(include_input=False, include_context=False, include_url=False)
@@ -413,6 +413,12 @@ def _log_schema_failure(
                 "loc": location,
             }
         )
+    return safe_errors
+
+
+def _log_schema_failure(
+    schema_payload: dict[str, Any], attempt: str, error: ValueError
+) -> None:
     logger.warning(
         "%s",
         json.dumps(
@@ -420,7 +426,7 @@ def _log_schema_failure(
                 "event": "deepseek_schema_validation_failed",
                 "schema": schema_payload["title"],
                 "attempt": attempt,
-                "errors": safe_errors,
+                "errors": _safe_validation_errors(schema_payload, error),
             }
         ),
     )
@@ -505,7 +511,7 @@ def _usage_token_count(value: object) -> int:
 
 
 def _repair_messages(
-    invalid_content: str, schema_payload: dict[str, Any]
+    invalid_content: str, schema_payload: dict[str, Any], error: ValueError
 ) -> list[dict[str, str]]:
     schema_json = json.dumps(
         schema_payload["schema"],
@@ -514,9 +520,14 @@ def _repair_messages(
         allow_nan=False,
     )
     context = invalid_content[:MAX_REPAIR_CONTEXT_CHARACTERS]
+    safe_errors_json = json.dumps(_safe_validation_errors(schema_payload, error))
     instruction = (
         "Repair the previous assistant output. Return exactly one JSON value that "
         "validates against this JSON Schema, with no Markdown or commentary. "
+        "Correct the fields identified by the validation errors according to the schema. "
+        "For list fields, obey maxItems by keeping only the strongest supported items; "
+        "do not exceed the limit to preserve every item.\n"
+        f"Validation errors: {safe_errors_json}\n"
         f"JSON Schema: {schema_json}"
     )
     return [

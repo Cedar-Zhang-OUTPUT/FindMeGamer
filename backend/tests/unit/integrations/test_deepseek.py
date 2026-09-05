@@ -13,6 +13,7 @@ from app.integrations.errors import (
     PermanentIntegrationError,
     TransientIntegrationError,
 )
+from app.schemas.ai_creator_map_reduce import CreatorContentFormatReduction
 
 
 class GameExtraction(BaseModel):
@@ -433,6 +434,70 @@ def test_deepseek_repairs_once_without_mutating_caller_messages() -> None:
     assert all(
         json.loads(request.read())["thinking"] == {"type": "disabled"}
         for request in requests
+    )
+
+
+def test_deepseek_repair_identifies_overlong_creator_lists_without_unsafe_details(
+    caplog,
+) -> None:
+    response_marker = "PRIVATE-MODEL-RESPONSE-MARKER"
+    valid = {
+        name: {"status": "unavailable", "reason": "No supporting evidence."}
+        for name in CreatorContentFormatReduction.model_fields
+        if name != "english_language_check"
+    }
+    valid["english_language_check"] = True
+    valid["genres"] = {
+        "status": "available",
+        "values": ["Action", "Roguelike", "Strategy"],
+        "confidence": "low",
+        "evidence": [
+            {
+                "kind": "ai_inference",
+                "source_type": "intermediate_output",
+                "reference": "batch:0:content_format.genres",
+                "observation": "Public video metadata supports these genres.",
+            }
+        ],
+    }
+    invalid = json.loads(json.dumps(valid))
+    invalid["genres"]["values"].append("Simulation")
+    invalid[response_marker] = response_marker
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        output = invalid if len(requests) == 1 else valid
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps(output)}}]},
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with caplog.at_level(logging.WARNING, logger="app.integrations.deepseek"):
+        result = DeepSeekGateway(
+            api_key="PRIVATE-API-KEY", http_client=client
+        ).complete_structured("deepseek-v4-flash", [], CreatorContentFormatReduction)
+
+    assert len(requests) == 2
+    assert result.genres.values == ("Action", "Roguelike", "Strategy")
+    repair_payload = json.loads(requests[1].read())
+    instruction = repair_payload["messages"][-1]["content"]
+    assert "Correct the fields identified by the validation errors" in instruction
+    assert "maxItems" in instruction and "strongest supported items" in instruction
+    errors = json.loads(
+        instruction.split("Validation errors: ", 1)[1].split("\n", 1)[0]
+    )
+    assert {"type": "too_long", "loc": ["genres", "available", "values"]} in errors
+    assert {"type": "extra_forbidden", "loc": ["[redacted]"]} in errors
+    assert all(set(error) == {"type", "loc"} for error in errors)
+    assert response_marker not in instruction
+    assert "PRIVATE-API-KEY" not in instruction
+    assert response_marker not in caplog.text
+    assert "PRIVATE-API-KEY" not in caplog.text
+    assert (
+        repair_payload["max_tokens"]
+        == CreatorContentFormatReduction.deepseek_max_tokens
     )
 
 
