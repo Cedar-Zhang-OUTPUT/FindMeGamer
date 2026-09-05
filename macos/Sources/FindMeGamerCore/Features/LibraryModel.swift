@@ -32,7 +32,7 @@ extension ProfileCard {
           canonicalURL: card.canonicalURL, favorite: favorite,
           currentFacts: card.currentFacts, brief: card.brief, sourceStatus: card.sourceStatus,
           lastAnalyzedAt: card.lastAnalyzedAt, nextAnalysisAt: card.nextAnalysisAt,
-          contact: card.contact))
+          contact: card.contact, contacts: card.contacts))
     }
   }
 }

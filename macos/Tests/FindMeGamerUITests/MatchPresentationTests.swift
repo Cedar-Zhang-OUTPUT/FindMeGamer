@@ -141,6 +141,10 @@ import Testing
     #expect(!MatchOutreachActionPolicy.isEligibleForNewSend(candidate(id: id(22))))
     #expect(
       !MatchOutreachActionPolicy.isEligibleForNewSend(
+        candidate(
+          id: id(220), contactAvailable: true, email: "legacy@example.test", contacts: [])))
+    #expect(
+      !MatchOutreachActionPolicy.isEligibleForNewSend(
         candidate(id: id(23), contactAvailable: true, email: "   ")))
     for state in [SendState.queued, .sending, .sent, .failed, .superseded] {
       #expect(
@@ -218,6 +222,38 @@ import Testing
     #expect(selection.orderedIDs(in: refreshed) == [id(33)])
   }
 
+  @Test func selectedOutreachRecipientsPreserveCreatorAndContactOrderWithoutDefaultingAnEmail() {
+    let firstContacts = [
+      MatchCreatorContact(
+        email: "business@example.test", source: "channel_about", sourceURL: nil,
+        validationState: "valid", purpose: "Sponsorships"),
+      MatchCreatorContact(
+        email: "press@example.test", source: "public_web_research",
+        sourceURL: "https://creator.example/contact", validationState: "unverified",
+        purpose: "Press"),
+    ]
+    let first = candidate(
+      id: id(34), name: "First", contactAvailable: true,
+      email: firstContacts[0].email, contacts: firstContacts)
+    let second = candidate(
+      id: id(35), name: "Second", group: .other, contactAvailable: true,
+      email: "second@example.test")
+    let current = result(recommended: [first], other: [second])
+    var selection = MatchRecipientSelection()
+
+    selection.toggle(second)
+    selection.toggle(first)
+    let recipients = selection.orderedRecipients(in: current)
+
+    #expect(recipients.map(\.creatorID) == [id(34), id(35)])
+    #expect(recipients[0].creatorName == "First")
+    #expect(
+      recipients[0].contacts.map(\.email) == [
+        "business@example.test", "press@example.test",
+      ])
+    #expect(recipients[0].contacts.map(\.purpose) == ["Sponsorships", "Press"])
+  }
+
   @MainActor
   @Test func realViewsAcceptTaskElevenModelAndExactRoutingClosures() {
     let service = OpenAPIService(
@@ -227,12 +263,12 @@ import Testing
     let view = MatchView(
       model: model,
       onOpenProfile: { (_: ProfileType, _: UUID) in },
-      onComposeOutreach: { (_: UUID, _: [UUID]) in },
+      onComposeOutreach: { (_: UUID, _: [OutreachRecipientContext]) in },
       onResendDelivery: { (_: UUID) in })
     let resultView = MatchResultView(
       matchID: matchID, model: model, writesEnabled: true,
       onOpenProfile: { (_: ProfileType, _: UUID) in },
-      onComposeOutreach: { (_: UUID, _: [UUID]) in },
+      onComposeOutreach: { (_: UUID, _: [OutreachRecipientContext]) in },
       onResendDelivery: { (_: UUID) in })
 
     _ = view
@@ -275,6 +311,7 @@ private func candidate(
   evidenceSuffix: String = "X",
   contactAvailable: Bool = false,
   email: String? = nil,
+  contacts: [MatchCreatorContact]? = nil,
   deliveryID: UUID? = nil,
   sendState: SendState? = nil,
   responseState: ResponseState? = nil
@@ -290,7 +327,7 @@ private func candidate(
           validationState: "valid")
       }, avatarURL: "https://cdn.example.test/avatar.jpg",
       performanceSummary: "Steady recent performance", subscriberCount: 12_000,
-      recentAverageViews: 3_500, recentMedianViews: 3_000),
+      recentAverageViews: 3_500, recentMedianViews: 3_000, contacts: contacts),
     group: group, label: label,
     dimensionOutcomes: MatchDimensionOutcomes(
       contentFit: "Aligned", audienceFit: "Aligned", performanceFit: "Promising",

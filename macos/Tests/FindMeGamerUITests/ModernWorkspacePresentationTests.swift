@@ -30,6 +30,30 @@ import Testing
       SidebarGlyphContrastPolicy.mode(isSelected: false, isControlActive: false) == .unselected)
   }
 
+  @Test func analyzeInspectorIsPresentedOnlyInsideTheLibraryWorkspace() {
+    #expect(
+      WorkspaceInspectorPolicy.isPresented(requested: true, destination: .library))
+    #expect(
+      !WorkspaceInspectorPolicy.isPresented(requested: true, destination: .match))
+    #expect(
+      !WorkspaceInspectorPolicy.isPresented(requested: true, destination: .outreach))
+    #expect(
+      !WorkspaceInspectorPolicy.isPresented(requested: true, destination: .settings))
+    #expect(
+      !WorkspaceInspectorPolicy.isPresented(requested: false, destination: .library))
+  }
+
+  @Test func templateWorkspaceAdaptsInsideTheOuterSidebarDetailColumn() {
+    #expect(
+      TemplateWorkspaceLayoutPolicy.layout(for: 879) == .compact)
+    #expect(
+      TemplateWorkspaceLayoutPolicy.layout(for: 880) == .columns(selectorWidth: 220))
+    #expect(
+      TemplateWorkspaceLayoutPolicy.layout(for: 1_200) == .columns(selectorWidth: 288))
+    #expect(
+      TemplateWorkspaceLayoutPolicy.layout(for: 2_000) == .columns(selectorWidth: 320))
+  }
+
   @Test func visualSystemKeepsAQuietFourStepRhythm() {
     #expect(WorkspaceDesign.spaceXS == 6)
     #expect(WorkspaceDesign.spaceS == 10)

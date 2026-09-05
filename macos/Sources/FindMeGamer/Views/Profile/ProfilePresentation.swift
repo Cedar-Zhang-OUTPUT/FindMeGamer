@@ -153,6 +153,7 @@ struct GameProfilePresentation: Equatable {
 
 struct CreatorContactPresentation: Equatable, Sendable {
   let email: String
+  let purpose: String?
   let availability: ContactAvailability
   let validationState: String
   let source: String
@@ -169,6 +170,7 @@ struct CreatorProfilePresentation: Equatable {
   let sections: [CreatorProfileSection: [ProfileDisplayField]]
   let briefFields: [ProfileDisplayField]
   let contact: CreatorContactPresentation?
+  let contacts: [CreatorContactPresentation]
   let staleWarning: String?
 
   init(profile: FindMeGamerCore.CreatorProfile) {
@@ -189,16 +191,20 @@ struct CreatorProfilePresentation: Equatable {
       briefFields = Self.makeBriefFields(profile.brief)
     }
 
-    let visibleContact =
-      isStale && profile.contact?.availability != .manual ? nil : profile.contact
-    contact = visibleContact.map {
+    let visibleContacts =
+      isStale
+      ? profile.contacts.filter { $0.availability == .manual }
+      : profile.contacts
+    contacts = visibleContacts.map {
       CreatorContactPresentation(
         email: $0.email,
+        purpose: $0.purpose,
         availability: $0.availability,
         validationState: $0.validationState,
         source: $0.source,
         sourceURL: ProfileLinkPolicy.validated($0.sourceURL))
     }
+    contact = contacts.first
   }
 
   private static func makeSourceFacts(profile: FindMeGamerCore.CreatorProfile)

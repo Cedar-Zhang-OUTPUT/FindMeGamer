@@ -71,35 +71,52 @@ struct CreatorProfileDetail: View {
   }
 
   private var contactSection: some View {
-    GroupBox("Contact") {
-      if let contact = presentation.contact {
-        Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 7) {
-          GridRow {
-            Text("Email").foregroundStyle(.secondary)
-            Text(contact.email).textSelection(.enabled)
-          }
-          GridRow {
-            Text("Availability").foregroundStyle(.secondary)
-            Text(contact.availability.displayName)
-          }
-          GridRow {
-            Text("Validation").foregroundStyle(.secondary)
-            Text(contact.validationState)
-          }
-          GridRow {
-            Text("Source").foregroundStyle(.secondary)
-            if let sourceURL = contact.sourceURL {
-              Link(contact.source, destination: sourceURL)
-            } else {
-              Text(contact.source)
+    GroupBox("Contacts") {
+      if presentation.contacts.isEmpty {
+        Text("Unavailable")
+          .foregroundStyle(.secondary)
+          .frame(maxWidth: .infinity, alignment: .leading)
+      } else {
+        VStack(alignment: .leading, spacing: 12) {
+          ForEach(Array(presentation.contacts.enumerated()), id: \.offset) { index, contact in
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 7) {
+              GridRow {
+                Text("Email").foregroundStyle(.secondary)
+                Text(contact.email).textSelection(.enabled)
+              }
+              if let purpose = contact.purpose,
+                !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              {
+                GridRow {
+                  Text("Purpose").foregroundStyle(.secondary)
+                  Text(purpose)
+                }
+              }
+              GridRow {
+                Text("Availability").foregroundStyle(.secondary)
+                Text(contact.availability.displayName)
+              }
+              GridRow {
+                Text("Validation").foregroundStyle(.secondary)
+                Text(contact.validationState)
+              }
+              GridRow {
+                Text("Source").foregroundStyle(.secondary)
+                if let sourceURL = contact.sourceURL {
+                  Link(contact.source, destination: sourceURL)
+                } else {
+                  Text(contact.source)
+                }
+              }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if index < presentation.contacts.count - 1 {
+              Divider()
             }
           }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-      } else {
-        Text("Unavailable")
-          .foregroundStyle(.secondary)
-          .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
   }

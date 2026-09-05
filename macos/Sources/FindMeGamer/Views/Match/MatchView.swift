@@ -44,7 +44,7 @@ enum MatchAccessibility {
 struct MatchView: View {
   @Bindable var model: MatchModel
   let onOpenProfile: (ProfileType, UUID) -> Void
-  let onComposeOutreach: (UUID, [UUID]) -> Void
+  let onComposeOutreach: (UUID, [OutreachRecipientContext]) -> Void
   let onResendDelivery: (UUID) -> Void
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled

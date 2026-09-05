@@ -15,10 +15,8 @@ struct CampaignsView: View {
         } description: {
           Text(model.campaignsError ?? "Sent outreach will appear here.")
         } actions: {
-          if model.campaignsError != nil {
-            Button("Try Again") {
-              Task { await model.loadCampaigns() }
-            }
+          Button("Refresh") {
+            Task { await model.loadCampaigns() }
           }
         }
       } else {
@@ -51,6 +49,17 @@ struct CampaignsView: View {
     .task {
       if model.campaigns.isEmpty {
         await model.loadCampaigns()
+      }
+    }
+    .toolbar {
+      ToolbarItem {
+        Button {
+          Task { await model.loadCampaigns() }
+        } label: {
+          Label("Refresh Campaigns", systemImage: "arrow.clockwise")
+        }
+        .disabled(model.isLoadingCampaigns)
+        .help("Refresh Campaigns")
       }
     }
   }

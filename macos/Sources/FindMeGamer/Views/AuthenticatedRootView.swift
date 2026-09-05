@@ -12,14 +12,22 @@ extension EnvironmentValues {
   }
 }
 
+enum WorkspaceInspectorPolicy {
+  static func isPresented(requested: Bool, destination: AppDestination) -> Bool {
+    requested && destination == .library
+  }
+}
+
 struct AuthenticatedRootView: View {
   let session: AppSession
   @Bindable var navigation: WorkspaceNavigationState
 
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @SceneStorage("sidebar-selection") private var storedSelection = AppDestination.library.rawValue
   @State private var coordinator: ClientCoordinator?
   @State private var composerRequest: OutreachComposerRequest?
+  @State private var destinationDirection = WorkspaceMotionDirection.stationary
 
   init(session: AppSession, navigation: WorkspaceNavigationState) {
     self.session = session
@@ -96,9 +104,29 @@ struct AuthenticatedRootView: View {
               .background(Color.red.opacity(0.08))
           }
 
-          selectedDetail(coordinator)
+          ZStack {
+            selectedDetail(coordinator)
+              .id(selectedDestination)
+              .transition(
+                WorkspaceMotionPolicy.transition(
+                  direction: destinationDirection,
+                  role: .destination,
+                  reduceMotion: reduceMotion))
+          }
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+          .clipped()
         }
         .workspaceCanvas()
+        .inspector(isPresented: analyzeInspectorPresentation(coordinator)) {
+          AnalyzeRequestInspector(
+            model: coordinator.analyze,
+            writesEnabled: availability.writesEnabled,
+            onOpenProfile: { type, id in
+              Task { await coordinator.openProfile(type: type, id: id) }
+            }
+          )
+          .inspectorColumnWidth(min: 320, ideal: 380, max: 480)
+        }
       }
     )
     .environment(\.workspaceWritesEnabled, availability.writesEnabled)
@@ -127,7 +155,7 @@ struct AuthenticatedRootView: View {
         OutreachComposerSheet(
           model: coordinator.composer,
           matchID: request.matchID,
-          creatorIDs: request.creatorIDs,
+          recipients: request.recipients,
           onAccepted: { batch in
             Task { await coordinator.sendBatchAccepted(batch) }
           }
@@ -136,10 +164,37 @@ struct AuthenticatedRootView: View {
       })
   }
 
+  private func analyzeInspectorPresentation(_ coordinator: ClientCoordinator) -> Binding<Bool> {
+    Binding(
+      get: {
+        WorkspaceInspectorPolicy.isPresented(
+          requested: coordinator.analyze.inspectorPresented,
+          destination: selectedDestination)
+      },
+      set: { coordinator.analyze.inspectorPresented = $0 })
+  }
+
   private var sidebarSelection: Binding<AppDestination?> {
     Binding(
       get: { selectedDestination },
-      set: { storedSelection = ($0 ?? .library).rawValue })
+      set: { proposedDestination in
+        let destination = proposedDestination ?? .library
+        guard destination != selectedDestination else { return }
+
+        if destination != .library {
+          coordinator?.analyze.inspectorPresented = false
+        }
+
+        destinationDirection = WorkspaceMotionPolicy.direction(
+          from: selectedDestination,
+          to: destination,
+          ordered: AppDestination.allCases)
+        withAnimation(
+          WorkspaceMotionPolicy.animation(for: .destination, reduceMotion: reduceMotion)
+        ) {
+          storedSelection = destination.rawValue
+        }
+      })
   }
 
   private var selectedDestination: AppDestination {
@@ -169,10 +224,10 @@ struct AuthenticatedRootView: View {
           onOpenProfile: { type, id in
             Task { await coordinator.openProfile(type: type, id: id) }
           },
-          onComposeOutreach: { matchID, creatorIDs in
+          onComposeOutreach: { matchID, recipients in
             composerRequest = OutreachComposerRequest(
               matchID: matchID,
-              creatorIDs: creatorIDs)
+              recipients: recipients)
           },
           onResendDelivery: { deliveryID in
             Task { await coordinator.resendDelivery(id: deliveryID) }
@@ -246,5 +301,5 @@ struct AuthenticatedRootView: View {
 private struct OutreachComposerRequest: Identifiable {
   let id = UUID()
   let matchID: UUID
-  let creatorIDs: [UUID]
+  let recipients: [OutreachRecipientContext]
 }

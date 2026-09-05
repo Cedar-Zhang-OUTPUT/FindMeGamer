@@ -43,7 +43,7 @@ public final class SettingsModel {
   public static let appearanceModeKey = "appearance-mode"
   public static let fontSizeKey = "font-size"
 
-  public let connectionServices: [ConnectionService] = [.steam, .youtube, .deepSeek]
+  public let connectionServices: [ConnectionService] = [.steam, .youtube, .deepSeek, .googleAI]
   public private(set) var workspaceStatus: String
   public let apiBaseURL: String
   public let appVersion: String

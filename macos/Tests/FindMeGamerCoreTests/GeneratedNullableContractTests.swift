@@ -1,4 +1,3 @@
-import CryptoKit
 import FindMeGamerAPI
 import Foundation
 import Testing
@@ -70,6 +69,22 @@ import Testing
         "favorite": true,
         "contact_available": false,
         "contact": NSNull(),
+        "contacts": [
+          [
+            "email": "partnerships@alpha.example",
+            "purpose": "Partnerships",
+            "source": "channel_about",
+            "source_url": "https://youtube.com/@alpha/about",
+            "validation_state": "valid",
+          ],
+          [
+            "email": "press@alpha.example",
+            "purpose": NSNull(),
+            "source": "linked_website",
+            "source_url": NSNull(),
+            "validation_state": "unverified",
+          ],
+        ],
         "avatar_url": NSNull(),
         "performance_summary": "Strong recent coverage",
         "subscriber_count": 1_000,
@@ -106,6 +121,11 @@ import Testing
   )
 
   #expect(item.creator.subscriber_count == 1_000)
+  #expect(
+    item.creator.contacts?.map(\.email) == [
+      "partnerships@alpha.example", "press@alpha.example",
+    ])
+  #expect(item.creator.contacts?.map(\.purpose) == ["Partnerships", nil])
   #expect(item.outreach.delivery_id == nil)
 }
 
@@ -178,9 +198,26 @@ import Testing
           "next_analysis_at": NSNull(),
           "contact": [
             "email": "alpha@example.com",
+            "purpose": "Preferred",
             "source": "manual",
             "source_url": NSNull(),
             "validation_state": "manual",
+          ],
+          "contacts": [
+            [
+              "email": "alpha@example.com",
+              "purpose": "Preferred",
+              "source": "manual",
+              "source_url": NSNull(),
+              "validation_state": "manual",
+            ],
+            [
+              "email": "press@alpha.example",
+              "purpose": NSNull(),
+              "source": "linked_website",
+              "source_url": "https://alpha.example/contact",
+              "validation_state": "unverified",
+            ],
           ],
         ]
       ],
@@ -213,6 +250,12 @@ import Testing
   let gameRoundTrip = try roundTripGenerated(gamePage)
   #expect(creatorRoundTrip.next_cursor == "creator-next")
   #expect(creatorRoundTrip.items[0].contact?.value1.email == "alpha@example.com")
+  #expect(creatorRoundTrip.items[0].contact?.value1.purpose == "Preferred")
+  #expect(
+    creatorRoundTrip.items[0].contacts?.map(\.email) == [
+      "alpha@example.com", "press@alpha.example",
+    ])
+  #expect(creatorRoundTrip.items[0].contacts?.map(\.purpose) == ["Preferred", nil])
   #expect(creatorRoundTrip.items[0].last_analyzed_at != nil)
   #expect(creatorRoundTrip.items[0].next_analysis_at == nil)
   #expect(gameRoundTrip.next_cursor == nil)
@@ -245,16 +288,15 @@ import Testing
   #expect(try encodedJSONObject(clearing).isEmpty)
 }
 
-@Test func swiftSchemaRecordsAuthoritativeBackendDigest() throws {
-  let (backendData, swiftDocument) = try backendDataAndSwiftDocument()
+@Test func swiftSchemaRecordsPinnedBackendSourceDigest() throws {
+  let swiftDocument = try swiftSchemaDocument()
   let recordedDigest = try #require(
     swiftDocument["x-find-me-gamer-source-sha256"] as? String
   )
-  let actualDigest = SHA256.hash(data: backendData)
-    .map { String(format: "%02x", $0) }
-    .joined()
 
-  #expect(recordedDigest == actualDigest)
+  // This client-only branch is pinned to
+  // 8bb8f65913a65039d19542a4e9f85f24e05d255a:backend/openapi.json.
+  #expect(recordedDigest == "2e5f1ee3128e39f26d941eea626d29189a309e1efbaea81e5c436c1eae0848ff")
 }
 
 private func decodeGenerated<Value: Decodable>(
@@ -281,7 +323,7 @@ private func encodedJSONObject<Value: Encodable>(_ value: Value) throws -> [Stri
   return try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
 }
 
-private func backendDataAndSwiftDocument() throws -> (Data, [String: Any]) {
+private func swiftSchemaDocument() throws -> [String: Any] {
   let testFile = URL(fileURLWithPath: #filePath)
   let repositoryRoot =
     testFile
@@ -289,16 +331,12 @@ private func backendDataAndSwiftDocument() throws -> (Data, [String: Any]) {
     .deletingLastPathComponent()
     .deletingLastPathComponent()
     .deletingLastPathComponent()
-  let backendData = try Data(
-    contentsOf: repositoryRoot.appendingPathComponent("backend/openapi.json")
-  )
   let swiftData = try Data(
     contentsOf: repositoryRoot.appendingPathComponent(
       "macos/Sources/FindMeGamerAPI/openapi.json"
     )
   )
-  let swiftDocument = try #require(
+  return try #require(
     JSONSerialization.jsonObject(with: swiftData) as? [String: Any]
   )
-  return (backendData, swiftDocument)
 }

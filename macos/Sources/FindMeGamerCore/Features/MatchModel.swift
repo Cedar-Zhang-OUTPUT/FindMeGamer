@@ -195,6 +195,11 @@ public final class MatchModel {
     }
   }
 
+  public func refreshSelectedResult() async {
+    guard let selectedMatchID else { return }
+    await openResult(id: selectedMatchID)
+  }
+
   public func consume(jobBatch: JobChangeBatch) async {
     var newestByID: [UUID: ChangedMatchJob] = [:]
     var order: [UUID] = []

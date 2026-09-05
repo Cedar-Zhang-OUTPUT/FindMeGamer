@@ -19,13 +19,15 @@ struct OutreachComposerModelTests {
       templateOutcomes: [.value([first, preferred])], previewOutcomes: [.value(response)])
     let model = OutreachComposerModel(api: api)
 
-    await model.load(matchID: id(10), creatorIDs: [])
+    await model.load(matchID: id(10), recipients: testRecipients([]))
     #expect(model.loadError == "Select at least one Creator.")
-    await model.load(matchID: id(10), creatorIDs: (1...31).map(id))
+    await model.load(matchID: id(10), recipients: testRecipients((1...31).map(id)))
     #expect(model.loadError == "Select at least one Creator.")
     #expect(await api.templateCallCount == 0)
 
-    await model.load(matchID: id(10), creatorIDs: [creators[0], creators[1], creators[0]])
+    await model.load(
+      matchID: id(10),
+      recipients: testRecipients([creators[0], creators[1], creators[0]]))
 
     #expect(model.matchID == id(10))
     #expect(model.creatorIDs == creators)
@@ -60,9 +62,11 @@ struct OutreachComposerModelTests {
       previewOutcomes: [.value(previewB)])
     let model = OutreachComposerModel(api: api)
 
-    let loadA = Task { await model.load(matchID: id(20), creatorIDs: [id(23)]) }
+    let loadA = Task {
+      await model.load(matchID: id(20), recipients: testRecipients([id(23)]))
+    }
     #expect(await aGate.waitUntilEntered())
-    await model.load(matchID: id(24), creatorIDs: [id(22)])
+    await model.load(matchID: id(24), recipients: testRecipients([id(22)]))
     aGate.resume(.success([template(id: id(25), name: "A", subject: "A subject")]))
     await loadA.value
 
@@ -71,15 +75,43 @@ struct OutreachComposerModelTests {
     #expect(model.selectedTemplate == templateB)
     #expect(model.previews == previewB)
 
-    await model.load(matchID: id(26), creatorIDs: [id(27)])
+    await model.load(matchID: id(26), recipients: testRecipients([id(27)]))
     #expect(model.loadError == "No Outreach Template is available.")
     #expect(model.selectedTemplate == nil)
     #expect(model.previews.isEmpty)
 
-    await model.load(matchID: id(28), creatorIDs: [id(29)])
+    await model.load(matchID: id(28), recipients: testRecipients([id(29)]))
     #expect(model.loadError == "Templates unavailable.")
     #expect(!model.canRefreshPreview)
     #expect(!model.canConfirmSend)
+  }
+
+  @MainActor
+  @Test func failedInitialTemplateLoadCanRetryWithoutReopeningComposer() async {
+    let creator = id(129)
+    let loadedTemplate = template(id: id(130), name: "Recovered Template")
+    let rendered = [preview(creatorID: creator)]
+    let api = OutreachAPI(
+      templateOutcomes: [
+        .failure(APIError(code: "offline", message: "Templates unavailable.", retryable: true)),
+        .value([loadedTemplate]),
+      ],
+      previewOutcomes: [.value(rendered)])
+    let model = OutreachComposerModel(api: api)
+
+    await model.load(matchID: id(128), recipients: testRecipients([creator]))
+
+    #expect(model.loadError == "Templates unavailable.")
+    #expect(model.canRetryLoad)
+    #expect(model.templates.isEmpty)
+
+    await model.retryLoad()
+
+    #expect(model.loadError == nil)
+    #expect(!model.canRetryLoad)
+    #expect(model.templates == [loadedTemplate])
+    #expect(model.previews == rendered)
+    #expect(await api.templateCallCount == 2)
   }
 
   @MainActor
@@ -96,7 +128,7 @@ struct OutreachComposerModelTests {
     let api = OutreachAPI(
       templateOutcomes: [.value([shared])], previewOutcomes: [.value(initial), .value(edited)])
     let model = OutreachComposerModel(api: api)
-    await model.load(matchID: id(30), creatorIDs: [creator])
+    await model.load(matchID: id(30), recipients: testRecipients([creator]))
 
     model.updateOverride(subject: "Exact one-off subject", bodyMarkdown: shared.bodyMarkdown)
     #expect(model.selectedTemplate == shared)
@@ -132,7 +164,9 @@ struct OutreachComposerModelTests {
       previewOutcomes: [.gated(oldGate), .value(current)])
     let model = OutreachComposerModel(api: api)
 
-    let load = Task { await model.load(matchID: id(40), creatorIDs: [creator]) }
+    let load = Task {
+      await model.load(matchID: id(40), recipients: testRecipients([creator]))
+    }
     #expect(await oldGate.waitUntilEntered())
     await model.selectTemplate(id: second.id)
     #expect(model.selectedTemplate == second)
@@ -166,7 +200,7 @@ struct OutreachComposerModelTests {
       templateOutcomes: [.value([shared])],
       previewOutcomes: [.value(initial), .value(refreshed)])
     let model = OutreachComposerModel(api: api)
-    await model.load(matchID: id(47), creatorIDs: creators)
+    await model.load(matchID: id(47), recipients: testRecipients(creators))
     model.selectRecipient(id: creators[1])
 
     model.updateOverride(subject: shared.subjectTemplate, bodyMarkdown: "Exact one-off body")
@@ -203,7 +237,7 @@ struct OutreachComposerModelTests {
         .value([preview(creatorID: creators[0]), preview(creatorID: creators[0])]),
       ])
     let model = OutreachComposerModel(api: api)
-    await model.load(matchID: id(50), creatorIDs: creators)
+    await model.load(matchID: id(50), recipients: testRecipients(creators))
     model.selectRecipient(id: creators[0])
 
     let olderRefresh = Task { await model.refreshPreview() }
@@ -240,7 +274,7 @@ struct OutreachComposerModelTests {
       "00000000-0000-4000-8000-000000000063"
     ])
     let model = OutreachComposerModel(api: api, idempotencyKey: keys.provider)
-    await model.load(matchID: id(60), creatorIDs: [creator])
+    await model.load(matchID: id(60), recipients: testRecipients([creator]))
 
     #expect(await api.sendCalls.isEmpty)
     #expect(model.canConfirmSend)
@@ -281,7 +315,7 @@ struct OutreachComposerModelTests {
       "00000000-0000-4000-8000-000000000076",
     ])
     let model = OutreachComposerModel(api: api, idempotencyKey: keys.provider)
-    await model.load(matchID: id(70), creatorIDs: [creator])
+    await model.load(matchID: id(70), recipients: testRecipients([creator]))
 
     await model.confirmSend()
     #expect(model.sendError == "Response was lost.")
@@ -324,13 +358,13 @@ struct OutreachComposerModelTests {
         "00000000-0000-4000-8000-000000000087",
         "00000000-0000-4000-8000-000000000088",
       ]).provider)
-    await model.load(matchID: id(80), creatorIDs: [creator])
+    await model.load(matchID: id(80), recipients: testRecipients([creator]))
 
     let sending = Task { await model.confirmSend() }
     #expect(await gate.waitUntilEntered())
     model.updateOverride(subject: "Changed", bodyMarkdown: first.bodyMarkdown)
     await model.selectTemplate(id: second.id)
-    await model.load(matchID: id(86), creatorIDs: [id(84)])
+    await model.load(matchID: id(86), recipients: testRecipients([id(84)]))
     await model.refreshPreview()
     await model.confirmSend()
 
@@ -348,6 +382,201 @@ struct OutreachComposerModelTests {
     await sending.value
     #expect(model.acceptedBatch == accepted)
     #expect(!model.isSending)
+  }
+
+  @MainActor
+  @Test func multipleEmailsRequireOneExplicitActiveSelectionBeforePreviewing() async {
+    let creator = id(91)
+    let first = recipientContact(
+      email: "business@example.com", purpose: "Sponsorships", source: "channel_about")
+    let second = recipientContact(
+      email: "press@example.com", purpose: "Press", source: "public_web_research")
+    let api = OutreachAPI(
+      templateOutcomes: [.value([template(id: id(92), name: "Only")])],
+      previewOutcomes: [
+        .value([preview(creatorID: creator, recipientEmail: second.email)])
+      ])
+    let model = OutreachComposerModel(api: api)
+
+    await model.load(
+      matchID: id(90),
+      recipients: [recipient(id: creator, name: "Multi Creator", contacts: [first, second])])
+
+    #expect(model.creatorIDs == [creator])
+    #expect(model.recipientContexts.first?.contacts == [first, second])
+    #expect(model.selectedEmail(for: creator) == nil)
+    #expect(model.recipientIDsRequiringSelection == [creator])
+    #expect(!model.canRefreshPreview)
+    #expect(!model.canConfirmSend)
+    #expect(await api.previewCalls.isEmpty)
+
+    await model.selectRecipientEmail("not-active@example.com", creatorID: creator)
+    #expect(model.selectedEmail(for: creator) == nil)
+    #expect(await api.previewCalls.isEmpty)
+
+    await model.selectRecipientEmail(second.email, creatorID: creator)
+
+    let expectedSelection = OutreachRecipientSelection(creatorID: creator, email: second.email)
+    #expect(model.selectedEmail(for: creator) == second.email)
+    #expect(model.recipientIDsRequiringSelection.isEmpty)
+    #expect(await api.previewCalls.count == 1)
+    #expect(await api.previewCalls.first?.recipientSelections == [expectedSelection])
+    #expect(model.canConfirmSend)
+  }
+
+  @MainActor
+  @Test func recipientSelectionRefreshesPreviewAndSendUsesExactlyOneAddressPerCreator() async {
+    let creator = id(94)
+    let contacts = [
+      recipientContact(email: "first@example.com", source: "channel_about"),
+      recipientContact(email: "second@example.com", source: "public_web_research"),
+    ]
+    let api = OutreachAPI(
+      templateOutcomes: [.value([template(id: id(95), name: "Only")])],
+      previewOutcomes: [
+        .value([
+          preview(
+            creatorID: creator, recipientEmail: contacts[0].email,
+            subject: "First selection")
+        ]),
+        .value([
+          preview(
+            creatorID: creator, recipientEmail: contacts[1].email,
+            subject: "Second selection")
+        ]),
+      ],
+      sendOutcomes: [.value(batch(id: id(96), matchID: id(93), creatorIDs: [creator]))])
+    let model = OutreachComposerModel(
+      api: api,
+      idempotencyKey: { "00000000-0000-4000-8000-000000000097" })
+    await model.load(
+      matchID: id(93),
+      recipients: [recipient(id: creator, name: "Creator", contacts: contacts)])
+
+    await model.selectRecipientEmail(contacts[0].email, creatorID: creator)
+    #expect(model.selectedPreview?.subject == "First selection")
+    await model.selectRecipientEmail(contacts[1].email, creatorID: creator)
+    #expect(model.selectedPreview?.subject == "Second selection")
+    #expect(await api.previewCalls.count == 2)
+    #expect(
+      await api.previewCalls.last?.recipientSelections == [
+        OutreachRecipientSelection(creatorID: creator, email: contacts[1].email)
+      ])
+
+    await model.confirmSend()
+    #expect(await api.sendCalls.count == 1)
+    #expect(await api.sendCalls.first?.draft == api.previewCalls.last)
+    #expect(model.acceptedBatch?.id == id(96))
+  }
+
+  @MainActor
+  @Test func oneEmailNeedsNoSelectionAndMissingEmailStopsCompositionLocally() async {
+    let singleCreator = id(101)
+    let missingCreator = id(102)
+    let singleAPI = OutreachAPI(
+      templateOutcomes: [.value([template(id: id(103), name: "Only")])],
+      previewOutcomes: [
+        .value([preview(creatorID: singleCreator, recipientEmail: "only@example.com")])
+      ])
+    let singleModel = OutreachComposerModel(api: singleAPI)
+    await singleModel.load(
+      matchID: id(100),
+      recipients: [
+        recipient(
+          id: singleCreator, name: "Single",
+          contacts: [recipientContact(email: "only@example.com", source: "manual")])
+      ])
+
+    #expect(singleModel.recipientIDsRequiringSelection.isEmpty)
+    #expect(singleModel.selectedEmail(for: singleCreator) == nil)
+    #expect(await singleAPI.previewCalls.first?.recipientSelections == [])
+    #expect(singleModel.canConfirmSend)
+
+    let missingAPI = OutreachAPI()
+    let missingModel = OutreachComposerModel(api: missingAPI)
+    await missingModel.load(
+      matchID: id(100),
+      recipients: [recipient(id: missingCreator, name: "Missing", contacts: [])])
+
+    #expect(missingModel.loadError == "Every Creator must have an available email address.")
+    #expect(await missingAPI.templateCallCount == 0)
+    #expect(await missingAPI.previewCalls.isEmpty)
+  }
+
+  @MainActor
+  @Test func serverPreviewMustConfirmTheExactSelectedOrOnlyActiveEmail() async {
+    let creator = id(111)
+    let contacts = [
+      recipientContact(email: "first@example.com", source: "channel_about"),
+      recipientContact(email: "second@example.com", source: "public_web_research"),
+    ]
+    let api = OutreachAPI(
+      templateOutcomes: [.value([template(id: id(112), name: "Only")])],
+      previewOutcomes: [
+        .value([preview(creatorID: creator, recipientEmail: contacts[0].email)])
+      ])
+    let model = OutreachComposerModel(api: api)
+    await model.load(
+      matchID: id(110),
+      recipients: [recipient(id: creator, name: "Creator", contacts: contacts)])
+
+    await model.selectRecipientEmail(contacts[1].email, creatorID: creator)
+
+    #expect(model.previews.isEmpty)
+    #expect(model.previewError == "Could not preview Outreach.")
+    #expect(!model.canConfirmSend)
+  }
+
+  @MainActor
+  @Test func multipleRecipientSelectionsSerializeInCreatorOrderRegardlessOfInteractionOrder()
+    async
+  {
+    let firstCreator = id(121)
+    let secondCreator = id(122)
+    let firstContacts = [
+      recipientContact(email: "first-primary@example.com", source: "channel_about"),
+      recipientContact(email: "first-press@example.com", source: "public_web_research"),
+    ]
+    let secondContacts = [
+      recipientContact(email: "second-primary@example.com", source: "channel_about"),
+      recipientContact(email: "second-press@example.com", source: "public_web_research"),
+    ]
+    let api = OutreachAPI(
+      templateOutcomes: [.value([template(id: id(123), name: "Only")])],
+      previewOutcomes: [
+        .value([
+          preview(creatorID: firstCreator, recipientEmail: firstContacts[1].email),
+          preview(creatorID: secondCreator, recipientEmail: secondContacts[0].email),
+        ])
+      ],
+      sendOutcomes: [
+        .value(
+          batch(
+            id: id(124), matchID: id(120), creatorIDs: [firstCreator, secondCreator]))
+      ])
+    let model = OutreachComposerModel(api: api)
+    await model.load(
+      matchID: id(120),
+      recipients: [
+        recipient(id: firstCreator, name: "First", contacts: firstContacts),
+        recipient(id: secondCreator, name: "Second", contacts: secondContacts),
+      ])
+
+    await model.selectRecipientEmail(secondContacts[0].email, creatorID: secondCreator)
+    #expect(await api.previewCalls.isEmpty)
+
+    await model.selectRecipientEmail(firstContacts[1].email, creatorID: firstCreator)
+
+    let expectedSelections = [
+      OutreachRecipientSelection(creatorID: firstCreator, email: firstContacts[1].email),
+      OutreachRecipientSelection(creatorID: secondCreator, email: secondContacts[0].email),
+    ]
+    #expect(await api.previewCalls.first?.recipientSelections == expectedSelections)
+    #expect(model.canConfirmSend)
+
+    await model.confirmSend()
+
+    #expect(await api.sendCalls.first?.draft.recipientSelections == expectedSelections)
   }
 }
 
@@ -559,13 +788,43 @@ private func template(
 private func preview(
   creatorID: UUID,
   name: String = "Creator",
+  recipientEmail: String = "creator@example.com",
   subject: String = "Rendered subject",
   markdown: String = "Rendered markdown",
   html: String = "<p>Rendered markdown</p>"
 ) -> RecipientPreview {
   RecipientPreview(
-    creatorID: creatorID, creatorName: name, recipientEmail: "creator@example.com",
+    creatorID: creatorID, creatorName: name, recipientEmail: recipientEmail,
     subject: subject, markdown: markdown, html: html)
+}
+
+private func recipientContact(
+  email: String,
+  purpose: String? = nil,
+  source: String,
+  sourceURL: String? = nil,
+  validationState: String = "valid"
+) -> OutreachRecipientContact {
+  OutreachRecipientContact(
+    email: email, purpose: purpose, source: source, sourceURL: sourceURL,
+    validationState: validationState)
+}
+
+private func recipient(
+  id: UUID,
+  name: String,
+  contacts: [OutreachRecipientContact]
+) -> OutreachRecipientContext {
+  OutreachRecipientContext(creatorID: id, creatorName: name, contacts: contacts)
+}
+
+private func testRecipients(_ creatorIDs: [UUID]) -> [OutreachRecipientContext] {
+  creatorIDs.map { creatorID in
+    recipient(
+      id: creatorID,
+      name: "Creator",
+      contacts: [recipientContact(email: "creator@example.com", source: "manual")])
+  }
 }
 
 private func batch(id batchID: UUID, matchID: UUID?, creatorIDs: [UUID]) -> SendBatch {

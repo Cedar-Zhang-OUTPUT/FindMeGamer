@@ -4,8 +4,9 @@ import SwiftUI
 enum MatchOutreachActionPolicy {
   static func isEligibleForNewSend(_ candidate: MatchCandidate) -> Bool {
     guard candidate.creator.contactAvailable,
-      let email = candidate.creator.contact?.email,
-      !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      candidate.creator.contacts.contains(where: {
+        !$0.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      })
     else {
       return false
     }
@@ -40,8 +41,9 @@ enum MatchOutreachActionPolicy {
     if candidate.outreach.responseState == .accepted { return "Response accepted" }
     if candidate.outreach.responseState == .declined { return "Response declined" }
     guard candidate.creator.contactAvailable,
-      let email = candidate.creator.contact?.email,
-      !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      candidate.creator.contacts.contains(where: {
+        !$0.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      })
     else {
       return "Email unavailable"
     }
@@ -231,13 +233,18 @@ struct CreatorMatchRow: View {
 
   @ViewBuilder private var outreachActions: some View {
     VStack(alignment: .trailing, spacing: 7) {
-      if let contact = candidate.creator.contact,
-        !contact.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      {
+      if let contact = candidate.creator.contacts.first(where: {
+        !$0.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      }) {
         Text(contact.email)
           .font(.caption)
           .foregroundStyle(.secondary)
           .textSelection(.enabled)
+        if candidate.creator.contacts.count > 1 {
+          Text("+\(candidate.creator.contacts.count - 1) email options")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        }
       }
 
       if isNewSendEligible {

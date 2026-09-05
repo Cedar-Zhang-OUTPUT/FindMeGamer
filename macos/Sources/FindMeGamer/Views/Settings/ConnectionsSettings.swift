@@ -53,7 +53,7 @@ struct ConnectionsSettings: View {
           .foregroundStyle(.secondary)
       }
 
-      SecureField("Replacement credential", text: secretBinding(for: service))
+      SecureField("Replacement \(service.credentialName)", text: secretBinding(for: service))
         .textFieldStyle(.roundedBorder)
         .disabled(model.isConnectionActionInFlight(service))
 

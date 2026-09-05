@@ -118,7 +118,11 @@ import Testing
     #expect(try await api.previewTemplate(existingTemplate).subject == "Hello")
 
     let sendDraft = SendBatchDraft(
-      matchTaskID: matchID, creatorIDs: [creatorID], templateID: templateID,
+      matchTaskID: matchID, creatorIDs: [creatorID],
+      recipientSelections: [
+        OutreachRecipientSelection(creatorID: creatorID, email: "selected@example.com")
+      ],
+      templateID: templateID,
       subjectOverride: "Subject", bodyMarkdownOverride: "Body")
     #expect(try await api.previewSendBatch(sendDraft).first?.creatorID == creatorID)
     #expect(
@@ -138,10 +142,10 @@ import Testing
     #expect(
       try await api.saveReanalysis(ReanalysisDraft(gameIntervalDays: 14, creatorIntervalDays: 21))
         .creatorIntervalDays == 30)
-    #expect(try await api.connection(.deepSeek).configured)
+    #expect(try await api.connection(.googleAI).configured)
     #expect(
-      try await api.replaceConnection(.deepSeek, secret: "CONNECTION-SECRET-CANARY").configured)
-    #expect(try await api.testConnection(.deepSeek).succeeded)
+      try await api.replaceConnection(.googleAI, secret: "CONNECTION-SECRET-CANARY").configured)
+    #expect(try await api.testConnection(.googleAI).succeeded)
 
     let requests = await transport.requests
     #expect(requests.count == 37)
@@ -155,6 +159,14 @@ import Testing
     }
     #expect(requests.contains { $0.operationID == "createOutreachSendBatch" })
     #expect(!requests.contains { $0.operationID == "createSendBatch" })
+    let googleAIRequests = requests.filter {
+      $0.path == "/api/v1/settings/connections/google_ai"
+    }
+    #expect(googleAIRequests.map(\.method) == ["GET", "PUT", "POST"])
+    #expect(
+      googleAIRequests.map(\.operationID) == [
+        "getConnectionStatus", "replaceConnectionSecret", "testConnection",
+      ])
     #expect(
       requests.contains {
         $0.path.contains("query=garden%20search") && $0.path.contains("only_collection=true")
@@ -170,14 +182,46 @@ import Testing
     #expect(manualBodies.count == 2)
     #expect(manualBodies.contains { $0["contact_email"] == nil })
     #expect(manualBodies.contains { $0["contact_email"] as? String == "creator@example.com" })
+    let sendBodies = try requests.filter {
+      $0.operationID == "previewOutreachSendBatch"
+        || $0.operationID == "createOutreachSendBatch"
+    }.map {
+      try #require(JSONSerialization.jsonObject(with: Data($0.body.utf8)) as? [String: Any])
+    }
+    #expect(sendBodies.count == 2)
+    #expect(
+      sendBodies.allSatisfy { body in
+        guard let selections = body["recipient_selections"] as? [[String: Any]],
+          selections.count == 1
+        else { return false }
+        return selections[0]["creator_id"] as? String == creatorID.uuidString
+          && selections[0]["email"] as? String == "selected@example.com"
+      })
 
     let descriptions = [
       String(reflecting: try await api.smtpSettings()),
-      String(reflecting: try await api.connection(.deepSeek)),
+      String(reflecting: try await api.connection(.googleAI)),
     ].joined()
     #expect(!descriptions.contains("SMTP-PASSWORD-CANARY"))
     #expect(!descriptions.contains("CONNECTION-SECRET-CANARY"))
     #expect(!descriptions.contains("WORKSPACE-KEY-CANARY"))
+  }
+
+  @Test func emptyRecipientSelectionsAreOmittedFromTheWireRequest() async throws {
+    let transport = RecordingTransport()
+    let service = OpenAPIService(
+      baseURL: URL(string: "https://api.example.test")!, transport: transport,
+      keyProvider: { "key" }, correlationIDProvider: { "cid" })
+    let draft = SendBatchDraft(
+      matchTaskID: id("30000000-0000-4000-8000-000000000001"),
+      creatorIDs: [id("40000000-0000-4000-8000-000000000001")])
+
+    _ = try await service.previewSendBatch(draft)
+
+    let request = try #require(await transport.requests.first)
+    let body = try #require(
+      JSONSerialization.jsonObject(with: Data(request.body.utf8)) as? [String: Any])
+    #expect(body["recipient_selections"] == nil)
   }
 
   @Test func unsavedTemplatePreviewFailsWithoutTransport() async throws {

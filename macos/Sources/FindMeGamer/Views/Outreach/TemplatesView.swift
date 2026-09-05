@@ -1,6 +1,27 @@
 import FindMeGamerCore
 import SwiftUI
 
+enum TemplateWorkspaceLayout: Equatable {
+  case columns(selectorWidth: CGFloat)
+  case compact
+}
+
+enum TemplateWorkspaceLayoutPolicy {
+  static let columnBreakpoint: CGFloat = 880
+  static let minimumSelectorWidth: CGFloat = 220
+  static let maximumSelectorWidth: CGFloat = 320
+
+  static func layout(for availableWidth: CGFloat) -> TemplateWorkspaceLayout {
+    guard availableWidth >= columnBreakpoint else { return .compact }
+
+    let proposedWidth = availableWidth * 0.24
+    let selectorWidth = min(
+      max(proposedWidth, minimumSelectorWidth),
+      maximumSelectorWidth)
+    return .columns(selectorWidth: selectorWidth)
+  }
+}
+
 struct TemplatesView: View {
   @Bindable var model: OutreachManagementModel
 
@@ -25,11 +46,11 @@ struct TemplatesView: View {
           }
         }
       } else {
-        HSplitView {
-          templateList
-            .frame(minWidth: 220, idealWidth: 260, maxWidth: 340)
-          TemplateEditor(model: model)
-            .frame(minWidth: 620, idealWidth: 820)
+        GeometryReader { proxy in
+          templateWorkspace(
+            layout: TemplateWorkspaceLayoutPolicy.layout(for: proxy.size.width)
+          )
+          .frame(width: proxy.size.width, height: proxy.size.height)
         }
       }
     }
@@ -38,6 +59,61 @@ struct TemplatesView: View {
         await model.loadTemplates()
       }
     }
+  }
+
+  @ViewBuilder
+  private func templateWorkspace(layout: TemplateWorkspaceLayout) -> some View {
+    switch layout {
+    case .columns(let selectorWidth):
+      HStack(spacing: 0) {
+        templateList
+          .frame(width: selectorWidth)
+
+        Divider()
+
+        TemplateEditor(model: model)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+    case .compact:
+      VStack(spacing: 0) {
+        compactTemplateSelector
+
+        Divider()
+
+        TemplateEditor(model: model)
+          .frame(maxWidth: .infinity, maxHeight: .infinity)
+      }
+    }
+  }
+
+  private var compactTemplateSelector: some View {
+    HStack(spacing: 10) {
+      Picker("Template", selection: templateSelection) {
+        if model.selectedTemplateID == nil {
+          Text("New Template")
+            .tag(nil as UUID?)
+        }
+
+        ForEach(model.templates) { template in
+          Text(template.isDefault ? "\(template.name) ★" : template.name)
+            .tag(Optional(template.id))
+        }
+      }
+      .pickerStyle(.menu)
+      .disabled(model.isTemplateActionInFlight || model.hasUnsavedTemplateChanges)
+
+      Spacer(minLength: 0)
+
+      Button {
+        model.beginCreatingTemplate()
+      } label: {
+        Label("Create Template", systemImage: "plus")
+      }
+      .help("Create Template")
+      .disabled(model.isTemplateActionInFlight || model.hasUnsavedTemplateChanges)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
   }
 
   private var templateList: some View {

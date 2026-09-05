@@ -11,12 +11,14 @@ public final class OutreachComposerModel {
 
   public private(set) var matchID: UUID?
   public private(set) var creatorIDs: [UUID] = []
+  public private(set) var recipientContexts: [OutreachRecipientContext] = []
   public private(set) var templates: [OutreachTemplate] = []
   public private(set) var selectedTemplate: OutreachTemplate?
   public private(set) var subjectDraft = ""
   public private(set) var bodyMarkdownDraft = ""
   public private(set) var previews: [RecipientPreview] = []
   public private(set) var selectedRecipientID: UUID?
+  public private(set) var recipientEmailSelections: [UUID: String] = [:]
 
   public private(set) var isLoading = false
   public private(set) var isPreviewing = false
@@ -30,8 +32,27 @@ public final class OutreachComposerModel {
     previews.first { $0.creatorID == selectedRecipientID }
   }
 
+  public var recipientIDsRequiringSelection: [UUID] {
+    recipientContexts.compactMap { recipient in
+      guard recipient.contacts.count > 1 else { return nil }
+      guard let selected = recipientEmailSelections[recipient.creatorID],
+        recipient.contacts.contains(where: {
+          $0.email.caseInsensitiveCompare(selected) == .orderedSame
+        })
+      else {
+        return recipient.creatorID
+      }
+      return nil
+    }
+  }
+
   public var canRefreshPreview: Bool {
     acceptedBatch == nil && !isLoading && !isPreviewing && !isSending && currentDraft != nil
+  }
+
+  public var canRetryLoad: Bool {
+    loadError != nil && !isLoading && !isPreviewing && !isSending && matchID != nil
+      && !recipientContexts.isEmpty
   }
 
   public var canConfirmSend: Bool {
@@ -56,7 +77,24 @@ public final class OutreachComposerModel {
     self.idempotencyKey = idempotencyKey
   }
 
-  public func load(matchID: UUID, creatorIDs: [UUID]) async {
+  public func load(matchID: UUID, recipients: [OutreachRecipientContext]) async {
+    let uniqueRecipients = Self.uniqueRecipients(recipients)
+    await load(
+      matchID: matchID,
+      creatorIDs: uniqueRecipients.map(\.creatorID),
+      recipientContexts: uniqueRecipients)
+  }
+
+  public func retryLoad() async {
+    guard canRetryLoad, let matchID else { return }
+    await load(matchID: matchID, recipients: recipientContexts)
+  }
+
+  private func load(
+    matchID: UUID,
+    creatorIDs: [UUID],
+    recipientContexts: [OutreachRecipientContext]
+  ) async {
     guard !isSending else { return }
     contextGeneration &+= 1
     compositionGeneration &+= 1
@@ -64,15 +102,18 @@ public final class OutreachComposerModel {
     sendGeneration &+= 1
     let context = contextGeneration
     let orderedCreatorIDs = Self.uniqueCreatorIDs(creatorIDs)
+    let normalizedRecipients = recipientContexts.map(Self.usableRecipient(_:))
 
     self.matchID = matchID
     self.creatorIDs = orderedCreatorIDs
+    self.recipientContexts = normalizedRecipients
     templates = []
     selectedTemplate = nil
     subjectDraft = ""
     bodyMarkdownDraft = ""
     previews = []
     selectedRecipientID = nil
+    recipientEmailSelections = [:]
     previewedDraft = nil
     sendAttempt = nil
     acceptedBatch = nil
@@ -85,6 +126,12 @@ public final class OutreachComposerModel {
 
     guard (1...30).contains(orderedCreatorIDs.count) else {
       loadError = "Select at least one Creator."
+      return
+    }
+    if normalizedRecipients.count != orderedCreatorIDs.count
+      || normalizedRecipients.contains(where: { $0.contacts.isEmpty })
+    {
+      loadError = "Every Creator must have an available email address."
       return
     }
 
@@ -137,6 +184,27 @@ public final class OutreachComposerModel {
     selectedRecipientID = id
   }
 
+  public func selectedEmail(for creatorID: UUID) -> String? {
+    recipientEmailSelections[creatorID]
+  }
+
+  public func selectRecipientEmail(_ email: String, creatorID: UUID) async {
+    guard !isSending,
+      let recipient = recipientContexts.first(where: { $0.creatorID == creatorID }),
+      recipient.contacts.count > 1,
+      let selectedContact = recipient.contacts.first(where: {
+        $0.email.caseInsensitiveCompare(email) == .orderedSame
+      }),
+      recipientEmailSelections[creatorID] != selectedContact.email
+    else {
+      return
+    }
+
+    invalidateComposition(clearAttempt: true)
+    recipientEmailSelections[creatorID] = selectedContact.email
+    await requestPreview(context: contextGeneration, composition: compositionGeneration)
+  }
+
   public func refreshPreview() async {
     guard !isSending else { return }
     await requestPreview(context: contextGeneration, composition: compositionGeneration)
@@ -185,11 +253,14 @@ public final class OutreachComposerModel {
 
   private var currentDraft: SendBatchDraft? {
     guard let matchID, !creatorIDs.isEmpty, let selectedTemplate,
+      recipientIDsRequiringSelection.isEmpty,
       !subjectDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
       !bodyMarkdownDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     else { return nil }
     return SendBatchDraft(
-      matchTaskID: matchID, creatorIDs: creatorIDs, templateID: selectedTemplate.id,
+      matchTaskID: matchID, creatorIDs: creatorIDs,
+      recipientSelections: explicitRecipientSelections,
+      templateID: selectedTemplate.id,
       subjectOverride: subjectDraft == selectedTemplate.subjectTemplate ? nil : subjectDraft,
       bodyMarkdownOverride: bodyMarkdownDraft == selectedTemplate.bodyMarkdown
         ? nil : bodyMarkdownDraft)
@@ -219,7 +290,13 @@ public final class OutreachComposerModel {
       guard contextGeneration == context, compositionGeneration == composition,
         previewGeneration == generation, currentDraft == draft
       else { return }
-      guard Self.hasExactRecipients(response, expected: creatorIDs) else {
+      guard
+        Self.hasExactRecipients(
+          response,
+          expected: creatorIDs,
+          recipientContexts: recipientContexts,
+          emailSelections: recipientEmailSelections)
+      else {
         previewError = "Could not preview Outreach."
         return
       }
@@ -267,12 +344,69 @@ public final class OutreachComposerModel {
     return ids.filter { seen.insert($0).inserted }
   }
 
+  private var explicitRecipientSelections: [OutreachRecipientSelection] {
+    creatorIDs.compactMap { creatorID in
+      guard let recipient = recipientContexts.first(where: { $0.creatorID == creatorID }),
+        recipient.contacts.count > 1,
+        let email = recipientEmailSelections[creatorID]
+      else {
+        return nil
+      }
+      return OutreachRecipientSelection(creatorID: creatorID, email: email)
+    }
+  }
+
+  private static func uniqueRecipients(
+    _ recipients: [OutreachRecipientContext]
+  ) -> [OutreachRecipientContext] {
+    var seen = Set<UUID>()
+    return recipients.filter { seen.insert($0.creatorID).inserted }
+  }
+
+  private static func usableRecipient(
+    _ recipient: OutreachRecipientContext
+  ) -> OutreachRecipientContext {
+    OutreachRecipientContext(
+      creatorID: recipient.creatorID,
+      creatorName: recipient.creatorName,
+      contacts: recipient.contacts.filter {
+        !$0.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      })
+  }
+
   private static func hasExactRecipients(
-    _ previews: [RecipientPreview], expected: [UUID]
+    _ previews: [RecipientPreview],
+    expected: [UUID],
+    recipientContexts: [OutreachRecipientContext],
+    emailSelections: [UUID: String]
   ) -> Bool {
     let responseIDs = previews.map(\.creatorID)
-    return responseIDs.count == expected.count && Set(responseIDs).count == responseIDs.count
-      && Set(responseIDs) == Set(expected)
+    guard responseIDs.count == expected.count, Set(responseIDs).count == responseIDs.count,
+      Set(responseIDs) == Set(expected)
+    else {
+      return false
+    }
+    guard recipientContexts.count == expected.count else { return false }
+
+    for preview in previews {
+      guard
+        let recipient = recipientContexts.first(where: {
+          $0.creatorID == preview.creatorID
+        })
+      else {
+        return false
+      }
+      let expectedEmail =
+        recipient.contacts.count == 1
+        ? recipient.contacts[0].email
+        : emailSelections[recipient.creatorID]
+      guard let expectedEmail,
+        preview.recipientEmail.caseInsensitiveCompare(expectedEmail) == .orderedSame
+      else {
+        return false
+      }
+    }
+    return true
   }
 
   private static func message(from error: Error, fallback: String) -> String {

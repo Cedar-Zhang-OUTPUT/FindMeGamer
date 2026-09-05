@@ -181,7 +181,9 @@ struct LibraryView: View {
   let onOpenProfile: (ProfileType, UUID) -> Void
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var pagination = LibraryPaginationCoordinator()
+  @State private var profileTypeDirection = WorkspaceMotionDirection.stationary
 
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
@@ -189,13 +191,24 @@ struct LibraryView: View {
         model: model,
         activeAnalysisJobCount: analyzeModel.activeJobCount,
         writesEnabled: writesEnabled,
+        onSelectProfileType: selectProfileType,
         onAnalyzeRequest: { analyzeModel.inspectorPresented = true })
 
       if let error = model.error {
         errorBanner(error)
       }
 
-      libraryContent
+      ZStack {
+        libraryContent
+          .id(model.selectedType)
+          .transition(
+            WorkspaceMotionPolicy.transition(
+              direction: profileTypeDirection,
+              role: .switcher,
+              reduceMotion: reduceMotion))
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .clipped()
     }
     .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
     .padding(.vertical, WorkspaceDesign.pageVerticalPadding)
@@ -206,13 +219,18 @@ struct LibraryView: View {
     .onChange(of: paginationObservation, initial: true) { _, observation in
       pagination.observe(observation)
     }
-    .inspector(isPresented: $analyzeModel.inspectorPresented) {
-      AnalyzeRequestInspector(
-        model: analyzeModel,
-        writesEnabled: writesEnabled,
-        onOpenProfile: onOpenProfile
-      )
-      .inspectorColumnWidth(min: 320, ideal: 380, max: 480)
+  }
+
+  private func selectProfileType(_ type: ProfileType) {
+    guard type != model.selectedType else { return }
+    profileTypeDirection = WorkspaceMotionPolicy.direction(
+      from: model.selectedType,
+      to: type,
+      ordered: LibraryLayout.profileTypes)
+    withAnimation(
+      WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)
+    ) {
+      model.selectType(type)
     }
   }
 

@@ -228,11 +228,20 @@ struct LibraryModelTests {
   }
 
   @MainActor
-  @Test func favoriteIsOptimisticSingleFlightAndAcceptsMatchingCanonicalCard() async {
+  @Test func favoriteIsOptimisticSingleFlightAndAcceptsMatchingCanonicalCard() async throws {
     let gate = CompletionGate<ProfileCard>()
     let id = UUID(uuidString: "00000000-0000-0000-0000-000000000401")!
-    let original = creatorCard(id, name: "Original", favorite: false)
-    let canonical = creatorCard(id, name: "Canonical", favorite: true)
+    let contacts = [
+      CreatorContact(
+        email: "partnerships@example.test", availability: .manual, source: "manual",
+        sourceURL: nil, validationState: "valid", purpose: "Partnerships"),
+      CreatorContact(
+        email: "press@example.test", availability: .discovered,
+        source: "public_web_research", sourceURL: "https://example.test/contact",
+        validationState: "unverified", purpose: "Press"),
+    ]
+    let original = creatorCard(id, name: "Original", favorite: false, contacts: contacts)
+    let canonical = creatorCard(id, name: "Canonical", favorite: true, contacts: contacts)
     let api = LibraryAPI(
       listOutcomes: [.page(page([original], cursor: "keep-cursor"))],
       favoriteOutcomes: [.gated(gate)])
@@ -242,6 +251,12 @@ struct LibraryModelTests {
     let update = Task { await model.toggleFavorite(id: id) }
     await gate.waitUntilEntered()
     #expect(model.items.first?.isFavorite == true)
+    guard case .creator(let optimisticCard) = try #require(model.items.first) else {
+      Issue.record("Expected a Creator card")
+      return
+    }
+    #expect(optimisticCard.contact == contacts.first)
+    #expect(optimisticCard.contacts == contacts)
     #expect(model.favoriteUpdatingIDs == [id])
     await model.toggleFavorite(id: id)
     #expect(await api.favoriteCallCount == 1)
@@ -805,14 +820,14 @@ private func page(_ items: [ProfileCard], cursor: String?) -> ProfileCardPage {
 }
 
 private func creatorCard(
-  _ id: UUID, name: String, favorite: Bool = false
+  _ id: UUID, name: String, favorite: Bool = false, contacts: [CreatorContact]? = nil
 ) -> ProfileCard {
   .creator(
     CreatorProfileCard(
       id: id, name: name, youtubeChannelID: "channel-\(id)",
       canonicalURL: "https://youtube.example/\(id)", favorite: favorite,
       currentFacts: [:], brief: [:], sourceStatus: [:], lastAnalyzedAt: nil,
-      nextAnalysisAt: nil, contact: nil))
+      nextAnalysisAt: nil, contact: contacts?.first, contacts: contacts))
 }
 
 private func gameCard(

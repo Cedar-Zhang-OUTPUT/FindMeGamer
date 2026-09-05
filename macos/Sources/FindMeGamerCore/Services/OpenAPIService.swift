@@ -405,10 +405,16 @@ public struct OpenAPIService: APIService, Sendable {
   private func sendBatchRequest(_ request: SendBatchDraft)
     -> Components.Schemas.OutreachSendBatchRequest
   {
-    .init(
+    let recipientSelections = request.recipientSelections.map {
+      Components.Schemas.OutreachRecipientSelection(
+        creator_id: $0.creatorID.uuidString,
+        email: $0.email)
+    }
+    return .init(
       body_markdown_override: request.bodyMarkdownOverride,
       creator_ids: request.creatorIDs.map(\.uuidString),
       match_task_id: request.matchTaskID.uuidString,
+      recipient_selections: recipientSelections.isEmpty ? nil : recipientSelections,
       subject_override: request.subjectOverride, template_id: request.templateID?.uuidString)
   }
 
@@ -431,8 +437,8 @@ public struct OpenAPIService: APIService, Sendable {
   }
 }
 
-private extension ProfileType {
-  var profileRouteComponent: String {
+extension ProfileType {
+  fileprivate var profileRouteComponent: String {
     switch self {
     case .game: "games"
     case .creator: "creators"

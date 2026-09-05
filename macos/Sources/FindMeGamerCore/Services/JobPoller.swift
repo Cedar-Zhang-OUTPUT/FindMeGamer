@@ -25,6 +25,10 @@ public struct JobChangeBatch: Sendable, Equatable {
 public actor JobPoller {
   public nonisolated let events: AsyncStream<JobChangeBatch>
 
+  private static let transientFailureRetryDelays: [Duration] = [
+    .seconds(1), .seconds(2), .seconds(4),
+  ]
+
   private enum Phase {
     case idle
     case syncing
@@ -60,6 +64,7 @@ public actor JobPoller {
   private var restartPending = false
   private var running = false
   private var generation: UInt64 = 0
+  private var consecutiveSyncFailures = 0
 
   public init(api: any APIService, clock: any AppClock = ContinuousAppClock()) {
     self.api = api
@@ -81,6 +86,7 @@ public actor JobPoller {
     guard !running else { return }
     running = true
     refreshPending = false
+    consecutiveSyncFailures = 0
     generation &+= 1
     if workTask != nil {
       restartPending = true
@@ -94,6 +100,7 @@ public actor JobPoller {
     running = false
     refreshPending = false
     restartPending = false
+    consecutiveSyncFailures = 0
     generation &+= 1
     workTask?.cancel()
     if workTask == nil {
@@ -103,6 +110,7 @@ public actor JobPoller {
 
   public func refreshNow() {
     guard running else { return }
+    consecutiveSyncFailures = 0
     switch phase {
     case .idle:
       scheduleSync(generation: generation)
@@ -166,7 +174,9 @@ public actor JobPoller {
     if schedulePendingRestart() { return }
     guard running, generation == operationGeneration, !wasCancelled else { return }
 
-    if case .success(let page) = outcome {
+    switch outcome {
+    case .success(let page):
+      consecutiveSyncFailures = 0
       cursor = page.cursor
       apply(page.changes)
       if !page.changes.isEmpty {
@@ -177,17 +187,32 @@ public actor JobPoller {
           return
         }
       }
+    case .failure:
+      consecutiveSyncFailures += 1
     }
 
     if refreshPending {
       refreshPending = false
+      consecutiveSyncFailures = 0
       scheduleSync(generation: operationGeneration)
+    } else if case .failure = outcome,
+      let delay = transientFailureRetryDelay
+    {
+      scheduleSleep(for: delay, generation: operationGeneration)
     } else if !activeJobs.isEmpty {
-      scheduleSleep(generation: operationGeneration)
+      scheduleSleep(for: .seconds(3), generation: operationGeneration)
     }
   }
 
-  private func scheduleSleep(generation operationGeneration: UInt64) {
+  private var transientFailureRetryDelay: Duration? {
+    let index = consecutiveSyncFailures - 1
+    guard Self.transientFailureRetryDelays.indices.contains(index) else { return nil }
+    return Self.transientFailureRetryDelays[index]
+  }
+
+  private func scheduleSleep(
+    for duration: Duration, generation operationGeneration: UInt64
+  ) {
     guard running, generation == operationGeneration, workTask == nil else { return }
     phase = .sleeping
     nextWorkID &+= 1
@@ -197,7 +222,7 @@ public actor JobPoller {
     workTask = Task { [weak self] in
       let completed: Bool
       do {
-        try await clock.sleep(for: .seconds(3))
+        try await clock.sleep(for: duration)
         try Task.checkCancellation()
         completed = true
       } catch {

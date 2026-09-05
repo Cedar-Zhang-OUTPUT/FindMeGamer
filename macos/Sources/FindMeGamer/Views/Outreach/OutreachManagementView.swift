@@ -9,6 +9,9 @@ struct OutreachManagementView<EmailSettings: View>: View {
   @Bindable var model: OutreachManagementModel
   private let emailSettings: EmailSettings
 
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var tabDirection = WorkspaceMotionDirection.stationary
+
   init(
     model: OutreachManagementModel,
     @ViewBuilder emailSettings: () -> EmailSettings
@@ -24,7 +27,7 @@ struct OutreachManagementView<EmailSettings: View>: View {
 
         WorkspaceSurface(style: .quiet) {
           HStack {
-            Picker("Outreach section", selection: $model.selectedTab) {
+            Picker("Outreach section", selection: selectedTab) {
               ForEach(OutreachManagementTab.allCases, id: \.self) { tab in
                 Text(tab.displayName).tag(tab)
               }
@@ -42,8 +45,17 @@ struct OutreachManagementView<EmailSettings: View>: View {
       .padding(.top, WorkspaceDesign.pageVerticalPadding)
       .padding(.bottom, WorkspaceDesign.spaceM)
 
-      selectedContent
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      ZStack {
+        selectedContent
+          .id(model.selectedTab)
+          .transition(
+            WorkspaceMotionPolicy.transition(
+              direction: tabDirection,
+              role: .switcher,
+              reduceMotion: reduceMotion))
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .clipped()
     }
     .workspaceCanvas()
     .navigationTitle("Outreach")
@@ -64,5 +76,22 @@ struct OutreachManagementView<EmailSettings: View>: View {
     case .emailSettings:
       emailSettings
     }
+  }
+
+  private var selectedTab: Binding<OutreachManagementTab> {
+    Binding(
+      get: { model.selectedTab },
+      set: { tab in
+        guard tab != model.selectedTab else { return }
+        tabDirection = WorkspaceMotionPolicy.direction(
+          from: model.selectedTab,
+          to: tab,
+          ordered: OutreachManagementTab.allCases)
+        withAnimation(
+          WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)
+        ) {
+          model.selectedTab = tab
+        }
+      })
   }
 }
