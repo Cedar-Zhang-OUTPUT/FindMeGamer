@@ -303,7 +303,7 @@ def creator_metadata() -> CreatorMetadataAnalysis:
 def test_prompt_versions_are_exact_and_stage_specific() -> None:
     assert GAME_EXTRACTION_PROMPT_VERSION == "game-extraction-v1"
     assert GAME_VISUAL_PROMPT_VERSION == "game-visual-v1"
-    assert GAME_SYNTHESIS_PROMPT_VERSION == "game-synthesis-v1"
+    assert GAME_SYNTHESIS_PROMPT_VERSION == "game-synthesis-v2"
     assert CREATOR_METADATA_PROMPT_VERSION == "creator-metadata-v1"
     assert CREATOR_VISUAL_PROMPT_VERSION == "creator-visual-v1"
     assert CREATOR_SYNTHESIS_PROMPT_VERSION == "creator-synthesis-v1"
@@ -786,6 +786,42 @@ def test_synthesis_binder_rejects_raw_visual_asset_references() -> None:
             CreatorSynthesis.model_validate(creator_payload),
             build_creator_synthesis_evidence_catalog(sample_creator_source()),
         )
+
+
+@pytest.mark.parametrize(
+    "visual", [None, unavailable_game_visual(), available_game_visual()]
+)
+def test_game_synthesis_explains_brief_and_intermediate_evidence_contract(
+    visual,
+) -> None:
+    bundle = build_game_synthesis_bundle(
+        sample_game_source(),
+        GameExtraction.model_validate(game_extraction_payload()),
+        visual,
+    )
+    rules = bundle.messages[0].content
+
+    assert (
+        "Inside game_brief, each evidence item has exactly three keys: kind, source_type, reference; never include observation."
+        in rules
+    )
+    assert (
+        "Outside game_brief, evidence items must include observation as required by the schema."
+        in rules
+    )
+    assert "Choose every evidence reference from the current evidence_catalog." in rules
+    assert (
+        "Copy reference and source_type exactly, and choose kind only from that entry's allowed_kinds."
+        in rules
+    )
+    assert "Do not copy raw visual references from validated_visual_analysis" in rules
+    assert "game_visual:<field>" in rules
+    assert "source_type=intermediate_output and kind=ai_inference" in rules
+    assert "not screenshot:*, cover:*, header:*, movie:* or visual_observation" in rules
+    assert "If no matching catalog entry exists, mark the claim unavailable." in rules
+    assert prompt_payload(bundle.messages)[
+        "evidence_catalog"
+    ] == bundle.evidence_catalog.model_dump(mode="json")
 
 
 def test_game_visual_bundle_binds_exact_gateway_image_subset() -> None:
