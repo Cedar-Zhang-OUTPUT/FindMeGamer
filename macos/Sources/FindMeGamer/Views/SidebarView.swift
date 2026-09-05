@@ -7,16 +7,12 @@ struct SidebarView: View {
   var body: some View {
     List(selection: $selection) {
       Section("Workspace") {
-        ForEach(AppDestination.allCases) { destination in
-          Label {
-            Text(destination.title)
-          } icon: {
-            SidebarDestinationIcon(
-              glyph: SidebarGlyph(destination: destination),
-              isSelected: selection == destination)
-          }
-          .tag(destination)
+        ForEach(AppDestination.allCases.filter { $0 != .settings }) { destination in
+          destinationLabel(destination)
         }
+      }
+      Section {
+        destinationLabel(.settings)
       }
     }
     .listStyle(.sidebar)
@@ -24,14 +20,16 @@ struct SidebarView: View {
       VStack(spacing: 0) {
         HStack(spacing: WorkspaceDesign.spaceS) {
           SignalMark()
+            .frame(width: 44, height: 44)
+            .background(
+              LinearGradient(
+                colors: [StudioPalette.blue.opacity(0.14), StudioPalette.mint.opacity(0.06)],
+                startPoint: .topLeading, endPoint: .bottomTrailing),
+              in: RoundedRectangle(cornerRadius: 14))
 
-          VStack(alignment: .leading, spacing: 2) {
-            Text("Find Me Gamer")
-              .font(.headline)
-            Text("Creator intelligence")
-              .font(.caption)
-              .foregroundStyle(.secondary)
-          }
+          Text("Find Me Gamer")
+            .font(.system(size: 15, weight: .bold, design: .rounded))
+            .foregroundStyle(StudioPalette.ink)
 
           Spacer(minLength: 0)
         }
@@ -39,11 +37,22 @@ struct SidebarView: View {
         .padding(.vertical, WorkspaceDesign.spaceM)
         .accessibilityElement(children: .combine)
 
-        Divider()
+        Rectangle().fill(StudioPalette.line.opacity(0.55)).frame(height: 0.5)
       }
       .background(.bar)
     }
     .navigationTitle("Find Me Gamer")
-    .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 280)
+    .navigationSplitViewColumnWidth(min: 190, ideal: 216, max: 260)
+  }
+
+  private func destinationLabel(_ destination: AppDestination) -> some View {
+    Label {
+      Text(destination == .outreach ? "Outreach" : destination.title)
+    } icon: {
+      SidebarDestinationIcon(
+        glyph: SidebarGlyph(destination: destination), isSelected: selection == destination)
+    }
+    .tag(destination)
+    .padding(.vertical, 3)
   }
 }

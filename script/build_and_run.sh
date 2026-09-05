@@ -39,6 +39,11 @@ xml_escape() {
 }
 
 API_BASE_URL_XML="$(xml_escape "$API_BASE_URL")"
+APP_ICON="$PACKAGE_DIR/AppIcon/AppIcon.icns"
+[[ -s "$APP_ICON" ]] || {
+  echo "App icon is missing. Run bash script/build_app_icon.sh first." >&2
+  exit 1
+}
 
 /usr/bin/pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
@@ -50,6 +55,9 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+mkdir -p "$APP_CONTENTS/Resources"
+cp "$PACKAGE_DIR/Sources/FindMeGamer/Resources/studio-orbit-cover.png" "$APP_CONTENTS/Resources/"
+cp "$APP_ICON" "$APP_CONTENTS/Resources/AppIcon.icns"
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -62,6 +70,8 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
   <string>$DISPLAY_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>

@@ -383,6 +383,38 @@ struct OutreachManagementModelTests {
   }
 
   @MainActor
+  @Test func failedPreviewRetriesTheExactUnsavedDraftWithoutChangingSelection() async throws {
+    let clock = ManualClock()
+    let saved = template(id: id(29), name: "Saved", isDefault: true)
+    let rendered = RenderedEmail(subject: "Edited subject", markdown: "Edited message", html: "<p>Edited</p>")
+    let api = ManagementAPI(
+      templateListOutcomes: [.value([saved])],
+      previewOutcomes: [
+        .failure(APIError(code: "temporary", message: "Preview unavailable.", retryable: true)),
+        .value(rendered),
+      ])
+    let model = OutreachManagementModel(api: api, clock: clock)
+    await model.loadTemplates()
+    model.editTemplateSubject("Edited subject")
+    model.editTemplateBody("Edited message")
+    let draft = try #require(model.templateDraft)
+    #expect(await waitUntil { await clock.pendingSleepCount == 1 })
+    await clock.advance(by: .milliseconds(300))
+    #expect(await waitUntil { await model.previewState == .failed("Preview unavailable.") })
+
+    model.retryTemplatePreview()
+    model.retryTemplatePreview()
+    #expect(model.templateDraft == draft)
+    #expect(model.selectedTemplateID == saved.id)
+    #expect(model.hasUnsavedTemplateChanges)
+    #expect(await waitUntil { await clock.pendingSleepCount == 1 })
+    await clock.advance(by: .milliseconds(300))
+    #expect(await waitUntil { await model.previewState == .available(rendered) })
+    #expect(await api.previewCalls == [draft, draft])
+    #expect(model.templateDraft == draft)
+  }
+
+  @MainActor
   @Test func savedPreviewDebouncesExactDraftAndFencesStaleFailure() async {
     let clock = ManualClock()
     let oldGate = ManagementGate<RenderedEmail>()

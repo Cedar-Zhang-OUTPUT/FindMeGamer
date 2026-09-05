@@ -6,51 +6,85 @@ struct EmailSettingsView: View {
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
   @State private var confirmation: Confirmation?
+  @State private var connectionPresentation = SMTPConnectionPresentation()
 
   var body: some View {
     Form {
-      Section("Email Settings") {
+      Section {
         if model.isLoadingSMTP && model.smtpStatus == nil {
           ProgressView("Loading Email Settings…")
         }
 
-        LabeledContent(
-          "Mailbox", value: model.smtpStatus?.configured == true ? "Configured" : "Not Configured")
-
-        TextField("Host", text: host)
-          .textFieldStyle(.roundedBorder)
-        TextField("Port", value: port, format: .number)
-          .textFieldStyle(.roundedBorder)
-        Picker("Encryption", selection: encryption) {
-          Text("Select").tag(nil as SMTPEncryption?)
-          ForEach(SMTPEncryption.allCases, id: \.self) { option in
-            Text(option.displayName).tag(option as SMTPEncryption?)
+        HStack {
+          VStack(alignment: .leading, spacing: 5) {
+            Text(
+              model.smtpStatus?.configured == true
+                ? (model.smtpStatus?.username ?? "Sending mailbox") : "Connect a mailbox"
+            )
+            .font(.headline)
+            if let status = model.smtpStatus, status.configured {
+              Text(status.lastTestStatus.displayName)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .help("Last tested: \(formatted(status.lastTestedAt))")
+            }
+          }
+          Spacer()
+          if model.smtpIsDirty {
+            Label("Unsaved", systemImage: "circle.fill")
+              .font(.caption)
+              .foregroundStyle(StudioPalette.amber)
+          }
+          if model.smtpStatus?.configured == true {
+            Button(connectionEditorVisible ? "Done" : "Edit") {
+              connectionPresentation.isEditing.toggle()
+            }
+            .disabled(model.smtpIsDirty)
           }
         }
-        TextField("Username", text: username)
-          .textFieldStyle(.roundedBorder)
-        SecureField(
-          model.smtpStatus?.configured == true ? "Replacement password (optional)" : "Password",
-          text: password
-        )
-        .textFieldStyle(.roundedBorder)
-        TextField("From Name", text: fromName)
-          .textFieldStyle(.roundedBorder)
-        TextField("Reply-To", text: replyTo)
-          .textFieldStyle(.roundedBorder)
-        TextField("Emails per minute", value: emailsPerMinute, format: .number)
-          .textFieldStyle(.roundedBorder)
 
-        if let status = model.smtpStatus {
-          LabeledContent("Last Test", value: status.lastTestStatus.displayName)
-          LabeledContent("Last Tested", value: formatted(status.lastTestedAt))
+        if connectionEditorVisible {
+          TextField("Host", text: host)
+            .textFieldStyle(.roundedBorder)
+          TextField("Port", value: port, format: .number)
+            .textFieldStyle(.roundedBorder)
+          Picker("Encryption", selection: encryption) {
+            Text("Select").tag(nil as SMTPEncryption?)
+            ForEach(SMTPEncryption.allCases, id: \.self) { option in
+              Text(option.displayName).tag(option as SMTPEncryption?)
+            }
+          }
+          TextField("Username", text: username)
+            .textFieldStyle(.roundedBorder)
+          SecureField(
+            model.smtpStatus?.configured == true ? "Replacement password (optional)" : "Password",
+            text: password
+          )
+          .textFieldStyle(.roundedBorder)
+          TextField("From Name", text: fromName)
+            .textFieldStyle(.roundedBorder)
+          TextField("Reply-To", text: replyTo)
+            .textFieldStyle(.roundedBorder)
+
+          DisclosureGroup("Sending limit · \(model.smtpEmailsPerMinute) emails/min") {
+            TextField("Emails per minute", value: emailsPerMinute, format: .number)
+              .textFieldStyle(.roundedBorder)
+            Text("1–60 emails/min")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+          }
+
         }
 
         HStack {
-          Button("Save Email Settings") {
-            confirmation = .save
+          if connectionEditorVisible {
+            Button("Save") {
+              connectionPresentation.isEditing = true
+              confirmation = .save
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!writesEnabled || !model.canSaveSMTP)
           }
-          .disabled(!writesEnabled || !model.canSaveSMTP)
 
           Button("Test Connection") {
             Task { await model.testSMTPConnection() }
@@ -63,20 +97,18 @@ struct EmailSettingsView: View {
           }
         }
 
-        if model.smtpStatus?.configured == true && model.smtpIsDirty {
-          Text("Save Email Settings before testing the connection or sending a test email.")
-            .foregroundStyle(.secondary)
-        }
-
         Divider()
 
-        TextField("Company test recipient", text: testRecipient)
-          .textFieldStyle(.roundedBorder)
-          .disabled(model.isSendingSMTPTest)
-        Button("Send Test Email") {
-          confirmation = .sendTest
+        DisclosureGroup("Send a test email") {
+          TextField("Company test recipient", text: testRecipient)
+            .textFieldStyle(.roundedBorder)
+            .disabled(model.isSendingSMTPTest)
+          Button("Send Test Email") {
+            confirmation = .sendTest(
+              model.smtpTestRecipient.trimmingCharacters(in: .whitespacesAndNewlines))
+          }
+          .disabled(!writesEnabled || !model.canSendSMTPTest)
         }
-        .disabled(!writesEnabled || !model.canSendSMTPTest)
 
         if let error = model.smtpLoadError {
           HStack {
@@ -98,8 +130,16 @@ struct EmailSettingsView: View {
       .disabled(smtpActionInFlight)
     }
     .formStyle(.grouped)
+    .frame(maxWidth: 820)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .navigationTitle("Email Settings")
     .task { await model.loadSMTPSettings() }
+    .onChange(of: model.smtpStatus?.configured, initial: true) { _, configured in
+      connectionPresentation.restore(configured: configured, hasDraft: model.smtpIsDirty)
+    }
+    .onChange(of: model.smtpIsDirty, initial: true) { _, hasDraft in
+      connectionPresentation.restore(configured: model.smtpStatus?.configured, hasDraft: hasDraft)
+    }
     .confirmationDialog(
       confirmation?.title ?? "Confirm Email Settings action",
       isPresented: confirmationPresented,
@@ -120,6 +160,10 @@ struct EmailSettingsView: View {
 
   private var smtpActionInFlight: Bool {
     model.isSavingSMTP || model.isTestingSMTP || model.isSendingSMTPTest
+  }
+
+  private var connectionEditorVisible: Bool {
+    connectionPresentation.isEditing
   }
 
   private var host: Binding<String> { smtpBinding(\.host) }
@@ -173,13 +217,24 @@ struct EmailSettingsView: View {
     switch action {
     case .save:
       Task { await model.saveSMTPSettings() }
-    case .sendTest:
+    case .sendTest(let recipient):
+      guard model.smtpTestRecipient.trimmingCharacters(in: .whitespacesAndNewlines) == recipient
+      else { return }
       Task { await model.sendSMTPTest() }
     }
   }
 
   private func formatted(_ date: Date?) -> String {
     date?.formatted(date: .abbreviated, time: .shortened) ?? "Not available"
+  }
+}
+
+struct SMTPConnectionPresentation: Equatable {
+  var isEditing = false
+
+  mutating func restore(configured: Bool?, hasDraft: Bool) {
+    // Restoring a draft enters editing, but becoming clean never takes the editor away.
+    if configured == false || hasDraft { isEditing = true }
   }
 }
 
@@ -193,9 +248,9 @@ private struct SMTPFields {
   var emailsPerMinute: Int
 }
 
-private enum Confirmation {
+enum SMTPActionConfirmation {
   case save
-  case sendTest
+  case sendTest(String)
 
   var title: String {
     switch self {
@@ -214,7 +269,10 @@ private enum Confirmation {
   var message: String {
     switch self {
     case .save: "This shared mailbox change affects all coworkers in this Workspace."
-    case .sendTest: "One real test email will be sent to the entered company recipient."
+    case .sendTest(let recipient):
+      "One real test email will be sent to \(recipient) using the saved mailbox."
     }
   }
 }
+
+private typealias Confirmation = SMTPActionConfirmation

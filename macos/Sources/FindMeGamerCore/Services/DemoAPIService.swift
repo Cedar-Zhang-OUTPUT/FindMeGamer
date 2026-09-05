@@ -1,6 +1,11 @@
 import Foundation
 
 actor DemoAPIService: APIService {
+  private let scenario: DemoScenario
+  private var pendingMatchResults: [UUID: MatchResult] = [:]
+  private var scenarioMatchPolls: [UUID: Int] = [:]
+  private var scenarioRevision = 0
+  private var shouldFailNextPreview: Bool
   private var games: [GameProfile]
   private var creators: [CreatorProfile]
   private var discoveredContactsByCreatorID: [UUID: [CreatorContact]]
@@ -12,20 +17,22 @@ actor DemoAPIService: APIService {
   private var reanalysis: SharedSettings
   private var connections: [ConnectionService: ConnectionStatus]
 
-  init() {
+  init(scenario: DemoScenario = .normal) {
+    self.scenario = scenario
+    shouldFailNextPreview = scenario == .qaJourney
     let fixtures = DemoFixtures.make()
-    games = fixtures.games
-    creators = fixtures.creators
+    games = scenario == .emptyLibrary ? [] : fixtures.games
+    creators = scenario == .emptyLibrary ? [] : fixtures.creators
     discoveredContactsByCreatorID = Dictionary(
-      uniqueKeysWithValues: fixtures.creators.map { creator in
+      uniqueKeysWithValues: (scenario == .emptyLibrary ? [] : fixtures.creators).map { creator in
         (
           creator.id,
           creator.contacts.filter { $0.availability == .discovered }
         )
       })
-    analysisJobs = fixtures.analysisJobs
-    matches = fixtures.matches
-    campaigns = fixtures.campaigns
+    analysisJobs = scenario == .emptyLibrary ? [] : fixtures.analysisJobs
+    matches = scenario == .emptyLibrary ? [] : fixtures.matches
+    campaigns = scenario == .emptyLibrary ? [] : fixtures.campaigns
     templates = fixtures.templates
     smtp = fixtures.smtp
     reanalysis = fixtures.reanalysis
@@ -41,10 +48,24 @@ actor DemoAPIService: APIService {
   }
 
   func listJobs(changedAfter: String?, status: JobStatus?) async throws -> JobChangePage {
+    advanceScenarioMatches()
     let filtered = analysisJobs.filter { status == nil || $0.status == status }
+    let matchChanges = matches.filter {
+      scenarioMatchPolls[$0.id] != nil && (status == nil || $0.status == status)
+    }.map { result in
+      JobChange.match(
+        ChangedMatchJob(
+          id: result.id, gameID: result.game.id, status: result.status, stage: result.stage,
+          completedUnits: result.completedUnits, totalUnits: result.totalUnits,
+          resultCount: result.resultCount, retryable: result.retryable, failure: result.failure,
+          correlationID: result.correlationID, supersedesID: result.supersedesID,
+          createdAt: result.createdAt, updatedAt: result.updatedAt,
+          startedAt: result.startedAt, completedAt: result.completedAt))
+    }
     return JobChangePage(
-      items: filtered.map(JobChange.analysis),
-      cursor: "demo-\(analysisJobs.count)",
+      items: filtered.map(JobChange.analysis) + matchChanges,
+      cursor: scenario == .qaJourney
+        ? "demo-\(analysisJobs.count)-\(scenarioRevision)" : "demo-\(analysisJobs.count)",
       hasMore: false,
       affectedProfileIDs: filtered.compactMap(\.profileID))
   }
@@ -223,8 +244,51 @@ actor DemoAPIService: APIService {
     guard let game = games.first(where: { $0.id == gameID }) else { throw notFound("Game") }
     let result = DemoFixtures.match(
       id: UUID(), game: game, creators: Array(creators.prefix(5)), dayOffset: 0)
-    matches.insert(result, at: 0)
-    return DemoFixtures.task(result)
+    if scenario == .qaJourney {
+      pendingMatchResults[result.id] = result
+      scenarioMatchPolls[result.id] = 0
+      let queued = scenarioSnapshot(result, poll: -1)
+      matches.insert(queued, at: 0)
+      return DemoFixtures.task(queued)
+    } else {
+      matches.insert(result, at: 0)
+      return DemoFixtures.task(result)
+    }
+  }
+
+  /// The local scenario advances only when the existing job poller asks for the next snapshot.
+  /// Pending work has unknown units (0/0), so no pretend completion percentage is exposed.
+  private func advanceScenarioMatches() {
+    guard scenario == .qaJourney else { return }
+    for id in Array(pendingMatchResults.keys) {
+      guard let completed = pendingMatchResults[id],
+        let index = matches.firstIndex(where: { $0.id == id })
+      else { continue }
+      let poll = scenarioMatchPolls[id] ?? 0
+      matches[index] = scenarioSnapshot(completed, poll: poll)
+      scenarioMatchPolls[id] = poll + 1
+      scenarioRevision += 1
+      if poll >= 3 { pendingMatchResults[id] = nil }
+    }
+  }
+
+  private func scenarioSnapshot(_ result: MatchResult, poll: Int) -> MatchResult {
+    let completed = poll >= 3
+    let status: JobStatus = completed ? .succeeded : (poll <= 0 ? .queued : .running)
+    let stage: MatchStage = completed ? .ranking : (poll == 2 ? .pairwise : .screening)
+    let updated = result.createdAt.addingTimeInterval(Double(poll + 1))
+    return MatchResult(
+      id: result.id, game: result.game, status: status, stage: stage,
+      completedUnits: completed ? result.completedUnits : 0,
+      totalUnits: completed ? result.totalUnits : 0,
+      resultCount: completed ? result.resultCount : 0,
+      retryable: false, failure: nil, correlationID: "LOCAL-DEMO-QA",
+      supersedesID: nil, createdAt: result.createdAt, updatedAt: updated,
+      startedAt: status == .queued ? nil : result.createdAt.addingTimeInterval(2),
+      completedAt: completed ? updated : nil,
+      state: completed ? result.state : .pending,
+      recommendedMatches: completed ? result.recommendedMatches : [],
+      otherMatches: completed ? result.otherMatches : [])
   }
 
   func listMatches(cursor: String?) async throws -> MatchTaskPage {
@@ -336,7 +400,7 @@ actor DemoAPIService: APIService {
       draft.bodyMarkdown, creator: "Tactical Cedar", game: "Neon Harbor")
     return RenderedEmail(
       subject: subject, markdown: markdown,
-      html: "<p>\(DemoFixtures.escapedHTML(markdown))</p>")
+      html: DemoEmailHTMLRenderer.render(markdown))
   }
 
   func previewSendBatch(_ request: SendBatchDraft) async throws -> [RecipientPreview] {
@@ -378,7 +442,7 @@ actor DemoAPIService: APIService {
         message: "Create an Outreach Template before previewing a send.",
         retryable: false)
     }
-    return try request.creatorIDs.map { id in
+    let previews = try request.creatorIDs.map { id in
       guard let creator = creators.first(where: { $0.id == id }) else {
         throw notFound("Creator")
       }
@@ -391,8 +455,17 @@ actor DemoAPIService: APIService {
         creatorID: creator.id, creatorName: creator.name,
         recipientEmail: try recipientEmail(for: creator, request: request),
         subject: subject, markdown: markdown,
-        html: "<p>\(DemoFixtures.escapedHTML(markdown))</p>")
+        html: DemoEmailHTMLRenderer.render(markdown))
     }
+    if shouldFailNextPreview {
+      shouldFailNextPreview = false
+      throw APIError(
+        code: "demo_preview_retry",
+        message:
+          "Local Demo: preview failed once to test recovery. Your draft is kept; choose Try Again.",
+        retryable: true)
+    }
+    return previews
   }
 
   private func recipientEmail(
@@ -474,6 +547,9 @@ actor DemoAPIService: APIService {
         sendBatchCount: 1, metrics: metrics, createdAt: now,
         latestActivityAt: now, sendBatches: [batch]),
       at: 0)
+    if let index = matches.firstIndex(where: { $0.id == result.id }) {
+      matches[index] = DemoFixtures.recordingDeliveries(deliveries, in: matches[index])
+    }
     return batch
   }
 
@@ -898,6 +974,30 @@ private struct DemoFixtures {
       otherMatches: result.otherMatches.map(refresh))
   }
 
+  static func recordingDeliveries(_ deliveries: [Delivery], in result: MatchResult) -> MatchResult {
+    let deliveriesByCreator = Dictionary(
+      uniqueKeysWithValues: deliveries.map { ($0.creatorID, $0) })
+    func refresh(_ candidate: MatchCandidate) -> MatchCandidate {
+      guard let delivery = deliveriesByCreator[candidate.id] else { return candidate }
+      return MatchCandidate(
+        creator: candidate.creator, group: candidate.group, label: candidate.label,
+        dimensionOutcomes: candidate.dimensionOutcomes, reasons: candidate.reasons,
+        brief: candidate.brief,
+        outreach: MatchOutreach(
+          deliveryID: delivery.id, sendState: delivery.sendState,
+          responseState: delivery.responseState))
+    }
+    return MatchResult(
+      id: result.id, game: result.game, status: result.status, stage: result.stage,
+      completedUnits: result.completedUnits, totalUnits: result.totalUnits,
+      resultCount: result.resultCount, retryable: result.retryable, failure: result.failure,
+      correlationID: result.correlationID, supersedesID: result.supersedesID,
+      createdAt: result.createdAt, updatedAt: result.updatedAt.addingTimeInterval(1),
+      startedAt: result.startedAt, completedAt: result.completedAt, state: result.state,
+      recommendedMatches: result.recommendedMatches.map(refresh),
+      otherMatches: result.otherMatches.map(refresh))
+  }
+
   static func candidate(
     _ creator: CreatorProfile, group: MatchGroup, label: MatchLabel
   ) -> MatchCandidate {
@@ -1089,14 +1189,6 @@ private struct DemoFixtures {
       .replacingOccurrences(of: "{{game_summary}}", with: "A promising indie game.")
       .replacingOccurrences(of: "{{match_reason}}", with: "Strong audience overlap.")
       .replacingOccurrences(of: "{{sender_name}}", with: "Find Me Gamer Team")
-  }
-
-  static func escapedHTML(_ value: String) -> String {
-    value
-      .replacingOccurrences(of: "&", with: "&amp;")
-      .replacingOccurrences(of: "<", with: "&lt;")
-      .replacingOccurrences(of: ">", with: "&gt;")
-      .replacingOccurrences(of: "\n", with: "<br>")
   }
 
   static func text(_ value: JSONValue?) -> String? {

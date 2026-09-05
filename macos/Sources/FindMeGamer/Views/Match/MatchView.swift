@@ -46,19 +46,54 @@ struct MatchView: View {
   let onOpenProfile: (ProfileType, UUID) -> Void
   let onComposeOutreach: (UUID, [OutreachRecipientContext]) -> Void
   let onResendDelivery: (UUID) -> Void
+  var acceptedBatch: SendBatch? = nil
+  var onViewCampaign: (UUID) -> Void = { _ in }
+  var onAddProfile: (ProfileType) -> Void = { _ in }
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @SceneStorage("match.focusedTaskID") private var focusedTaskID = ""
+
+  private var focus: MatchWorkspaceFocus {
+    get { UUID(uuidString: focusedTaskID).map(MatchWorkspaceFocus.task) ?? .newMatch }
+    nonmutating set { focusedTaskID = newValue.taskID?.uuidString ?? "" }
+  }
+
+  private var focusedTask: MatchTask? {
+    model.tasks.first { $0.id == focus.taskID }
+  }
 
   var body: some View {
-    VStack(spacing: 0) {
-      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
-        WorkspacePageHeader(WorkspacePageCopy.match)
-        MatchHero(model: model, writesEnabled: writesEnabled)
+    ScrollView {
+      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXL) {
+        WorkspacePageHeader(WorkspacePageCopy.match) {
+          if focus != .newMatch {
+            Button("New match", systemImage: "plus", action: startNewMatch)
+            .buttonStyle(.bordered)
+          }
+        }
+
+        if let focusedTask {
+          MatchTaskFocusCard(
+            model: model, task: focusedTask, writesEnabled: writesEnabled,
+            onOpenGame: { onOpenProfile(.game, focusedTask.game.id) },
+            onNewMatch: startNewMatch,
+            onAddCreators: { onAddProfile(.creator) },
+            onFocusTask: { focus = .task($0) })
+        } else {
+          MatchHero(
+            model: model, writesEnabled: writesEnabled, onSubmit: submit,
+            onAddGame: { onAddProfile(.game) })
+        }
+
+        MatchHistoryList(
+          model: model, writesEnabled: writesEnabled, focusedTaskID: focusedTask?.id,
+          onFocusTask: { focus = .task($0) })
       }
       .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
-      .padding(.top, WorkspaceDesign.pageVerticalPadding)
-
-      MatchHistoryList(model: model, writesEnabled: writesEnabled)
+      .padding(.vertical, WorkspaceDesign.pageVerticalPadding)
+      .frame(maxWidth: 1_040, alignment: .leading)
+      .frame(maxWidth: .infinity)
     }
     .workspaceCanvas()
     .navigationTitle("Match")
@@ -68,13 +103,42 @@ struct MatchView: View {
         MatchResultView(
           matchID: matchID, model: model, writesEnabled: writesEnabled,
           onOpenProfile: onOpenProfile, onComposeOutreach: onComposeOutreach,
-          onResendDelivery: onResendDelivery)
+          onResendDelivery: onResendDelivery,
+          acceptedBatch: acceptedBatch, onViewCampaign: onViewCampaign,
+          onAddCreators: { onAddProfile(.creator) })
       }
     }
     .task {
       async let games: Void = model.loadGames()
       async let history: Void = model.loadHistory()
       _ = await (games, history)
+    }
+  }
+
+  private func startNewMatch() {
+    if let focusedTask,
+      let game = model.games.first(where: { $0.id == focusedTask.game.id })
+    {
+      model.selectedGame = game
+    }
+    withAnimation(WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)) {
+      focus = .newMatch
+    }
+  }
+
+  private func submit() {
+    guard let gameID = model.selectedGame?.id else { return }
+    Task {
+      guard !model.isSubmitting else { return }
+      let previouslyKnownIDs = Set(model.tasks.map(\.id))
+      await model.submit()
+      var nextFocus = focus
+      nextFocus.submissionFinished(
+        gameID: gameID, tasks: model.tasks, failed: model.actionError != nil,
+        previouslyKnownIDs: previouslyKnownIDs)
+      withAnimation(WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)) {
+        focus = nextFocus
+      }
     }
   }
 }

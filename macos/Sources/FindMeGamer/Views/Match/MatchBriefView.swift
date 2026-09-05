@@ -40,85 +40,135 @@ struct MatchBriefPresentation: Equatable {
   }
 }
 
+enum MatchEvidenceSection: String, CaseIterable, Identifiable {
+  case summary, content, audience, performance, promotion, safety
+
+  var id: String { rawValue }
+
+  init(category: MatchEvidenceCategory) {
+    switch category {
+    case .content: self = .content
+    case .audience: self = .audience
+    case .performance: self = .performance
+    case .promotion: self = .promotion
+    case .safety: self = .safety
+    }
+  }
+
+  var category: MatchEvidenceCategory? {
+    switch self {
+    case .summary: nil
+    case .content: .content
+    case .audience: .audience
+    case .performance: .performance
+    case .promotion: .promotion
+    case .safety: .safety
+    }
+  }
+
+  var title: String {
+    switch self {
+    case .summary: "Summary"
+    case .content: "Content"
+    case .audience: "Audience"
+    case .performance: "Performance"
+    case .promotion: "Promotion"
+    case .safety: "Brand safety"
+    }
+  }
+}
+
+enum MatchEvidenceDisplayPolicy {
+  /// The first reason remains fully visible above the detail panel.
+  static func additionalReasons(_ reasons: [String]) -> [String] { Array(reasons.dropFirst()) }
+}
+
 struct MatchBriefView: View {
   let presentation: MatchBriefPresentation
+  @Binding var selectedSection: MatchEvidenceSection
+  var additionalReasons: [String] = []
+  var performanceSummary: String?
+  var recentMedianViews: Int?
 
   var body: some View {
-    VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-      WorkspaceSectionHeader(
-        "Deep Match",
-        subtitle: "Five dimensions of fit, with the model evidence preserved.")
-
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 250), spacing: WorkspaceDesign.spaceS)],
-        alignment: .leading,
-        spacing: WorkspaceDesign.spaceS
-      ) {
-        ForEach(presentation.dimensions) { dimension in
-          WorkspaceSurface(style: .quiet) {
-            VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXS) {
-              Text(dimension.title)
-                .font(.headline)
-              Text(dimension.analysis)
-                .font(.callout)
-              MatchTextList(title: "Evidence", values: dimension.evidence)
-            }
-            .padding(WorkspaceDesign.spaceS)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-          }
-        }
+    VStack(alignment: .leading, spacing: 16) {
+      ViewThatFits(in: .horizontal) {
+        sectionPicker.pickerStyle(.segmented).labelsHidden().fixedSize()
+        sectionPicker.pickerStyle(.menu)
       }
 
-      ViewThatFits(in: .horizontal) {
-        HStack(alignment: .top, spacing: WorkspaceDesign.spaceM) {
-          supportingAnalysis
+      if let category = selectedSection.category,
+        let dimension = presentation.dimensions.first(where: { $0.title == category.title })
+      {
+        VStack(alignment: .leading, spacing: 14) {
+          Text(dimension.analysis)
+            .font(.callout)
+            .fixedSize(horizontal: false, vertical: true)
+          if selectedSection == .performance {
+            if let performanceSummary {
+              Text(performanceSummary).font(.callout).foregroundStyle(.secondary)
+            }
+            if let recentMedianViews {
+              LabeledContent("Recent median views", value: recentMedianViews.formatted())
+                .font(.callout)
+            }
+          }
+          MatchTextList(title: "Evidence", values: dimension.evidence, color: category.color)
         }
-        VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-          supportingAnalysis
-        }
+      } else {
+        summary
       }
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .textSelection(.enabled)
   }
 
-  @ViewBuilder private var supportingAnalysis: some View {
-    MatchTextList(title: "Strengths", values: presentation.strengths)
-      .frame(maxWidth: .infinity, alignment: .topLeading)
-    MatchTextList(title: "Risks", values: presentation.risks)
-      .frame(maxWidth: .infinity, alignment: .topLeading)
-    MatchTextList(title: "Evidence", values: presentation.evidence)
-      .frame(maxWidth: .infinity, alignment: .topLeading)
-    MatchTextList(title: "Match Reasons", values: presentation.matchReasons)
-      .frame(maxWidth: .infinity, alignment: .topLeading)
+  private var sectionPicker: some View {
+    Picker("Evidence", selection: $selectedSection) {
+      ForEach(MatchEvidenceSection.allCases) { section in
+        Text(section.title).tag(section)
+      }
+    }
+  }
+
+  private var summary: some View {
+    VStack(alignment: .leading, spacing: 18) {
+      MatchTextList(title: "More reasons", values: additionalReasons)
+      LazyVGrid(
+        columns: [GridItem(.adaptive(minimum: 220), spacing: 20, alignment: .top)],
+        alignment: .leading, spacing: 14
+      ) {
+        MatchTextList(title: "Strengths", values: presentation.strengths, color: StudioPalette.mint)
+        // The first risk remains visible in the candidate row above this panel.
+        MatchTextList(
+          title: "More risks", values: Array(presentation.risks.dropFirst()), color: StudioPalette.coral)
+      }
+      MatchTextList(title: "Supporting evidence", values: presentation.evidence)
+      MatchTextList(title: "Additional match reasons", values: presentation.matchReasons)
+    }
   }
 }
 
 private struct MatchTextList: View {
   let title: String
   let values: [String]
+  var color: Color = .secondary
 
   var body: some View {
     if !values.isEmpty {
-      VStack(alignment: .leading, spacing: 4) {
+      VStack(alignment: .leading, spacing: 8) {
         Text(title)
           .font(.subheadline.weight(.semibold))
+          .foregroundStyle(color)
         ForEach(values, id: \.self) { value in
-          Label(value, systemImage: "circle.fill")
-            .labelStyle(MatchBulletLabelStyle())
+          HStack(alignment: .firstTextBaseline, spacing: 7) {
+            Circle().fill(color).frame(width: 4, height: 4)
+              .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 2 }
+            Text(value).font(.callout)
+              .fixedSize(horizontal: false, vertical: true)
+          }
         }
       }
-    }
-  }
-}
-
-private struct MatchBulletLabelStyle: LabelStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 7) {
-      configuration.icon
-        .font(.system(size: 4))
-        .foregroundStyle(.secondary)
-      configuration.title
     }
   }
 }

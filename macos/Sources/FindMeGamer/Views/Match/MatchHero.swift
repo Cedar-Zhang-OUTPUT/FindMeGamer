@@ -6,7 +6,7 @@ struct MatchHeroPolicy: Equatable {
   let submitEnabled: Bool
 
   init(hasSelection: Bool, writesEnabled: Bool, canSubmit: Bool) {
-    showsSubmit = hasSelection
+    showsSubmit = true
     submitEnabled = hasSelection && writesEnabled && canSubmit
   }
 
@@ -19,6 +19,8 @@ struct MatchHeroPolicy: Equatable {
 struct MatchHero: View {
   @Bindable var model: MatchModel
   let writesEnabled: Bool
+  let onSubmit: () -> Void
+  var onAddGame: () -> Void = {}
 
   private var policy: MatchHeroPolicy {
     MatchHeroPolicy(
@@ -27,83 +29,70 @@ struct MatchHero: View {
   }
 
   var body: some View {
-    AdaptiveGlassSurface(role: .matchHero) {
-      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-        HStack(spacing: WorkspaceDesign.spaceS) {
-          WorkspaceStatusLozenge(
-            title: "Library only",
-            systemImage: "books.vertical.fill",
-            tone: .neutral)
-          Text("Matches use analyzed Creator Profiles already in this Workspace.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+    VStack(alignment: .leading, spacing: 16) {
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .center, spacing: 20) {
+          controls.frame(minWidth: 310, maxWidth: .infinity, alignment: .leading)
+          MatchConnectionArtwork(width: 112)
         }
+        controls
+      }
 
-        AdaptiveGlassActionGroup {
-          ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: WorkspaceDesign.spaceM) {
-              Text(MatchCopy.heroPrefix)
-                .font(.system(.title, design: .serif, weight: .semibold))
-              gameSelector
-              Spacer(minLength: WorkspaceDesign.spaceM)
-              submit
-            }
+      gameLoadingAndFeedback
 
-            VStack(alignment: .leading, spacing: WorkspaceDesign.spaceS) {
-              Text(MatchCopy.heroPrefix)
-                .font(.system(.title, design: .serif, weight: .semibold))
-              gameSelector
-              submit
-            }
-          }
+      if let actionError = model.actionError {
+        Label(actionError, systemImage: "exclamationmark.triangle")
+          .font(.callout)
+          .foregroundStyle(Color(red: 1, green: 0.72, blue: 0.66))
+          .textSelection(.enabled)
+      }
+    }
+    .padding(24)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .modifier(MatchInkSurface())
+  }
+
+  private var controls: some View {
+    VStack(alignment: .leading, spacing: 14) {
+      Label("Game", systemImage: "gamecontroller")
+        .font(.headline)
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 12) {
+          gameSelector
+          submit
         }
-
-        gameLoadingAndFeedback
-
-        if let actionError = model.actionError {
-          Label(actionError, systemImage: "exclamationmark.triangle")
-            .font(.callout)
-            .foregroundStyle(.red)
-            .textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 12) {
+          gameSelector
+          submit
         }
       }
-      .frame(maxWidth: .infinity)
-      .padding(.horizontal, WorkspaceDesign.spaceM)
-      .padding(.vertical, WorkspaceDesign.spaceS)
     }
   }
 
   private var gameSelector: some View {
-    Menu {
+    // macOS Menu extracts its native title from the label instead of rendering
+    // an arbitrary SwiftUI hierarchy. Keep the title simple and style outside.
+    Menu(model.selectedGame?.name ?? "Choose a game…") {
       ForEach(model.games) { game in
         Button(game.name) { model.selectedGame = game }
       }
-    } label: {
-      HStack(spacing: 8) {
-        if let selected = model.selectedGame {
-          AsyncArtwork(url: artworkURL(for: selected), fallbackSystemImage: "gamecontroller")
-            .frame(width: 44, height: 44)
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-          Text(selected.name)
-            .font(.headline)
-        } else {
-          Text(MatchCopy.selectGame)
-            .font(.headline)
-        }
-        Image(systemName: "chevron.down")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-      .padding(.leading, 8)
-      .padding(.trailing, 12)
-      .padding(.vertical, 6)
-      .background(Color.primary.opacity(0.06), in: Capsule())
-      .overlay {
-        Capsule().strokeBorder(Color.primary.opacity(0.1))
-      }
     }
     .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
+    .menuIndicator(.visible)
+    .labelStyle(.titleOnly)
+    .font(.body.weight(.medium))
+    .foregroundStyle(MatchInkControlColors.text)
+    .tint(MatchInkControlColors.text)
+    .controlSize(.large)
+    .environment(\.colorScheme, .light)
+    .disabled(model.isLoadingGames || model.games.isEmpty || model.isSubmitting)
+    .frame(minWidth: 220, minHeight: 44, alignment: .leading)
+    .padding(.horizontal, 14)
+    .padding(.vertical, 6)
+    .background(MatchInkControlColors.surface, in: RoundedRectangle(cornerRadius: 14))
+    .overlay {
+      RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.75))
+    }
     .accessibilityIdentifier(MatchAccessibility.gameSelector)
     .help("Choose an analyzed Game Profile")
   }
@@ -115,10 +104,12 @@ struct MatchHero: View {
           ProgressView()
             .controlSize(.small)
         }
-        Button(MatchCopy.submit) {
-          Task { await model.submit() }
+        Button(action: onSubmit) {
+          Text(model.isSubmitting ? "Starting…" : "Find creators")
+            .foregroundStyle(.white)
         }
         .buttonStyle(.borderedProminent)
+        .tint(MatchInkControlColors.actionBackground)
         .controlSize(.large)
         .disabled(!policy.submitEnabled)
         .accessibilityIdentifier(MatchAccessibility.submit)
@@ -133,30 +124,26 @@ struct MatchHero: View {
         ProgressView()
           .controlSize(.small)
         Text("Loading Game Profiles…")
-          .foregroundStyle(.secondary)
+          .foregroundStyle(Color.white.opacity(0.75))
       }
     }
 
     if let gamesError = model.gamesError {
       HStack(spacing: 8) {
         Text(gamesError)
-          .foregroundStyle(.secondary)
+          .foregroundStyle(Color.white.opacity(0.8))
         Button("Try Again") {
           Task { await model.loadGames() }
         }
+        .buttonStyle(.bordered)
       }
       .controlSize(.small)
     } else if !model.isLoadingGames && model.games.isEmpty {
-      Text("No analyzed Game Profiles are available.")
-        .foregroundStyle(.secondary)
+      Button("Add game", systemImage: "plus", action: onAddGame)
+        .buttonStyle(.bordered)
+        .disabled(!writesEnabled)
+        .accessibilityIdentifier("match.add-game")
     }
   }
 
-  private func artworkURL(for game: FindMeGamerCore.GameProfileCard) -> URL? {
-    for key in ["cover_image_url", "header_image_url"] {
-      guard case .string(let rawValue) = game.currentFacts[key] else { continue }
-      if let validated = ArtworkURLPolicy.validated(URL(string: rawValue)) { return validated }
-    }
-    return nil
-  }
 }

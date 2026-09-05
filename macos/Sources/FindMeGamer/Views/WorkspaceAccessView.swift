@@ -12,13 +12,14 @@ struct WorkspaceAccessView: View {
       Text("Connect to Find Me Gamer")
         .font(.title2.weight(.semibold))
 
-      Text("Enter the Workspace Access Key provided by your team.")
-        .foregroundStyle(.secondary)
-
+      Text("Workspace Access Key")
+        .font(.subheadline.weight(.medium))
+        .frame(maxWidth: .infinity, alignment: .leading)
       SecureField("Workspace Access Key", text: $key)
         .textFieldStyle(.roundedBorder)
         .focused($keyFieldIsFocused)
         .onSubmit(connect)
+        .help("Use the Workspace Access Key provided by your team")
 
       if !session.message.isEmpty {
         Text(session.message)
@@ -38,12 +39,17 @@ struct WorkspaceAccessView: View {
           }
         }
 
-        Button("Connect", action: connect)
-          .buttonStyle(.borderedProminent)
-          .keyboardShortcut(.defaultAction)
-          .disabled(
-            session.state == .checking
-              || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        Button(action: connect) {
+          HStack(spacing: 6) {
+            if session.state == .checking { ProgressView().controlSize(.mini) }
+            Text(session.state == .checking ? "Connecting…" : "Connect")
+          }
+        }
+        .buttonStyle(.borderedProminent)
+        .keyboardShortcut(.defaultAction)
+        .disabled(
+          session.state == .checking
+            || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
       }
     }
     .frame(maxWidth: 380)

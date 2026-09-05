@@ -28,6 +28,8 @@ struct AuthenticatedRootView: View {
   @State private var coordinator: ClientCoordinator?
   @State private var composerRequest: OutreachComposerRequest?
   @State private var destinationDirection = WorkspaceMotionDirection.stationary
+  @State private var analyzePhase = AnalyzeWorkspacePhase.request
+  @State private var latestAcceptedBatch: SendBatch?
 
   init(session: AppSession, navigation: WorkspaceNavigationState) {
     self.session = session
@@ -66,60 +68,58 @@ struct AuthenticatedRootView: View {
         SidebarView(selection: sidebarSelection)
       },
       detail: {
-        VStack(spacing: 0) {
-          if session.workspaceSession?.workspaceName == "Find Me Gamer Demo" {
-            HStack(spacing: WorkspaceDesign.spaceS) {
-              WorkspaceStatusLozenge(
-                title: "Local Demo Data",
-                systemImage: "testtube.2",
-                tone: .accent)
-              Text("No real email will be sent")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-              Spacer()
-            }
-            .padding(.horizontal, WorkspaceDesign.spaceM)
-            .padding(.vertical, 7)
-            .background(.bar)
-          } else if session.state == .offline {
-            OfflineBanner(retry: retry)
-          } else if session.state == .checking {
-            HStack(spacing: 8) {
-              ProgressView()
-                .controlSize(.small)
-              Text("Checking workspace access…")
-                .font(.callout)
-            }
-            .foregroundStyle(.secondary)
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-          }
-
-          if selectedDestination == .match, let error = coordinator.outreach.resendError {
-            Label(error, systemImage: "exclamationmark.triangle")
-              .foregroundStyle(.red)
-              .textSelection(.enabled)
+        GeometryReader { viewport in
+          VStack(spacing: 0) {
+            if session.workspaceSession?.workspaceName == "Find Me Gamer Demo" {
+              HStack(spacing: WorkspaceDesign.spaceS) {
+                Label("Demo · No real email sent", systemImage: "testtube.2")
+                  .font(.caption.weight(.medium))
+                  .foregroundStyle(.secondary)
+                Spacer()
+              }
+              .padding(.horizontal, WorkspaceDesign.spaceM)
+              .padding(.vertical, 6)
+              .background(.bar)
+            } else if session.state == .offline {
+              OfflineBanner(retry: retry)
+            } else if session.state == .checking {
+              HStack(spacing: 8) {
+                ProgressView()
+                  .controlSize(.small)
+                Text("Checking workspace access…")
+                  .font(.callout)
+              }
+              .foregroundStyle(.secondary)
               .padding(10)
               .frame(maxWidth: .infinity, alignment: .leading)
-              .background(Color.red.opacity(0.08))
-          }
+            }
 
-          ZStack {
-            selectedDetail(coordinator)
-              .id(selectedDestination)
-              .transition(
-                WorkspaceMotionPolicy.transition(
-                  direction: destinationDirection,
-                  role: .destination,
-                  reduceMotion: reduceMotion))
+            if selectedDestination == .match, let error = coordinator.outreach.resendError {
+              Label(error, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.red.opacity(0.08))
+            }
+
+            ZStack {
+              selectedDetail(coordinator)
+                .id(selectedDestination)
+                // Never keep two NavigationStacks alive in the split-view detail
+                // during an exit transition. Animate the incoming page content only.
+                .transition(.identity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
           }
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
-          .clipped()
+          .frame(width: viewport.size.width, height: viewport.size.height, alignment: .topLeading)
         }
         .workspaceCanvas()
         .inspector(isPresented: analyzeInspectorPresentation(coordinator)) {
           AnalyzeRequestInspector(
             model: coordinator.analyze,
+            phase: $analyzePhase,
             writesEnabled: availability.writesEnabled,
             onOpenProfile: { type, id in
               Task { await coordinator.openProfile(type: type, id: id) }
@@ -157,6 +157,7 @@ struct AuthenticatedRootView: View {
           matchID: request.matchID,
           recipients: request.recipients,
           onAccepted: { batch in
+            latestAcceptedBatch = batch
             Task { await coordinator.sendBatchAccepted(batch) }
           }
         )
@@ -213,9 +214,15 @@ struct AuthenticatedRootView: View {
         LibraryView(
           model: coordinator.library,
           analyzeModel: coordinator.analyze,
+          onOpenAnalyze: { phase in
+            analyzePhase = phase
+            coordinator.analyze.inspectorPresented = true
+          },
           onOpenProfile: { type, id in
             Task { await coordinator.openProfile(type: type, id: id) }
-          })
+          }
+        )
+        .modifier(WorkspacePageEntrance(direction: destinationDirection))
       }
     case .match:
       NavigationStack(path: $navigation.matchPath) {
@@ -231,17 +238,50 @@ struct AuthenticatedRootView: View {
           },
           onResendDelivery: { deliveryID in
             Task { await coordinator.resendDelivery(id: deliveryID) }
-          })
+          },
+          acceptedBatch: latestAcceptedBatch,
+          onViewCampaign: { campaignID in
+            navigation.openCampaign(id: campaignID)
+            sidebarSelection.wrappedValue = .outreach
+          },
+          onAddProfile: { type in
+            if coordinator.analyze.isSubmitting {
+              analyzePhase = .activity
+            } else {
+              coordinator.analyze.targetType = type
+              coordinator.library.selectType(type)
+              analyzePhase = .request
+            }
+            // Reuse the existing request draft and jobs; navigating here never
+            // clears a source URL or starts an analysis without submission.
+            sidebarSelection.wrappedValue = .library
+            coordinator.analyze.inspectorPresented = true
+          }
+        )
+        .modifier(WorkspacePageEntrance(direction: destinationDirection))
       }
     case .outreach:
-      NavigationStack(path: $navigation.outreachPath) {
-        OutreachManagementView(model: coordinator.outreach) {
+      NavigationStack {
+        OutreachManagementView(
+          model: coordinator.outreach,
+          onStartMatch: { sidebarSelection.wrappedValue = .match },
+          onOpenCampaign: { campaignID in
+            navigation.openCampaign(id: campaignID)
+          }
+        ) {
           EmailSettingsView(model: coordinator.settings)
+        }
+        .modifier(WorkspacePageEntrance(direction: destinationDirection))
+        // Outreach has one detail level. Bind that concrete destination directly:
+        // no type-erased path registration or self-cancelling navigation task.
+        .navigationDestination(item: $navigation.outreachCampaign) { destination in
+          CampaignDetailView(model: coordinator.outreach, campaignID: destination.id)
         }
       }
     case .settings:
       NavigationStack(path: $navigation.settingsPath) {
         SettingsView(model: coordinator.settings)
+          .modifier(WorkspacePageEntrance(direction: destinationDirection))
       }
     }
   }

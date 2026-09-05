@@ -429,6 +429,10 @@ typealias ProfileReanalyzeAction =
 typealias ProfileSaveManualAction =
   @MainActor (UUID, String?, String) async throws -> FindMeGamerCore.CreatorProfile
 
+enum ProfileManualEditorMode: Equatable {
+  case summary, editing
+}
+
 @MainActor
 @Observable
 final class ProfileSheetState {
@@ -436,10 +440,12 @@ final class ProfileSheetState {
   private(set) var favorite: Bool
   private(set) var creatorOverride: FindMeGamerCore.CreatorProfile?
   var manualDraft: CreatorManualDraft
+  private(set) var manualEditorMode: ProfileManualEditorMode = .summary
   private(set) var isFavoriteInFlight = false
   private(set) var isReanalyzeInFlight = false
   private(set) var isManualSaveInFlight = false
   private(set) var actionMessage: String?
+  private(set) var actionSuccessMessage: String?
 
   init(profile: Profile) {
     self.profile = profile
@@ -458,10 +464,32 @@ final class ProfileSheetState {
     return profile
   }
 
+  var hasUnsavedManualChanges: Bool {
+    guard let creator = currentCreator else { return false }
+    return manualDraft != CreatorManualDraft(profile: creator)
+  }
+
+  func beginManualEditing() {
+    guard currentCreator != nil else { return }
+    actionMessage = nil
+    actionSuccessMessage = nil
+    manualEditorMode = .editing
+  }
+
+  /// Called only by the explicit Cancel/Discard action, never by tab or data updates.
+  func discardManualEditing() {
+    guard !isManualSaveInFlight, let creator = currentCreator else { return }
+    manualDraft = CreatorManualDraft(profile: creator)
+    actionMessage = nil
+    actionSuccessMessage = nil
+    manualEditorMode = .summary
+  }
+
   func toggleFavorite(using action: ProfileFavoriteAction) async {
     guard !isFavoriteInFlight else { return }
     isFavoriteInFlight = true
     actionMessage = nil
+    actionSuccessMessage = nil
     let identity = profileIdentity
     let desired = !favorite
     defer { isFavoriteInFlight = false }
@@ -481,10 +509,12 @@ final class ProfileSheetState {
     guard !isReanalyzeInFlight else { return }
     isReanalyzeInFlight = true
     actionMessage = nil
+    actionSuccessMessage = nil
     let identity = profileIdentity
     defer { isReanalyzeInFlight = false }
     do {
       try await action(identity.type, identity.id, idempotencyKey)
+      actionSuccessMessage = "Re-analysis requested. Track progress in Library."
     } catch {
       actionMessage = Self.safeMessage(error)
     }
@@ -493,10 +523,13 @@ final class ProfileSheetState {
   func saveManual(using action: ProfileSaveManualAction) async {
     guard !isManualSaveInFlight else { return }
     guard let creator = currentCreator else { return }
+    manualEditorMode = .editing
+    actionSuccessMessage = nil
     let submittedDraft = manualDraft
     guard let validationMessage = submittedDraft.validationMessage else {
       isManualSaveInFlight = true
       actionMessage = nil
+      actionSuccessMessage = nil
       defer { isManualSaveInFlight = false }
       do {
         let canonical = try await action(
@@ -509,7 +542,9 @@ final class ProfileSheetState {
         favorite = canonical.favorite
         if manualDraft == submittedDraft {
           manualDraft = CreatorManualDraft(profile: canonical)
+          manualEditorMode = .summary
         }
+        actionSuccessMessage = "Contact and notes saved."
       } catch {
         actionMessage = Self.safeMessage(error)
       }

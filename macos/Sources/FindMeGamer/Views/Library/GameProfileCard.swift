@@ -85,27 +85,50 @@ struct GameProfileCard: View {
   let onFavorite: () -> Void
 
   @State private var isHovered = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var presentation: GameCardPresentation { GameCardPresentation(card: card) }
+  private var identityColor: Color { StudioPalette.identityColor(for: card.id.uuidString) }
 
   var body: some View {
-    WorkspaceSurface(style: isHovered || isHighlighted ? .elevated : .card) {
+    WorkspaceSurface(style: .card) {
       Button(action: onOpen) {
         VStack(alignment: .leading, spacing: 0) {
-          ZStack(alignment: .bottomLeading) {
-            AsyncArtwork(url: presentation.artworkURL, fallbackSystemImage: "gamecontroller.fill")
-              .frame(height: 154)
-
-            LinearGradient(
-              colors: [.clear, Color.black.opacity(0.5)],
-              startPoint: .center,
-              endPoint: .bottom)
-
-            Text("GAME PROFILE")
-              .font(.caption2.weight(.bold))
-              .tracking(1.2)
-              .foregroundStyle(.white.opacity(0.9))
-              .padding(WorkspaceDesign.spaceS)
+          VStack(alignment: .leading, spacing: 6) {
+            Text(presentation.name)
+              .font(.system(size: 23, weight: .semibold, design: .rounded))
+              .tracking(-0.5)
+              .foregroundStyle(.white)
+              .lineLimit(2)
+              .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
+          }
+          .padding(17)
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .frame(height: 162, alignment: .bottomLeading)
+          .background {
+            // Keep artwork and oversized ornaments out of the title's layout measurement.
+            Group {
+              if let url = presentation.artworkURL {
+                AsyncArtwork(url: url, fallbackSystemImage: "gamecontroller.fill")
+              } else {
+                LinearGradient(
+                  colors: [identityColor, Color(red: 0.09, green: 0.12, blue: 0.23)],
+                  startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+                .overlay(alignment: .topTrailing) {
+                  Image(systemName: "gamecontroller")
+                    .font(.system(size: 92, weight: .ultraLight))
+                    .rotationEffect(.degrees(-18))
+                    .foregroundStyle(.white.opacity(0.18))
+                    .offset(x: 16, y: 22)
+                }
+              }
+            }
+            .overlay {
+              LinearGradient(
+                colors: [.black.opacity(0.06), Color.black.opacity(0.76)],
+                startPoint: .top, endPoint: .bottom)
+            }
           }
           .clipShape(
             UnevenRoundedRectangle(
@@ -113,29 +136,30 @@ struct GameProfileCard: View {
               topTrailingRadius: WorkspaceDesign.cardCornerRadius))
 
           VStack(alignment: .leading, spacing: WorkspaceDesign.spaceS) {
-            HStack(alignment: .firstTextBaseline, spacing: WorkspaceDesign.spaceS) {
-              Text(presentation.name)
-                .font(.title3.weight(.semibold))
-                .lineLimit(2)
-              Spacer(minLength: WorkspaceDesign.spaceS)
-              Image(systemName: "arrow.up.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(isHovered ? Color.accentColor : .secondary)
+            if let summary = presentation.summary {
+              Text(summary)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineSpacing(2)
+                .lineLimit(3)
             }
-
-            Text(presentation.summary ?? "Summary unavailable.")
-              .font(.callout)
-              .foregroundStyle(.secondary)
-              .lineLimit(3)
 
             Spacer(minLength: 0)
 
-            if !presentation.tags.isEmpty {
-              LibraryTagRow(tags: presentation.tags)
+            HStack(alignment: .center, spacing: 8) {
+              if !presentation.tags.isEmpty {
+                LibraryTagRow(tags: presentation.tags, tint: identityColor)
+              }
+              Spacer(minLength: 0)
+              Image(systemName: "arrow.up.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isHovered ? identityColor : Color.secondary)
+                .frame(width: 25, height: 25)
+                .background(identityColor.opacity(isHovered ? 0.14 : 0.06), in: Circle())
             }
           }
-          .padding(14)
-          .frame(maxWidth: .infinity, minHeight: 142, alignment: .topLeading)
+          .padding(16)
+          .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -158,16 +182,23 @@ struct GameProfileCard: View {
       favoriteButton
         .padding(WorkspaceDesign.spaceS)
     }
+    .shadow(color: identityColor.opacity(isHovered ? 0.16 : 0), radius: 16, y: 8)
+    .offset(y: isHovered && !reduceMotion ? -3 : 0)
     .onHover { isHovered = $0 }
-    .animation(.easeOut(duration: 0.18), value: isHovered)
-    .animation(.easeInOut(duration: 0.2), value: isHighlighted)
+    .animation(
+      WorkspaceMotionPolicy.animation(for: .selectionFeedback, reduceMotion: reduceMotion),
+      value: isHovered
+    )
+    .animation(
+      WorkspaceMotionPolicy.animation(for: .selectionFeedback, reduceMotion: reduceMotion),
+      value: isHighlighted)
   }
 
   private var favoriteButton: some View {
     Button(action: onFavorite) {
       Image(systemName: presentation.isFavorite ? "heart.fill" : "heart")
         .font(.callout.weight(.semibold))
-        .foregroundStyle(presentation.isFavorite ? Color.accentColor : .white.opacity(0.9))
+        .foregroundStyle(presentation.isFavorite ? StudioPalette.coral : .white.opacity(0.95))
         .frame(width: 30, height: 30)
         .background(.black.opacity(0.35), in: Circle())
     }
@@ -193,6 +224,7 @@ struct GameProfileCard: View {
 
 struct LibraryTagRow: View {
   let tags: [String]
+  var tint: Color = .secondary
 
   var body: some View {
     HStack(spacing: WorkspaceDesign.spaceXS) {
@@ -202,7 +234,8 @@ struct LibraryTagRow: View {
           .lineLimit(1)
           .padding(.horizontal, 8)
           .padding(.vertical, 4)
-          .background(Color.accentColor.opacity(0.09), in: Capsule())
+          .foregroundStyle(StudioPalette.ink.opacity(0.8))
+          .background(tint.opacity(0.085), in: Capsule())
       }
     }
   }

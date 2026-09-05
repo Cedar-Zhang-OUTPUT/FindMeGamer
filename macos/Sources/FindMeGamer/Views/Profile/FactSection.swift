@@ -1,47 +1,54 @@
 import SwiftUI
 
 struct FactSection: View {
-  let title: String
+  var title: String? = nil
   let fields: [ProfileDisplayField]
 
   var body: some View {
-    WorkspaceSurface(style: .quiet) {
-      VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: 18) {
+      if let title {
         Text(title)
-          .font(.headline)
+          .font(.title3.weight(.semibold))
           .accessibilityAddTraits(.isHeader)
+      }
 
-        if fields.isEmpty {
-          Text("Not available")
-            .foregroundStyle(.secondary)
-        } else {
-          ForEach(Array(fields.enumerated()), id: \.offset) { _, field in
-            VStack(alignment: .leading, spacing: 3) {
-              Text(field.label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-              if field.values.count == 1 {
-                Text(field.values[0])
-              } else {
-                ForEach(Array(field.values.enumerated()), id: \.offset) { _, value in
-                  Label(value, systemImage: "circle.fill")
-                    .labelStyle(ProfileBulletLabelStyle())
-                }
-              }
-              if let annotation = field.annotation {
-                Text(annotation)
-                  .font(.caption)
-                  .foregroundStyle(.secondary)
+      if fields.isEmpty {
+        Text("Not available")
+          .foregroundStyle(.secondary)
+      } else {
+        ForEach(Array(fields.enumerated()), id: \.offset) { _, field in
+          VStack(alignment: .leading, spacing: 7) {
+            Text(field.label)
+              .font(.system(size: 11, weight: .semibold))
+              .foregroundStyle(StudioPalette.ink.opacity(0.7))
+            if field.values.count == 1 {
+              Text(field.values[0])
+                .lineSpacing(3)
+            } else {
+              ForEach(Array(field.values.enumerated()), id: \.offset) { _, value in
+                Label(value, systemImage: "circle.fill")
+                  .labelStyle(ProfileBulletLabelStyle())
               }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if let annotation = field.annotation {
+              Text(annotation)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 9)
+                .overlay(alignment: .leading) {
+                  RoundedRectangle(cornerRadius: 1)
+                    .fill(StudioPalette.blue.opacity(0.3))
+                    .frame(width: 2)
+                }
+            }
           }
+          .frame(maxWidth: .infinity, alignment: .leading)
         }
       }
-      .padding(WorkspaceDesign.spaceS)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .textSelection(.enabled)
     }
+    .padding(.vertical, WorkspaceDesign.spaceS)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .textSelection(.enabled)
   }
 }
 

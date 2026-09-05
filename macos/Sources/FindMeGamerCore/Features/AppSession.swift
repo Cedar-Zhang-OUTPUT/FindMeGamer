@@ -64,7 +64,8 @@ public final class AppSession {
   }
 
   public static func demo() -> AppSession {
-    let service = DemoAPIService()
+    let service = DemoAPIService(
+      scenario: DemoScenario(environment: ProcessInfo.processInfo.environment))
     return AppSession(
       apiFactory: { _, _ in service },
       keyStore: DemoWorkspaceKeyStore(),

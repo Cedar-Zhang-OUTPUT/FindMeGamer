@@ -14,6 +14,12 @@ struct MatchResultPresentation: Equatable {
 struct MatchRecipientSelection: Equatable {
   private var selectedIDs: Set<UUID> = []
 
+  init(storedIDs: String = "") {
+    selectedIDs = Set(storedIDs.split(separator: ",").compactMap { UUID(uuidString: String($0)) })
+  }
+
+  var storedIDs: String { selectedIDs.map(\.uuidString).sorted().joined(separator: ",") }
+
   var count: Int { selectedIDs.count }
   var isEmpty: Bool { selectedIDs.isEmpty }
 
@@ -35,6 +41,8 @@ struct MatchRecipientSelection: Equatable {
         .map(\.id))
     selectedIDs.formIntersection(eligible)
   }
+
+  mutating func clear() { selectedIDs.removeAll() }
 
   func orderedIDs(in result: MatchResult) -> [UUID] {
     var seen = Set<UUID>()
@@ -78,9 +86,38 @@ struct MatchResultView: View {
   let onOpenProfile: (ProfileType, UUID) -> Void
   let onComposeOutreach: (UUID, [OutreachRecipientContext]) -> Void
   let onResendDelivery: (UUID) -> Void
+  var acceptedBatch: SendBatch? = nil
+  var onViewCampaign: (UUID) -> Void = { _ in }
+  var onAddCreators: () -> Void = {}
 
-  @State private var otherExpanded = false
+  @Environment(\.dismiss) private var dismiss
+  @SceneStorage private var otherExpanded: Bool
+  @SceneStorage private var storedSelection: String
   @State private var selection = MatchRecipientSelection()
+  @State private var restoredSelection = false
+  @State private var retainedResult: MatchResult?
+
+  init(
+    matchID: UUID, model: MatchModel, writesEnabled: Bool,
+    onOpenProfile: @escaping (ProfileType, UUID) -> Void,
+    onComposeOutreach: @escaping (UUID, [OutreachRecipientContext]) -> Void,
+    onResendDelivery: @escaping (UUID) -> Void,
+    acceptedBatch: SendBatch? = nil,
+    onViewCampaign: @escaping (UUID) -> Void = { _ in },
+    onAddCreators: @escaping () -> Void = {}
+  ) {
+    self.matchID = matchID
+    self.model = model
+    self.writesEnabled = writesEnabled
+    self.onOpenProfile = onOpenProfile
+    self.onComposeOutreach = onComposeOutreach
+    self.onResendDelivery = onResendDelivery
+    self.acceptedBatch = acceptedBatch
+    self.onViewCampaign = onViewCampaign
+    self.onAddCreators = onAddCreators
+    _otherExpanded = SceneStorage(wrappedValue: false, "match.other.\(matchID.uuidString)")
+    _storedSelection = SceneStorage(wrappedValue: "", "match.selection.\(matchID.uuidString)")
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -90,69 +127,120 @@ struct MatchResultView: View {
     .navigationTitle("Match Result")
     .workspaceCanvas()
     .task(id: matchID) {
+      selection = MatchRecipientSelection(storedIDs: storedSelection)
+      restoredSelection = true
       await model.openResult(id: matchID)
     }
     .onChange(of: matchID) { _, _ in
       selection = MatchRecipientSelection()
       otherExpanded = false
+      retainedResult = nil
+      restoredSelection = false
     }
     .onChange(of: model.resultState, initial: true) { _, state in
       guard case .available(let result) = state, result.id == matchID else { return }
-      selection.reconcile(with: result)
+      retainedResult = result
+      if restoredSelection { selection.reconcile(with: result) }
+    }
+    .onChange(of: selection) { _, selection in
+      if restoredSelection { storedSelection = selection.storedIDs }
     }
   }
 
   @ViewBuilder private var stateContent: some View {
-    switch model.resultState {
-    case .idle:
-      ContentUnavailableView(
-        "Match result", systemImage: "person.2.badge.magnifyingglass",
-        description: Text("Loading Match details…"))
-    case .loading:
-      VStack(spacing: 10) {
-        ProgressView()
-        Text("Loading Match result…")
-          .foregroundStyle(.secondary)
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-    case .empty:
-      ContentUnavailableView(
-        MatchCopy.noSuitableCreators, systemImage: "person.slash",
-        description: Text("This Match completed without eligible Creator results."))
-    case .failed(let message):
-      VStack(spacing: 12) {
-        Label(message, systemImage: "exclamationmark.triangle")
-          .foregroundStyle(.red)
-          .textSelection(.enabled)
-        Button("Try Again") {
-          Task { await model.openResult(id: matchID) }
+    if let result = displayedResult {
+      availableContent(result)
+    } else {
+      switch model.resultState {
+      case .idle:
+        ContentUnavailableView(
+          "Match result", systemImage: "person.2.badge.magnifyingglass",
+          description: Text("Loading Match details…"))
+      case .loading:
+        VStack(spacing: 10) {
+          ProgressView()
+          Text("Loading Match result…")
+            .foregroundStyle(.secondary)
         }
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-    case .available(let result):
-      if result.id == matchID {
-        availableContent(result)
-      } else {
-        ProgressView()
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      case .empty:
+        ContentUnavailableView {
+          Label(MatchCopy.noSuitableCreators, systemImage: "person.slash")
+        } actions: {
+          Button("Add creators", systemImage: "plus", action: onAddCreators)
+            .buttonStyle(.borderedProminent)
+            .disabled(!writesEnabled)
+              Button("Back to matches") { dismiss() }
+            .buttonStyle(.bordered)
+        }
+      case .failed(let message):
+        VStack(spacing: 12) {
+          Label(message, systemImage: "exclamationmark.triangle")
+            .foregroundStyle(.red)
+            .textSelection(.enabled)
+          Button("Try Again") {
+            Task { await model.openResult(id: matchID) }
+          }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+      case .available:
+        ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
+  }
+
+  private var displayedResult: MatchResult? {
+    if case .available(let result) = model.resultState, result.id == matchID { return result }
+    switch model.resultState {
+    case .loading, .failed:
+      return retainedResult?.id == matchID ? retainedResult : nil
+    default: return nil
+    }
+  }
+
+  private var canActOnResult: Bool {
+    MatchResultInteractionPolicy.canAct(
+      on: matchID, state: model.resultState, writesEnabled: writesEnabled)
   }
 
   private func availableContent(_ result: MatchResult) -> some View {
     let presentation = MatchResultPresentation(result: result)
     return VStack(spacing: 0) {
+      if let batch = acceptedBatch, batch.matchTaskID == matchID {
+        ViewThatFits(in: .horizontal) {
+          HStack(spacing: 12) {
+            acceptedSummary(batch)
+            Spacer()
+            Button("View campaign") { onViewCampaign(batch.campaignID) }
+          }
+          VStack(alignment: .leading, spacing: 8) {
+            acceptedSummary(batch)
+            Button("View campaign") { onViewCampaign(batch.campaignID) }
+          }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
+        .padding(.vertical, 12)
+        .background(Color.accentColor.opacity(0.05))
+      }
       ScrollView {
         LazyVStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
           gameHeader(
             result.game,
             creatorCount: presentation.recommended.count + presentation.other.count)
 
+          if case .failed(let message) = model.resultState {
+            HStack(spacing: 10) {
+              Label(message, systemImage: "exclamationmark.triangle")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+              Button("Retry refresh") { Task { await model.openResult(id: matchID) } }
+            }
+          }
+
           VStack(alignment: .leading, spacing: 10) {
             WorkspaceSectionHeader(
-              MatchCopy.recommended,
-              subtitle: "The clearest creator fits, ordered by the matching service.",
-              count: presentation.recommended.count)
+              MatchCopy.recommended, count: presentation.recommended.count)
             candidateGroup(
               presentation.recommended, result: result,
               emptyCopy: "No recommended Creators in this Match.")
@@ -165,60 +253,76 @@ struct MatchResultView: View {
             )
             .padding(.top, 10)
           } label: {
-            WorkspaceSectionHeader(
-              MatchCopy.other,
-              subtitle: "Useful alternatives with weaker or mixed evidence.",
-              count: presentation.other.count)
+            WorkspaceSectionHeader(MatchCopy.other, count: presentation.other.count)
+              .help("Alternatives with weaker or mixed evidence")
           }
         }
         .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
         .padding(.vertical, WorkspaceDesign.pageVerticalPadding)
-        .frame(maxWidth: 1_120, alignment: .leading)
+        .frame(maxWidth: 1_040, alignment: .leading)
         .frame(maxWidth: .infinity)
       }
 
-      BatchOutreachBar(
-        selectedCount: selection.count, writesEnabled: writesEnabled,
-        onSend: {
-          onComposeOutreach(result.id, selection.orderedRecipients(in: result))
-        })
+      let actionState = MatchResultActionState(
+        resultState: model.resultState, writesEnabled: writesEnabled)
+      if actionState.showsBar(selectedCount: selection.count) {
+        BatchOutreachBar(
+          selectedCount: selection.count, writesEnabled: canActOnResult,
+          actionState: actionState,
+          onSend: {
+            guard canActOnResult else { return }
+            onComposeOutreach(result.id, selection.orderedRecipients(in: result))
+          },
+          onRetry: { Task { await model.openResult(id: matchID) } },
+          onClear: {
+            guard canActOnResult else { return }
+            selection.clear()
+          })
+      }
     }
   }
 
+  private func acceptedSummary(_ batch: SendBatch) -> some View {
+    let count = batch.requestedCreatorIDs.count
+    return Label(
+      "Outreach submitted · \(count) \(count == 1 ? "creator" : "creators")",
+      systemImage: "checkmark.circle"
+    )
+    .font(.callout)
+  }
+
   private func gameHeader(_ game: MatchGameHeader, creatorCount: Int) -> some View {
-    WorkspaceSurface(style: .elevated) {
-      HStack(spacing: WorkspaceDesign.spaceM) {
+    HStack(alignment: .center, spacing: 18) {
+      Button {
+        onOpenProfile(.game, game.id)
+      } label: {
         AsyncArtwork(
           url: ArtworkURLPolicy.validated(game.coverURL.flatMap(URL.init(string:))),
           fallbackSystemImage: "gamecontroller.fill"
         )
-        .frame(width: 116, height: 82)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-        VStack(alignment: .leading, spacing: 6) {
-          Text("MATCH CONTEXT")
-            .font(.caption2.weight(.bold))
-            .tracking(1.3)
-            .foregroundStyle(Color.accentColor)
-          Button(game.name) { onOpenProfile(.game, game.id) }
-            .buttonStyle(.plain)
-            .font(.system(.title2, design: .serif, weight: .semibold))
-            .accessibilityIdentifier(MatchAccessibility.gameProfile)
-            .help("Open this Game Profile")
-          Label("Open the full Game Profile", systemImage: "arrow.up.right")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-
-        Spacer()
-
-        WorkspaceStatusLozenge(
-          title: "\(creatorCount) creators considered",
-          systemImage: "person.2.fill",
-          tone: .accent)
+        .frame(width: 60, height: 54)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .rotationEffect(.degrees(-3))
+        .shadow(color: .black.opacity(0.09), radius: 10, y: 4)
       }
-      .padding(WorkspaceDesign.spaceM)
+      .buttonStyle(.plain)
+      .accessibilityLabel("Open \(game.name) profile")
+      VStack(alignment: .leading, spacing: 8) {
+        Button(game.name) { onOpenProfile(.game, game.id) }
+          .buttonStyle(.plain)
+          .font(.system(size: 27, weight: .semibold, design: .rounded))
+          .tracking(-0.7)
+          .fixedSize(horizontal: false, vertical: true)
+          .accessibilityIdentifier(MatchAccessibility.gameProfile)
+          .help("Open this Game Profile")
+        Text("\(creatorCount) creators")
+          .font(.callout.monospacedDigit())
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+      Spacer(minLength: 0)
     }
+    .padding(.vertical, 6)
   }
 
   @ViewBuilder
@@ -236,13 +340,17 @@ struct MatchResultView: View {
         CreatorMatchRow(
           presentation: candidate,
           isSelected: selectionBinding(for: candidate.source),
-          writesEnabled: writesEnabled,
+          writesEnabled: canActOnResult,
           onOpenProfile: { onOpenProfile(.creator, candidate.id) },
           onSend: {
+            guard canActOnResult else { return }
             onComposeOutreach(
               result.id, [MatchRecipientSelection.recipientContext(candidate.source)])
           },
-          onResend: onResendDelivery)
+          onResend: { deliveryID in
+            guard canActOnResult else { return }
+            onResendDelivery(deliveryID)
+          })
       }
     }
   }
@@ -251,7 +359,7 @@ struct MatchResultView: View {
     Binding(
       get: { selection.contains(candidate.id) },
       set: { selected in
-        guard selected != selection.contains(candidate.id) else { return }
+        guard canActOnResult, selected != selection.contains(candidate.id) else { return }
         selection.toggle(candidate)
       })
   }

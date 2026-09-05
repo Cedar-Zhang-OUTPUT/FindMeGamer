@@ -90,8 +90,9 @@ struct CreatorMatchRow: View {
   let onSend: () -> Void
   let onResend: (UUID) -> Void
 
-  @State private var detailsExpanded = false
+  @State private var evidenceSection: MatchEvidenceSection?
   @State private var isHovered = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var candidate: MatchCandidate { presentation.source }
   private var previewPolicy: MatchCandidatePreviewPolicy {
@@ -102,100 +103,209 @@ struct CreatorMatchRow: View {
   }
 
   var body: some View {
-    WorkspaceSurface(style: isHovered ? .elevated : .card) {
-      VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-        HStack(alignment: .top, spacing: WorkspaceDesign.spaceM) {
-          if isNewSendEligible {
-            Toggle("Select \(presentation.name)", isOn: $isSelected)
-              .labelsHidden()
-              .toggleStyle(.checkbox)
-              .disabled(!writesEnabled)
-              .accessibilityIdentifier(MatchAccessibility.creatorSelect(presentation.id))
-              .help("Select this Creator for Outreach")
+    WorkspaceSurface(style: .card) {
+      VStack(alignment: .leading, spacing: 14) {
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .center, spacing: 24) {
+            identity.frame(minWidth: 230, maxWidth: .infinity, alignment: .leading)
+            statistics
           }
-
-          AsyncArtwork(url: presentation.avatarURL, fallbackSystemImage: "person.crop.circle")
-            .frame(width: 70, height: 70)
-            .clipShape(Circle())
-            .overlay { Circle().strokeBorder(Color.primary.opacity(0.1)) }
-
-          VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: WorkspaceDesign.spaceS) {
-              Button(presentation.name, action: onOpenProfile)
-                .buttonStyle(.plain)
-                .font(.title3.weight(.semibold))
-                .help("Open this Creator Profile")
-
-              WorkspaceStatusLozenge(
-                title: presentation.label,
-                systemImage: labelSystemImage,
-                tone: labelTone)
-            }
-
-            if let performanceSummary = presentation.performanceSummary {
-              Text(performanceSummary)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-            }
-
-            if let primaryReason = previewPolicy.primaryReason {
-              Label(primaryReason, systemImage: "sparkle")
-                .font(.callout.weight(.medium))
-                .foregroundStyle(.primary)
-                .lineLimit(2)
-            }
+          VStack(alignment: .leading, spacing: 16) {
+            identity
+            statistics
           }
-
-          Spacer(minLength: WorkspaceDesign.spaceM)
-          outreachActions
         }
 
-        statistics
+        if let primaryReason = previewPolicy.primaryReason {
+          Text(primaryReason)
+            .font(.body)
+            .foregroundStyle(.primary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
 
-        DisclosureGroup(isExpanded: $detailsExpanded) {
-          VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-            if !presentation.reasons.isEmpty {
-              VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXS) {
-                Text("Match Reasons")
-                  .font(.headline)
-                ForEach(presentation.reasons, id: \.self) { reason in
-                  Label(reason, systemImage: "circle.fill")
-                    .labelStyle(MatchReasonLabelStyle())
+        fitSignals
+
+        if let firstRisk = presentation.brief.risks.first {
+          HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "flag")
+              .foregroundStyle(StudioPalette.coral)
+            VStack(alignment: .leading, spacing: 3) {
+              Text(firstRisk).font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+              if presentation.brief.risks.count > 1 {
+                Button("All risks · \(presentation.brief.risks.count)") {
+                  showEvidence(.summary)
                 }
+                .buttonStyle(.borderless)
+                .font(.caption)
+                .foregroundStyle(StudioPalette.coral)
               }
             }
+          }
+        }
 
-            MatchBriefView(presentation: presentation.brief)
+        ViewThatFits(in: .horizontal) {
+          HStack(alignment: .center) {
+            detailsButton
+            Spacer(minLength: 12)
+            outreachActions
           }
-          .padding(.top, WorkspaceDesign.spaceS)
-        } label: {
-          HStack(spacing: WorkspaceDesign.spaceXS) {
-            Text(MatchCopy.viewDetails)
-            if previewPolicy.additionalReasonCount > 0 {
-              Text("+\(previewPolicy.additionalReasonCount) signals")
-                .foregroundStyle(.secondary)
-            }
+          VStack(alignment: .leading, spacing: 12) {
+            detailsButton
+            outreachActions
           }
-          .font(.callout.weight(.medium))
+        }
+
+        if evidenceSection != nil {
+          Divider()
+          MatchBriefView(
+            presentation: presentation.brief,
+            selectedSection: Binding(
+              get: { evidenceSection ?? .summary },
+              set: { showEvidence($0) }),
+            additionalReasons: MatchEvidenceDisplayPolicy.additionalReasons(presentation.reasons),
+            performanceSummary: presentation.performanceSummary,
+            recentMedianViews: presentation.recentMedianViews)
         }
       }
-      .padding(WorkspaceDesign.spaceM)
+      .padding(18)
+      .background(isSelected ? StudioPalette.blue.opacity(0.035) : .clear)
     }
     .overlay {
       RoundedRectangle(cornerRadius: WorkspaceDesign.cardCornerRadius, style: .continuous)
-        .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: isSelected ? 2 : 0)
+        .strokeBorder(
+          isSelected
+            ? StudioPalette.blue.opacity(0.65)
+            : isHovered ? StudioPalette.blue.opacity(0.22) : .clear,
+          lineWidth: isSelected ? 1.5 : 1
+        )
         .allowsHitTesting(false)
     }
+    .shadow(color: StudioPalette.blue.opacity(isHovered ? 0.055 : 0), radius: 14, y: 6)
     .onHover { isHovered = $0 }
-    .animation(.easeOut(duration: 0.18), value: isHovered)
-    .animation(.easeInOut(duration: 0.18), value: isSelected)
+    .animation(
+      WorkspaceMotionPolicy.animation(for: .selectionFeedback, reduceMotion: reduceMotion),
+      value: isSelected
+    )
+    .animation(
+      WorkspaceMotionPolicy.animation(for: .selectionFeedback, reduceMotion: reduceMotion),
+      value: isHovered
+    )
     .accessibilityIdentifier(MatchAccessibility.creator(presentation.id))
+  }
+
+  private var identity: some View {
+    HStack(alignment: .center, spacing: 14) {
+      Button(action: onOpenProfile) {
+        AsyncArtwork(url: presentation.avatarURL, fallbackSystemImage: "person.crop.circle")
+          .frame(width: 60, height: 60)
+          .clipShape(Circle())
+          .padding(4)
+          .background(StudioPalette.mint.opacity(0.12), in: Circle())
+          .overlay { Circle().strokeBorder(StudioPalette.mint.opacity(0.3)) }
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Open \(presentation.name) profile")
+      VStack(alignment: .leading, spacing: 7) {
+        creatorName
+        matchLabel
+      }
+      Spacer(minLength: 0)
+      if isNewSendEligible {
+        Toggle("Select \(presentation.name)", isOn: $isSelected)
+          .labelsHidden()
+          .toggleStyle(.checkbox)
+          .disabled(!writesEnabled)
+          .accessibilityIdentifier(MatchAccessibility.creatorSelect(presentation.id))
+          .help("Select this Creator for Outreach")
+      }
+    }
+  }
+
+  private var creatorName: some View {
+    Button(presentation.name, action: onOpenProfile)
+      .buttonStyle(.plain)
+      .font(.system(size: 20, weight: .semibold, design: .rounded))
+      .tracking(-0.4)
+      .help("Open this Creator Profile")
+  }
+
+  private var matchLabel: some View {
+    Label(
+      presentation.label,
+      systemImage: candidate.label == .limited ? "circle.lefthalf.filled" : "sparkle"
+    )
+    .font(.caption.weight(.semibold))
+    .foregroundStyle(candidate.label == .limited ? StudioPalette.amber : StudioPalette.mint)
+    .padding(.horizontal, 9)
+    .padding(.vertical, 4)
+    .background(
+      (candidate.label == .limited ? StudioPalette.amber : StudioPalette.mint).opacity(0.09),
+      in: Capsule())
+  }
+
+  private var fitSignals: some View {
+    LazyVGrid(
+      columns: [GridItem(.adaptive(minimum: 170), spacing: 8)], alignment: .leading, spacing: 8
+    ) {
+      fitSignal("Content", value: candidate.dimensionOutcomes.contentFit, category: .content)
+      fitSignal("Audience", value: candidate.dimensionOutcomes.audienceFit, category: .audience)
+      fitSignal(
+        "Performance", value: candidate.dimensionOutcomes.performanceFit, category: .performance)
+    }
+  }
+
+  private func fitSignal(_ label: String, value: String, category: MatchEvidenceCategory)
+    -> some View
+  {
+    Button {
+      showEvidence(MatchEvidenceSection(category: category))
+    } label: {
+      HStack(alignment: .firstTextBaseline, spacing: 5) {
+        Text(label).foregroundStyle(.secondary)
+        Text(value).fontWeight(.semibold)
+          .fixedSize(horizontal: false, vertical: true)
+        Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
+          .foregroundStyle(category.color)
+      }
+      .font(.caption)
+      .padding(.horizontal, 9)
+      .padding(.vertical, 7)
+      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+      .background(category.color.opacity(0.065), in: RoundedRectangle(cornerRadius: 8))
+    }
+    .buttonStyle(.plain)
+    .help("\(label) evidence")
+    .accessibilityElement(children: .combine)
+  }
+
+  private var detailsButton: some View {
+    Button {
+      withAnimation(WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)) {
+        evidenceSection = evidenceSection == nil ? .summary : nil
+      }
+    } label: {
+      Label(
+        evidenceSection != nil ? "Close evidence" : "Evidence",
+        systemImage: evidenceSection != nil ? "chevron.up" : "chevron.down")
+    }
+    .buttonStyle(.plain)
+    .font(.callout)
+    .foregroundStyle(StudioPalette.blue)
+    .accessibilityValue(evidenceSection != nil ? "Expanded" : "Collapsed")
+    .help("Read the full match reasoning, fit dimensions, risks, and evidence")
+  }
+
+  private func showEvidence(_ section: MatchEvidenceSection) {
+    withAnimation(WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)) {
+      evidenceSection = section
+    }
   }
 
   @ViewBuilder private var statistics: some View {
     ViewThatFits(in: .horizontal) {
-      HStack(spacing: WorkspaceDesign.spaceS) {
+      HStack(spacing: 24) {
         statisticItems
       }
       VStack(alignment: .leading, spacing: WorkspaceDesign.spaceXS) {
@@ -211,92 +321,89 @@ struct CreatorMatchRow: View {
     if let recentAverageViews = presentation.recentAverageViews {
       statistic("Recent average", value: recentAverageViews)
     }
-    if let recentMedianViews = presentation.recentMedianViews {
-      statistic("Recent median", value: recentMedianViews)
-    }
   }
 
   private func statistic(_ label: String, value: Int) -> some View {
-    HStack(spacing: 5) {
+    VStack(alignment: .leading, spacing: 4) {
       Text(value, format: .number)
-        .fontWeight(.semibold)
+        .font(.system(size: 22, weight: .semibold, design: .rounded))
+        .tracking(-0.5)
         .monospacedDigit()
       Text(label)
+        .font(.caption)
         .foregroundStyle(.secondary)
     }
-    .font(.caption)
-    .padding(.horizontal, 9)
-    .padding(.vertical, 6)
-    .background(Color.secondary.opacity(0.07), in: Capsule())
     .accessibilityElement(children: .combine)
   }
 
   @ViewBuilder private var outreachActions: some View {
-    VStack(alignment: .trailing, spacing: 7) {
-      if let contact = candidate.creator.contacts.first(where: {
-        !$0.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      }) {
-        Text(contact.email)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
-        if candidate.creator.contacts.count > 1 {
-          Text("+\(candidate.creator.contacts.count - 1) email options")
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-        }
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 10) {
+        contactSummary
+        outreachControls
       }
-
-      if isNewSendEligible {
-        Button(MatchCopy.sendEmail, action: onSend)
-          .buttonStyle(.borderedProminent)
-          .disabled(!MatchOutreachActionPolicy.canSendNew(candidate, writesEnabled: writesEnabled))
-          .accessibilityIdentifier(MatchAccessibility.creatorSend(presentation.id))
-          .help("Compose new Outreach for this Creator")
-      } else if let reason = MatchOutreachActionPolicy.newSendUnavailableReason(candidate) {
-        Text(reason)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-
-      if let deliveryID = MatchOutreachActionPolicy.resendDeliveryID(candidate) {
-        Button(MatchCopy.resend) { onResend(deliveryID) }
-          .disabled(!MatchOutreachActionPolicy.canResend(candidate, writesEnabled: writesEnabled))
-          .accessibilityIdentifier(MatchAccessibility.creatorResend(presentation.id))
-          .help("Explicitly resend this existing delivery")
-      }
-
-      if let responseState = candidate.outreach.responseState {
-        Text("Response: \(responseState.displayName)")
-          .font(.caption)
-          .foregroundStyle(.secondary)
+      VStack(alignment: .leading, spacing: 6) {
+        contactSummary
+        outreachControls
       }
     }
     .controlSize(.small)
   }
 
-  private var labelTone: WorkspaceTone {
-    if presentation.label.localizedCaseInsensitiveContains("strong") { return .success }
-    if presentation.label.localizedCaseInsensitiveContains("good") { return .accent }
-    return .neutral
-  }
-
-  private var labelSystemImage: String {
-    if presentation.label.localizedCaseInsensitiveContains("strong") { return "sparkles" }
-    if presentation.label.localizedCaseInsensitiveContains("good") {
-      return "checkmark.circle.fill"
+  @ViewBuilder private var contactSummary: some View {
+    if candidate.creator.contacts.count > 1 {
+      Text("\(candidate.creator.contacts.count) emails")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    } else if let contact = candidate.creator.contacts.first(where: {
+      !$0.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }) {
+      Text(contact.email)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+        .lineLimit(1)
     }
-    return "minus.circle.fill"
   }
-}
 
-private struct MatchReasonLabelStyle: LabelStyle {
-  func makeBody(configuration: Configuration) -> some View {
-    HStack(alignment: .firstTextBaseline, spacing: 8) {
-      configuration.icon
-        .font(.system(size: 5))
-        .foregroundStyle(Color.accentColor)
-      configuration.title
+  private var outreachControls: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 10) { outreachControlItems }
+      VStack(alignment: .leading, spacing: 6) { outreachControlItems }
+    }
+  }
+
+  @ViewBuilder private var outreachControlItems: some View {
+    if isNewSendEligible {
+      Button("Compose email", action: onSend)
+        .buttonStyle(.bordered)
+        .disabled(!MatchOutreachActionPolicy.canSendNew(candidate, writesEnabled: writesEnabled))
+        .accessibilityIdentifier(MatchAccessibility.creatorSend(presentation.id))
+        .help("Compose new Outreach for this Creator")
+    } else if let reason = MatchOutreachActionPolicy.newSendUnavailableReason(candidate) {
+      Text(reason)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      if reason == "Email unavailable" {
+        Button("Add email", action: onOpenProfile)
+          .buttonStyle(.borderless)
+          .help("Open this Creator Profile to add a contact email")
+      }
+    }
+
+    if let deliveryID = MatchOutreachActionPolicy.resendDeliveryID(candidate) {
+      Button(MatchCopy.resend) { onResend(deliveryID) }
+        .disabled(!MatchOutreachActionPolicy.canResend(candidate, writesEnabled: writesEnabled))
+        .accessibilityIdentifier(MatchAccessibility.creatorResend(presentation.id))
+        .help("Explicitly resend this existing delivery")
+    }
+
+    if let responseState = candidate.outreach.responseState,
+      responseState != .accepted && responseState != .declined
+    {
+      Text("Response: \(responseState.displayName)")
+        .font(.caption)
+        .foregroundStyle(.secondary)
     }
   }
 }

@@ -51,7 +51,8 @@ let package = Package(
     ),
     .executableTarget(
       name: "FindMeGamer",
-      dependencies: ["FindMeGamerCore"]
+      dependencies: ["FindMeGamerCore"],
+      resources: [.process("Resources")]
     ),
     .testTarget(
       name: "FindMeGamerCoreTests",

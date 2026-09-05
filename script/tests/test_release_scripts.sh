@@ -86,6 +86,20 @@ def rearchive(source: Path, destination: Path) -> None:
     )
 
 
+def assert_packaged_app_icon(app: Path) -> None:
+    source_icon = root / "macos" / "AppIcon" / "AppIcon.icns"
+    packaged_icon = app / "Contents" / "Resources" / "AppIcon.icns"
+    assert source_icon.is_file() and not source_icon.is_symlink()
+    assert packaged_icon.is_file() and not packaged_icon.is_symlink()
+    icon_bytes = packaged_icon.read_bytes()
+    assert len(icon_bytes) > 8, "packaged app icon must contain image data"
+    assert icon_bytes[:4] == b"icns", "packaged app icon must be an ICNS file"
+    assert int.from_bytes(icon_bytes[4:8], "big") == len(icon_bytes)
+    assert icon_bytes == source_icon.read_bytes(), "packaged app icon must match its source"
+    with (app / "Contents" / "Info.plist").open("rb") as stream:
+        assert plistlib.load(stream)["CFBundleIconFile"] == "AppIcon"
+
+
 fake_tool_source = r'''#!/usr/bin/env python3
 import json, os, pathlib, shutil, subprocess, sys
 
@@ -290,12 +304,17 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     app = extracted / "FindMeGamer.app"
     assert (app / "Contents" / "_CodeSignature" / "notary-ticket").is_file()
     assert (app / "Contents" / "Frameworks" / "libswiftCompatibilitySpan.dylib").is_file()
+    packaged_cover = app / "Contents" / "Resources" / "studio-orbit-cover.png"
+    source_cover = root / "macos" / "Sources" / "FindMeGamer" / "Resources" / "studio-orbit-cover.png"
+    assert packaged_cover.read_bytes() == source_cover.read_bytes()
+    assert_packaged_app_icon(app)
     assert any(call["tool"] == "xcrun" and call["args"][:3] == ["install_name_tool", "-add_rpath", "@executable_path/../Frameworks"] for call in recorded)
     with (app / "Contents" / "Info.plist").open("rb") as stream:
         info = plistlib.load(stream)
     assert info == {
         "CFBundleDisplayName": "Find Me Gamer",
         "CFBundleExecutable": "FindMeGamer",
+        "CFBundleIconFile": "AppIcon",
         "CFBundleIdentifier": "com.findmegamer.desktop",
         "CFBundleName": "Find Me Gamer",
         "CFBundlePackageType": "APPL",
@@ -334,6 +353,37 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     with (app / "Contents" / "Info.plist").open("wb") as stream:
         plistlib.dump(info, stream)
     rearchive(app, archive)
+
+    # Correct checksums and fake signatures must not hide broken icon packaging.
+    packaged_icon = app / "Contents" / "Resources" / "AppIcon.icns"
+    packaged_plist = app / "Contents" / "Info.plist"
+    original_icon_bytes = packaged_icon.read_bytes()
+    original_plist_bytes = packaged_plist.read_bytes()
+    try:
+        for icon_failure in ("missing", "empty", "wrong-magic", "wrong-reference"):
+            packaged_icon.write_bytes(original_icon_bytes)
+            packaged_plist.write_bytes(original_plist_bytes)
+            if icon_failure == "missing":
+                packaged_icon.unlink()
+            elif icon_failure == "empty":
+                packaged_icon.write_bytes(b"")
+            elif icon_failure == "wrong-magic":
+                packaged_icon.write_bytes(b"nope" + original_icon_bytes[4:])
+            else:
+                with packaged_plist.open("wb") as stream:
+                    plistlib.dump(info | {"CFBundleIconFile": "MissingIcon"}, stream)
+            rearchive(app, archive)
+            log.write_text("", encoding="utf-8")
+            invalid_icon = run([str(verify_script), str(archive)], base_environment)
+            assert invalid_icon.returncode != 0, icon_failure
+            assert not any(call["tool"] in {"codesign", "spctl"} for call in calls(log)), icon_failure
+    finally:
+        packaged_icon.write_bytes(original_icon_bytes)
+        packaged_plist.write_bytes(original_plist_bytes)
+        rearchive(app, archive)
+    assert_packaged_app_icon(app)
+    restored_icon = run([str(verify_script), str(archive)], base_environment)
+    assert restored_icon.returncode == 0, restored_icon.stderr
 
     original_sidecar = sidecar.read_bytes()
     sidecar.write_text("0" * 64 + f"  {archive.name}\n", encoding="utf-8")
@@ -407,6 +457,9 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
         [str(verify_script), str(archive), "--allow-adhoc"], base_environment
     )
     assert adhoc_verified.returncode == 0, adhoc_verified.stderr
+    adhoc_extracted = test_root / "adhoc-extracted"
+    subprocess.run(["/usr/bin/ditto", "-x", "-k", str(archive), str(adhoc_extracted)], check=True)
+    assert_packaged_app_icon(adhoc_extracted / "FindMeGamer.app")
 
     # Verification rejects malformed ZIPs and unexpected top-level payloads.
     archive.write_bytes(b"not a zip")
@@ -474,6 +527,7 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     subprocess.run(["/usr/bin/ditto", "-x", "-k", str(dmg), str(dmg_contents)], check=True)
     assert os.readlink(dmg_contents / "Applications") == "/Applications"
     assert "Open Anyway" in (dmg_contents / "Read Me.txt").read_text()
+    assert_packaged_app_icon(dmg_contents / "FindMeGamer.app")
     with (dmg_contents / "FindMeGamer.app" / "Contents" / "Info.plist").open("rb") as stream:
         dmg_info = plistlib.load(stream)
     assert dmg_info["FMGAPIBaseURL"] == "http://127.0.0.1:8000"

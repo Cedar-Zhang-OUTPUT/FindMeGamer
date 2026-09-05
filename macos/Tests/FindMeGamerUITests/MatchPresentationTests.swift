@@ -34,10 +34,10 @@ import Testing
     }
   }
 
-  @Test func heroSubmitIsHiddenWithoutSelectionAndEnabledOnlyWhenWritableAndReady() {
+  @Test func heroShowsTheNextActionButEnablesItOnlyWhenWritableSelectedAndReady() {
     #expect(
       MatchHeroPolicy(hasSelection: false, writesEnabled: true, canSubmit: false)
-        == .init(showsSubmit: false, submitEnabled: false))
+        == .init(showsSubmit: true, submitEnabled: false))
     #expect(
       MatchHeroPolicy(hasSelection: true, writesEnabled: false, canSubmit: true)
         == .init(showsSubmit: true, submitEnabled: false))
@@ -47,6 +47,19 @@ import Testing
     #expect(
       MatchHeroPolicy(hasSelection: true, writesEnabled: true, canSubmit: true)
         == .init(showsSubmit: true, submitEnabled: true))
+  }
+
+  @Test func evidenceSectionsExposeEveryOriginalDimensionWithoutInventingScores() {
+    #expect(MatchEvidenceSection.allCases.count == 6)
+    #expect(MatchEvidenceSection.summary.category == nil)
+    for category in MatchEvidenceCategory.allCases {
+      #expect(MatchEvidenceSection(category: category).category == category)
+    }
+    #expect(MatchEvidenceDisplayPolicy.additionalReasons([]).isEmpty)
+    #expect(MatchEvidenceDisplayPolicy.additionalReasons(["Visible reason"]).isEmpty)
+    #expect(
+      MatchEvidenceDisplayPolicy.additionalReasons(["Visible reason", "Reason B", "Reason A"])
+        == ["Reason B", "Reason A"])
   }
 
   @Test func historyMapsEveryStatusAndAllowsOnlySuccessfulNavigationAndEligibleRetry() {
@@ -220,6 +233,10 @@ import Testing
     #expect(!selection.contains(id(31)))
     #expect(selection.contains(id(33)))
     #expect(selection.orderedIDs(in: refreshed) == [id(33)])
+    selection.clear()
+    #expect(selection.isEmpty)
+    #expect(selection.storedIDs.isEmpty)
+    #expect(selection.orderedRecipients(in: refreshed).isEmpty)
   }
 
   @Test func selectedOutreachRecipientsPreserveCreatorAndContactOrderWithoutDefaultingAnEmail() {
@@ -252,6 +269,9 @@ import Testing
         "business@example.test", "press@example.test",
       ])
     #expect(recipients[0].contacts.map(\.purpose) == ["Sponsorships", "Press"])
+    #expect(recipients[0].contacts.map(\.source) == ["channel_about", "public_web_research"])
+    #expect(recipients[0].contacts.map(\.sourceURL) == [nil, "https://creator.example/contact"])
+    #expect(recipients[0].contacts.map(\.validationState) == ["valid", "unverified"])
   }
 
   @MainActor

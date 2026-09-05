@@ -12,5 +12,6 @@ struct FindMeGamerApp: App {
       AppRootView(session: session)
         .task { await session.restore() }
     }
+    .defaultSize(width: 1_180, height: 800)
   }
 }

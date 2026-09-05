@@ -101,3 +101,35 @@ private struct WorkspaceTransitionModifier: ViewModifier {
       .offset(x: horizontalOffset)
   }
 }
+
+/// Animate the incoming content, never retain an outgoing navigation container.
+/// Native push/pop, toolbar placement, and keyboard focus remain system-managed.
+struct WorkspacePageEntrance: ViewModifier {
+  let direction: WorkspaceMotionDirection
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @State private var hasAppeared = false
+
+  func body(content: Content) -> some View {
+    content
+      .opacity(hasAppeared ? 1 : 0)
+      .offset(x: hasAppeared ? 0 : initialOffset)
+      .onAppear {
+        guard !hasAppeared else { return }
+        withAnimation(
+          WorkspaceMotionPolicy.animation(for: .destination, reduceMotion: reduceMotion)
+        ) {
+          hasAppeared = true
+        }
+      }
+  }
+
+  private var initialOffset: CGFloat {
+    let distance = WorkspaceMotionPolicy.profile(for: .destination, reduceMotion: reduceMotion)
+      .displacement
+    switch direction {
+    case .backward: return -distance
+    case .stationary: return 0
+    case .forward: return distance
+    }
+  }
+}

@@ -20,7 +20,10 @@ struct AppRootView: View {
         AuthenticatedRootView(session: session, navigation: workspaceNavigation)
       }
     }
-    .frame(minWidth: 640, minHeight: 420)
+    .frame(
+      minWidth: 640, maxWidth: .infinity, minHeight: 420, maxHeight: .infinity,
+      alignment: .topLeading
+    )
     .modifier(AppearancePreferences())
   }
 }

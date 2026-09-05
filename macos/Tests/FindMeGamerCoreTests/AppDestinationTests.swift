@@ -95,7 +95,8 @@ import Testing
     let navigation = WorkspaceNavigationState()
     navigation.libraryPath.append("creator-detail")
     navigation.matchPath.append("match-results")
-    navigation.outreachPath.append("campaign-detail")
+    let campaignID = UUID()
+    navigation.openCampaign(id: campaignID)
     navigation.settingsPath.append("email-settings")
     let originalOwner = ObjectIdentifier(navigation)
 
@@ -108,7 +109,7 @@ import Testing
     #expect(ObjectIdentifier(navigation) == originalOwner)
     #expect(navigation.libraryPath.count == 1)
     #expect(navigation.matchPath.count == 1)
-    #expect(navigation.outreachPath.count == 1)
+    #expect(navigation.outreachCampaign?.id == campaignID)
     #expect(navigation.settingsPath.count == 1)
   }
 }
