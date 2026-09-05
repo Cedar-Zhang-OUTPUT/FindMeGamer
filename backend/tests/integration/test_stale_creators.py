@@ -264,6 +264,8 @@ def test_overlapping_scheduler_calls_create_and_publish_only_one_active_job(
 def test_publish_failure_converges_safely_continues_and_retries_next_cycle(
     committed_factory, database_engine: Engine
 ) -> None:
+    from app.workers.schedules import ScheduledReanalysisService
+
     with committed_factory() as session:
         first = _game(session, index=401, next_analysis_at=NOW - timedelta(minutes=2))
         second = _creator(
@@ -277,7 +279,13 @@ def test_publish_failure_converges_safely_continues_and_retries_next_cycle(
         session.commit()
     dispatcher = ObservingDispatcher(database_engine)
     dispatcher.fail_for_target.add(first.steam_app_id)
-    service = _service(committed_factory, dispatcher)
+    # The scheduling cutoff precedes job creation. A failed dispatch needs a
+    # fresh completion timestamp, as it does with the production clock.
+    service = ScheduledReanalysisService(
+        session_factory=committed_factory,
+        dispatcher=dispatcher,
+        clock=lambda: datetime.now(UTC),
+    )
 
     assert service.run(batch_size=2) == 1
 
@@ -292,6 +300,7 @@ def test_publish_failure_converges_safely_continues_and_retries_next_cycle(
         assert failed.status is JobStatus.FAILED
         assert failed.error_code == "analysis_queue_unavailable"
         assert failed.retryable is True
+        assert failed.completed_at >= failed.created_at
         assert refreshed_first is not None
         assert refreshed_first.current_facts == original_game_facts
         assert refreshed_first.next_analysis_at == original_due

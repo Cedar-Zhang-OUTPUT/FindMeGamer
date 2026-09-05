@@ -114,7 +114,7 @@ class ScheduledReanalysisService:
                         retryable=True,
                     ),
                     session_factory=self._session_factory,
-                    clock=lambda: now,
+                    clock=self._clock,
                 )
                 continue
             accepted += 1

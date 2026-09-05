@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from threading import Barrier, Lock, Thread
 from uuid import UUID
@@ -138,7 +139,12 @@ def test_seeded_placeholder_finalizes_through_normal_creator_pipeline_without_lo
     )
     row = result.rows[0]
 
-    assert _pipeline(committed_factory).run(row.job_id) == row.profile_id
+    # Seed jobs use the live database clock, so the worker must not use a
+    # historical fixed timestamp that predates the newly created job.
+    assert (
+        _pipeline(committed_factory, clock=lambda: datetime.now(UTC)).run(row.job_id)
+        == row.profile_id
+    )
 
     with committed_factory() as session:
         profile = session.get(CreatorProfile, row.profile_id)
