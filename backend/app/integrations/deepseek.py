@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass
@@ -39,6 +40,7 @@ _model_name = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
 _dns_label = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _hex_pair = re.compile(r"^[0-9A-Fa-f]{2}$")
 _numeric_host_label = re.compile(r"^(?:[0-9]+|0[xX][0-9A-Fa-f]+)$")
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,7 +150,8 @@ class DeepSeekGateway:
         )
         try:
             return schema.model_validate_json(content)
-        except (ValidationError, ValueError):
+        except (ValidationError, ValueError) as error:
+            _log_schema_failure(schema_payload, "initial", error)
             repair_messages = [
                 *request_messages,
                 *_repair_messages(content, schema_payload),
@@ -160,7 +163,8 @@ class DeepSeekGateway:
         )
         try:
             return schema.model_validate_json(repaired)
-        except (ValidationError, ValueError):
+        except (ValidationError, ValueError) as error:
+            _log_schema_failure(schema_payload, "repair", error)
             raise InvalidModelOutput("deepseek_model_output_invalid") from None
 
     def _request(
@@ -209,7 +213,7 @@ class DeepSeekGateway:
             envelope = json.loads(body)
         except (UnicodeDecodeError, ValueError):
             raise PermanentIntegrationError("deepseek_response_invalid") from None
-        return _extract_content(envelope)
+        return _extract_content(envelope, model=model, max_tokens=max_tokens)
 
 
 def _validate_api_key(api_key: str) -> None:
@@ -358,7 +362,100 @@ def _schema_instruction(schema_payload: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _extract_content(envelope: object) -> str:
+def _schema_location_names(value: object) -> set[str]:
+    """Only code-owned schema names may appear in validation locations."""
+    names: set[str] = set()
+    if isinstance(value, dict):
+        names.update(value.get("properties", {}))
+        names.update(item for item in value.get("enum", []) if isinstance(item, str))
+        if isinstance(value.get("const"), str):
+            names.add(value["const"])
+        for child in value.values():
+            names.update(_schema_location_names(child))
+    elif isinstance(value, list):
+        for child in value:
+            names.update(_schema_location_names(child))
+    return names
+
+
+def _log_schema_failure(
+    schema_payload: dict[str, Any], attempt: str, error: ValueError
+) -> None:
+    allowed_names = _schema_location_names(schema_payload["schema"])
+    errors = (
+        error.errors(include_input=False, include_context=False, include_url=False)
+        if isinstance(error, ValidationError)
+        else [{"type": "value_error", "loc": ()}]
+    )
+    safe_errors = []
+    for item in errors[:8]:
+        location = [
+            (
+                part
+                if type(part) is int
+                or (
+                    isinstance(part, str)
+                    and part in allowed_names
+                    and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", part)
+                )
+                else "[redacted]"
+            )
+            for part in item["loc"][:12]
+        ]
+        error_type = item["type"]
+        safe_errors.append(
+            {
+                "type": (
+                    error_type
+                    if re.fullmatch(r"[a-z_]{1,64}", error_type)
+                    else "unknown"
+                ),
+                "loc": location,
+            }
+        )
+    logger.warning(
+        "%s",
+        json.dumps(
+            {
+                "event": "deepseek_schema_validation_failed",
+                "schema": schema_payload["title"],
+                "attempt": attempt,
+                "errors": safe_errors,
+            }
+        ),
+    )
+
+
+def _log_truncated_output(
+    envelope: dict[str, Any], *, model: str, max_tokens: int | None
+) -> None:
+    usage: dict[str, int] = {}
+    raw_usage = envelope.get("usage")
+    if isinstance(raw_usage, dict):
+        for name in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            value = raw_usage.get(name)
+            if type(value) is int and value >= 0:
+                usage[name] = value
+        details = raw_usage.get("completion_tokens_details")
+        if isinstance(details, dict):
+            value = details.get("reasoning_tokens")
+            if type(value) is int and value >= 0:
+                usage["reasoning_tokens"] = value
+    logger.warning(
+        "%s",
+        json.dumps(
+            {
+                "event": "deepseek_output_truncated",
+                "model": model,
+                "finish_reason": "length",
+                "max_tokens": max_tokens,
+                "usage": usage,
+            }
+        ),
+    )
+
+
+def _extract_content(envelope: object, *, model: str, max_tokens: int | None) -> str:
     if not isinstance(envelope, dict):
         raise PermanentIntegrationError("deepseek_response_invalid")
     choices = envelope.get("choices")
@@ -369,6 +466,7 @@ def _extract_content(envelope: object) -> str:
         raise PermanentIntegrationError("deepseek_response_invalid")
     finish_reason = choice.get("finish_reason")
     if finish_reason == "length":
+        _log_truncated_output(envelope, model=model, max_tokens=max_tokens)
         raise TransientIntegrationError("deepseek_model_output_invalid")
     if finish_reason == "insufficient_system_resource":
         raise TransientIntegrationError("deepseek_unavailable")

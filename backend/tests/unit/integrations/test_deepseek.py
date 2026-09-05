@@ -48,6 +48,142 @@ def test_deepseek_rejects_invalid_structured_output() -> None:
     assert calls == 2
 
 
+def test_deepseek_logs_both_schema_failures_without_response_data(caplog) -> None:
+    key_marker = "PRIVATE-API-KEY-MARKER"
+    response_marker = "PRIVATE-MODEL-RESPONSE-MARKER"
+    invalid = {"title": 42, response_marker: response_marker}
+    invalid.update({f"unknown-{index}": response_marker for index in range(12)})
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": json.dumps(invalid)}}]},
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with caplog.at_level(logging.WARNING, logger="app.integrations.deepseek"):
+        with pytest.raises(InvalidModelOutput, match="deepseek_model_output_invalid"):
+            DeepSeekGateway(api_key=key_marker, http_client=client).complete_structured(
+                "deepseek-v4-flash", [], GameExtraction
+            )
+
+    records = [
+        record
+        for record in caplog.records
+        if record.name == "app.integrations.deepseek"
+    ]
+    events = [json.loads(record.getMessage()) for record in records]
+    assert [event["attempt"] for event in events] == ["initial", "repair"]
+    for record, event in zip(records, events):
+        assert record.levelno == logging.WARNING
+        assert record.exc_info is None
+        assert event["event"] == "deepseek_schema_validation_failed"
+        assert event["schema"] == "GameExtraction"
+        assert len(event["errors"]) == 8
+        assert {"type": "extra_forbidden", "loc": ["[redacted]"]} in event["errors"]
+        assert all(set(error) == {"type", "loc"} for error in event["errors"])
+    assert len(requests) == 2
+    assert key_marker not in caplog.text
+    assert response_marker not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("invalid", "expected_error"),
+    [
+        ("PRIVATE-INVALID-JSON", {"type": "json_invalid", "loc": []}),
+        ('{"title":42}', {"type": "string_type", "loc": ["title"]}),
+    ],
+)
+def test_deepseek_logs_initial_json_failure_when_repair_succeeds(
+    caplog, invalid, expected_error
+) -> None:
+    contents = iter([invalid, '{"title":"Repaired"}'])
+    client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200, json={"choices": [{"message": {"content": next(contents)}}]}
+            )
+        )
+    )
+    with caplog.at_level(logging.WARNING, logger="app.integrations.deepseek"):
+        result = DeepSeekGateway(
+            api_key="PRIVATE-API-KEY", http_client=client
+        ).complete_structured("deepseek-v4-flash", [], GameExtraction)
+
+    events = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "app.integrations.deepseek"
+    ]
+    assert result.title == "Repaired"
+    assert len(events) == 1
+    assert events[0]["attempt"] == "initial"
+    assert events[0]["errors"] == [expected_error]
+    assert "PRIVATE-INVALID-JSON" not in caplog.text
+    assert "PRIVATE-API-KEY" not in caplog.text
+
+
+@pytest.mark.parametrize("unsafe_usage", [False, True])
+def test_deepseek_logs_truncation_with_safe_usage_only(caplog, unsafe_usage) -> None:
+    marker = "PRIVATE-RESPONSE-MARKER"
+    usage = {
+        "prompt_tokens": marker if unsafe_usage else 100,
+        "completion_tokens": 6_144,
+        "total_tokens": True if unsafe_usage else 6_244,
+        "private": marker,
+        "completion_tokens_details": {"reasoning_tokens": 0, "private": marker},
+    }
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            json={
+                "model": marker,
+                "choices": [
+                    {"finish_reason": "length", "message": {"content": marker}}
+                ],
+                "usage": usage,
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    with caplog.at_level(logging.WARNING, logger="app.integrations.deepseek"):
+        with pytest.raises(
+            TransientIntegrationError, match="deepseek_model_output_invalid"
+        ):
+            DeepSeekGateway(
+                api_key="PRIVATE-KEY", http_client=client
+            ).complete_structured("deepseek-v4-flash", [], LargeGameExtraction)
+
+    events = [
+        json.loads(record.getMessage())
+        for record in caplog.records
+        if record.name == "app.integrations.deepseek"
+    ]
+    assert len(events) == 1
+    event = events[0]
+    assert event["event"] == "deepseek_output_truncated"
+    assert event["model"] == "deepseek-v4-flash"
+    assert event["finish_reason"] == "length"
+    assert event["max_tokens"] == 6_144
+    assert event["usage"]["completion_tokens"] == 6_144
+    assert event["usage"]["reasoning_tokens"] == 0
+    if unsafe_usage:
+        assert "prompt_tokens" not in event["usage"]
+        assert "total_tokens" not in event["usage"]
+    else:
+        assert event["usage"]["prompt_tokens"] == 100
+        assert event["usage"]["total_tokens"] == 6_244
+    assert calls == 1
+    assert marker not in caplog.text
+    assert "PRIVATE-KEY" not in caplog.text
+
+
 def test_deepseek_first_structured_request_uses_json_object_with_actual_schema() -> (
     None
 ):
