@@ -23,18 +23,28 @@ struct ReanalysisSettings: View {
       }
       .disabled(model.isSavingReanalysis)
 
-      activityRow("Game", activity: model.gameActivity, error: model.activityError(for: .game))
-      activityRow(
-        "Creator", activity: model.creatorActivity, error: model.activityError(for: .creator))
-
-      if model.isLoadingActivity {
-        ProgressView("Loading profile activity…")
-      }
+      Text(
+        "Creator profiles refresh automatically at least every 30 days. These schedules are shared with your workspace."
+      )
+      .font(.caption)
+      .foregroundStyle(.secondary)
 
       Button("Save Re-analysis Settings") {
         isShowingSaveConfirmation = true
       }
+      .buttonStyle(.borderedProminent)
       .disabled(!writesEnabled || !model.canSaveReanalysis)
+
+      if model.isSavingReanalysis {
+        ProgressView("Saving shared schedules…")
+      } else if model.sharedSettings != nil {
+        Text(
+          model.canSaveReanalysis
+            ? "You have unsaved interval changes." : "These intervals are saved for your workspace."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      }
 
       if let error = model.reanalysisLoadError {
         HStack {
@@ -51,6 +61,15 @@ struct ReanalysisSettings: View {
       if let error = model.reanalysisActionError {
         Label(error, systemImage: "exclamationmark.triangle")
           .foregroundStyle(.red)
+      }
+
+      DisclosureGroup("View profile refresh activity") {
+        activityRow("Game", activity: model.gameActivity, error: model.activityError(for: .game))
+        activityRow(
+          "Creator", activity: model.creatorActivity, error: model.activityError(for: .creator))
+        if model.isLoadingActivity {
+          ProgressView("Loading profile activity…")
+        }
       }
     }
     .confirmationDialog(

@@ -303,6 +303,8 @@ import Testing
     #expect(state.creatorOverride?.manualNotes == "Canonical server note")
     #expect(state.manualDraft.email == "newer@studio.example")
     #expect(state.manualDraft.notes == "Newer unsaved note")
+    #expect(state.hasUnsavedManualChanges)
+    #expect(state.actionSuccessMessage == "Contact and notes saved.")
   }
 
   @MainActor
@@ -314,6 +316,7 @@ import Testing
     let canonical = replacingCreator(
       creator, contact: canonicalContact, manualNotes: "Canonical server note")
     let state = ProfileSheetState(profile: .creator(creator))
+    #expect(!state.hasUnsavedManualChanges)
     state.manualDraft.email = " submitted@studio.example "
     state.manualDraft.notes = "Submitted note"
 
@@ -323,6 +326,23 @@ import Testing
     #expect(state.creatorOverride?.manualNotes == "Canonical server note")
     #expect(state.manualDraft.email == "canonical@studio.example")
     #expect(state.manualDraft.notes == "Canonical server note")
+    #expect(!state.hasUnsavedManualChanges)
+    #expect(state.actionSuccessMessage == "Contact and notes saved.")
+  }
+
+  @MainActor
+  @Test func failedManualSaveRetainsDraftAndDoesNotReportSuccess() async {
+    let state = ProfileSheetState(profile: .creator(creatorProfile()))
+    state.manualDraft.email = "draft@studio.example"
+    state.manualDraft.notes = "Keep this draft while I resolve the connection."
+    let draft = state.manualDraft
+
+    await state.saveManual { _, _, _ in throw CancellationError() }
+
+    #expect(state.manualDraft == draft)
+    #expect(state.hasUnsavedManualChanges)
+    #expect(state.actionMessage != nil)
+    #expect(state.actionSuccessMessage == nil)
   }
 }
 

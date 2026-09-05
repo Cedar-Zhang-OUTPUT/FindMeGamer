@@ -3,9 +3,16 @@ import SwiftUI
 
 enum LibraryCopy {
   static let searchPlaceholder = "Search Profiles…"
-  static let onlyCollection = "Only Collection"
-  static let analyzeRequest = "Analyze Request"
+  static let onlyCollection = "Favorites"
+  static let analyzeRequest = "Analyze Profile"
   static let empty = "No profiles found."
+
+  static func profileCount(_ count: Int, type: ProfileType, hasMore: Bool) -> String {
+    let noun = type == .game
+      ? (count == 1 ? "game" : "games")
+      : (count == 1 ? "creator" : "creators")
+    return "\(count) \(noun)\(hasMore ? " loaded" : "")"
+  }
 }
 
 enum LibraryBadge {
@@ -20,89 +27,94 @@ struct LibraryHeader: View {
   let writesEnabled: Bool
   let onSelectProfileType: (ProfileType) -> Void
   let onAnalyzeRequest: () -> Void
+  let onAnalysisActivity: () -> Void
 
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
       WorkspacePageHeader(WorkspacePageCopy.library) {
-        HStack(spacing: WorkspaceDesign.spaceS) {
-          if let count = LibraryBadge.visibleCount(for: activeAnalysisJobCount) {
-            WorkspaceStatusLozenge(
-              title: "\(count) active",
-              systemImage: "waveform.path.ecg",
-              tone: .accent)
-          }
-
+        VStack(alignment: .trailing, spacing: 6) {
           Button(action: onAnalyzeRequest) {
-            Label(LibraryCopy.analyzeRequest, systemImage: "sparkles")
+            Label(LibraryCopy.analyzeRequest, systemImage: "plus")
           }
-          .buttonStyle(.borderedProminent)
+          .buttonStyle(.bordered)
           .controlSize(.large)
-          .disabled(!writesEnabled)
           .accessibilityIdentifier(LibraryAccessibility.analyzeRequest)
           .help("Request analysis for a game or creator profile")
-        }
-      }
 
-      WorkspaceSurface(style: .quiet) {
-        VStack(alignment: .leading, spacing: WorkspaceDesign.spaceS) {
-          HStack(spacing: WorkspaceDesign.spaceM) {
-            Picker(
-              "Profile Type",
-              selection: Binding(
-                get: { model.selectedType },
-                set: { onSelectProfileType($0) })
-            ) {
-              ForEach(LibraryLayout.profileTypes, id: \.self) { type in
-                Text("\(type.displayName) Profiles").tag(type)
-              }
-            }
-            .pickerStyle(.segmented)
-            .fixedSize()
-            .accessibilityIdentifier(LibraryAccessibility.profileType)
-
-            Toggle(
-              LibraryCopy.onlyCollection,
-              isOn: Binding(
-                get: { model.onlyCollection },
-                set: { model.setOnlyCollection($0) })
-            )
-            .toggleStyle(.checkbox)
-            .accessibilityIdentifier(LibraryAccessibility.onlyCollection)
-
-            Spacer()
-          }
-
-          HStack(spacing: WorkspaceDesign.spaceS) {
-            Image(systemName: "magnifyingglass")
+          if let count = LibraryBadge.visibleCount(for: activeAnalysisJobCount) {
+            Button("\(count) analysis requests in progress", action: onAnalysisActivity)
+              .buttonStyle(.plain)
+              .font(.caption)
               .foregroundStyle(.secondary)
-
-            TextField(
-              LibraryCopy.searchPlaceholder,
-              text: Binding(
-                get: { model.query },
-                set: { model.setSearch($0) })
-            )
-            .textFieldStyle(.plain)
-            .frame(maxWidth: LibraryLayout.searchMaximumWidth)
-            .accessibilityLabel("Search profiles")
-            .accessibilityIdentifier(LibraryAccessibility.search)
-            .help("Search the selected profile library")
-
-            Spacer()
-          }
-          .padding(.horizontal, 11)
-          .padding(.vertical, 8)
-          .background(
-            Color(nsColor: .textBackgroundColor).opacity(0.72),
-            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
-          )
-          .overlay {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-              .strokeBorder(Color.primary.opacity(0.08))
           }
         }
-        .padding(WorkspaceDesign.spaceM)
       }
+
+      LibraryControlsLayout {
+        profilePicker
+        searchField
+        collectionToggle
+      }
+      .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  private var profilePicker: some View {
+    Picker(
+      "Profile Type",
+      selection: Binding(get: { model.selectedType }, set: { onSelectProfileType($0) })
+    ) {
+      ForEach(LibraryLayout.profileTypes, id: \.self) { type in
+        Text(type == .game ? "Games" : "Creators").tag(type)
+      }
+    }
+    .pickerStyle(.segmented)
+    .labelsHidden()
+    .accessibilityIdentifier(LibraryAccessibility.profileType)
+  }
+
+  private var collectionToggle: some View {
+    Toggle(
+      isOn: Binding(
+        get: { model.onlyCollection }, set: { model.setOnlyCollection($0) })
+    ) {
+      Label(LibraryCopy.onlyCollection, systemImage: "heart")
+    }
+    .toggleStyle(.button)
+    .accessibilityIdentifier(LibraryAccessibility.onlyCollection)
+    .help("Show only profiles you have favorited")
+  }
+
+  private var searchField: some View {
+    HStack(spacing: WorkspaceDesign.spaceS) {
+      Image(systemName: "magnifyingglass")
+        .foregroundStyle(.secondary)
+      TextField(
+        LibraryCopy.searchPlaceholder,
+        text: Binding(get: { model.query }, set: { model.setSearch($0) })
+      )
+      .textFieldStyle(.plain)
+      .accessibilityLabel("Search profiles")
+      .accessibilityIdentifier(LibraryAccessibility.search)
+      .help("Search the selected profile library")
+      if !model.query.isEmpty {
+        Button {
+          model.setSearch("")
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+            .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Clear search")
+      }
+    }
+    .padding(.horizontal, 11)
+    .padding(.vertical, 8)
+    .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    .overlay {
+      RoundedRectangle(cornerRadius: 8)
+        .strokeBorder(Color.primary.opacity(0.08))
+        .allowsHitTesting(false)
     }
   }
 }

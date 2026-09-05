@@ -30,55 +30,61 @@ struct CreatorProfileCard: View {
   let onFavorite: () -> Void
 
   @State private var isHovered = false
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   private var presentation: CreatorCardPresentation { CreatorCardPresentation(card: card) }
+  private var identityColor: Color { StudioPalette.identityColor(for: card.id.uuidString) }
 
   var body: some View {
-    WorkspaceSurface(style: isHovered || isHighlighted ? .elevated : .card) {
+    WorkspaceSurface(style: .card) {
       Button(action: onOpen) {
-        VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-          HStack(alignment: .top, spacing: 13) {
-            AsyncArtwork(url: presentation.artworkURL, fallbackSystemImage: "person.crop.circle")
-              .frame(width: 72, height: 72)
-              .clipShape(Circle())
-              .overlay {
-                Circle().strokeBorder(Color.primary.opacity(0.1))
-              }
+        VStack(alignment: .leading, spacing: 0) {
+          identityCover
 
-            VStack(alignment: .leading, spacing: 5) {
+          VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
               Text(presentation.name)
-                .font(.title3.weight(.semibold))
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .tracking(-0.4)
+                .foregroundStyle(StudioPalette.ink)
                 .lineLimit(2)
               subscriberLabel
-                .font(.callout.monospacedDigit())
+                .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
-
-              WorkspaceStatusLozenge(
-                title: presentation.contactAvailability,
-                systemImage: "envelope.fill",
-                tone: presentation.contactAvailability == "Unavailable" ? .neutral : .success)
             }
 
-            Spacer(minLength: 28)
+            Text(presentation.performanceSummary ?? "Open this profile to explore their work.")
+              .font(.callout)
+              .foregroundStyle(.secondary)
+              .lineSpacing(2)
+              .lineLimit(2)
+
+            if !presentation.tags.isEmpty {
+              LibraryTagRow(tags: presentation.tags, tint: identityColor)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack {
+              Label(
+                presentation.contactAvailability == "Unavailable"
+                  ? "No email yet" : "Email available",
+                systemImage: "envelope"
+              )
+              .font(.caption).foregroundStyle(.secondary)
+              Spacer()
+              Image(systemName: "arrow.up.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isHovered ? identityColor : Color.secondary)
+                .frame(width: 25, height: 25)
+                .background(identityColor.opacity(isHovered ? 0.14 : 0.06), in: Circle())
+            }
           }
-
-          Text(presentation.performanceSummary ?? "Performance summary unavailable.")
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .lineLimit(2)
-
-          Spacer(minLength: 0)
-
-          if !presentation.tags.isEmpty {
-            LibraryTagRow(tags: presentation.tags)
-          }
-
-          Label("Open creator profile", systemImage: "arrow.up.right")
-            .font(.caption)
-            .foregroundStyle(isHovered ? Color.accentColor : .secondary)
+          .padding(16)
+          .padding(.top, 2)
+          .frame(maxWidth: .infinity, minHeight: 182, alignment: .topLeading)
         }
-        .padding(WorkspaceDesign.spaceM)
-        .frame(maxWidth: .infinity, minHeight: 244, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .contentShape(Rectangle())
       }
       .buttonStyle(.plain)
@@ -99,18 +105,82 @@ struct CreatorProfileCard: View {
       favoriteButton
         .padding(WorkspaceDesign.spaceS)
     }
+    .shadow(color: identityColor.opacity(isHovered ? 0.14 : 0), radius: 16, y: 8)
+    .offset(y: isHovered && !reduceMotion ? -3 : 0)
     .onHover { isHovered = $0 }
-    .animation(.easeOut(duration: 0.18), value: isHovered)
-    .animation(.easeInOut(duration: 0.2), value: isHighlighted)
+    .animation(
+      WorkspaceMotionPolicy.animation(for: .selectionFeedback, reduceMotion: reduceMotion),
+      value: isHovered
+    )
+    .animation(
+      WorkspaceMotionPolicy.animation(for: .selectionFeedback, reduceMotion: reduceMotion),
+      value: isHighlighted)
+  }
+
+  private var identityCover: some View {
+    HStack(alignment: .bottom) {
+      Group {
+        if let url = presentation.artworkURL {
+          AsyncArtwork(url: url, fallbackSystemImage: "person.crop.circle")
+        } else {
+          ZStack {
+            Circle().fill(identityColor.opacity(0.18))
+            Text(StudioPalette.initials(for: presentation.name))
+              .font(.system(size: 23, weight: .semibold, design: .rounded))
+              .foregroundStyle(StudioPalette.ink)
+          }
+        }
+      }
+      .frame(width: 62, height: 62)
+      .clipShape(Circle())
+      .padding(4)
+      .background(StudioPalette.surface, in: Circle())
+
+      Spacer()
+
+      Text("CREATOR")
+        .font(.system(size: 9, weight: .bold, design: .rounded))
+        .tracking(1.6)
+        .foregroundStyle(StudioPalette.ink.opacity(0.65))
+        .padding(.bottom, 8)
+    }
+    .padding(.horizontal, 16)
+    .padding(.bottom, 2)
+    .frame(height: 94, alignment: .bottom)
+    .background {
+      LinearGradient(
+        colors: [identityColor.opacity(0.22), identityColor.opacity(0.08), StudioPalette.surface],
+        startPoint: .topLeading, endPoint: .bottomTrailing
+      )
+      .overlay(alignment: .trailing) {
+        // Decoration must never determine the cover's size or displace the avatar.
+        ZStack {
+          Circle()
+            .stroke(identityColor.opacity(0.18), lineWidth: 19)
+            .frame(width: 144, height: 144)
+          Circle()
+            .stroke(identityColor.opacity(0.13), lineWidth: 1)
+            .frame(width: 186, height: 186)
+        }
+        .offset(x: 44, y: -17)
+      }
+    }
+    .clipShape(
+      UnevenRoundedRectangle(
+        topLeadingRadius: WorkspaceDesign.cardCornerRadius,
+        topTrailingRadius: WorkspaceDesign.cardCornerRadius))
+    .accessibilityHidden(true)
   }
 
   private var favoriteButton: some View {
     Button(action: onFavorite) {
       Image(systemName: presentation.isFavorite ? "heart.fill" : "heart")
         .font(.callout.weight(.semibold))
-        .foregroundStyle(presentation.isFavorite ? Color.accentColor : .secondary)
+        .foregroundStyle(
+          presentation.isFavorite ? StudioPalette.coral : StudioPalette.ink.opacity(0.7)
+        )
         .frame(width: 30, height: 30)
-        .background(Color.primary.opacity(0.055), in: Circle())
+        .background(StudioPalette.surface.opacity(0.82), in: Circle())
     }
     .buttonStyle(.plain)
     .disabled(!writesEnabled || isUpdatingFavorite)

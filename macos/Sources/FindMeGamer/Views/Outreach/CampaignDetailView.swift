@@ -62,7 +62,19 @@ struct CampaignDetailView: View {
           feedback(error, systemImage: "exclamationmark.triangle", color: .red)
         }
         if let error = model.campaignError {
-          feedback(error, systemImage: "arrow.clockwise.circle", color: .orange)
+          HStack {
+            feedback(error, systemImage: "arrow.clockwise.circle", color: .orange)
+            Button("Try Again") { Task { await model.refreshCampaignsAndSelectedDetail() } }
+              .disabled(model.isLoadingCampaignDetail)
+          }
+        }
+
+        VStack(alignment: .leading, spacing: 5) {
+          Text("Delivery & responses")
+            .font(.system(.title3, design: .rounded, weight: .semibold))
+          Text("Check individual outcomes. Open a message to see what was sent.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
         }
 
         if campaign.sendBatches.isEmpty {
@@ -90,7 +102,7 @@ struct CampaignDetailView: View {
   }
 
   private func campaignHeader(_ campaign: OutreachCampaign) -> some View {
-    WorkspaceSurface(style: .elevated) {
+    WorkspaceSurface(style: .card) {
       VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
         ViewThatFits(in: .horizontal) {
           HStack(alignment: .firstTextBaseline, spacing: WorkspaceDesign.spaceM) {
@@ -105,9 +117,17 @@ struct CampaignDetailView: View {
           }
         }
 
-        CampaignMetricGrid(metrics: campaign.metrics)
+        Rectangle()
+          .fill(StudioPalette.blue.opacity(0.14))
+          .frame(height: 1)
+          .accessibilityHidden(true)
+        OutreachMetricSummary(metrics: campaign.metrics)
       }
       .padding(WorkspaceDesign.spaceL)
+      .background(
+        LinearGradient(
+          colors: [StudioPalette.blue.opacity(0.08), StudioPalette.mint.opacity(0.025), .clear],
+          startPoint: .topLeading, endPoint: .bottomTrailing))
     }
   }
 
@@ -120,11 +140,12 @@ struct CampaignDetailView: View {
       Text("CAMPAIGN")
         .font(.caption2.weight(.bold))
         .tracking(1.4)
-        .foregroundStyle(Color.accentColor)
+        .foregroundStyle(StudioPalette.blue)
 
       Text(campaign.game.name)
-        .font(.system(.largeTitle, design: .serif, weight: .semibold))
-        .tracking(-0.4)
+        .font(.system(size: 29, weight: .semibold, design: .rounded))
+        .tracking(-0.7)
+        .foregroundStyle(StudioPalette.ink)
         .lineLimit(lineLimit)
         .fixedSize(horizontal: fixedWidth, vertical: false)
     }
@@ -182,8 +203,32 @@ private struct SendBatchSection: View {
   let resend: (UUID) -> Void
 
   var body: some View {
-    GroupBox {
-      VStack(spacing: 0) {
+    WorkspaceSurface(style: .card) {
+      VStack(alignment: .leading, spacing: 0) {
+        HStack(alignment: .top, spacing: 12) {
+          Image(systemName: "envelope.badge")
+            .font(.system(size: 18, weight: .light))
+            .foregroundStyle(StudioPalette.blue)
+            .frame(width: 36, height: 36)
+            .background(StudioPalette.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+            .accessibilityHidden(true)
+          VStack(alignment: .leading, spacing: 5) {
+            Text(batch.templateName ?? "Send Batch")
+              .font(.system(.headline, design: .rounded))
+            HStack(spacing: 8) {
+              Text("Version \(batch.templateVersion ?? 0)")
+              Text(batch.requestedAt, style: .date)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          }
+          Spacer(minLength: 0)
+          Text(batch.state.displayName)
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 16)
+        Divider()
         if batch.deliveries.isEmpty {
           Text("No deliveries in this batch.")
             .foregroundStyle(.secondary)
@@ -200,17 +245,8 @@ private struct SendBatchSection: View {
           }
         }
       }
-    } label: {
-      HStack {
-        Text(batch.templateName ?? "Send Batch")
-          .font(.headline)
-        Text("Version \(batch.templateVersion ?? 0)")
-          .foregroundStyle(.secondary)
-        Spacer()
-        Text(batch.state.displayName)
-        Text(batch.requestedAt, style: .date)
-          .foregroundStyle(.secondary)
-      }
+      .padding(.horizontal, 18)
+      .padding(.bottom, 4)
     }
   }
 }
@@ -220,38 +256,39 @@ private struct DeliveryRow: View {
   let writesEnabled: Bool
   let canResend: Bool
   let resend: () -> Void
+  @State private var isConfirmingResend = false
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text(delivery.creator?.name ?? "Creator")
-            .font(.headline)
-          Text(delivery.recipientEmail)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .textSelection(.enabled)
+      ViewThatFits(in: .horizontal) {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+          recipientHeading
+          Spacer()
+          deliveryStatus
         }
-        Spacer()
-        Text(delivery.sendState.displayName)
-        Text(delivery.responseState.displayName)
-          .foregroundStyle(.secondary)
-        if delivery.canResend == true {
-          Button("Resend", action: resend)
-            .disabled(!writesEnabled || !canResend)
-            .help(writesEnabled ? "Resend this email" : "Unavailable while offline")
+        VStack(alignment: .leading, spacing: 10) {
+          recipientHeading
+          deliveryStatus
         }
       }
 
-      if let subject = delivery.renderedSubject {
-        Text(subject)
-          .font(.callout.weight(.medium))
-      }
-      if let markdown = delivery.renderedMarkdown {
-        Text(markdown)
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          .lineLimit(4)
+      if delivery.renderedSubject != nil || delivery.renderedMarkdown != nil {
+        DisclosureGroup("View sent message") {
+          VStack(alignment: .leading, spacing: 10) {
+            if let subject = delivery.renderedSubject {
+              Text(subject).font(.callout.weight(.medium))
+            }
+            if let markdown = delivery.renderedMarkdown {
+              Text(EmailMarkdownPresentation.attributed(markdown))
+                .font(.callout)
+                .lineSpacing(4)
+                .foregroundStyle(.secondary)
+            }
+          }
+          .frame(maxWidth: .infinity, alignment: .leading)
+          .textSelection(.enabled)
+          .padding(.top, 8)
+        }
       }
       if let failure = delivery.smtpFailure {
         Label(failure.message, systemImage: "exclamationmark.triangle")
@@ -274,6 +311,61 @@ private struct DeliveryRow: View {
       .font(.caption)
       .foregroundStyle(.secondary)
     }
-    .padding(.vertical, 10)
+    .padding(.vertical, 16)
+    .confirmationDialog(
+      "Resend this email?", isPresented: $isConfirmingResend, titleVisibility: .visible
+    ) {
+      Button("Resend") {
+        guard writesEnabled && canResend else { return }
+        resend()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("A new delivery attempt will be queued for \(delivery.recipientEmail).")
+    }
+  }
+
+  private var recipientHeading: some View {
+    HStack(spacing: 11) {
+      Text(StudioPalette.initials(for: delivery.creator?.name ?? "Creator"))
+        .font(.system(size: 13, weight: .medium, design: .rounded))
+        .foregroundStyle(StudioPalette.ink)
+        .frame(width: 34, height: 34)
+        .background(
+          StudioPalette.identityColor(for: delivery.creatorID.uuidString).opacity(0.13),
+          in: Circle()
+        )
+        .accessibilityHidden(true)
+      VStack(alignment: .leading, spacing: 3) {
+        Text(delivery.creator?.name ?? "Creator")
+          .font(.system(.headline, design: .rounded))
+        Text(delivery.recipientEmail)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .textSelection(.enabled)
+      }
+    }
+  }
+
+  private var deliveryStatus: some View {
+    HStack(spacing: 12) {
+      Text(delivery.sendState.displayName)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(delivery.sendState == .failed ? StudioPalette.coral : Color.secondary)
+      Text(delivery.responseState.displayName)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(delivery.responseState == .accepted ? StudioPalette.mint : Color.secondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 4)
+        .background(
+          delivery.responseState == .accepted
+            ? StudioPalette.mint.opacity(0.08) : Color.secondary.opacity(0.055),
+          in: Capsule())
+      if delivery.canResend == true {
+        Button("Resend") { isConfirmingResend = true }
+          .disabled(!writesEnabled || !canResend)
+          .help(writesEnabled ? "Resend this email" : "Unavailable while offline")
+      }
+    }
   }
 }

@@ -178,6 +178,7 @@ final class LibraryPaginationCoordinator {
 struct LibraryView: View {
   @Bindable var model: LibraryModel
   @Bindable var analyzeModel: AnalyzeRequestModel
+  let onOpenAnalyze: (AnalyzeWorkspacePhase) -> Void
   let onOpenProfile: (ProfileType, UUID) -> Void
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
@@ -192,7 +193,8 @@ struct LibraryView: View {
         activeAnalysisJobCount: analyzeModel.activeJobCount,
         writesEnabled: writesEnabled,
         onSelectProfileType: selectProfileType,
-        onAnalyzeRequest: { analyzeModel.inspectorPresented = true })
+        onAnalyzeRequest: { onOpenAnalyze(.request) },
+        onAnalysisActivity: { onOpenAnalyze(.activity) })
 
       if let error = model.error {
         errorBanner(error)
@@ -237,28 +239,31 @@ struct LibraryView: View {
   @ViewBuilder private var libraryContent: some View {
     switch contentPresentation {
     case .initialLoading:
-      ProgressView()
+      ProgressView("Loading profiles…")
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     case .empty:
-      ContentUnavailableView(
-        LibraryCopy.empty,
-        systemImage: model.selectedType == .game ? "gamecontroller" : "person.2"
-      )
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      emptyState
     case .scrollable(let showEmptyState):
       ScrollView {
         LazyVStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-          WorkspaceSectionHeader(
-            model.selectedType == .game ? "Game Profiles" : "Creator Profiles",
-            subtitle: "Open a profile for the full evidence trail.",
-            count: model.items.count)
+          HStack {
+            Text(
+              LibraryCopy.profileCount(
+                model.items.count, type: model.selectedType, hasMore: model.nextCursor != nil)
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            Spacer()
+            if model.isLoadingFirstPage {
+              ProgressView().controlSize(.small)
+                .accessibilityLabel("Refreshing profiles")
+            }
+          }
 
           if showEmptyState {
-            ContentUnavailableView(
-              LibraryCopy.empty,
-              systemImage: model.selectedType == .game ? "gamecontroller" : "person.2"
-            )
-            .frame(maxWidth: .infinity, minHeight: 180)
+            if model.error == nil {
+              emptyState.frame(minHeight: 220)
+            }
           }
 
           LazyVGrid(
@@ -284,6 +289,26 @@ struct LibraryView: View {
       }
       .scrollIndicators(.automatic)
     }
+  }
+
+  private var emptyState: some View {
+    let context = LibraryEmptyContext.resolve(
+      query: model.query, onlyCollection: model.onlyCollection)
+    return ContentUnavailableView {
+      Label(context.title, systemImage: context == .search ? "magnifyingglass" : "square.stack")
+    } description: {
+      Text(context.detail)
+    } actions: {
+      Button(context.actionTitle) {
+        switch context {
+        case .search: model.setSearch("")
+        case .favorites: model.setOnlyCollection(false)
+        case .firstProfile: onOpenAnalyze(.request)
+        }
+      }
+      .buttonStyle(.borderedProminent)
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 
   private var contentPresentation: LibraryContentPresentation {

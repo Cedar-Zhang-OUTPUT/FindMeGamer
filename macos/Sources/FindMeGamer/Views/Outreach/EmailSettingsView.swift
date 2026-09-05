@@ -9,7 +9,15 @@ struct EmailSettingsView: View {
 
   var body: some View {
     Form {
-      Section("Email Settings") {
+      Section {
+        VStack(alignment: .leading, spacing: 6) {
+          Text("Connect your sending mailbox")
+            .font(.title3.weight(.semibold))
+          Text("Shared by your workspace. Save and test this connection before sending outreach.")
+            .font(.callout)
+            .foregroundStyle(.secondary)
+        }
+
         if model.isLoadingSMTP && model.smtpStatus == nil {
           ProgressView("Loading Email Settings…")
         }
@@ -38,8 +46,14 @@ struct EmailSettingsView: View {
           .textFieldStyle(.roundedBorder)
         TextField("Reply-To", text: replyTo)
           .textFieldStyle(.roundedBorder)
-        TextField("Emails per minute", value: emailsPerMinute, format: .number)
-          .textFieldStyle(.roundedBorder)
+
+        DisclosureGroup("Sending limit · \(model.smtpEmailsPerMinute) emails/min") {
+          TextField("Emails per minute", value: emailsPerMinute, format: .number)
+            .textFieldStyle(.roundedBorder)
+          Text("Choose 1–60 emails per minute to respect your mailbox provider’s limits.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
 
         if let status = model.smtpStatus {
           LabeledContent("Last Test", value: status.lastTestStatus.displayName)
@@ -50,6 +64,7 @@ struct EmailSettingsView: View {
           Button("Save Email Settings") {
             confirmation = .save
           }
+          .buttonStyle(.borderedProminent)
           .disabled(!writesEnabled || !model.canSaveSMTP)
 
           Button("Test Connection") {
@@ -70,13 +85,18 @@ struct EmailSettingsView: View {
 
         Divider()
 
-        TextField("Company test recipient", text: testRecipient)
-          .textFieldStyle(.roundedBorder)
-          .disabled(model.isSendingSMTPTest)
-        Button("Send Test Email") {
-          confirmation = .sendTest
+        DisclosureGroup("Send a test email") {
+          Text("This sends a real message to the address below using your saved mailbox.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          TextField("Company test recipient", text: testRecipient)
+            .textFieldStyle(.roundedBorder)
+            .disabled(model.isSendingSMTPTest)
+          Button("Send Test Email") {
+            confirmation = .sendTest
+          }
+          .disabled(!writesEnabled || !model.canSendSMTPTest)
         }
-        .disabled(!writesEnabled || !model.canSendSMTPTest)
 
         if let error = model.smtpLoadError {
           HStack {
@@ -98,6 +118,8 @@ struct EmailSettingsView: View {
       .disabled(smtpActionInFlight)
     }
     .formStyle(.grouped)
+    .frame(maxWidth: 820)
+    .frame(maxWidth: .infinity, alignment: .leading)
     .navigationTitle("Email Settings")
     .task { await model.loadSMTPSettings() }
     .confirmationDialog(

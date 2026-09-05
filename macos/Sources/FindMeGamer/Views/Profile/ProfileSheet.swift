@@ -9,7 +9,10 @@ struct ProfileSheet: View {
 
   @Environment(\.dismiss) private var dismiss
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var state: ProfileSheetState
+  @State private var destination: ProfileDetailDestination = .overview
+  @State private var isConfirmingDiscard = false
 
   init(
     profile: Profile,
@@ -27,17 +30,38 @@ struct ProfileSheet: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-      WorkspaceSurface(style: .elevated) {
-        ProfileHeader(
-          profile: state.currentProfile,
-          isFavorite: state.favorite,
-          writesEnabled: writesEnabled,
-          isFavoriteInFlight: state.isFavoriteInFlight,
-          isReanalyzeInFlight: state.isReanalyzeInFlight,
-          onFavorite: favorite,
-          onReanalyze: reanalyze
+      ProfileHeader(
+        profile: state.currentProfile,
+        isFavorite: state.favorite,
+        writesEnabled: writesEnabled,
+        isFavoriteInFlight: state.isFavoriteInFlight,
+        isReanalyzeInFlight: state.isReanalyzeInFlight,
+        onFavorite: favorite,
+        onReanalyze: reanalyze
+      )
+
+      StudioSectionTabs(
+        title: "Profile section",
+        options: ProfileDetailDestination.available(for: profileType),
+        selection: $destination,
+        label: { $0.title }
+      )
+      .frame(maxWidth: 530)
+      .accessibilityIdentifier("profile.section")
+
+      if !writesEnabled {
+        Label(
+          "Offline — profiles remain readable. Reconnect to save changes.",
+          systemImage: "wifi.slash"
         )
-        .padding(WorkspaceDesign.spaceM)
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+      }
+
+      if let warning = staleWarning {
+        Label(warning, systemImage: "exclamationmark.triangle.fill")
+          .foregroundStyle(.orange)
+          .font(.subheadline)
       }
 
       if let message = state.actionMessage {
@@ -46,37 +70,102 @@ struct ProfileSheet: View {
           .textSelection(.enabled)
       }
 
-      ScrollView {
-        detail
-          .padding(.vertical, 2)
-          .frame(maxWidth: 1_020, alignment: .leading)
-          .frame(maxWidth: .infinity)
+      ScrollViewReader { scrollProxy in
+        ScrollView {
+          VStack(alignment: .leading, spacing: 0) {
+            Color.clear
+              .frame(height: 0)
+              .id(ProfileScrollAnchor.top)
+              .accessibilityHidden(true)
+
+            detail
+              .padding(.vertical, 2)
+              .frame(maxWidth: 1_020, alignment: .leading)
+              .frame(maxWidth: .infinity)
+          }
+        }
+        .onChange(of: destination) { _, _ in
+          // Section selection is an explicit navigation action. Keep the same
+          // editor/model instances, but don't inherit another section's offset.
+          // Profile refreshes and draft edits never enter this path.
+          var transaction = Transaction(animation: nil)
+          transaction.disablesAnimations = true
+          withTransaction(transaction) {
+            scrollProxy.scrollTo(ProfileScrollAnchor.top, anchor: .top)
+          }
+        }
       }
 
       HStack {
+        if let success = state.actionSuccessMessage {
+          Label(success, systemImage: "checkmark.circle")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("profile.actionSuccess")
+        }
+        if state.hasUnsavedManualChanges {
+          Text("Unsaved contact or notes")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
         Spacer()
-        Button("Close") { dismiss() }
+        Button("Close") { requestClose() }
+          .disabled(state.isManualSaveInFlight)
           .keyboardShortcut(.cancelAction)
           .accessibilityIdentifier("profile.close")
       }
     }
     .padding(WorkspaceDesign.spaceL)
-    .frame(minWidth: 700, idealWidth: 920, minHeight: 560)
+    .frame(minWidth: 620, idealWidth: 940, minHeight: 620, idealHeight: 780)
+    .tint(StudioPalette.blue)
     .workspaceCanvas()
     .accessibilityIdentifier("profile.sheet")
+    .interactiveDismissDisabled(state.hasUnsavedManualChanges || state.isManualSaveInFlight)
+    .confirmationDialog(
+      "Discard unsaved contact changes?", isPresented: $isConfirmingDiscard,
+      titleVisibility: .visible
+    ) {
+      Button("Discard Changes", role: .destructive) { dismiss() }
+      Button("Keep Editing", role: .cancel) { destination = .contacts }
+    } message: {
+      Text("Your saved profile is unchanged. Contact and note edits in this window will be lost.")
+    }
   }
 
   @ViewBuilder private var detail: some View {
     switch state.currentProfile {
     case .game(let game):
-      GameProfileDetail(profile: game)
+      GameProfileDetail(profile: game, destination: destination)
     case .creator(let creator):
       CreatorProfileDetail(
         presentation: CreatorProfilePresentation(profile: creator),
         manualDraft: $state.manualDraft,
         writesEnabled: writesEnabled,
         isSaving: state.isManualSaveInFlight,
-        onSave: saveManual)
+        onSave: saveManual,
+        destination: destination,
+        hasUnsavedChanges: state.hasUnsavedManualChanges)
+    }
+  }
+
+  private var profileType: ProfileType {
+    switch state.currentProfile {
+    case .game: .game
+    case .creator: .creator
+    }
+  }
+
+  private var staleWarning: String? {
+    guard case .creator(let creator) = state.currentProfile else { return nil }
+    return CreatorProfilePresentation(profile: creator).staleWarning
+  }
+
+  private func requestClose() {
+    guard !state.isManualSaveInFlight else { return }
+    if state.hasUnsavedManualChanges {
+      isConfirmingDiscard = true
+    } else {
+      dismiss()
     }
   }
 
@@ -92,6 +181,10 @@ struct ProfileSheet: View {
   private func saveManual() {
     Task { await state.saveManual(using: onSaveManual) }
   }
+}
+
+private enum ProfileScrollAnchor: Hashable {
+  case top
 }
 
 extension ProfileSheet {

@@ -440,6 +440,7 @@ final class ProfileSheetState {
   private(set) var isReanalyzeInFlight = false
   private(set) var isManualSaveInFlight = false
   private(set) var actionMessage: String?
+  private(set) var actionSuccessMessage: String?
 
   init(profile: Profile) {
     self.profile = profile
@@ -458,10 +459,16 @@ final class ProfileSheetState {
     return profile
   }
 
+  var hasUnsavedManualChanges: Bool {
+    guard let creator = currentCreator else { return false }
+    return manualDraft != CreatorManualDraft(profile: creator)
+  }
+
   func toggleFavorite(using action: ProfileFavoriteAction) async {
     guard !isFavoriteInFlight else { return }
     isFavoriteInFlight = true
     actionMessage = nil
+    actionSuccessMessage = nil
     let identity = profileIdentity
     let desired = !favorite
     defer { isFavoriteInFlight = false }
@@ -481,10 +488,12 @@ final class ProfileSheetState {
     guard !isReanalyzeInFlight else { return }
     isReanalyzeInFlight = true
     actionMessage = nil
+    actionSuccessMessage = nil
     let identity = profileIdentity
     defer { isReanalyzeInFlight = false }
     do {
       try await action(identity.type, identity.id, idempotencyKey)
+      actionSuccessMessage = "Re-analysis requested. Track progress in Library."
     } catch {
       actionMessage = Self.safeMessage(error)
     }
@@ -493,10 +502,12 @@ final class ProfileSheetState {
   func saveManual(using action: ProfileSaveManualAction) async {
     guard !isManualSaveInFlight else { return }
     guard let creator = currentCreator else { return }
+    actionSuccessMessage = nil
     let submittedDraft = manualDraft
     guard let validationMessage = submittedDraft.validationMessage else {
       isManualSaveInFlight = true
       actionMessage = nil
+      actionSuccessMessage = nil
       defer { isManualSaveInFlight = false }
       do {
         let canonical = try await action(
@@ -510,6 +521,7 @@ final class ProfileSheetState {
         if manualDraft == submittedDraft {
           manualDraft = CreatorManualDraft(profile: canonical)
         }
+        actionSuccessMessage = "Contact and notes saved."
       } catch {
         actionMessage = Self.safeMessage(error)
       }

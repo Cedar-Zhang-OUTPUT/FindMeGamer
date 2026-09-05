@@ -2,20 +2,25 @@ import FindMeGamerCore
 import SwiftUI
 import WebKit
 
-private enum TemplateWorkspaceMode: String, CaseIterable, Identifiable {
+enum TemplateWorkspaceMode: String, CaseIterable, Identifiable {
   case edit = "Edit"
   case preview = "Preview"
 
   var id: String { rawValue }
 }
 
+struct TemplateEditorPresentation {
+  var mode = TemplateWorkspaceMode.edit
+  var showsResponseLabels = false
+}
+
 struct TemplateEditor: View {
   @Bindable var model: OutreachManagementModel
+  @Binding var presentation: TemplateEditorPresentation
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @State private var confirmation: Confirmation?
-  @State private var workspaceMode = TemplateWorkspaceMode.edit
   @State private var workspaceDirection = WorkspaceMotionDirection.stationary
 
   var body: some View {
@@ -27,6 +32,10 @@ struct TemplateEditor: View {
       } else {
         VStack(spacing: 0) {
           HStack(spacing: WorkspaceDesign.spaceM) {
+            Image(systemName: "square.and.pencil")
+              .font(.system(size: 17, weight: .light))
+              .foregroundStyle(StudioPalette.blue)
+              .accessibilityHidden(true)
             Picker("Template workspace", selection: workspaceModeSelection) {
               ForEach(TemplateWorkspaceMode.allCases) { mode in
                 Text(mode.rawValue).tag(mode)
@@ -34,25 +43,27 @@ struct TemplateEditor: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 220)
+            .frame(width: 190)
 
             Spacer()
 
             if model.hasUnsavedTemplateChanges {
-              WorkspaceStatusLozenge(
-                title: "Unsaved changes",
-                systemImage: "pencil.circle.fill",
-                tone: .warning)
+              Label("Draft", systemImage: "circle.fill")
+                .font(.caption)
+                .foregroundStyle(StudioPalette.amber)
+                .help("Unsaved changes")
+                .accessibilityLabel("Draft, unsaved changes")
             }
           }
           .padding(.horizontal, WorkspaceDesign.spaceM)
           .padding(.vertical, WorkspaceDesign.spaceS)
+          .fixedSize(horizontal: false, vertical: true)
 
           Divider()
 
           ZStack {
             workspaceContent
-              .id(workspaceMode)
+              .id(presentation.mode)
               .transition(
                 WorkspaceMotionPolicy.transition(
                   direction: workspaceDirection,
@@ -61,6 +72,9 @@ struct TemplateEditor: View {
           }
           .frame(maxWidth: .infinity, maxHeight: .infinity)
           .clipped()
+
+          Divider()
+          editorActions
         }
       }
     }
@@ -83,7 +97,7 @@ struct TemplateEditor: View {
   }
 
   @ViewBuilder private var workspaceContent: some View {
-    switch workspaceMode {
+    switch presentation.mode {
     case .edit:
       editor
     case .preview:
@@ -93,17 +107,17 @@ struct TemplateEditor: View {
 
   private var workspaceModeSelection: Binding<TemplateWorkspaceMode> {
     Binding(
-      get: { workspaceMode },
+      get: { presentation.mode },
       set: { mode in
-        guard mode != workspaceMode else { return }
+        guard mode != presentation.mode else { return }
         workspaceDirection = WorkspaceMotionPolicy.direction(
-          from: workspaceMode,
+          from: presentation.mode,
           to: mode,
           ordered: TemplateWorkspaceMode.allCases)
         withAnimation(
           WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)
         ) {
-          workspaceMode = mode
+          presentation.mode = mode
         }
       })
   }
@@ -111,44 +125,21 @@ struct TemplateEditor: View {
   private var editor: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        HStack {
-          Text("Template Editor")
-            .font(.title2.bold())
-          Spacer()
-          if model.isTemplateActionInFlight {
-            ProgressView()
-              .controlSize(.small)
-          }
-        }
-
-        if model.hasUnsavedTemplateChanges {
-          HStack {
-            Label("Unsaved changes", systemImage: "pencil.circle")
-              .foregroundStyle(.orange)
-            Spacer()
-            Button("Discard Changes") {
-              confirmation = .discard
-            }
-            .disabled(model.isTemplateActionInFlight)
-          }
-          .padding(10)
-          .background(Color.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        }
-
-        field("Name") {
+        field("Template name") {
           TextField("Template Name", text: name)
-            .textFieldStyle(.roundedBorder)
+            .textFieldStyle(OutreachDraftFieldStyle())
         }
 
         field("Subject") {
           TextField("Email Subject", text: subject)
-            .textFieldStyle(.roundedBorder)
+            .font(.system(.title3, design: .rounded, weight: .medium))
+            .textFieldStyle(OutreachDraftFieldStyle())
         }
 
         VStack(alignment: .leading, spacing: 6) {
           HStack {
-            Text("Markdown Body")
-              .font(.headline)
+            Text("Message")
+              .font(.callout.weight(.medium))
             Spacer()
             Menu("Insert Variable") {
               ForEach(OutreachManagementModel.allowedVariables, id: \.self) { variable in
@@ -159,22 +150,30 @@ struct TemplateEditor: View {
             }
           }
           TextEditor(text: bodyMarkdown)
-            .font(.body)
-            .frame(minHeight: 220)
-            .padding(5)
-            .background(.background, in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(.separator))
+            .accessibilityLabel("Template Message")
+            .font(.system(size: 15))
+            .lineSpacing(5)
+            .scrollContentBackground(.hidden)
+            .frame(minHeight: 260)
+            .padding(16)
+            .modifier(OutreachWritingSurface())
         }
 
-        HStack(spacing: 12) {
-          field("Accepted CTA Label") {
-            TextField("Accepted CTA Label", text: acceptedLabel)
-              .textFieldStyle(.roundedBorder)
+        DisclosureGroup("Response button labels", isExpanded: $presentation.showsResponseLabels) {
+          VStack(alignment: .leading, spacing: 12) {
+            Text("These two buttons are included in every email and track the creator’s response.")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            field("Accept label") {
+              TextField("Accepted CTA Label", text: acceptedLabel)
+                .textFieldStyle(OutreachDraftFieldStyle())
+            }
+            field("Decline label") {
+              TextField("Declined CTA Label", text: declinedLabel)
+                .textFieldStyle(OutreachDraftFieldStyle())
+            }
           }
-          field("Declined CTA Label") {
-            TextField("Declined CTA Label", text: declinedLabel)
-              .textFieldStyle(.roundedBorder)
-          }
+          .padding(.top, 10)
         }
 
         if !model.templateValidationMessages.isEmpty {
@@ -196,41 +195,79 @@ struct TemplateEditor: View {
             .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
         }
 
+      }
+      .frame(maxWidth: 760, alignment: .leading)
+      .padding(24)
+      .frame(maxWidth: .infinity)
+    }
+    .background(StudioPalette.canvas)
+    .disabled(model.isTemplateActionInFlight)
+  }
+
+  private var editorActions: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 12) {
+        templateActionsMenu
+        Spacer(minLength: 4)
+        discardButton
+        saveButton
+      }
+      VStack(alignment: .leading, spacing: 12) {
         HStack {
-          Button("Save") {
-            confirmation = .save
-          }
-          .buttonStyle(.borderedProminent)
-          .disabled(!writesEnabled || !model.canSaveTemplate)
-
-          Button("Duplicate") {
-            Task { await model.duplicateSelectedTemplate() }
-          }
-          .disabled(!canMutateSavedTemplate)
-
-          Button("Set Default") {
-            confirmation = .setDefault
-          }
-          .disabled(!canMutateSavedTemplate || selectedTemplateIsDefault)
-
-          Spacer()
-
-          Button("Delete", role: .destructive) {
-            confirmation = .delete
-          }
-          .disabled(!canMutateSavedTemplate)
+          templateActionsMenu
+          Spacer(minLength: 4)
+          discardButton
+        }
+        HStack {
+          Spacer(minLength: 0)
+          saveButton
         }
       }
-      .padding(18)
     }
-    .disabled(model.isTemplateActionInFlight)
+    .fixedSize(horizontal: false, vertical: true)
+    .padding(16)
+    .background(StudioPalette.surface.opacity(0.65))
+  }
+
+  private var templateActionsMenu: some View {
+    Menu("Template actions") {
+      Button("Duplicate") { Task { await model.duplicateSelectedTemplate() } }
+        .disabled(!canMutateSavedTemplate)
+      Button("Set Default") { confirmation = .setDefault }
+        .disabled(!canMutateSavedTemplate || selectedTemplateIsDefault)
+      Divider()
+      Button("Delete", role: .destructive) { confirmation = .delete }
+        .disabled(!canMutateSavedTemplate)
+    }
+    .fixedSize()
+  }
+
+  @ViewBuilder private var discardButton: some View {
+    if model.hasUnsavedTemplateChanges {
+      Button("Discard Changes") { confirmation = .discard }
+        .disabled(model.isTemplateActionInFlight)
+    }
+  }
+
+  private var saveButton: some View {
+    HStack(spacing: 8) {
+      if model.isTemplateActionInFlight {
+        ProgressView().controlSize(.small)
+      }
+      Button("Save Template") { confirmation = .save }
+        .buttonStyle(.borderedProminent)
+        .disabled(!writesEnabled || !model.canSaveTemplate)
+    }
   }
 
   @ViewBuilder private var preview: some View {
     VStack(spacing: 0) {
       HStack {
         Text("Server Preview")
-          .font(.headline)
+          .font(.callout.weight(.medium))
+        Image(systemName: "envelope.open")
+          .foregroundStyle(StudioPalette.blue)
+          .accessibilityHidden(true)
         Spacer()
       }
       .padding(12)
@@ -242,16 +279,20 @@ struct TemplateEditor: View {
           "No Preview", systemImage: "envelope.open",
           description: Text("Select a saved Template to preview it."))
       case .saveFirst(let message):
-        ContentUnavailableView(
-          "Save first", systemImage: "square.and.arrow.down",
-          description: Text(message))
+        ContentUnavailableView {
+          Label("Save first", systemImage: "square.and.arrow.down")
+        } description: {
+          Text(message)
+        } actions: {
+          Button("Return to editing") { presentation.mode = .edit }
+        }
       case .loading:
         ProgressView("Rendering Preview…")
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       case .available(let rendered):
         VStack(alignment: .leading, spacing: 0) {
           Text(rendered.subject)
-            .font(.headline)
+            .font(.system(.title3, design: .rounded, weight: .medium))
             .textSelection(.enabled)
             .padding(12)
           Divider()
@@ -262,6 +303,10 @@ struct TemplateEditor: View {
           Label("Preview unavailable", systemImage: "exclamationmark.triangle")
         } description: {
           Text(message)
+        } actions: {
+          Button("Try Again") { model.retryTemplatePreview() }
+            .disabled(model.isTemplateActionInFlight)
+          Button("Return to editing") { presentation.mode = .edit }
         }
       }
     }
@@ -272,7 +317,7 @@ struct TemplateEditor: View {
   {
     VStack(alignment: .leading, spacing: 6) {
       Text(title)
-        .font(.headline)
+        .font(.callout.weight(.medium))
       content()
     }
   }

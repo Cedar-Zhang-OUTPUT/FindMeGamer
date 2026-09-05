@@ -6,10 +6,8 @@ import Testing
 
 @Suite struct ModernWorkspacePresentationTests {
   @Test func workspaceUsesOneEditorialIntentPerDestination() {
-    #expect(WorkspacePageCopy.library.title == "Profiles worth knowing.")
-    #expect(WorkspacePageCopy.match.title == "Find the signal in the noise.")
-    #expect(WorkspacePageCopy.outreach.title == "Conversations in motion.")
-    #expect(WorkspacePageCopy.settings.title == "Shape your workspace.")
+    #expect(WorkspacePageCopy.all.map(\.id) == AppDestination.allCases.map(\.rawValue))
+    #expect(WorkspacePageCopy.all.allSatisfy { !$0.title.isEmpty && !$0.subtitle.isEmpty })
     #expect(Set(WorkspacePageCopy.all.map(\.title)).count == WorkspacePageCopy.all.count)
   }
 

@@ -3,35 +3,30 @@ import SwiftUI
 
 struct GameProfileDetail: View {
   let presentation: GameProfilePresentation
+  let destination: ProfileDetailDestination
 
-  init(profile: FindMeGamerCore.GameProfile) {
+  init(profile: FindMeGamerCore.GameProfile, destination: ProfileDetailDestination = .overview) {
     presentation = GameProfilePresentation(profile: profile)
+    self.destination = destination
   }
 
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-      WorkspaceSectionHeader(
-        "Game Brief",
-        subtitle: "The positioning signal your team can scan before opening the evidence.")
-      FactSection(title: "Overview", fields: presentation.briefFields)
-
-      DisclosureGroup {
-        ViewThatFits(in: .horizontal) {
-          HStack(alignment: .top, spacing: WorkspaceDesign.spaceM) {
-            sourceColumn
-            analysisColumn
-          }
-          .frame(minWidth: 610)
-
-          VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
-            sourceColumn
-            analysisColumn
-          }
+      switch destination {
+      case .overview, .contacts:
+        ProfileOverview(fields: presentation.briefFields, type: .game)
+      case .evidence:
+        WorkspaceSectionHeader(
+          "Sources & Analysis",
+          subtitle:
+            "Source facts and AI interpretation remain separate so you can judge the evidence.")
+        ProfileEvidenceSection(
+          title: "Steam source facts", subtitle: "Store details · not inferred",
+          symbol: "gamecontroller", tone: .identity
+        ) {
+          sourceColumn
         }
-        .padding(.top, WorkspaceDesign.spaceS)
-      } label: {
-        Label("Explore source facts and AI evidence", systemImage: "doc.text.magnifyingglass")
-          .font(.headline)
+        analysisColumn
       }
     }
   }
@@ -46,11 +41,37 @@ struct GameProfileDetail: View {
       ForEach(
         GameProfileSection.allCases.filter { $0 != .gameBrief }, id: \.self
       ) { section in
-        FactSection(
-          title: "AI Analysis — \(section.title)",
-          fields: presentation.sections[section] ?? [])
+        ProfileEvidenceSection(
+          title: section.title, subtitle: "AI interpretation of the available evidence",
+          symbol: evidenceSymbol(section), tone: evidenceTone(section)
+        ) {
+          FactSection(
+            title: "AI Analysis — \(section.title)",
+            fields: presentation.sections[section] ?? []
+          )
+        }
       }
     }
     .frame(maxWidth: .infinity, alignment: .topLeading)
+  }
+
+  private func evidenceSymbol(_ section: GameProfileSection) -> String {
+    switch section {
+    case .overview, .gameBrief: "text.quote"
+    case .gameplay: "gamecontroller"
+    case .visualStyle: "paintpalette"
+    case .audience: "person.2"
+    case .contentHooks: "lightbulb"
+    case .risks: "exclamationmark.bubble"
+    }
+  }
+
+  private func evidenceTone(_ section: GameProfileSection) -> ProfileStoryTone {
+    switch section {
+    case .audience: .audience
+    case .contentHooks: .opportunity
+    case .risks: .caution
+    default: .identity
+    }
   }
 }

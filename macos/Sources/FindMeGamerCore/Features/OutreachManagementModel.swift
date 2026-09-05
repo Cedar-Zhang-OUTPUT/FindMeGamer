@@ -459,6 +459,13 @@ public final class OutreachManagementModel {
     }
   }
 
+  public func retryTemplatePreview() {
+    guard !isTemplateActionInFlight, templateDraft != nil,
+      case .failed = previewState
+    else { return }
+    schedulePreview()
+  }
+
   private func schedulePreview() {
     previewTask?.cancel()
     previewGeneration &+= 1

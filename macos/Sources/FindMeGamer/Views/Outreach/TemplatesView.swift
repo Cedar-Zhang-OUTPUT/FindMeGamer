@@ -24,6 +24,7 @@ enum TemplateWorkspaceLayoutPolicy {
 
 struct TemplatesView: View {
   @Bindable var model: OutreachManagementModel
+  @State private var editorPresentation = TemplateEditorPresentation()
 
   var body: some View {
     Group {
@@ -63,24 +64,19 @@ struct TemplatesView: View {
 
   @ViewBuilder
   private func templateWorkspace(layout: TemplateWorkspaceLayout) -> some View {
-    switch layout {
-    case .columns(let selectorWidth):
-      HStack(spacing: 0) {
+    // Keep the editor at the same structural identity when the sidebar or window changes width.
+    HStack(spacing: 0) {
+      if case .columns(let selectorWidth) = layout {
         templateList
           .frame(width: selectorWidth)
-
         Divider()
-
-        TemplateEditor(model: model)
-          .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
-    case .compact:
       VStack(spacing: 0) {
-        compactTemplateSelector
-
-        Divider()
-
-        TemplateEditor(model: model)
+        if layout == .compact {
+          compactTemplateSelector
+          Divider()
+        }
+        TemplateEditor(model: model, presentation: $editorPresentation)
           .frame(maxWidth: .infinity, maxHeight: .infinity)
       }
     }
@@ -120,7 +116,7 @@ struct TemplatesView: View {
     VStack(spacing: 0) {
       HStack {
         Text("Templates")
-          .font(.headline)
+          .font(.system(.headline, design: .rounded))
         Spacer()
         Button {
           model.beginCreatingTemplate()
@@ -131,26 +127,49 @@ struct TemplatesView: View {
         .help("Create Template")
         .disabled(model.isTemplateActionInFlight || model.hasUnsavedTemplateChanges)
       }
-      .padding(12)
+      .padding(16)
 
       Divider()
 
       List(selection: templateSelection) {
         ForEach(model.templates) { template in
-          HStack {
-            Text(template.name)
-              .lineLimit(1)
-            Spacer()
+          HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "doc.text")
+              .font(.system(size: 17, weight: .light))
+              .foregroundStyle(StudioPalette.blue)
+              .frame(width: 28, height: 32)
+              .background(StudioPalette.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+              .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+              Text(template.name)
+                .font(.callout.weight(.medium))
+                .lineLimit(2)
+              Text(template.subjectTemplate)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            }
+            Spacer(minLength: 0)
             if template.isDefault {
-              Image(systemName: "star.fill")
-                .foregroundStyle(.yellow)
+              Image(systemName: "checkmark.circle")
+                .foregroundStyle(.secondary)
                 .accessibilityLabel("Default Template")
             }
           }
+          .padding(.vertical, 7)
           .tag(template.id)
         }
       }
+      .listStyle(.sidebar)
+      .scrollContentBackground(.hidden)
       .disabled(model.isTemplateActionInFlight || model.hasUnsavedTemplateChanges)
+
+      if model.hasUnsavedTemplateChanges {
+        Text("Save or discard your edits before switching templates.")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .padding(16)
+      }
 
       if let error = model.templatesError {
         VStack(alignment: .leading, spacing: 8) {

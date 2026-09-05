@@ -77,11 +77,13 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repository_root="$(cd "$script_dir/.." && pwd)"
 package_dir="${repository_root}/macos"
 entitlements="${package_dir}/FindMeGamer.entitlements"
+app_icon="${package_dir}/AppIcon/AppIcon.icns"
 release_dir="${repository_root}/release"
 archive_name="FindMeGamer-${app_version}.${release_format}"
 final_archive="${release_dir}/${archive_name}"
 final_sidecar="${final_archive}.sha256"
 [[ -f "$entitlements" && ! -L "$entitlements" ]] || fail "release entitlements are missing"
+[[ -s "$app_icon" && ! -L "$app_icon" ]] || fail "App icon is missing; run bash script/build_app_icon.sh"
 [[ ! -e "$final_archive" && ! -L "$final_archive" && ! -e "$final_sidecar" && ! -L "$final_sidecar" ]] ||
   fail "final release artifact already exists"
 
@@ -200,6 +202,13 @@ else
   cp "${build_binaries[0]}" "$app_binary"
 fi
 chmod 755 "$app_binary"
+mkdir -p "$app_contents/Resources"
+cp "$package_dir/Sources/FindMeGamer/Resources/studio-orbit-cover.png" "$app_contents/Resources/" ||
+  fail "studio artwork packaging failed"
+chmod 755 "$app_contents/Resources"
+chmod 644 "$app_contents/Resources/studio-orbit-cover.png"
+cp "$app_icon" "$app_contents/Resources/AppIcon.icns" || fail "App icon packaging failed"
+chmod 644 "$app_contents/Resources/AppIcon.icns"
 service_base_url_xml="$(xml_escape "$service_base_url")"
 cat >"$info_plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -214,6 +223,8 @@ cat >"$info_plist" <<PLIST
   <string>com.findmegamer.desktop</string>
   <key>CFBundleName</key>
   <string>Find Me Gamer</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -240,6 +251,7 @@ plist_value() {
 }
 [[ "$(plist_value CFBundleIdentifier)" == "com.findmegamer.desktop" &&
   "$(plist_value CFBundleDisplayName)" == "Find Me Gamer" &&
+  "$(plist_value CFBundleIconFile)" == "AppIcon" &&
   "$(plist_value CFBundleExecutable)" == "FindMeGamer" &&
   "$(plist_value CFBundlePackageType)" == "APPL" &&
   "$(plist_value LSMinimumSystemVersion)" == "14.0" &&

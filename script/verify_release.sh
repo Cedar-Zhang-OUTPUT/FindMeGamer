@@ -158,12 +158,17 @@ fi
 [[ "$(plist_value CFBundleIdentifier)" == "com.findmegamer.desktop" &&
   "$(plist_value CFBundleDisplayName)" == "Find Me Gamer" &&
   "$(plist_value CFBundleName)" == "Find Me Gamer" &&
+  "$(plist_value CFBundleIconFile)" == "AppIcon" &&
   "$(plist_value CFBundleExecutable)" == "FindMeGamer" &&
   "$(plist_value CFBundlePackageType)" == "APPL" &&
   "$(plist_value LSMinimumSystemVersion)" == "14.0" &&
   "$(plist_value NSPrincipalClass)" == "NSApplication" &&
   "$(plist_value CFBundleShortVersionString)" == "$archive_version" &&
   "$(plist_value CFBundleVersion)" == "$archive_version" ]] || fail "release bundle metadata is invalid"
+
+app_icon="${app_bundle}/Contents/Resources/AppIcon.icns"
+[[ -s "$app_icon" && ! -L "$app_icon" ]] || fail "release App icon is missing"
+[[ "$(/usr/bin/head -c 4 "$app_icon")" == "icns" ]] || fail "release App icon is invalid"
 
 "$codesign_bin" --verify --deep --strict "$app_bundle" >/dev/null 2>&1 || fail "release signature verification failed"
 if [[ "$allow_adhoc" == "yes" ]]; then
