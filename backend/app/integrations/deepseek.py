@@ -2,6 +2,7 @@ import json
 import logging
 import re
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from ipaddress import ip_address
 from typing import Any, TypeVar
@@ -24,6 +25,7 @@ from app.integrations.http import (
     read_bounded_bytes,
     streaming_response,
 )
+from app.integrations.vision_images import VisionImageLoader
 
 T = TypeVar("T", bound=BaseModel)
 DEFAULT_DEEPSEEK_API_BASE_URL = "https://api.deepseek.com"
@@ -34,6 +36,9 @@ MAX_SCHEMA_BYTES = 200_000
 MAX_MESSAGES = 100
 MAX_TOTAL_MESSAGE_CHARACTERS = 1_000_000
 MAX_VISION_IMAGES = 12
+MAX_VISION_DOWNLOAD_WORKERS = 4
+# Leave room below the provider's 48 MiB request limit for prompts and repair.
+MAX_VISION_INLINE_CHARACTERS = 24 * 1_024 * 1_024
 MAX_MODEL_OUTPUT_TOKENS = 384 * 1_024
 HTTP_TIMEOUT = httpx.Timeout(connect=5.0, read=60.0, write=20.0, pool=5.0)
 _model_name = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$")
@@ -57,11 +62,14 @@ class DeepSeekGateway:
         api_key: str,
         base_url: str = DEFAULT_DEEPSEEK_API_BASE_URL,
         http_client: httpx.Client | None = None,
+        image_loader: VisionImageLoader | None = None,
     ) -> None:
         _validate_api_key(api_key)
         self._api_key = api_key
         self._base_url = validate_external_base_url(base_url)
         self._owns_client = http_client is None
+        # Image fetching uses its own pinned transport, never the API client or key.
+        self._image_loader = image_loader or VisionImageLoader()
         self._client = http_client or httpx.Client(
             timeout=HTTP_TIMEOUT,
             follow_redirects=False,
@@ -120,10 +128,14 @@ class DeepSeekGateway:
             raise PermanentIntegrationError("deepseek_input_invalid")
         for image_url in image_urls:
             _validate_image_url(image_url)
+        with ThreadPoolExecutor(max_workers=MAX_VISION_DOWNLOAD_WORKERS) as executor:
+            inline_images = list(executor.map(self._image_loader.load, image_urls))
+        if sum(len(image) for image in inline_images) > MAX_VISION_INLINE_CHARACTERS:
+            raise PermanentIntegrationError("deepseek_input_invalid")
         content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
         content.extend(
             {"type": "image_url", "image_url": {"url": image_url}}
-            for image_url in image_urls
+            for image_url in inline_images
         )
         return self._complete(
             model,

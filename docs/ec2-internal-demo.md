@@ -50,3 +50,24 @@ The instance role may not expose lifecycle inspection or EC2 Describe APIs. Do
 not expand IAM merely to satisfy optional inventory probes: validate actual S3
 Put/Get and backup behavior. The bucket's 30-day prefix lifecycle was provisioned
 in the infrastructure handoff and must not be overwritten as part of deployment.
+
+## Vision image delivery
+
+The backend downloads public image bytes and supplies inline Base64 images to
+DeepSeek, rather than asking the model provider to download YouTube/Steam URLs.
+Each redirect is revalidated, DNS answers must all be public, and connections
+pin the validated address while preserving TLS hostname verification. Image
+requests never use the DeepSeek API client or its Authorization header.
+
+Downloads are limited to four concurrent requests, 4 MiB per image, 15 seconds
+per image across redirects, and 24 MiB of aggregate inline image characters.
+The existing maximum of 12 images and evidence-reference order remain unchanged.
+Supported raster formats are detected from bytes. This path keeps image bytes
+in request-local memory, without adding stored image artifacts or new services.
+Structured-output repair reuses those inline bytes. Unavailable image inputs
+retain the existing nonfatal, explicitly marked visual fallback.
+
+For deployment verification, rerun a real Game and Creator analysis and require
+both `source_status.visual_analysis=available` and
+`model_metadata.vision_available=true`; a successful job with visual fallback
+alone does not verify this fix.

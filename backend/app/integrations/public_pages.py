@@ -112,6 +112,15 @@ class SocketResolver:
 class PinnedHTTPTransport:
     """Connect to a validated IP while preserving HTTP Host and TLS SNI."""
 
+    def __init__(
+        self,
+        *,
+        accept: str = "text/html,text/plain,application/xhtml+xml",
+        user_agent: str = "FindMeGamer/1.0 contact-discovery",
+    ) -> None:
+        self._accept = accept
+        self._user_agent = user_agent
+
     def request(
         self,
         *,
@@ -153,8 +162,8 @@ class PinnedHTTPTransport:
                     target,
                     headers={
                         "Host": host_header,
-                        "Accept": "text/html,text/plain,application/xhtml+xml",
-                        "User-Agent": "FindMeGamer/1.0 contact-discovery",
+                        "Accept": self._accept,
+                        "User-Agent": self._user_agent,
                         "Connection": "close",
                     },
                 )

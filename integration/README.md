@@ -21,6 +21,12 @@ are saved to the disposable fake-state volume, and no SMTP socket is opened.
 No public provider, AWS account, mailbox, production dotenv, user AWS config,
 or Keychain is accessed.
 
+Visual stages use small in-memory PNG fixtures through an integration-only image
+loader. The fake DeepSeek endpoint requires inline Base64 images and rejects
+remote image URLs; both Game and Creator profiles must publish an available
+visual-analysis status. Production image fetching remains covered by the image
+loader unit tests without introducing public image downloads into this harness.
+
 The runner checks all six Creator Map-Reduce response schemas against the current
 backend models, then exercises Analyze, Library detail/search/favorites, Match,
 Outreach template/SMTP configuration, preview and send, and the public Yes/No

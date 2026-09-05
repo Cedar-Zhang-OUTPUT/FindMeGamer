@@ -28,8 +28,30 @@ from app.schemas.ai_creator_map_reduce import (  # noqa: E402
     CreatorVideoBatchDigest,
 )
 from app.integrations.deepseek import DeepSeekGateway  # noqa: E402
+from app.integrations.errors import PermanentIntegrationError  # noqa: E402
 from app.outreach.smtp import SMTPConfig, SMTPTransientError  # noqa: E402
+from app.schemas.ai_creator import CreatorVisualAnalysis  # noqa: E402
+from app.schemas.ai_game import GameVisualAnalysis  # noqa: E402
 from capture_smtp import capture_gateway  # noqa: E402
+from fake_images import FakeImageLoader, INLINE_IMAGE, image_gateway  # noqa: E402
+
+
+class FakeImageTests(unittest.TestCase):
+    def test_known_fixture_is_inline_without_any_network(self) -> None:
+        with patch("socket.getaddrinfo", side_effect=AssertionError("Unexpected DNS")):
+            self.assertEqual(
+                FakeImageLoader().load(
+                    "https://images.integration.invalid/steam/1245620.png"
+                ),
+                INLINE_IMAGE,
+            )
+
+    def test_unexpected_source_is_not_downloaded(self) -> None:
+        with patch("socket.getaddrinfo", side_effect=AssertionError("Unexpected DNS")):
+            with self.assertRaises(PermanentIntegrationError):
+                FakeImageLoader().load(
+                    "https://i.ytimg.com/vi/real-video/hqdefault.jpg"
+                )
 
 
 class CaptureSMTPTests(unittest.TestCase):
@@ -131,6 +153,58 @@ class FakeCreatorContractTests(unittest.TestCase):
 
     def test_creator_brief(self) -> None:
         self.assert_schema_response(CreatorBriefSynthesis)
+
+    def assert_vision_response(self, schema, *, image_url: str, reference: str) -> None:
+        with image_gateway(
+            api_key="synthetic-contract-key", base_url="http://127.0.0.1:18081/deepseek"
+        ) as gateway:
+            parsed = gateway.complete_vision(
+                "deepseek-vision-test",
+                '{"asset_ref":"' + reference + '"}',
+                [image_url],
+                schema,
+            )
+        self.assertEqual(parsed.status, "available")
+        self.assertEqual(parsed.visual_style.evidence[0].reference, reference)
+
+    def test_game_vision_transmits_inline_image(self) -> None:
+        self.assert_vision_response(
+            GameVisualAnalysis,
+            image_url="https://images.integration.invalid/steam/1245620.png",
+            reference="header:0",
+        )
+
+    def test_creator_vision_transmits_inline_image(self) -> None:
+        self.assert_vision_response(
+            CreatorVisualAnalysis,
+            image_url="https://images.integration.invalid/youtube/video-recovery01.png",
+            reference="video:video-recovery01:thumbnail:0",
+        )
+
+    def test_fake_provider_rejects_remote_image_urls(self) -> None:
+        with DeepSeekGateway(
+            api_key="synthetic-contract-key", base_url="http://127.0.0.1:18081/deepseek"
+        ) as gateway:
+            with self.assertRaises(PermanentIntegrationError):
+                gateway._complete(
+                    "deepseek-vision-test",
+                    [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": '{"asset_ref":"header:0"}'},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": "https://images.integration.invalid/steam/1245620.png"
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                    GameVisualAnalysis,
+                    max_tokens=None,
+                )
 
 
 if __name__ == "__main__":

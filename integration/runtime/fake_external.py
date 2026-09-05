@@ -10,6 +10,8 @@ import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
+from fake_images import INLINE_IMAGE
+
 
 STATE = Path(os.environ.get("FAKE_STATE_DIR", "/integration-state"))
 STATE.mkdir(parents=True, exist_ok=True)
@@ -223,6 +225,38 @@ def game_synthesis() -> dict[str, object]:
     }
 
 
+def visual_analysis(schema_name: str, reference: str) -> dict[str, object]:
+    fields = (
+        ("visual_motifs", "readability", "content_hook_observations")
+        if schema_name == "GameVisualAnalysis"
+        else (
+            "production_quality_signals",
+            "thumbnail_patterns",
+            "thumbnail_readability",
+            "branding",
+        )
+    )
+    return {
+        "english_language_check": True,
+        "status": "available",
+        "unavailable_reason": None,
+        "visual_style": {
+            "status": "available",
+            "value": "The synthetic fixture has a minimal visual style.",
+            "confidence": "high",
+            "evidence": [
+                {
+                    "kind": "visual_observation",
+                    "source_type": "visual_asset",
+                    "reference": reference,
+                    "observation": "The supplied inline image is the fixture evidence.",
+                }
+            ],
+        },
+        **{field: unavailable() for field in fields},
+    }
+
+
 def pairwise(creator_id: str) -> dict[str, object]:
     dimension = {
         "analysis": "The supplied profile supports a qualitative fit.",
@@ -346,6 +380,11 @@ def youtube_payload(endpoint: str, query: dict[str, list[str]]) -> dict[str, obj
                         "title": f"Video {video_id}",
                         "publishedAt": "2026-09-01T00:00:00Z",
                         "channelId": f"UC{video_id.removeprefix('video-')}",
+                        "thumbnails": {
+                            "high": {
+                                "url": f"https://images.integration.invalid/youtube/{video_id}.png"
+                            }
+                        },
                     },
                     "contentDetails": {"duration": "PT10M"},
                     "statistics": {
@@ -393,6 +432,7 @@ class Handler(BaseHTTPRequestHandler):
                             "steam_appid": int(app_id),
                             "type": "game",
                             "name": "Integration Strategy Game",
+                            "header_image": f"https://images.integration.invalid/steam/{app_id}.png",
                             "is_free": False,
                             "developers": ["Integration Studio"],
                             "publishers": ["Integration Publisher"],
@@ -450,6 +490,31 @@ class Handler(BaseHTTPRequestHandler):
             payload = game_extraction()
         elif schema_name == "GameSynthesis":
             payload = game_synthesis()
+        elif schema_name in {"GameVisualAnalysis", "CreatorVisualAnalysis"}:
+            parts = [
+                part
+                for message in body.get("messages", [])
+                if isinstance(message.get("content"), list)
+                for part in message["content"]
+            ]
+            images = [
+                part["image_url"]["url"]
+                for part in parts
+                if part.get("type") == "image_url"
+            ]
+            prompts = "\n".join(
+                part["text"] for part in parts if part.get("type") == "text"
+            )
+            reference = re.search(r'"asset_ref"\s*:\s*"([^"]+)"', prompts)
+            if (
+                not images
+                or any(image != INLINE_IMAGE for image in images)
+                or reference is None
+            ):
+                self.reply({"error": "expected_inline_fixture_image"}, 400)
+                return
+            append_log(f"vision inline_images verified {schema_name}")
+            payload = visual_analysis(schema_name, reference.group(1))
         elif schema_name == "ScreeningOutput":
             payload = {
                 "english_language_check": True,

@@ -1,5 +1,7 @@
+import base64
 import json
 import logging
+from threading import Barrier, Lock
 from typing import ClassVar
 
 import httpx
@@ -25,11 +27,26 @@ class LargeGameExtraction(GameExtraction):
     deepseek_max_tokens: ClassVar[int] = 6_144
 
 
+def inline_image(url: str) -> str:
+    return "data:image/jpeg;base64," + base64.b64encode(url.encode()).decode("ascii")
+
+
+class FakeImageLoader:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def load(self, url: str) -> str:
+        self.calls.append(url)
+        return inline_image(url)
+
+
 @pytest.fixture(autouse=True)
 def enabled_deepseek_logger(monkeypatch: pytest.MonkeyPatch) -> None:
     # Earlier migration tests can disable existing loggers via fileConfig;
     # caplog changes levels but does not restore this separate disabled flag.
-    monkeypatch.setattr(logging.getLogger("app.integrations.deepseek"), "disabled", False)
+    monkeypatch.setattr(
+        logging.getLogger("app.integrations.deepseek"), "disabled", False
+    )
 
 
 def test_deepseek_rejects_invalid_structured_output() -> None:
@@ -362,7 +379,9 @@ def test_deepseek_vision_request_accepts_call_output_budget() -> None:
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
 
-    result = DeepSeekGateway(api_key="test-key", http_client=client).complete_vision(
+    result = DeepSeekGateway(
+        api_key="test-key", http_client=client, image_loader=FakeImageLoader()
+    ).complete_vision(
         "vision-model",
         "Analyze only visible evidence",
         ["https://cdn.example/one.jpg"],
@@ -519,7 +538,10 @@ def test_deepseek_first_vision_request_uses_json_object_with_actual_schema() -> 
         )
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
-    result = DeepSeekGateway(api_key="test-key", http_client=client).complete_vision(
+    loader = FakeImageLoader()
+    result = DeepSeekGateway(
+        api_key="test-key", http_client=client, image_loader=loader
+    ).complete_vision(
         "deepseek-v4-flash-vision-exp",
         "Analyze only visible evidence",
         ["https://cdn.example/one.jpg", "https://cdn.example/two.jpg"],
@@ -547,9 +569,135 @@ def test_deepseek_first_vision_request_uses_json_object_with_actual_schema() -> 
     content = payload["messages"][1]["content"]
     assert content == [
         {"type": "text", "text": "Analyze only visible evidence"},
-        {"type": "image_url", "image_url": {"url": "https://cdn.example/one.jpg"}},
-        {"type": "image_url", "image_url": {"url": "https://cdn.example/two.jpg"}},
+        {
+            "type": "image_url",
+            "image_url": {"url": inline_image("https://cdn.example/one.jpg")},
+        },
+        {
+            "type": "image_url",
+            "image_url": {"url": inline_image("https://cdn.example/two.jpg")},
+        },
     ]
+    assert sorted(loader.calls) == [
+        "https://cdn.example/one.jpg",
+        "https://cdn.example/two.jpg",
+    ]
+
+
+def test_vision_downloads_at_most_four_in_parallel_and_preserves_order() -> None:
+    urls = [f"https://cdn.example/{index}.jpg" for index in range(12)]
+    barrier = Barrier(4, timeout=3)
+    lock = Lock()
+    active = peak = 0
+    requests: list[httpx.Request] = []
+
+    class ConcurrentLoader:
+        def load(self, url: str) -> str:
+            nonlocal active, peak
+            with lock:
+                active += 1
+                peak = max(peak, active)
+            barrier.wait()
+            with lock:
+                active -= 1
+            return inline_image(url)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": '{"title":"ok"}'}}]}
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        DeepSeekGateway(
+            api_key="test-key", http_client=client, image_loader=ConcurrentLoader()
+        ).complete_vision("vision-model", "Visible evidence", urls, GameExtraction)
+    assert peak == 4
+    content = json.loads(requests[0].read())["messages"][1]["content"]
+    assert [item["image_url"]["url"] for item in content[1:]] == [
+        inline_image(url) for url in urls
+    ]
+
+
+def test_vision_repair_reuses_inline_images_without_downloading_again(caplog) -> None:
+    loader = FakeImageLoader()
+    requests: list[httpx.Request] = []
+    url = "https://cdn.example/one.jpg"
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        content = "not-json" if len(requests) == 1 else '{"title":"Repaired"}'
+        return httpx.Response(
+            200, json={"choices": [{"message": {"content": content}}]}
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = DeepSeekGateway(
+            api_key="PRIVATE-KEY", http_client=client, image_loader=loader
+        ).complete_vision("vision-model", "Visible evidence", [url], GameExtraction)
+    assert result.title == "Repaired"
+    assert loader.calls == [url]
+    assert len(requests) == 2
+    for request in requests:
+        image = json.loads(request.read())["messages"][1]["content"][1]
+        assert image["image_url"]["url"] == inline_image(url)
+    assert inline_image(url) not in caplog.text
+    assert "PRIVATE-KEY" not in caplog.text
+
+
+def test_vision_download_failure_does_not_call_model_or_send_key(caplog) -> None:
+    class FailingLoader:
+        def load(self, url: str) -> str:
+            raise TransientIntegrationError("vision_image_unavailable")
+
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: pytest.fail("model called"))
+    ) as client:
+        with pytest.raises(TransientIntegrationError, match="vision_image_unavailable"):
+            DeepSeekGateway(
+                api_key="PRIVATE-KEY", http_client=client, image_loader=FailingLoader()
+            ).complete_vision(
+                "vision-model",
+                "prompt",
+                ["https://cdn.example/image.jpg"],
+                GameExtraction,
+            )
+    assert "PRIVATE-KEY" not in caplog.text
+
+
+def test_vision_rejects_aggregate_inline_budget_before_model_call(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.integrations.deepseek.MAX_VISION_INLINE_CHARACTERS", 100, raising=False
+    )
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: pytest.fail("model called"))
+    ) as client:
+        with pytest.raises(PermanentIntegrationError, match="deepseek_input_invalid"):
+            DeepSeekGateway(
+                api_key="test-key", http_client=client, image_loader=FakeImageLoader()
+            ).complete_vision(
+                "vision-model",
+                "prompt",
+                ["https://cdn.example/one.jpg", "https://cdn.example/two.jpg"],
+                GameExtraction,
+            )
+
+
+def test_vision_validates_all_inputs_before_any_download() -> None:
+    loader = FakeImageLoader()
+    with httpx.Client(
+        transport=httpx.MockTransport(lambda request: pytest.fail("model called"))
+    ) as client:
+        with pytest.raises(PermanentIntegrationError, match="deepseek_input_invalid"):
+            DeepSeekGateway(
+                api_key="test-key", http_client=client, image_loader=loader
+            ).complete_vision(
+                "vision-model",
+                "prompt",
+                ["https://cdn.example/one.jpg", "https://169.254.169.254/image"],
+                GameExtraction,
+            )
+    assert loader.calls == []
 
 
 @pytest.mark.parametrize(
@@ -706,9 +854,9 @@ def test_deepseek_accepts_strict_public_https_image_url(image_url: str) -> None:
 
     client = httpx.Client(transport=httpx.MockTransport(handler))
 
-    result = DeepSeekGateway(api_key="test-key", http_client=client).complete_vision(
-        "vision-model", "prompt", [image_url], GameExtraction
-    )
+    result = DeepSeekGateway(
+        api_key="test-key", http_client=client, image_loader=FakeImageLoader()
+    ).complete_vision("vision-model", "prompt", [image_url], GameExtraction)
 
     assert result.title == "valid"
     assert len(requests) == 1

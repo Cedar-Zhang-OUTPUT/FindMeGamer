@@ -208,6 +208,9 @@ def assert_library_profile(kind: str, profile_id: str, query: str) -> None:
     path = f"/api/v1/profiles/{kind}"
     detail = request_json("GET", f"{path}/{profile_id}")
     assert detail["id"] == profile_id
+    assert detail["source_status"]["visual_analysis"] == "available", detail[
+        "source_status"
+    ]
     request_json("PATCH", f"{path}/{profile_id}/favorite", payload={"favorite": True})
     listed = request_json(
         "GET", path + "?" + urlencode({"only_collection": "true", "query": query})
@@ -525,6 +528,8 @@ def recovery_scenario() -> None:
         "deepseek CreatorPerformanceAudienceReduction",
         "deepseek CreatorCommercialSafetyReduction",
         "deepseek CreatorBriefSynthesis",
+        "vision inline_images verified CreatorVisualAnalysis",
+        "vision inline_images verified GameVisualAnalysis",
         "deepseek ScreeningOutput",
         "deepseek PairwiseMatchBrief",
         "deepseek FinalRankingOutput",
