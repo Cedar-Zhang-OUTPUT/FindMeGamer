@@ -289,6 +289,23 @@ def test_screening_prompt_carries_the_full_hundred_creator_seed_library() -> Non
     assert sum(len(message.content) for message in messages) <= 1_000_000
 
 
+def test_screening_rejects_total_input_over_its_byte_budget_without_dropping_people() -> (
+    None
+):
+    creator_inputs = [
+        (UUID(int=index), large_creator_brief()) for index in range(1, 301)
+    ]
+
+    with pytest.raises(ValueError, match="total byte budget"):
+        build_screening_prompt(game_brief(), creator_inputs)
+
+
+def test_match_capacity_prompts_have_new_versions() -> None:
+    assert SCREENING_PROMPT_VERSION == "match-screening-v2"
+    assert PAIRWISE_MATCH_PROMPT_VERSION == "pairwise-match-v2"
+    assert RANKING_PROMPT_VERSION == "match-ranking-v2"
+
+
 def test_pairwise_prompt_projects_an_explicit_fit_only_profile_allowlist() -> None:
     messages = build_pairwise_prompt(game_brief(), creator_profile())
     payload = parse_prompt_payload(messages)
