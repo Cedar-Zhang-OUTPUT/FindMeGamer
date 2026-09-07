@@ -127,6 +127,8 @@ if tool == "security":
 if tool == "codesign":
     if "--verify" in arguments:
         raise SystemExit(13 if mode == "bundle-verification-failure" else 0)
+    if mode == "runtime-signing-failure" and arguments[-1].endswith(".dylib"):
+        raise SystemExit(12)
     raise SystemExit(12 if mode == "signing-failure" else 0)
 
 if tool == "xcrun":
@@ -135,7 +137,31 @@ if tool == "xcrun":
             raise SystemExit(23)
         destination = pathlib.Path(arguments[arguments.index("--destination") + 1])
         destination.mkdir(parents=True, exist_ok=True)
-        (destination / "libswiftCompatibilitySpan.dylib").write_text("runtime fixture")
+        if mode not in {"runtime-missing", "runtime-not-required"}:
+            name = "libswiftCompatibilitySpan.dylib"
+            if mode == "runtime-original-only" and "--sign" in arguments:
+                name += ".original"
+            (destination / name).write_text("runtime fixture")
+        raise SystemExit(0)
+    if arguments[0] == "otool":
+        if "-L" in arguments:
+            if mode != "runtime-not-required":
+                print("\t@rpath/libswiftCompatibilitySpan.dylib (compatibility version 0.0.0, current version 0.0.0, weak)")
+        elif "-D" in arguments:
+            runtime = pathlib.Path(arguments[-1])
+            print("/usr/lib/swift/" + ("Wrong.dylib" if runtime.read_text() == "wrong install name" else "libswiftCompatibilitySpan.dylib"))
+        else:
+            raise SystemExit(24)
+        raise SystemExit(0)
+    if arguments[0] == "lipo":
+        if "-archs" in arguments:
+            print("arm64 x86_64")
+        elif "-verify_arch" in arguments:
+            runtime = pathlib.Path(arguments[1])
+            if runtime.read_text() == "wrong architecture":
+                raise SystemExit(25)
+        else:
+            raise SystemExit(26)
         raise SystemExit(0)
     if arguments[0] == "install_name_tool":
         raise SystemExit(0)
@@ -283,15 +309,18 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     assert all(call["args"][call["args"].index("-c") + 1] == "release" for call in swift_calls)
     sign_calls = [call for call in recorded if call["tool"] == "codesign" and "--sign" in call["args"]]
     assert identity_index < build_index and profile_index < build_index
-    assert len(sign_calls) == 2
+    assert len(sign_calls) == 3
     assert all("--options" in call["args"] and "runtime" in call["args"] for call in sign_calls)
-    assert all("--timestamp" in call["args"] and "--entitlements" in call["args"] for call in sign_calls)
-    assert sign_calls[0]["args"][-1].endswith("/Contents/MacOS/FindMeGamer")
-    assert sign_calls[1]["args"][-1].endswith("/FindMeGamer.app")
+    assert all("--timestamp" in call["args"] for call in sign_calls)
+    assert sign_calls[0]["args"][-1].endswith("/Contents/Frameworks/libswiftCompatibilitySpan.dylib")
+    assert "--entitlements" not in sign_calls[0]["args"]
+    assert all("--entitlements" in call["args"] for call in sign_calls[1:])
+    assert sign_calls[1]["args"][-1].endswith("/Contents/MacOS/FindMeGamer")
+    assert sign_calls[2]["args"][-1].endswith("/FindMeGamer.app")
     submit_index = index_of(lambda call: call["tool"] == "xcrun" and call["args"][:2] == ["notarytool", "submit"])
     staple_index = index_of(lambda call: call["tool"] == "xcrun" and call["args"][:2] == ["stapler", "staple"])
     ticket_index = index_of(lambda call: call["tool"] == "xcrun" and call["args"][:2] == ["stapler", "validate"])
-    verify_index = index_of(lambda call: call["tool"] == "codesign" and "--verify" in call["args"])
+    verify_index = index_of(lambda call: call["tool"] == "codesign" and "--verify" in call["args"] and "--deep" in call["args"])
     gatekeeper_index = index_of(lambda call: call["tool"] == "spctl")
     final_zip_index = max(index for index, call in enumerate(recorded) if call["tool"] == "ditto" and "-c" in call["args"])
     assert submit_index < staple_index < ticket_index < verify_index < gatekeeper_index < final_zip_index
@@ -385,6 +414,34 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     restored_icon = run([str(verify_script), str(archive)], base_environment)
     assert restored_icon.returncode == 0, restored_icon.stderr
 
+    # The loader needs the declared name, not swift-stdlib-tool's signing backup.
+    # Checksums and a valid outer signature must not hide a missing/wrong runtime.
+    packaged_runtime = app / "Contents" / "Frameworks" / "libswiftCompatibilitySpan.dylib"
+    runtime_backup = packaged_runtime.with_name(packaged_runtime.name + ".original")
+    original_runtime = packaged_runtime.read_bytes()
+    try:
+        for runtime_failure in ("missing", "original-only", "empty", "wrong install name", "wrong architecture"):
+            packaged_runtime.write_bytes(original_runtime)
+            if runtime_backup.exists():
+                runtime_backup.unlink()
+            if runtime_failure == "missing":
+                packaged_runtime.unlink()
+            elif runtime_failure == "original-only":
+                packaged_runtime.rename(runtime_backup)
+            elif runtime_failure == "empty":
+                packaged_runtime.write_bytes(b"")
+            else:
+                packaged_runtime.write_text(runtime_failure)
+            rearchive(app, archive)
+            invalid_runtime = run([str(verify_script), str(archive)], base_environment)
+            assert invalid_runtime.returncode != 0, f"runtime accepted: {runtime_failure}"
+    finally:
+        packaged_runtime.write_bytes(original_runtime)
+        if runtime_backup.exists():
+            runtime_backup.unlink()
+        rearchive(app, archive)
+    assert run([str(verify_script), str(archive)], base_environment).returncode == 0
+
     original_sidecar = sidecar.read_bytes()
     sidecar.write_text("0" * 64 + f"  {archive.name}\n", encoding="utf-8")
     log.write_text("", encoding="utf-8")
@@ -435,6 +492,8 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
         "gatekeeper-failure",
         "plist-failure",
         "runtime-copy-failure",
+        "runtime-missing",
+        "runtime-signing-failure",
     ):
         failed = build(failure_mode)
         assert failed.returncode != 0, failure_mode
@@ -460,6 +519,26 @@ with tempfile.TemporaryDirectory(prefix="fmg-release-test.") as temporary:
     adhoc_extracted = test_root / "adhoc-extracted"
     subprocess.run(["/usr/bin/ditto", "-x", "-k", str(archive), str(adhoc_extracted)], check=True)
     assert_packaged_app_icon(adhoc_extracted / "FindMeGamer.app")
+
+    # Separate copying from signing so a signing backup cannot be the payload.
+    original_only = build("runtime-original-only", adhoc=True)
+    assert original_only.returncode == 0, original_only.stderr
+    original_extracted = test_root / "original-only-extracted"
+    subprocess.run(["/usr/bin/ditto", "-x", "-k", str(archive), str(original_extracted)], check=True)
+    runtime_contents = original_extracted / "FindMeGamer.app" / "Contents" / "Frameworks"
+    assert (runtime_contents / "libswiftCompatibilitySpan.dylib").is_file()
+    assert not (runtime_contents / "libswiftCompatibilitySpan.dylib.original").exists()
+    original_calls = calls(log)
+    assert all("--sign" not in call["args"] for call in original_calls if call["tool"] == "xcrun" and call["args"][0] == "swift-stdlib-tool")
+    assert any(call["tool"] == "codesign" and "--sign" in call["args"] and call["args"][-1].endswith("/libswiftCompatibilitySpan.dylib") for call in original_calls)
+
+    no_runtime = build("runtime-not-required", adhoc=True)
+    assert no_runtime.returncode == 0, no_runtime.stderr
+    no_runtime_verified = run(
+        [str(verify_script), str(archive), "--allow-adhoc"],
+        base_environment | {"FMG_RELEASE_FAKE_MODE": "runtime-not-required"},
+    )
+    assert no_runtime_verified.returncode == 0, no_runtime_verified.stderr
 
     # Verification rejects malformed ZIPs and unexpected top-level payloads.
     archive.write_bytes(b"not a zip")

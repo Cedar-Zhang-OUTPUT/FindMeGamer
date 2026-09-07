@@ -287,8 +287,39 @@ frameworks_dir="${app_contents}/Frameworks"
 mkdir -p "$frameworks_dir"
 chmod 755 "$frameworks_dir"
 runtime_identity="${developer_identity:--}"
+# Copy first, then sign the actual loadable files explicitly. The combined
+# swift-stdlib-tool --sign path also creates .original signing backups.
 "$xcrun_bin" swift-stdlib-tool --copy --scan-executable "$app_binary" --platform macosx \
-  --destination "$frameworks_dir" --sign "$runtime_identity" || fail "Swift runtime library packaging failed"
+  --destination "$frameworks_dir" || fail "Swift runtime library packaging failed"
+runtime_dependencies="$("$xcrun_bin" otool -L "$app_binary")" || fail "Swift runtime dependencies could not be inspected"
+if [[ "$runtime_dependencies" == *"@rpath/libswiftCompatibilitySpan.dylib ("* ]]; then
+  span_runtime="${frameworks_dir}/libswiftCompatibilitySpan.dylib"
+  [[ -s "$span_runtime" && ! -L "$span_runtime" ]] || fail "Swift compatibility runtime is missing"
+  runtime_architectures="$("$xcrun_bin" lipo -archs "$app_binary")" || fail "executable architectures could not be inspected"
+  [[ -n "$runtime_architectures" ]] || fail "executable architectures are missing"
+  for runtime_architecture in $runtime_architectures; do
+    "$xcrun_bin" lipo "$span_runtime" -verify_arch "$runtime_architecture" >/dev/null 2>&1 ||
+      fail "Swift compatibility runtime architecture is missing"
+    runtime_install_names="$("$xcrun_bin" otool -arch "$runtime_architecture" -D "$span_runtime")" ||
+      fail "Swift compatibility runtime could not be inspected"
+    printf '%s\n' "$runtime_install_names" | grep -Eq '^(@rpath|/usr/lib/swift)/libswiftCompatibilitySpan[.]dylib$' ||
+      fail "Swift compatibility runtime install name is invalid"
+  done
+fi
+shopt -s nullglob
+runtime_libraries=("$frameworks_dir"/*.dylib)
+shopt -u nullglob
+for runtime_library in ${runtime_libraries[@]+"${runtime_libraries[@]}"}; do
+  [[ -f "$runtime_library" && ! -L "$runtime_library" ]] || fail "Swift runtime library is invalid"
+  if [[ "$adhoc_release" == "1" ]]; then
+    "$codesign_bin" --force --sign "$runtime_identity" --timestamp=none "$runtime_library" \
+      >/dev/null 2>&1 || fail "ad hoc Swift runtime signing failed"
+  else
+    "$codesign_bin" --force --sign "$runtime_identity" --options runtime --timestamp "$runtime_library" \
+      >/dev/null 2>&1 || fail "Developer ID Swift runtime signing failed"
+  fi
+  "$codesign_bin" --verify --strict "$runtime_library" >/dev/null 2>&1 || fail "Swift runtime signature verification failed"
+done
 "$xcrun_bin" install_name_tool -add_rpath '@executable_path/../Frameworks' "$app_binary" ||
   fail "bundled Swift runtime search path could not be configured"
 

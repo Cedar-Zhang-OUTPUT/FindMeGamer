@@ -191,6 +191,24 @@ app_icon="${app_bundle}/Contents/Resources/AppIcon.icns"
 [[ -s "$app_icon" && ! -L "$app_icon" ]] || fail "release App icon is missing"
 [[ "$(/usr/bin/head -c 4 "$app_icon")" == "icns" ]] || fail "release App icon is invalid"
 
+# Swift 6.2's macOS 14 compatibility library may be weak-linked, but when it is
+# declared the bundle must contain the loadable name, not a signing backup.
+runtime_dependencies="$("$xcrun_bin" otool -L "$app_binary")" || fail "release runtime dependencies could not be inspected"
+if [[ "$runtime_dependencies" == *"@rpath/libswiftCompatibilitySpan.dylib ("* ]]; then
+  span_runtime="${app_bundle}/Contents/Frameworks/libswiftCompatibilitySpan.dylib"
+  [[ -s "$span_runtime" && ! -L "$span_runtime" ]] || fail "release Swift compatibility runtime is missing"
+  runtime_architectures="$("$xcrun_bin" lipo -archs "$app_binary")" || fail "release executable architectures could not be inspected"
+  [[ -n "$runtime_architectures" ]] || fail "release executable architectures are missing"
+  for runtime_architecture in $runtime_architectures; do
+    "$xcrun_bin" lipo "$span_runtime" -verify_arch "$runtime_architecture" >/dev/null 2>&1 ||
+      fail "release Swift compatibility runtime architecture is missing"
+    runtime_install_names="$("$xcrun_bin" otool -arch "$runtime_architecture" -D "$span_runtime")" ||
+      fail "release Swift compatibility runtime could not be inspected"
+    printf '%s\n' "$runtime_install_names" | grep -Eq '^(@rpath|/usr/lib/swift)/libswiftCompatibilitySpan[.]dylib$' ||
+      fail "release Swift compatibility runtime install name is invalid"
+  done
+fi
+
 "$codesign_bin" --verify --deep --strict "$app_bundle" >/dev/null 2>&1 || fail "release signature verification failed"
 if [[ "$allow_adhoc" == "yes" ]]; then
   echo "PASS ad hoc release verification (trust and notarization acceptance skipped)"
