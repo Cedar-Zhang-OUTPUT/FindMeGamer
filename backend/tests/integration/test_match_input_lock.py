@@ -576,5 +576,5 @@ def test_zero_selected_and_zero_eligible_complete_atomically_without_ai_or_candi
             )
             == 0
         )
-    assert len(zero_ai.calls) == 1
+    assert len(zero_ai.calls) == 2  # Nonempty Library gets one empty-result recheck.
     assert no_ai.calls == []
