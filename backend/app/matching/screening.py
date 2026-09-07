@@ -13,7 +13,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.analysis.contracts import Message
-from app.matching.prompts import build_screening_prompt
+from app.matching.prompts import build_empty_screening_recheck, build_screening_prompt
 from app.repositories.match import MatchRepository
 from app.schemas.ai_creator import CreatorBrief
 from app.schemas.ai_game import GameBrief
@@ -126,6 +126,15 @@ class ScreeningService:
             ScreeningOutput,
         )
         selections = self._validate_for_task(raw_output, locked=locked)
+        if not selections:
+            # Recheck once before applying an empty result. Both passes use the
+            # complete locked input; a second valid empty result remains valid.
+            raw_output = self._ai.complete_structured(
+                SCREENING_MODEL,
+                build_empty_screening_recheck(messages),
+                ScreeningOutput,
+            )
+            selections = self._validate_for_task(raw_output, locked=locked)
 
         with self._session_factory() as session, session.begin():
             repository = self._repository_factory(session)

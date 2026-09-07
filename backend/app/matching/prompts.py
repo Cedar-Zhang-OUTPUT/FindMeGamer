@@ -13,6 +13,7 @@ from app.schemas.ai_match import PairwiseMatchBrief
 
 
 SCREENING_PROMPT_VERSION = "match-screening-v2"
+SCREENING_EMPTY_RECHECK_PROMPT_VERSION = "match-screening-empty-recheck-v1"
 PAIRWISE_MATCH_PROMPT_VERSION = "pairwise-match-v2"
 RANKING_PROMPT_VERSION = "match-ranking-v2"
 MAX_MATCH_MESSAGES = 100
@@ -165,6 +166,33 @@ def build_screening_prompt(
         },
         items_key="creators",
     )
+
+
+def build_empty_screening_recheck(messages: list[Message]) -> list[Message]:
+    """Keep every original input intact for one evidence-only empty-result check."""
+
+    request = Message(
+        role="user",
+        content=(
+            f"Prompt version: {SCREENING_EMPTY_RECHECK_PROMPT_VERSION}\n"
+            "The initial screening selected no Creators. Recheck the complete Game Brief "
+            "and every Creator Brief already supplied, across all messages as one candidate "
+            "pool. This is plausible broad screening for later independent Deep Match, "
+            "not a final endorsement. Select only candidates with positive evidence of "
+            "plausible fit in the supplied material; if none are supported, selected must "
+            "remain empty. Never invent Creator IDs or evidence. Do not use contact "
+            "availability, favorite state, or prior outreach to judge fit. Return the "
+            "same ScreeningOutput JSON schema."
+        ),
+    )
+    recheck = [*messages, request]
+    if (
+        len(recheck) > MAX_MATCH_MESSAGES
+        or sum(len(message.content.encode("utf-8")) for message in recheck)
+        > MAX_MATCH_TOTAL_MESSAGE_BYTES
+    ):
+        raise ValueError("match screening recheck exceeds its total byte budget")
+    return recheck
 
 
 def build_pairwise_prompt(
