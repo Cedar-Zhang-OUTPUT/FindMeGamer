@@ -3,6 +3,8 @@ import SwiftUI
 
 struct SidebarView: View {
   @Binding var selection: AppDestination?
+  @Environment(AppUpdateChecker.self) private var updates
+  @Environment(\.openWindow) private var openWindow
 
   var body: some View {
     List(selection: $selection) {
@@ -16,6 +18,22 @@ struct SidebarView: View {
       }
     }
     .listStyle(.sidebar)
+    .safeAreaInset(edge: .bottom) {
+      if let release = updates.availableRelease {
+        Button {
+          openWindow(id: "app-updates")
+        } label: {
+          Label("Update to \(release.version)", systemImage: "arrow.down.circle")
+            .font(.callout.weight(.medium))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(StudioPalette.blue)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.bar)
+        .accessibilityIdentifier("app.update.available")
+      }
+    }
     .safeAreaInset(edge: .top, spacing: 0) {
       VStack(spacing: 0) {
         HStack(spacing: WorkspaceDesign.spaceS) {
