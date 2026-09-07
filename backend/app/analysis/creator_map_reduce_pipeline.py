@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -60,6 +61,8 @@ from app.schemas.ai_creator_map_reduce import (
 )
 from app.schemas.ai_game import EvidenceCatalog, StageOutput, validate_stage_evidence
 
+
+logger = logging.getLogger(__name__)
 
 MAP_MODEL = "deepseek-v4-flash"
 REDUCTION_MODEL = "deepseek-v4-flash"
@@ -575,7 +578,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
         if not bundle.image_urls:
             return unavailable_visual_analysis(_NO_IMAGES_REASON)
         prompt = render_vision_prompt(bundle.messages)
-        for _ in range(2):
+        for attempt in range(1, 3):
             try:
                 output = self._deepseek.complete_vision(
                     VISION_MODEL,
@@ -589,6 +592,11 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
             try:
                 validate_stage_evidence(output, bundle.evidence_catalog)
             except ValueError:
+                logger.warning(
+                    "creator_visual_evidence_rejected "
+                    "attempt=%d reason=evidence_catalog_mismatch",
+                    attempt,
+                )
                 continue
             return output
         return unavailable_visual_analysis(_VISION_FAILURE_REASON)

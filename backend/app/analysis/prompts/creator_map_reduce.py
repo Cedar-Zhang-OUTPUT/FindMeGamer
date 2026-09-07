@@ -24,7 +24,7 @@ CREATOR_CONTENT_FORMAT_PROMPT_VERSION = "creator-content-format-v2"
 CREATOR_PRESENTATION_PROMPT_VERSION = "creator-presentation-v2"
 CREATOR_PERFORMANCE_AUDIENCE_PROMPT_VERSION = "creator-performance-audience-v2"
 CREATOR_COMMERCIAL_SAFETY_PROMPT_VERSION = "creator-commercial-safety-v2"
-CREATOR_BRIEF_PROMPT_VERSION = "creator-brief-v1"
+CREATOR_BRIEF_PROMPT_VERSION = "creator-brief-v2"
 
 CREATOR_VIDEO_BATCH_SIZE = 10
 MAX_CREATOR_VIDEO_BATCHES = 5
@@ -276,6 +276,10 @@ def build_creator_brief_bundle(
             f"{_MAP_REDUCE_RULES}\nGenerate only the compact, score-free Creator "
             "Brief used for later matching plus bounded contact selections. Use the "
             "four validated reductions below; "
+            "Keep every brief value/reason at most 144 characters (not words), "
+            "aiming for 100 characters. Each list item is at most 64 characters, "
+            "aiming for 40; choose at most 3 items per list. Preserve negation, "
+            "conditions and uncertainty while using concise English. "
             "no raw video metadata is present or needed. Each available brief claim "
             "must cite one exact reduction reference. Do not output rank, score, "
             "manual fields, scheduling fields, or a game-specific Match Brief. Select "

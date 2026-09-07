@@ -19,7 +19,7 @@ from app.schemas.ai_creator import (
 from app.schemas.ai_game import EvidenceCatalog, EvidenceCatalogEntry
 
 CREATOR_METADATA_PROMPT_VERSION = "creator-metadata-v1"
-CREATOR_VISUAL_PROMPT_VERSION = "creator-visual-v1"
+CREATOR_VISUAL_PROMPT_VERSION = "creator-visual-v2"
 CREATOR_SYNTHESIS_PROMPT_VERSION = "creator-synthesis-v1"
 EMPTY_CREATOR_CONTACT_EVIDENCE = CreatorContactEvidence(candidates=())
 MAX_PROMPT_VIDEO_ID_BYTES = 96
@@ -82,8 +82,18 @@ def build_creator_visual_bundle(
         stage_rules=(
             f"{_CREATOR_RULES}\nObserve only the supplied thumbnail assets. Cite each "
             "video/thumbnail asset_ref. Analyze visual style, visible production-quality "
-            "signals, patterns, readability, and branding only. If no usable thumbnails "
-            "exist, return the explicit unavailable visual result."
+            "signals, patterns, readability, and branding only. "
+            "Use kind=visual_observation and source_type=visual_asset for every "
+            "available claim's evidence, with a reference copied exactly from this "
+            "stage's evidence_catalog. Never use ai_inference or source_fact in this "
+            "visual-stage output. If any visual claim is available, set "
+            "status=available and unavailable_reason=null. Individual unsupported "
+            "claims must remain unavailable with a reason; they do not make the "
+            "whole result unavailable when another claim is supported. If no claim "
+            "can be supported, set status=unavailable, supply a nonblank "
+            "unavailable_reason, and make every visual claim unavailable with a "
+            "reason. Never force a claim to available. Trim all generated text; "
+            "do not return blank or whitespace-only values."
         ),
         label="SOURCE_JSON_UNTRUSTED_EVIDENCE",
         payload=payload,
@@ -331,7 +341,7 @@ def _visual_catalog(assets: tuple[VisualAsset, ...]) -> EvidenceCatalog:
             EvidenceCatalogEntry(
                 reference=asset.asset_ref,
                 source_type="visual_asset",
-                allowed_kinds=("visual_observation", "ai_inference"),
+                allowed_kinds=("visual_observation",),
             )
             for asset in assets
         )

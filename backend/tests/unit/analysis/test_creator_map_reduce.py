@@ -463,6 +463,8 @@ def test_brief_prompt_uses_only_reduced_profiles_and_stays_bounded() -> None:
     assert "youtube_source" not in rendered
     assert "video_batch" not in rendered
     assert "validated_reductions" in payload
+    assert "144 characters (not words)" in rendered
+    assert "at most 64 characters" in rendered
     assert payload["contact_evidence"] == contact_evidence().model_dump(mode="json")
     assert (
         sum(len(item.content.encode("utf-8")) for item in bundle.messages)
@@ -523,7 +525,7 @@ def test_map_reduce_prompt_versions_are_stage_specific() -> None:
         CREATOR_BRIEF_PROMPT_VERSION,
     }
     assert len(versions) == 6
-    assert CREATOR_BRIEF_PROMPT_VERSION == "creator-brief-v1"
+    assert CREATOR_BRIEF_PROMPT_VERSION == "creator-brief-v2"
     assert all(
         version.startswith("creator-") and version.endswith("-v2")
         for version in versions - {CREATOR_BRIEF_PROMPT_VERSION}
