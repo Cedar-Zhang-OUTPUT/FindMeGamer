@@ -41,6 +41,10 @@ Add a profile → browse its identity and facts → select a game → review mat
 
 Strict validation: `swift test --package-path macos -Xswiftc -warnings-as-errors` passed **334 tests in 45 suites** on 2026-09-07. This total includes five separately scoped, opt-in local performance-fixture tests; it is not a frame-rate benchmark. `git diff --check` passed. No backend or generated API changes are part of this UI pass.
 
+Root source integration on 2026-09-07: the frozen UI commit `5e7cd2d` was cherry-picked onto `de04415` as `87313a6`. The same strict command passed **329 tests in 44 suites** without the five uncommitted performance-fixture tests. The integrated client sources exactly match the frozen UI commit. Backend, API contracts, Core/API modules, operations, and release scripts remain unchanged from the root baseline. This delivery uploads source only: it does not rebuild or replace the published 0.1.3 package, create a release, or change the live update manifest.
+
+The bounded independent source review returned GO with no normal-workflow blockers. It checked explicit multi-email recipient selection, preview invalidation and send confirmation, per-email preview navigation, local campaign filtering, and observable Settings disclosure/confirmation state. This review did not repeat native UI or performance measurements.
+
 Native Demo walkthrough on the local M4 / macOS 26.6.2:
 
 - Profile: Overview still exposes collaboration risks. Sources & Analysis displays one AI group marker and compact chapters; short source facts share rows while descriptions remain complete. A note survives section changes, then Save returns to the summary. Contact Source opens inline with the raw source, accessible external-link label and full selectable URL. An intermediate accessibility-label propagation issue was caught and corrected; final AX output preserves the actual source text.
