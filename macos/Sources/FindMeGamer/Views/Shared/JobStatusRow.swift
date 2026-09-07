@@ -106,10 +106,10 @@ struct JobStatusRow: View {
         Text(job.profileType.displayName)
           .font(.headline)
         Spacer()
-        Text(job.createdAt, style: .relative)
+        elapsedTime
           .font(.caption)
           .foregroundStyle(.secondary)
-          .accessibilityLabel("Submitted \(job.createdAt.formatted())")
+          .monospacedDigit()
       }
 
       Text(job.canonicalURL)
@@ -130,6 +130,22 @@ struct JobStatusRow: View {
     }
     .padding(.vertical, 8)
     .accessibilityIdentifier(AnalyzeAccessibility.job(job.id))
+  }
+
+  @ViewBuilder private var elapsedTime: some View {
+    let timing = JobElapsedTimePresentation(job: job)
+    Group {
+      if timing.updatesLive {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+          Text(timing.label(at: context.date))
+        }
+      } else {
+        // Terminal rows contain static text, not a relative-date/timer view.
+        Text(timing.label(at: .now))
+      }
+    }
+    .help("\(timing.detail) Submitted \(job.createdAt.formatted())")
+    .accessibilityIdentifier("\(AnalyzeAccessibility.job(job.id)).elapsed")
   }
 
   @ViewBuilder private var status: some View {
