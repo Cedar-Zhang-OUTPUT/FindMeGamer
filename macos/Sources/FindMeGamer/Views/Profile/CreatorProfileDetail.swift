@@ -36,7 +36,7 @@ struct CreatorProfileDetail: View {
         }
       case .evidence:
         ProfileEvidenceSection(
-          title: "Source Facts", subtitle: "YouTube",
+          title: "YouTube",
           symbol: "play.rectangle", tone: .identity
         ) {
           sourceColumn
@@ -69,6 +69,10 @@ struct CreatorProfileDetail: View {
 
   private var analysisColumn: some View {
     VStack(alignment: .leading, spacing: 14) {
+      Label("AI Analysis", systemImage: "sparkles")
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+        .accessibilityAddTraits(.isHeader)
       ForEach(
         CreatorProfileSection.allCases.filter {
           ![.audienceInference, .promotionFit, .contact, .creatorBrief].contains($0)
@@ -86,11 +90,11 @@ struct CreatorProfileDetail: View {
     ProfileEvidenceSection(
       title: section.title,
       subtitle: section == .audienceInference
-        ? "AI Inference · unverified demographics"
-        : "AI Analysis",
+        ? "Unverified demographics"
+        : nil,
       symbol: evidenceSymbol(section), tone: evidenceTone(section)
     ) {
-      FactSection(fields: presentation.sections[section] ?? [])
+      FactSection(contextTitle: section.title, fields: presentation.sections[section] ?? [])
     }
   }
 
@@ -164,7 +168,7 @@ struct CreatorProfileDetail: View {
 
   private var manualEditor: some View {
     VStack(alignment: .leading, spacing: 14) {
-      Text("Edit Contact & Notes").font(.headline)
+      Text("Contact & Notes").font(.headline)
       VStack(alignment: .leading, spacing: 10) {
         HStack {
           Text("Manual Email").font(.subheadline.weight(.medium))
@@ -187,9 +191,10 @@ struct CreatorProfileDetail: View {
         {
           Label(
             "Saving removes your manual email. Discovered contacts stay.",
-            systemImage: "minus.circle")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            systemImage: "minus.circle"
+          )
+          .font(.caption)
+          .foregroundStyle(.secondary)
         }
 
         Text("Notes")
@@ -219,7 +224,7 @@ struct CreatorProfileDetail: View {
             if isSaving {
               ProgressView().controlSize(.small)
             }
-            Button("Save Contact & Notes", action: onSave)
+            Button("Save", action: onSave)
               .buttonStyle(.borderedProminent)
               .disabled(
                 !hasUnsavedChanges
@@ -229,6 +234,7 @@ struct CreatorProfileDetail: View {
                     isValid: manualDraft.validationMessage == nil)
               )
               .accessibilityIdentifier("profile.manual.save")
+              .accessibilityLabel("Save contact and notes")
               .help("Save the manual contact and notes")
           }
         }
@@ -241,6 +247,7 @@ struct CreatorProfileDetail: View {
 
 private struct ProfileContactCard: View {
   let contact: CreatorContactPresentation
+  @State private var isShowingSource = false
 
   var body: some View {
     HStack(alignment: .top, spacing: 12) {
@@ -265,7 +272,10 @@ private struct ProfileContactCard: View {
             source
           }
           VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 10) { availability; validation }
+            HStack(spacing: 10) {
+              availability
+              validation
+            }
             source
           }
         }
@@ -291,12 +301,29 @@ private struct ProfileContactCard: View {
   }
 
   private var source: some View {
-    Group {
-      if let sourceURL = contact.sourceURL {
-        Link("Source: \(contact.source)", destination: sourceURL)
-      } else {
-        Text("Source: \(contact.source)").foregroundStyle(.secondary)
+    DisclosureGroup(isExpanded: $isShowingSource) {
+      VStack(alignment: .leading, spacing: 10) {
+        Text(contact.source)
+          .font(.subheadline)
+          .textSelection(.enabled)
+          .fixedSize(horizontal: false, vertical: true)
+        if let sourceURL = contact.sourceURL {
+          Link(destination: sourceURL) {
+            Label(sourceURL.host ?? "Open Source", systemImage: "arrow.up.right")
+              .fixedSize(horizontal: false, vertical: true)
+          }
+          .accessibilityLabel("Open contact source")
+          Text(sourceURL.absoluteString)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
+      .padding(.top, 8)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    } label: {
+      Text("Source").accessibilityLabel("Source for \(contact.email)")
     }
   }
 }

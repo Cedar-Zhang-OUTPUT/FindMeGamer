@@ -91,6 +91,7 @@ struct CreatorMatchRow: View {
   let onResend: (UUID) -> Void
 
   @State private var evidenceSection: MatchEvidenceSection?
+  @State private var risksExpanded = false
   @State private var isHovered = false
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -126,24 +127,7 @@ struct CreatorMatchRow: View {
 
         fitSignals
 
-        if let firstRisk = presentation.brief.risks.first {
-          HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "flag")
-              .foregroundStyle(StudioPalette.coral)
-            VStack(alignment: .leading, spacing: 3) {
-              Text(firstRisk).font(.callout).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-              if presentation.brief.risks.count > 1 {
-                Button("All risks · \(presentation.brief.risks.count)") {
-                  showEvidence(.summary)
-                }
-                .buttonStyle(.borderless)
-                .font(.caption)
-                .foregroundStyle(StudioPalette.coral)
-              }
-            }
-          }
-        }
+        risks
 
         ViewThatFits(in: .horizontal) {
           HStack(alignment: .center) {
@@ -213,10 +197,11 @@ struct CreatorMatchRow: View {
       }
       Spacer(minLength: 0)
       if isNewSendEligible {
-        Toggle("Select \(presentation.name)", isOn: $isSelected)
-          .labelsHidden()
+        Toggle(isSelected ? "Selected" : "Select", isOn: $isSelected)
           .toggleStyle(.checkbox)
+          .font(.callout)
           .disabled(!writesEnabled)
+          .accessibilityLabel("Select \(presentation.name) for outreach")
           .accessibilityIdentifier(MatchAccessibility.creatorSelect(presentation.id))
           .help("Select this Creator for Outreach")
       }
@@ -294,13 +279,51 @@ struct CreatorMatchRow: View {
     .font(.callout)
     .foregroundStyle(StudioPalette.blue)
     .accessibilityValue(evidenceSection != nil ? "Expanded" : "Collapsed")
-    .help("Read the full match reasoning, fit dimensions, risks, and evidence")
+    .help("Read the full match reasoning, fit dimensions, and evidence")
   }
 
   private func showEvidence(_ section: MatchEvidenceSection) {
     withAnimation(WorkspaceMotionPolicy.animation(for: .switcher, reduceMotion: reduceMotion)) {
       evidenceSection = section
     }
+  }
+
+  @ViewBuilder private var risks: some View {
+    let riskPresentation = MatchRiskDisclosurePresentation(risks: presentation.brief.risks)
+    if let primaryRisk = riskPresentation.primaryRisk {
+      HStack(alignment: .top, spacing: 8) {
+        Image(systemName: "flag")
+          .foregroundStyle(StudioPalette.coral)
+          .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 6) {
+          riskText(primaryRisk)
+          if !riskPresentation.additionalRisks.isEmpty {
+            DisclosureGroup(isExpanded: $risksExpanded) {
+              VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(riskPresentation.additionalRisks.enumerated()), id: \.offset) {
+                  _, risk in
+                  riskText(risk)
+                }
+              }
+              .padding(.top, 6)
+            } label: {
+              Text(riskPresentation.disclosureLabel)
+                .font(.callout)
+                .foregroundStyle(StudioPalette.coral)
+            }
+            .accessibilityIdentifier("match.risks.\(presentation.id.uuidString)")
+          }
+        }
+      }
+    }
+  }
+
+  private func riskText(_ risk: String) -> some View {
+    Text(risk)
+      .font(.callout)
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+      .textSelection(.enabled)
   }
 
   @ViewBuilder private var statistics: some View {

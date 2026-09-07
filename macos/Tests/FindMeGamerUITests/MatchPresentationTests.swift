@@ -49,6 +49,42 @@ import Testing
         == .init(showsSubmit: true, submitEnabled: true))
   }
 
+  @Test func gameEntryShowsOneTaskStateAndKeepsExistingGamesDuringReloadOrFailure() {
+    #expect(
+      MatchGameEntryState(hasGames: false, isLoading: false, hasError: false) == .empty)
+    #expect(
+      MatchGameEntryState(hasGames: false, isLoading: true, hasError: false) == .loading)
+    #expect(
+      MatchGameEntryState(hasGames: false, isLoading: true, hasError: true) == .loading)
+    #expect(
+      MatchGameEntryState(hasGames: false, isLoading: false, hasError: true) == .unavailable)
+    for isLoading in [false, true] {
+      for hasError in [false, true] {
+        #expect(
+          MatchGameEntryState(hasGames: true, isLoading: isLoading, hasError: hasError) == .choosing)
+      }
+    }
+  }
+
+  @Test func riskDisclosureKeepsTheFirstVisibleAndEveryRemainingRiskInSourceOrder() {
+    let noRisks = MatchRiskDisclosurePresentation(risks: [])
+    #expect(noRisks.primaryRisk == nil)
+    #expect(noRisks.additionalRisks.isEmpty)
+
+    let single = MatchRiskDisclosurePresentation(risks: ["Brand safety review required"])
+    #expect(single.primaryRisk == "Brand safety review required")
+    #expect(single.additionalRisks.isEmpty)
+
+    let risks = ["Visible risk", "Risk B", "Risk A", "Risk B"]
+    let disclosure = MatchRiskDisclosurePresentation(risks: risks)
+    #expect(disclosure.primaryRisk == risks[0])
+    #expect(disclosure.additionalRisks == Array(risks.dropFirst()))
+    #expect(disclosure.disclosureLabel == "3 more risks")
+    #expect(
+      MatchRiskDisclosurePresentation(risks: ["Visible risk", "Risk B"]).disclosureLabel
+        == "1 more risk")
+  }
+
   @Test func evidenceSectionsExposeEveryOriginalDimensionWithoutInventingScores() {
     #expect(MatchEvidenceSection.allCases.count == 6)
     #expect(MatchEvidenceSection.summary.category == nil)
@@ -143,6 +179,30 @@ import Testing
     #expect(presentation.recommended[0].brief.risks == ["Risk 2", "Risk 1"])
     #expect(presentation.recommended[0].brief.evidence == ["Evidence 2", "Evidence 1"])
     #expect(presentation.recommended[0].brief.matchReasons == ["Brief reason 2", "Brief reason 1"])
+  }
+
+  @Test func otherOnlyResultsAreVisibleWithoutAnEmptyRecommendedGroupOrDisclosurePreference() {
+    let recommended = candidate(id: id(11), group: .recommended, label: .strong)
+    let other = candidate(id: id(12), group: .other, label: .limited)
+    let otherOnly = MatchResultPresentation(result: result(recommended: [], other: [other]))
+    #expect(!otherOnly.showsRecommended)
+    #expect(otherOnly.otherGroup == .primary)
+    #expect(otherOnly.other.map(\.id) == [other.id])
+    #expect(otherOnly.other[0].label == "Limited Match")
+
+    let mixed = MatchResultPresentation(
+      result: result(recommended: [recommended], other: [other]))
+    #expect(mixed.showsRecommended)
+    #expect(mixed.otherGroup == .disclosure)
+
+    let recommendedOnly = MatchResultPresentation(
+      result: result(recommended: [recommended], other: []))
+    #expect(recommendedOnly.showsRecommended)
+    #expect(recommendedOnly.otherGroup == .hidden)
+
+    let empty = MatchResultPresentation(result: result(recommended: [], other: []))
+    #expect(!empty.showsRecommended)
+    #expect(empty.otherGroup == .hidden)
   }
 
   @Test func outreachPolicySeparatesNewSendFromExplicitResend() {

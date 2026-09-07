@@ -1,7 +1,29 @@
 import SwiftUI
 
+enum ProfileFactLayout {
+  /// Only source-backed scalar fields become compact rows. Narrative claims,
+  /// lists, and any future field keep their full reading layout.
+  static func usesInlineValue(_ field: ProfileDisplayField) -> Bool {
+    let labels: Set<String> = [
+      "Steam App ID", "YouTube Channel ID", "Country", "Published Date", "Release Date",
+      "Coming Soon", "Free to Play", "Required Age", "Review Summary", "Recommendations",
+      "Subscribers", "Total Views", "Public Videos", "Recent Public Videos",
+      "Videos With View Counts", "Average Views", "Median Views", "Newest Video", "Oldest Video",
+      "Uploads per 30 Days", "Publishing Sample", "Publishing Span (Days)",
+    ]
+    return field.values.count == 1 && labels.contains(field.label)
+  }
+
+  static func showsFieldTitle(
+    _ field: ProfileDisplayField, fieldCount: Int, contextTitle: String?
+  ) -> Bool {
+    fieldCount != 1 || field.label != contextTitle
+  }
+}
+
 struct FactSection: View {
   var title: String? = nil
+  var contextTitle: String? = nil
   let fields: [ProfileDisplayField]
 
   var body: some View {
@@ -18,16 +40,35 @@ struct FactSection: View {
       } else {
         ForEach(Array(fields.enumerated()), id: \.offset) { _, field in
           VStack(alignment: .leading, spacing: 7) {
-            Text(field.label)
-              .font(.system(size: 11, weight: .semibold))
-              .foregroundStyle(StudioPalette.ink.opacity(0.7))
-            if field.values.count == 1 {
-              Text(field.values[0])
-                .lineSpacing(3)
+            if ProfileFactLayout.usesInlineValue(field) {
+              ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 16) {
+                  fieldTitle(field).fixedSize()
+                  Spacer(minLength: 16)
+                  Text(field.values[0]).fixedSize()
+                }
+                VStack(alignment: .leading, spacing: 7) {
+                  fieldTitle(field)
+                  Text(field.values[0])
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+              }
             } else {
-              ForEach(Array(field.values.enumerated()), id: \.offset) { _, value in
-                Label(value, systemImage: "circle.fill")
-                  .labelStyle(ProfileBulletLabelStyle())
+              if ProfileFactLayout.showsFieldTitle(
+                field, fieldCount: fields.count, contextTitle: contextTitle)
+              {
+                fieldTitle(field)
+              }
+              if field.values.count == 1 {
+                Text(field.values[0])
+                  .lineSpacing(3)
+                  .fixedSize(horizontal: false, vertical: true)
+              } else {
+                ForEach(Array(field.values.enumerated()), id: \.offset) { _, value in
+                  Label(value, systemImage: "circle.fill")
+                    .labelStyle(ProfileBulletLabelStyle())
+                    .fixedSize(horizontal: false, vertical: true)
+                }
               }
             }
             if let annotation = field.annotation {
@@ -43,12 +84,20 @@ struct FactSection: View {
             }
           }
           .frame(maxWidth: .infinity, alignment: .leading)
+          .accessibilityElement(children: .contain)
+          .accessibilityLabel(field.label)
         }
       }
     }
     .padding(.vertical, WorkspaceDesign.spaceS)
     .frame(maxWidth: .infinity, alignment: .leading)
     .textSelection(.enabled)
+  }
+
+  private func fieldTitle(_ field: ProfileDisplayField) -> some View {
+    Text(field.label)
+      .font(.subheadline)
+      .foregroundStyle(.secondary)
   }
 }
 

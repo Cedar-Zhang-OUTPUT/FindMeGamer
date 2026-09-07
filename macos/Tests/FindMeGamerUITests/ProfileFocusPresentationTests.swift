@@ -63,6 +63,39 @@ import Testing
     #expect(ProfileOverviewGrouping(primary: []).positioning.isEmpty)
   }
 
+  @Test func compactFactRowsAreReservedForSingleSourceValues() {
+    #expect(ProfileFactLayout.usesInlineValue(field("Subscribers")))
+    #expect(ProfileFactLayout.usesInlineValue(field("Release Date")))
+    #expect(ProfileFactLayout.usesInlineValue(field("YouTube Channel ID")))
+    #expect(!ProfileFactLayout.usesInlineValue(field("Description")))
+    #expect(!ProfileFactLayout.usesInlineValue(field("Collaboration Risks")))
+    #expect(!ProfileFactLayout.usesInlineValue(field("A future source field")))
+    #expect(
+      !ProfileFactLayout.usesInlineValue(
+        ProfileDisplayField(label: "Subscribers", values: ["First", "Second"], annotation: nil)))
+    #expect(
+      !ProfileFactLayout.usesInlineValue(
+        ProfileDisplayField(label: "Subscribers", values: [], annotation: nil)))
+  }
+
+  @Test func onlyAnExactSingleFieldSectionCanOmitItsRepeatedHeading() {
+    let visualStyle = ProfileDisplayField(
+      label: "Visual Style", values: ["Painterly."], annotation: "AI Inference · Confidence: Low")
+    #expect(
+      !ProfileFactLayout.showsFieldTitle(
+        visualStyle, fieldCount: 1, contextTitle: "Visual Style"))
+    #expect(
+      ProfileFactLayout.showsFieldTitle(
+        visualStyle, fieldCount: 2, contextTitle: "Visual Style"))
+    #expect(
+      ProfileFactLayout.showsFieldTitle(
+        visualStyle, fieldCount: 1, contextTitle: "Sources"))
+    #expect(ProfileFactLayout.showsFieldTitle(visualStyle, fieldCount: 1, contextTitle: nil))
+    // The presentation strategy does not rewrite or discard uncertainty or prose.
+    #expect(visualStyle.values == ["Painterly."])
+    #expect(visualStyle.annotation == "AI Inference · Confidence: Low")
+  }
+
   private func field(_ label: String) -> ProfileDisplayField {
     ProfileDisplayField(label: label, values: ["Sample"], annotation: nil)
   }

@@ -104,6 +104,16 @@ struct OutreachComposerSheet: View {
                   in: Circle())
               Text(item.rawValue)
                 .font(.callout.weight(stage == item ? .semibold : .regular))
+              if item == .recipients, !model.recipientIDsRequiringSelection.isEmpty {
+                Label(
+                  "\(model.recipientIDsRequiringSelection.count)",
+                  systemImage: "exclamationmark.circle"
+                )
+                .font(.caption.weight(.medium))
+                .foregroundStyle(StudioPalette.amber)
+                .accessibilityLabel(
+                  "\(model.recipientIDsRequiringSelection.count) recipients need an address")
+              }
             }
             .foregroundStyle(stage == item ? Color.primary : Color.secondary)
             .padding(.vertical, 7)
@@ -185,29 +195,6 @@ struct OutreachComposerSheet: View {
   private var editor: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        HStack {
-          Label(
-            "\(model.creatorIDs.count) \(model.creatorIDs.count == 1 ? "recipient" : "recipients")",
-            systemImage: "person.2"
-          )
-          .font(.callout)
-          .foregroundStyle(.secondary)
-          Spacer()
-          Button {
-            move(to: .recipients)
-          } label: {
-            if model.recipientIDsRequiringSelection.isEmpty {
-              Text("Addresses")
-            } else {
-              Label(
-                "\(model.recipientIDsRequiringSelection.count) need an address",
-                systemImage: "envelope.badge"
-              )
-              .foregroundStyle(StudioPalette.amber)
-            }
-          }
-        }
-
         Picker("Template", selection: templateSelection) {
           ForEach(model.templates) { template in
             Text(template.name).tag(Optional(template.id))
@@ -368,7 +355,7 @@ struct OutreachComposerSheet: View {
 
   private var previewPane: some View {
     VStack(spacing: 0) {
-      if !model.previews.isEmpty {
+      if model.previews.count > 1 {
         HStack {
           Picker(
             "Preview for",
@@ -384,9 +371,24 @@ struct OutreachComposerSheet: View {
           .pickerStyle(.menu)
           .disabled(model.isSending)
           Spacer(minLength: 0)
-          Text("\(model.previews.count) \(model.previews.count == 1 ? "preview" : "previews")")
-            .font(.caption)
+          Button {
+            if let id = previewNavigation.previousID { model.selectRecipient(id: id) }
+          } label: {
+            Label("Previous email", systemImage: "chevron.left").labelStyle(.iconOnly)
+          }
+          .disabled(model.isSending || previewNavigation.previousID == nil)
+          .help("Previous email")
+          Text(previewNavigation.position)
+            .font(.caption.monospacedDigit())
             .foregroundStyle(.secondary)
+            .fixedSize()
+          Button {
+            if let id = previewNavigation.nextID { model.selectRecipient(id: id) }
+          } label: {
+            Label("Next email", systemImage: "chevron.right").labelStyle(.iconOnly)
+          }
+          .disabled(model.isSending || previewNavigation.nextID == nil)
+          .help("Next email")
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 12)
@@ -413,6 +415,11 @@ struct OutreachComposerSheet: View {
         }
       }
     }
+  }
+
+  private var previewNavigation: OutreachPreviewNavigation {
+    OutreachPreviewNavigation(
+      ids: model.previews.map(\.creatorID), selectedID: model.selectedRecipientID)
   }
 
   private var footer: some View {

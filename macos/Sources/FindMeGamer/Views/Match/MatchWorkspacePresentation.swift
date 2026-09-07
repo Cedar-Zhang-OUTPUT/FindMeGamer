@@ -70,14 +70,28 @@ enum MatchResultActionState: Equatable {
   var statusLabel: String? {
     switch self {
     case .ready: nil
-    case .refreshing: "Refreshing…"
-    case .refreshRequired: "Refresh required"
+    case .refreshing: "Saved result · refreshing…"
+    case .refreshRequired: "Saved result · Refresh required"
     case .readOnly: "Read-only"
     }
   }
 
   var showsRetry: Bool { self == .refreshRequired }
   func showsBar(selectedCount: Int) -> Bool { selectedCount > 0 || self != .ready }
+}
+
+struct MatchResultActionPresentation: Equatable {
+  let state: MatchResultActionState
+  let failureMessage: String?
+
+  init(resultState: MatchResultViewState, writesEnabled: Bool) {
+    state = MatchResultActionState(resultState: resultState, writesEnabled: writesEnabled)
+    if case .failed(let message) = resultState {
+      failureMessage = message
+    } else {
+      failureMessage = nil
+    }
+  }
 }
 
 enum MatchResultInteractionPolicy {

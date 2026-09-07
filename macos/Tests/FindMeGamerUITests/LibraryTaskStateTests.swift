@@ -7,10 +7,16 @@ import Testing
 @Suite struct LibraryTaskStateTests {
   @Test func emptyStatesOfferConcreteActionsWithoutRepeatingTheirInstructions() {
     #expect(LibraryEmptyContext.search.detail == nil)
+    #expect(LibraryEmptyContext.favorites.detail == nil)
     #expect(LibraryEmptyContext.search.actionTitle == "Clear Search")
     #expect(LibraryEmptyContext.favorites.actionTitle == "Browse All Profiles")
     #expect(LibraryEmptyContext.firstProfile.detail == "YouTube channels · Steam games")
     #expect(LibraryEmptyContext.firstProfile.actionTitle == "Analyze Profile")
+  }
+
+  @Test func analysisActionNamesTheSelectedObjectWithoutAddingAnInstruction() {
+    #expect(LibraryCopy.analysisAction(for: .creator) == "Analyze Creator")
+    #expect(LibraryCopy.analysisAction(for: .game) == "Analyze Game")
   }
 
   @Test func noMatchesClearsSearchWithoutDiscardingCollectionContext() {

@@ -330,7 +330,8 @@ struct LibraryView: View {
     HStack(spacing: 10) {
       Label(error.description, systemImage: "exclamationmark.triangle")
         .foregroundStyle(.secondary)
-        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+        .textSelection(.enabled)
       Spacer()
       Button("Try Again") {
         switch LibraryRetryPolicy.action(

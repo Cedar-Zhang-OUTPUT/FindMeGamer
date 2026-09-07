@@ -12,20 +12,28 @@ struct AppUpdatesSettings: View {
           .font(.headline)
           .foregroundStyle(StudioPalette.blue)
           .accessibilityIdentifier("app.update.new-version")
-        Link("View release & download", destination: release.releasePageURL)
+        Link("Download on GitHub", destination: release.releasePageURL)
           .buttonStyle(.borderedProminent)
           .accessibilityIdentifier("app.update.download")
-        Text("GitHub access is required. Download and replace the app manually.")
+        Text("Manual installation · GitHub access required")
           .font(.callout)
           .foregroundStyle(.secondary)
+          .help(
+            "Download the disk image, then replace the installed app. Updates are not installed automatically."
+          )
       }
 
       status
     }
 
     Section {
-      Button(checker.isChecking ? "Checking…" : "Check for Updates") {
+      Button {
         Task { await checker.check() }
+      } label: {
+        HStack(spacing: 8) {
+          if checker.isChecking { ProgressView().controlSize(.mini) }
+          Text(checker.isChecking ? "Checking…" : "Check for Updates")
+        }
       }
       .disabled(checker.isChecking || !checker.sourceEnabled || checker.state == .developmentBuild)
       .accessibilityIdentifier("app.update.check")
@@ -46,10 +54,8 @@ struct AppUpdatesSettings: View {
 
   @ViewBuilder private var status: some View {
     switch checker.state {
-    case .idle:
+    case .idle, .checking:
       EmptyView()
-    case .checking:
-      ProgressView("Checking for updates…").controlSize(.small)
     case .checked:
       if checker.availableRelease == nil {
         Label("You’re up to date", systemImage: "checkmark.circle")
@@ -57,10 +63,11 @@ struct AppUpdatesSettings: View {
           .accessibilityIdentifier("app.update.current")
       }
     case .developmentBuild:
-      Text("This development build has no verifiable app version.")
+      Label("Version check unavailable", systemImage: "wrench.and.screwdriver")
         .foregroundStyle(.secondary)
+        .help("This development build has no verifiable app version.")
     case .disabled:
-      Text("The update service is not enabled for this build.")
+      Label("Updates disabled for this build", systemImage: "arrow.down.circle")
         .foregroundStyle(.secondary)
     case .failed(let message):
       Label(message, systemImage: "exclamationmark.triangle")

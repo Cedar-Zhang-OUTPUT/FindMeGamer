@@ -166,16 +166,17 @@ struct ProfileEvidenceSection<Content: View>: View {
 
   var body: some View {
     DisclosureGroup {
-      content().padding(.top, 12)
+      content()
+        .padding(.top, 12)
+        .padding(.bottom, 14)
     } label: {
       HStack(spacing: 10) {
         Image(systemName: symbol)
-          .font(.system(size: 14, weight: .medium))
+          .font(.system(size: 13, weight: .medium))
           .foregroundStyle(tone.color)
-          .frame(width: 34, height: 34)
-          .background(tone.color.opacity(0.1), in: RoundedRectangle(cornerRadius: 11))
+          .frame(width: 22, height: 22)
           .accessibilityHidden(true)
-        Text(title).font(.subheadline.weight(.semibold))
+        Text(title).font(.subheadline.weight(.medium))
         Spacer(minLength: 8)
         if let subtitle {
           Text(subtitle)
@@ -184,9 +185,11 @@ struct ProfileEvidenceSection<Content: View>: View {
             .fixedSize(horizontal: false, vertical: true)
         }
       }
-      .padding(.vertical, 5)
+      .padding(.vertical, 8)
     }
-    .padding(14)
-    .background(tone.color.opacity(0.035), in: RoundedRectangle(cornerRadius: 17))
+    .padding(.horizontal, 14)
+    .overlay(alignment: .bottom) {
+      Divider().allowsHitTesting(false)
+    }
   }
 }

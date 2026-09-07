@@ -17,7 +17,7 @@ struct GameProfileDetail: View {
         ProfileOverview(fields: presentation.briefFields, type: .game)
       case .evidence:
         ProfileEvidenceSection(
-          title: "Source Facts", subtitle: "Steam",
+          title: "Steam",
           symbol: "gamecontroller", tone: .identity
         ) {
           sourceColumn
@@ -34,14 +34,18 @@ struct GameProfileDetail: View {
 
   private var analysisColumn: some View {
     VStack(alignment: .leading, spacing: 14) {
+      Label("AI Analysis", systemImage: "sparkles")
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+        .accessibilityAddTraits(.isHeader)
       ForEach(
         GameProfileSection.allCases.filter { $0 != .gameBrief }, id: \.self
       ) { section in
         ProfileEvidenceSection(
-          title: section.title, subtitle: "AI Analysis",
+          title: section.title,
           symbol: evidenceSymbol(section), tone: evidenceTone(section)
         ) {
-          FactSection(fields: presentation.sections[section] ?? [])
+          FactSection(contextTitle: section.title, fields: presentation.sections[section] ?? [])
         }
       }
     }

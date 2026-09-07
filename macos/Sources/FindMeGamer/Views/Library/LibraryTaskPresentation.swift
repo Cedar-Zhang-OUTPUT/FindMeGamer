@@ -22,7 +22,7 @@ enum LibraryEmptyContext: Equatable {
   var detail: String? {
     switch self {
     case .search: nil
-    case .favorites: "Favorite profiles with the heart button."
+    case .favorites: nil
     case .firstProfile: "YouTube channels · Steam games"
     }
   }

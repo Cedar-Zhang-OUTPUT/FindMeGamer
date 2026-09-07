@@ -53,14 +53,9 @@ struct MatchTaskFocusCard: View {
   @ViewBuilder private var taskState: some View {
     switch presentation.semantic {
     case .progress(let stage):
-      VStack(alignment: .leading, spacing: 10) {
-        HStack(spacing: 9) {
-          ProgressView().controlSize(.small)
-          Text(stage).font(.title2.weight(.semibold))
-        }
-        Label("Running in background", systemImage: "arrow.triangle.2.circlepath")
-          .font(.caption)
-          .foregroundStyle(Color.white.opacity(0.72))
+      HStack(spacing: 9) {
+        ProgressView().controlSize(.small)
+        Text(stage).font(.title2.weight(.semibold))
       }
     case .succeeded(let count):
       VStack(alignment: .leading, spacing: 12) {

@@ -7,6 +7,10 @@ enum LibraryCopy {
   static let analyzeRequest = "Analyze Profile"
   static let empty = "No profiles found."
 
+  static func analysisAction(for type: ProfileType) -> String {
+    type == .game ? "Analyze Game" : "Analyze Creator"
+  }
+
   static func profileCount(_ count: Int, type: ProfileType, hasMore: Bool) -> String {
     let noun =
       type == .game

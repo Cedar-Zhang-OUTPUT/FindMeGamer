@@ -125,12 +125,12 @@ struct TemplateEditor: View {
   private var editor: some View {
     ScrollView {
       VStack(alignment: .leading, spacing: 16) {
-        field("Template name") {
+        field("Template name", validation: .name) {
           TextField("Template Name", text: name)
             .textFieldStyle(OutreachDraftFieldStyle())
         }
 
-        field("Subject") {
+        field("Subject", validation: .subject) {
           TextField("Email Subject", text: subject)
             .font(.system(.title3, design: .rounded, weight: .medium))
             .textFieldStyle(OutreachDraftFieldStyle())
@@ -140,6 +140,7 @@ struct TemplateEditor: View {
           HStack {
             Text("Message")
               .font(.callout.weight(.medium))
+            requiredIndicator(.message)
             Spacer()
             OutreachVariableMenu(editing: messageEditing)
           }
@@ -154,23 +155,32 @@ struct TemplateEditor: View {
         OutreachResponseButtons(
           accepted: model.templateDraft?.acceptedLabel ?? "",
           declined: model.templateDraft?.declinedLabel ?? "")
-        DisclosureGroup("Edit response labels", isExpanded: $presentation.showsResponseLabels) {
+        DisclosureGroup(isExpanded: $presentation.showsResponseLabels) {
           VStack(alignment: .leading, spacing: 12) {
-            field("Accept label") {
+            field("Accept label", validation: .acceptedLabel) {
               TextField("Accepted CTA Label", text: acceptedLabel)
                 .textFieldStyle(OutreachDraftFieldStyle())
             }
-            field("Decline label") {
+            field("Decline label", validation: .declinedLabel) {
               TextField("Declined CTA Label", text: declinedLabel)
                 .textFieldStyle(OutreachDraftFieldStyle())
             }
           }
           .padding(.top, 10)
+        } label: {
+          HStack {
+            Text("Edit response labels")
+            if validationPlacement.requiresResponseLabels {
+              Label("Required", systemImage: "exclamationmark.circle")
+                .font(.caption)
+                .foregroundStyle(.red)
+            }
+          }
         }
 
-        if !model.templateValidationMessages.isEmpty {
+        if !validationPlacement.unplacedMessages.isEmpty {
           VStack(alignment: .leading, spacing: 4) {
-            ForEach(model.templateValidationMessages, id: \.self) { message in
+            ForEach(validationPlacement.unplacedMessages, id: \.self) { message in
               Label(message, systemImage: "exclamationmark.circle")
             }
           }
@@ -265,13 +275,14 @@ struct TemplateEditor: View {
           if let error = model.templateActionError {
             Text(error)
           } else if !model.templateValidationMessages.isEmpty {
-            Text(model.templateValidationMessages.joined(separator: "\n"))
+            Text("\(model.templateValidationMessages.count) validation issues")
+            ForEach(validationPlacement.unplacedMessages, id: \.self) { Text($0) }
           }
         } actions: {
           Button("Save & preview") { confirmation = .save }
             .buttonStyle(.borderedProminent)
             .disabled(!writesEnabled || !model.canSaveTemplate)
-          Button("Edit template") { presentation.mode = .edit }
+          Button("Edit template") { returnToEditor() }
         }
       case .loading:
         ProgressView("Rendering Preview…")
@@ -293,20 +304,42 @@ struct TemplateEditor: View {
         } actions: {
           Button("Try Again") { model.retryTemplatePreview() }
             .disabled(model.isTemplateActionInFlight)
-          Button("Edit template") { presentation.mode = .edit }
+          Button("Edit template") { returnToEditor() }
         }
       }
     }
   }
 
-  private func field<Content: View>(_ title: String, @ViewBuilder content: () -> Content)
+  private func field<Content: View>(
+    _ title: String, validation: TemplateInputField, @ViewBuilder content: () -> Content
+  )
     -> some View
   {
     VStack(alignment: .leading, spacing: 6) {
-      Text(title)
-        .font(.callout.weight(.medium))
+      HStack(spacing: 8) {
+        Text(title).font(.callout.weight(.medium))
+        requiredIndicator(validation)
+      }
       content()
     }
+  }
+
+  private var validationPlacement: TemplateValidationPlacement {
+    TemplateValidationPlacement(messages: model.templateValidationMessages)
+  }
+
+  @ViewBuilder private func requiredIndicator(_ field: TemplateInputField) -> some View {
+    if validationPlacement.requires(field) {
+      Label("Required", systemImage: "exclamationmark.circle")
+        .font(.caption)
+        .foregroundStyle(.red)
+        .accessibilityLabel(field.requiredMessage)
+    }
+  }
+
+  private func returnToEditor() {
+    if validationPlacement.requiresResponseLabels { presentation.showsResponseLabels = true }
+    presentation.mode = .edit
   }
 
   private var name: Binding<String> {

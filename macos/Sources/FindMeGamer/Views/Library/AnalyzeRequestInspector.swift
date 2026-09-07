@@ -16,7 +16,7 @@ struct AnalyzeRequestInspector: View {
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
       HStack(alignment: .top) {
-        Text("Analyze Profile").font(.title3.weight(.semibold))
+        Text("Add Profile").font(.title3.weight(.semibold))
           .accessibilityAddTraits(.isHeader)
         Spacer(minLength: 4)
         Button {
@@ -91,7 +91,7 @@ struct AnalyzeRequestInspector: View {
       Button(action: submit) {
         HStack(spacing: 8) {
           if model.isSubmitting { ProgressView().controlSize(.small) }
-          Text(model.isSubmitting ? "Submitting…" : "Analyze Profile")
+          Text(model.isSubmitting ? "Submitting…" : LibraryCopy.analysisAction(for: model.targetType))
         }
         .frame(maxWidth: .infinity)
       }

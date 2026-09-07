@@ -90,7 +90,7 @@ import Testing
 
     let failed = MatchResultActionState(resultState: .failed("Offline"), writesEnabled: true)
     #expect(failed == .refreshRequired)
-    #expect(failed.statusLabel == "Refresh required")
+    #expect(failed.statusLabel == "Saved result · Refresh required")
     #expect(failed.showsBar(selectedCount: 0))
     #expect(failed.showsRetry)
 
@@ -99,6 +99,29 @@ import Testing
     #expect(readOnly == .readOnly)
     #expect(readOnly.showsBar(selectedCount: 0))
     #expect(!readOnly.showsRetry)
+  }
+
+  @Test func cachedFailureKeepsTheFullReasonAndRetryVisibleWithoutSelectedRecipients() {
+    let message = "Connection lost. The displayed result is saved; reconnect and retry."
+    for writesEnabled in [false, true] {
+      let failed = MatchResultActionPresentation(
+        resultState: .failed(message), writesEnabled: writesEnabled)
+      #expect(failed.state.showsBar(selectedCount: 0))
+      #expect(failed.state.showsRetry)
+      #expect(failed.failureMessage == message)
+
+      let refreshing = MatchResultActionPresentation(
+        resultState: .loading, writesEnabled: writesEnabled)
+      #expect(refreshing.state.showsBar(selectedCount: 0))
+      #expect(refreshing.state.statusLabel == "Saved result · refreshing…")
+      #expect(!refreshing.state.showsRetry)
+      #expect(refreshing.failureMessage == nil)
+    }
+    let recovered = MatchResultActionPresentation(
+      resultState: .available(focusResult(id: 1)), writesEnabled: true)
+    #expect(recovered.state == .ready)
+    #expect(!recovered.state.showsBar(selectedCount: 0))
+    #expect(recovered.failureMessage == nil)
   }
 
   @Test func latestMatchActionFollowsExplicitReplacementLinksNotNewerSameGameTasks() {

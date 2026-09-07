@@ -83,6 +83,20 @@ enum MatchEvidenceDisplayPolicy {
   static func additionalReasons(_ reasons: [String]) -> [String] { Array(reasons.dropFirst()) }
 }
 
+struct MatchRiskDisclosurePresentation: Equatable {
+  let primaryRisk: String?
+  let additionalRisks: [String]
+
+  init(risks: [String]) {
+    primaryRisk = risks.first
+    additionalRisks = Array(risks.dropFirst())
+  }
+
+  var disclosureLabel: String {
+    "\(additionalRisks.count) more \(additionalRisks.count == 1 ? "risk" : "risks")"
+  }
+}
+
 struct MatchBriefView: View {
   let presentation: MatchBriefPresentation
   @Binding var selectedSection: MatchEvidenceSection
@@ -134,15 +148,8 @@ struct MatchBriefView: View {
   private var summary: some View {
     VStack(alignment: .leading, spacing: 18) {
       MatchTextList(title: "More reasons", values: additionalReasons)
-      LazyVGrid(
-        columns: [GridItem(.adaptive(minimum: 220), spacing: 20, alignment: .top)],
-        alignment: .leading, spacing: 14
-      ) {
-        MatchTextList(title: "Strengths", values: presentation.strengths, color: StudioPalette.mint)
-        // The first risk remains visible in the candidate row above this panel.
-        MatchTextList(
-          title: "More risks", values: Array(presentation.risks.dropFirst()), color: StudioPalette.coral)
-      }
+      MatchTextList(title: "Strengths", values: presentation.strengths, color: StudioPalette.mint)
+      // Risks stay beside the candidate's visible risk, with their own disclosure.
       MatchTextList(title: "Supporting evidence", values: presentation.evidence)
       MatchTextList(title: "Additional match reasons", values: presentation.matchReasons)
     }

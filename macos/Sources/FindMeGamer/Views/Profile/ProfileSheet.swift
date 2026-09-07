@@ -52,7 +52,7 @@ struct ProfileSheet: View {
 
       if !writesEnabled {
         Label(
-          "Offline — profiles remain readable. Reconnect to save changes.",
+          "Offline · Read-only",
           systemImage: "wifi.slash"
         )
         .font(.subheadline)

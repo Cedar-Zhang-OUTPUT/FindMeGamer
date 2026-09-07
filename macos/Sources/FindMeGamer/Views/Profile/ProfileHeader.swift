@@ -250,7 +250,7 @@ struct ProfileHeader: View {
   }
 
   private var sourceLinkLabel: String {
-    type == .game ? "Open on Steam" : "Open on YouTube"
+    type == .game ? "Steam" : "YouTube"
   }
 
   private var lastAnalyzedAt: Date? {

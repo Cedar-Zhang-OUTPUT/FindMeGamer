@@ -5,7 +5,7 @@ struct ReanalysisSettings: View {
   @Bindable var model: SettingsModel
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
-  @State private var isShowingSaveConfirmation = false
+  @Bindable var presentation: SettingsPresentation
 
   var body: some View {
     Section("Auto-refresh") {
@@ -29,7 +29,7 @@ struct ReanalysisSettings: View {
 
       HStack {
         Button {
-          isShowingSaveConfirmation = true
+          presentation.isShowingSaveConfirmation = true
         } label: {
           HStack(spacing: 6) {
             if model.isSavingReanalysis { ProgressView().controlSize(.mini) }
@@ -65,7 +65,7 @@ struct ReanalysisSettings: View {
           .foregroundStyle(.red)
       }
 
-      DisclosureGroup("Refresh activity") {
+      InlineDisclosure("Refresh activity", isExpanded: $presentation.isShowingActivity) {
         activityRow("Game", activity: model.gameActivity, error: model.activityError(for: .game))
         activityRow(
           "Creator", activity: model.creatorActivity, error: model.activityError(for: .creator))
@@ -76,7 +76,7 @@ struct ReanalysisSettings: View {
     }
     .confirmationDialog(
       "Save Re-analysis Settings?",
-      isPresented: $isShowingSaveConfirmation,
+      isPresented: $presentation.isShowingSaveConfirmation,
       titleVisibility: .visible
     ) {
       Button("Save Settings") {

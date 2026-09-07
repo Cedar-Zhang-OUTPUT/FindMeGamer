@@ -7,6 +7,7 @@ struct SettingsView: View {
     .rawValue
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @Environment(AppUpdateChecker.self) private var updates
+  @State private var presentation = SettingsPresentation()
 
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
@@ -99,9 +100,15 @@ struct SettingsView: View {
     Form {
       switch category {
       case .appearance: AppearanceSettings(model: model)
-      case .connections: ConnectionsSettings(model: model)
-      case .reanalysis: ReanalysisSettings(model: model)
-      case .workspace: WorkspaceSettings(model: model)
+      case .connections:
+        ConnectionsSettings(
+          model: model, presentation: presentation)
+      case .reanalysis:
+        ReanalysisSettings(
+          model: model, presentation: presentation)
+      case .workspace:
+        WorkspaceSettings(
+          model: model, presentation: presentation)
       case .updates: AppUpdatesSettings(checker: updates)
       }
     }

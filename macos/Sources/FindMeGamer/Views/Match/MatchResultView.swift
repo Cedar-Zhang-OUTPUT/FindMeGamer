@@ -1,9 +1,21 @@
 import FindMeGamerCore
 import SwiftUI
 
+enum MatchOtherGroupPresentation: Equatable {
+  case hidden
+  case primary
+  case disclosure
+}
+
 struct MatchResultPresentation: Equatable {
   let recommended: [MatchCandidatePresentation]
   let other: [MatchCandidatePresentation]
+
+  var showsRecommended: Bool { !recommended.isEmpty }
+  var otherGroup: MatchOtherGroupPresentation {
+    if other.isEmpty { return .hidden }
+    return recommended.isEmpty ? .primary : .disclosure
+  }
 
   init(result: MatchResult) {
     recommended = result.recommendedMatches.map(MatchCandidatePresentation.init(candidate:))
@@ -170,7 +182,7 @@ struct MatchResultView: View {
           Button("Add creators", systemImage: "plus", action: onAddCreators)
             .buttonStyle(.borderedProminent)
             .disabled(!writesEnabled)
-              Button("Back to matches") { dismiss() }
+          Button("Back to matches") { dismiss() }
             .buttonStyle(.bordered)
         }
       case .failed(let message):
@@ -229,32 +241,31 @@ struct MatchResultView: View {
             result.game,
             creatorCount: presentation.recommended.count + presentation.other.count)
 
-          if case .failed(let message) = model.resultState {
-            HStack(spacing: 10) {
-              Label(message, systemImage: "exclamationmark.triangle")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-              Button("Retry refresh") { Task { await model.openResult(id: matchID) } }
+          if presentation.showsRecommended {
+            VStack(alignment: .leading, spacing: 10) {
+              WorkspaceSectionHeader(
+                MatchCopy.recommended, count: presentation.recommended.count)
+              candidateGroup(presentation.recommended, result: result)
             }
           }
 
-          VStack(alignment: .leading, spacing: 10) {
-            WorkspaceSectionHeader(
-              MatchCopy.recommended, count: presentation.recommended.count)
-            candidateGroup(
-              presentation.recommended, result: result,
-              emptyCopy: "No recommended Creators in this Match.")
-          }
-
-          DisclosureGroup(isExpanded: $otherExpanded) {
-            candidateGroup(
-              presentation.other, result: result,
-              emptyCopy: "No other Creators in this Match."
-            )
-            .padding(.top, 10)
-          } label: {
-            WorkspaceSectionHeader(MatchCopy.other, count: presentation.other.count)
-              .help("Alternatives with weaker or mixed evidence")
+          switch presentation.otherGroup {
+          case .hidden:
+            EmptyView()
+          case .primary:
+            VStack(alignment: .leading, spacing: 10) {
+              WorkspaceSectionHeader(MatchCopy.other, count: presentation.other.count)
+                .help("Alternatives with weaker or mixed evidence")
+              candidateGroup(presentation.other, result: result)
+            }
+          case .disclosure:
+            DisclosureGroup(isExpanded: $otherExpanded) {
+              candidateGroup(presentation.other, result: result)
+                .padding(.top, 10)
+            } label: {
+              WorkspaceSectionHeader(MatchCopy.other, count: presentation.other.count)
+                .help("Alternatives with weaker or mixed evidence")
+            }
           }
         }
         .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
@@ -263,19 +274,18 @@ struct MatchResultView: View {
         .frame(maxWidth: .infinity)
       }
 
-      let actionState = MatchResultActionState(
+      let actionPresentation = MatchResultActionPresentation(
         resultState: model.resultState, writesEnabled: writesEnabled)
-      if actionState.showsBar(selectedCount: selection.count) {
+      if actionPresentation.state.showsBar(selectedCount: selection.count) {
         BatchOutreachBar(
           selectedCount: selection.count, writesEnabled: canActOnResult,
-          actionState: actionState,
+          presentation: actionPresentation,
           onSend: {
             guard canActOnResult else { return }
             onComposeOutreach(result.id, selection.orderedRecipients(in: result))
           },
           onRetry: { Task { await model.openResult(id: matchID) } },
           onClear: {
-            guard canActOnResult else { return }
             selection.clear()
           })
       }
@@ -328,30 +338,23 @@ struct MatchResultView: View {
   @ViewBuilder
   private func candidateGroup(
     _ candidates: [MatchCandidatePresentation],
-    result: MatchResult,
-    emptyCopy: String
+    result: MatchResult
   ) -> some View {
-    if candidates.isEmpty {
-      Text(emptyCopy)
-        .font(.body)
-        .foregroundStyle(.secondary)
-    } else {
-      ForEach(candidates) { candidate in
-        CreatorMatchRow(
-          presentation: candidate,
-          isSelected: selectionBinding(for: candidate.source),
-          writesEnabled: canActOnResult,
-          onOpenProfile: { onOpenProfile(.creator, candidate.id) },
-          onSend: {
-            guard canActOnResult else { return }
-            onComposeOutreach(
-              result.id, [MatchRecipientSelection.recipientContext(candidate.source)])
-          },
-          onResend: { deliveryID in
-            guard canActOnResult else { return }
-            onResendDelivery(deliveryID)
-          })
-      }
+    ForEach(candidates) { candidate in
+      CreatorMatchRow(
+        presentation: candidate,
+        isSelected: selectionBinding(for: candidate.source),
+        writesEnabled: canActOnResult,
+        onOpenProfile: { onOpenProfile(.creator, candidate.id) },
+        onSend: {
+          guard canActOnResult else { return }
+          onComposeOutreach(
+            result.id, [MatchRecipientSelection.recipientContext(candidate.source)])
+        },
+        onResend: { deliveryID in
+          guard canActOnResult else { return }
+          onResendDelivery(deliveryID)
+        })
     }
   }
 

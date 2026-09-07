@@ -1,6 +1,25 @@
 import FindMeGamerCore
 import SwiftUI
 
+enum MatchGameEntryState: Equatable {
+  case loading
+  case empty
+  case unavailable
+  case choosing
+
+  init(hasGames: Bool, isLoading: Bool, hasError: Bool) {
+    if hasGames {
+      self = .choosing
+    } else if isLoading {
+      self = .loading
+    } else if hasError {
+      self = .unavailable
+    } else {
+      self = .empty
+    }
+  }
+}
+
 struct MatchHeroPolicy: Equatable {
   let showsSubmit: Bool
   let submitEnabled: Bool
@@ -28,17 +47,25 @@ struct MatchHero: View {
       canSubmit: model.canSubmit)
   }
 
+  private var entryState: MatchGameEntryState {
+    MatchGameEntryState(
+      hasGames: !model.games.isEmpty, isLoading: model.isLoadingGames,
+      hasError: model.gamesError != nil)
+  }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 16) {
       ViewThatFits(in: .horizontal) {
         HStack(alignment: .center, spacing: 20) {
-          controls.frame(minWidth: 310, maxWidth: .infinity, alignment: .leading)
+          entryControls.frame(minWidth: 310, maxWidth: .infinity, alignment: .leading)
           MatchConnectionArtwork(width: 112)
         }
-        controls
+        entryControls
       }
 
-      gameLoadingAndFeedback
+      if let gamesError = model.gamesError, !model.isLoadingGames {
+        gameFailure(gamesError)
+      }
 
       if let actionError = model.actionError {
         Label(actionError, systemImage: "exclamationmark.triangle")
@@ -52,19 +79,38 @@ struct MatchHero: View {
     .modifier(MatchInkSurface())
   }
 
-  private var controls: some View {
-    VStack(alignment: .leading, spacing: 14) {
-      Label("Game", systemImage: "gamecontroller")
+  @ViewBuilder private var entryControls: some View {
+    switch entryState {
+    case .loading:
+      HStack(spacing: 10) {
+        ProgressView().controlSize(.small)
+        Text("Loading games…").font(.headline)
+      }
+      .frame(minHeight: 56)
+    case .empty:
+      Button("Add game", systemImage: "plus", action: onAddGame)
+        .buttonStyle(.borderedProminent)
+        .tint(MatchInkControlColors.actionBackground)
+        .controlSize(.large)
+        .disabled(!writesEnabled)
+        .accessibilityIdentifier("match.add-game")
+    case .unavailable:
+      Label("Games unavailable", systemImage: "gamecontroller")
         .font(.headline)
-      ViewThatFits(in: .horizontal) {
-        HStack(spacing: 12) {
-          gameSelector
-          submit
-        }
-        VStack(alignment: .leading, spacing: 12) {
-          gameSelector
-          submit
-        }
+    case .choosing:
+      controls
+    }
+  }
+
+  private var controls: some View {
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 12) {
+        gameSelector
+        submit
+      }
+      VStack(alignment: .leading, spacing: 12) {
+        gameSelector
+        submit
       }
     }
   }
@@ -74,7 +120,14 @@ struct MatchHero: View {
     // an arbitrary SwiftUI hierarchy. Keep the title simple and style outside.
     Menu(model.selectedGame?.name ?? "Choose a game…") {
       ForEach(model.games) { game in
-        Button(game.name) { model.selectedGame = game }
+        Button { model.selectedGame = game } label: {
+          if model.selectedGame?.id == game.id {
+            Label(game.name, systemImage: "checkmark")
+              .labelStyle(.titleAndIcon)
+          } else {
+            Text(game.name)
+          }
+        }
       }
     }
     .menuStyle(.borderlessButton)
@@ -94,15 +147,18 @@ struct MatchHero: View {
       RoundedRectangle(cornerRadius: 14).strokeBorder(Color.white.opacity(0.75))
     }
     .accessibilityIdentifier(MatchAccessibility.gameSelector)
+    .accessibilityLabel("Game")
+    .accessibilityValue(model.selectedGame?.name ?? "Not selected")
     .help("Choose an analyzed Game Profile")
   }
 
   @ViewBuilder private var submit: some View {
     if policy.showsSubmit {
       HStack(spacing: 8) {
-        if model.isSubmitting {
+        if model.isSubmitting || model.isLoadingGames {
           ProgressView()
             .controlSize(.small)
+            .accessibilityLabel(model.isSubmitting ? "Starting match" : "Refreshing games")
         }
         Button(action: onSubmit) {
           Text(model.isSubmitting ? "Starting…" : "Find creators")
@@ -118,32 +174,32 @@ struct MatchHero: View {
     }
   }
 
-  @ViewBuilder private var gameLoadingAndFeedback: some View {
-    if model.isLoadingGames {
+  private func gameFailure(_ message: String) -> some View {
+    ViewThatFits(in: .horizontal) {
       HStack(spacing: 8) {
-        ProgressView()
-          .controlSize(.small)
-        Text("Loading Game Profiles…")
-          .foregroundStyle(Color.white.opacity(0.75))
+        gameFailureMessage(message)
+        retryGames
+      }
+      VStack(alignment: .leading, spacing: 8) {
+        gameFailureMessage(message)
+        retryGames
       }
     }
-
-    if let gamesError = model.gamesError {
-      HStack(spacing: 8) {
-        Text(gamesError)
-          .foregroundStyle(Color.white.opacity(0.8))
-        Button("Try Again") {
-          Task { await model.loadGames() }
-        }
-        .buttonStyle(.bordered)
-      }
-      .controlSize(.small)
-    } else if !model.isLoadingGames && model.games.isEmpty {
-      Button("Add game", systemImage: "plus", action: onAddGame)
-        .buttonStyle(.bordered)
-        .disabled(!writesEnabled)
-        .accessibilityIdentifier("match.add-game")
-    }
+    .controlSize(.small)
   }
 
+  private func gameFailureMessage(_ message: String) -> some View {
+    Label(message, systemImage: "exclamationmark.triangle")
+      .font(.callout)
+      .foregroundStyle(Color.white.opacity(0.8))
+      .fixedSize(horizontal: false, vertical: true)
+      .textSelection(.enabled)
+  }
+
+  private var retryGames: some View {
+    Button("Retry", systemImage: "arrow.clockwise") {
+      Task { await model.loadGames() }
+    }
+    .buttonStyle(.bordered)
+  }
 }

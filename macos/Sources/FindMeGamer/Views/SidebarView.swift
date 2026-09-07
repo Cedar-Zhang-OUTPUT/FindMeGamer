@@ -8,7 +8,7 @@ struct SidebarView: View {
 
   var body: some View {
     List(selection: $selection) {
-      Section("Workspace") {
+      Section {
         ForEach(AppDestination.allCases.filter { $0 != .settings }) { destination in
           destinationLabel(destination)
         }

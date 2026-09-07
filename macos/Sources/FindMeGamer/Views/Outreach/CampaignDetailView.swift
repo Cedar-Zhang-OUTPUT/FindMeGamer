@@ -6,6 +6,7 @@ struct CampaignDetailView: View {
   let campaignID: UUID
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
+  @State private var deliveryFilter = CampaignDeliveryFilter.all
 
   var body: some View {
     Group {
@@ -73,14 +74,25 @@ struct CampaignDetailView: View {
           ContentUnavailableView(
             "No deliveries yet", systemImage: "tray")
         } else {
+          deliveryFilterBar(campaign)
+          if deliveryFilter != .all && matchingDeliveries(in: campaign).isEmpty {
+            ContentUnavailableView {
+              Label("No matching deliveries", systemImage: "line.3.horizontal.decrease.circle")
+            } actions: {
+              Button("Show all deliveries") { deliveryFilter = .all }
+            }
+          }
           ForEach(campaign.sendBatches) { batch in
-            SendBatchSection(
-              batch: batch,
-              writesEnabled: writesEnabled,
-              canResend: model.canAttemptResend,
-              resend: { deliveryID in
-                Task { await model.resendDelivery(id: deliveryID) }
-              })
+            if deliveryFilter == .all || batch.deliveries.contains(where: matchesFilter) {
+              SendBatchSection(
+                batch: batch,
+                filter: deliveryFilter,
+                writesEnabled: writesEnabled,
+                canResend: model.canAttemptResend,
+                resend: { deliveryID in
+                  Task { await model.resendDelivery(id: deliveryID) }
+                })
+            }
           }
         }
       }
@@ -112,7 +124,18 @@ struct CampaignDetailView: View {
           .fill(StudioPalette.blue.opacity(0.14))
           .frame(height: 1)
           .accessibilityHidden(true)
-        OutreachMetricSummary(metrics: campaign.metrics)
+        OutreachMetricSummary(metrics: campaign.metrics, showsAll: false)
+        DisclosureGroup("More metrics") {
+          ForEach(
+            CampaignMetricPresentation.items(campaign.metrics).filter {
+              !$0.isPrimary && !($0.label == "Failed" && campaign.metrics.failed > 0)
+            }
+          ) { metric in
+            LabeledContent(metric.label, value: metric.value)
+          }
+          .font(.callout)
+          .padding(.top, 8)
+        }
       }
       .padding(WorkspaceDesign.spaceL)
       .background(
@@ -120,6 +143,36 @@ struct CampaignDetailView: View {
           colors: [StudioPalette.blue.opacity(0.08), StudioPalette.mint.opacity(0.025), .clear],
           startPoint: .topLeading, endPoint: .bottomTrailing))
     }
+  }
+
+  private func matchesFilter(_ delivery: Delivery) -> Bool {
+    deliveryFilter.includes(send: delivery.sendState, response: delivery.responseState)
+  }
+
+  private func matchingDeliveries(in campaign: OutreachCampaign) -> [Delivery] {
+    campaign.sendBatches.flatMap(\.deliveries).filter(matchesFilter)
+  }
+
+  private func deliveryFilterBar(_ campaign: OutreachCampaign) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      ViewThatFits(in: .horizontal) {
+        deliveryFilterPicker.pickerStyle(.segmented).fixedSize()
+        deliveryFilterPicker.pickerStyle(.menu)
+      }
+      let total = campaign.sendBatches.reduce(0) { $0 + $1.deliveries.count }
+      Text("\(matchingDeliveries(in: campaign).count) of \(total) deliveries")
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.secondary)
+    }
+  }
+
+  private var deliveryFilterPicker: some View {
+    Picker("Delivery status", selection: $deliveryFilter) {
+      ForEach(CampaignDeliveryFilter.allCases, id: \.self) { filter in
+        Text(filter.rawValue).tag(filter)
+      }
+    }
+    .accessibilityIdentifier("outreach.delivery-filter")
   }
 
   private func campaignTitle(
@@ -184,6 +237,7 @@ struct CampaignDetailView: View {
 
 private struct SendBatchSection: View {
   let batch: SendBatch
+  let filter: CampaignDeliveryFilter
   let writesEnabled: Bool
   let canResend: (UUID) -> Bool
   let resend: (UUID) -> Void
@@ -220,7 +274,7 @@ private struct SendBatchSection: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
         } else {
-          ForEach(Array(batch.deliveries.enumerated()), id: \.element.id) { index, delivery in
+          ForEach(Array(visibleDeliveries.enumerated()), id: \.element.id) { index, delivery in
             if index > 0 { Divider() }
             DeliveryRow(
               delivery: delivery,
@@ -233,6 +287,10 @@ private struct SendBatchSection: View {
       .padding(.horizontal, 18)
       .padding(.bottom, 4)
     }
+  }
+
+  private var visibleDeliveries: [Delivery] {
+    batch.deliveries.filter { filter.includes(send: $0.sendState, response: $0.responseState) }
   }
 }
 

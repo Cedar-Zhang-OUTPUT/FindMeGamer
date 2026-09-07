@@ -3,19 +3,21 @@ import SwiftUI
 struct BatchOutreachBar: View {
   let selectedCount: Int
   let writesEnabled: Bool
-  let actionState: MatchResultActionState
+  let presentation: MatchResultActionPresentation
   let onSend: () -> Void
   var onRetry: () -> Void = {}
   var onClear: () -> Void = {}
+
+  private var actionState: MatchResultActionState { presentation.state }
 
   var body: some View {
     VStack(spacing: 0) {
       Rectangle().fill(StudioPalette.blue.opacity(0.18)).frame(height: 1)
       ViewThatFits(in: .horizontal) {
         HStack(spacing: 16) {
-          summary
+          summary.frame(minWidth: 220, alignment: .leading)
           Spacer(minLength: 8)
-          actions
+          actions.fixedSize()
         }
         VStack(alignment: .leading, spacing: 12) {
           summary
@@ -38,11 +40,18 @@ struct BatchOutreachBar: View {
       }
       if let status = actionState.statusLabel {
         VStack(alignment: .leading, spacing: 3) {
-          Label(status, systemImage: actionState.showsRetry ? "arrow.clockwise" : "lock")
-            .font(.callout.weight(.semibold))
-          if actionState == .refreshRequired || actionState == .refreshing {
-            Text("Saved result · outreach paused")
-              .font(.caption).foregroundStyle(.secondary)
+          if actionState == .refreshing {
+            Text(status).font(.callout.weight(.semibold))
+          } else {
+            Label(status, systemImage: actionState.showsRetry ? "arrow.clockwise" : "lock")
+              .font(.callout.weight(.semibold))
+          }
+          if let message = presentation.failureMessage {
+            Text(message)
+              .font(.callout)
+              .foregroundStyle(.secondary)
+              .fixedSize(horizontal: false, vertical: true)
+              .textSelection(.enabled)
           }
         }
       } else {
@@ -51,6 +60,7 @@ struct BatchOutreachBar: View {
           .foregroundStyle(StudioPalette.blue)
       }
     }
+    .fixedSize(horizontal: false, vertical: true)
   }
 
   private var actions: some View {

@@ -7,6 +7,8 @@ struct EmailSettingsView: View {
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
   @State private var confirmation: Confirmation?
   @State private var connectionPresentation = SMTPConnectionPresentation()
+  @State private var isShowingSendingLimit = false
+  @State private var isShowingTestRecipient = false
 
   var body: some View {
     Form {
@@ -66,12 +68,12 @@ struct EmailSettingsView: View {
           TextField("Reply-To", text: replyTo)
             .textFieldStyle(.roundedBorder)
 
-          DisclosureGroup("Sending limit · \(model.smtpEmailsPerMinute) emails/min") {
-            TextField("Emails per minute", value: emailsPerMinute, format: .number)
+          InlineDisclosure(
+            "Sending limit · \(model.smtpEmailsPerMinute) emails/min",
+            isExpanded: $isShowingSendingLimit
+          ) {
+            TextField("Emails/min (1–60)", value: emailsPerMinute, format: .number)
               .textFieldStyle(.roundedBorder)
-            Text("1–60 emails/min")
-              .font(.caption)
-              .foregroundStyle(.secondary)
           }
 
         }
@@ -99,11 +101,11 @@ struct EmailSettingsView: View {
 
         Divider()
 
-        DisclosureGroup("Send a test email") {
+        InlineDisclosure("Send a test email", isExpanded: $isShowingTestRecipient) {
           TextField("Company test recipient", text: testRecipient)
             .textFieldStyle(.roundedBorder)
             .disabled(model.isSendingSMTPTest)
-          Button("Send Test Email") {
+          Button("Send test") {
             confirmation = .sendTest(
               model.smtpTestRecipient.trimmingCharacters(in: .whitespacesAndNewlines))
           }

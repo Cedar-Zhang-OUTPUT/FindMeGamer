@@ -5,13 +5,12 @@ struct ConnectionsSettings: View {
   @Bindable var model: SettingsModel
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
-  @State private var replacementConfirmation: ConnectionService?
-  @State private var expandedService: ConnectionService?
+  @Bindable var presentation: SettingsPresentation
 
   var body: some View {
     Section("Service Connections") {
       ForEach(model.connectionServices, id: \.self) { service in
-        DisclosureGroup(isExpanded: serviceExpanded(service)) {
+        InlineDisclosure(isExpanded: serviceExpanded(service)) {
           connectionRow(service)
         } label: {
           HStack(spacing: 12) {
@@ -31,11 +30,11 @@ struct ConnectionsSettings: View {
       }
     }
     .confirmationDialog(
-      "Replace \(replacementConfirmation?.displayName ?? "service") credential?",
+      "Replace \(presentation.replacementConfirmation?.displayName ?? "service") credential?",
       isPresented: confirmationPresented,
       titleVisibility: .visible
     ) {
-      if let service = replacementConfirmation {
+      if let service = presentation.replacementConfirmation {
         Button("Replace Credential") {
           Task { await model.replaceConnection(service) }
         }
@@ -66,7 +65,7 @@ struct ConnectionsSettings: View {
 
       HStack {
         Button("Replace Credential") {
-          replacementConfirmation = service
+          presentation.replacementConfirmation = service
         }
         .disabled(
           !writesEnabled || model.isConnectionActionInFlight(service)
@@ -103,8 +102,8 @@ struct ConnectionsSettings: View {
 
   private func serviceExpanded(_ service: ConnectionService) -> Binding<Bool> {
     Binding(
-      get: { expandedService == service },
-      set: { expandedService = $0 ? service : nil })
+      get: { presentation.expandedConnection == service },
+      set: { presentation.expandedConnection = $0 ? service : nil })
   }
 
   private func secretBinding(for service: ConnectionService) -> Binding<String> {
@@ -115,8 +114,8 @@ struct ConnectionsSettings: View {
 
   private var confirmationPresented: Binding<Bool> {
     Binding(
-      get: { replacementConfirmation != nil },
-      set: { if !$0 { replacementConfirmation = nil } })
+      get: { presentation.replacementConfirmation != nil },
+      set: { if !$0 { presentation.replacementConfirmation = nil } })
   }
 
   private func formatted(_ date: Date?) -> String {
