@@ -1,7 +1,7 @@
 """Strict structured-output contracts for progressive Creator matching."""
 
 from collections.abc import Iterable
-from typing import Annotated, Literal, Self
+from typing import Annotated, ClassVar, Literal, Self
 from uuid import UUID
 
 from pydantic import (
@@ -88,6 +88,8 @@ class ScreeningSelection(_StrictMatchModel):
 class ScreeningOutput(_MatchStageOutput):
     """Flash output containing zero through thirty unique candidates."""
 
+    deepseek_max_tokens: ClassVar[int] = 16_384
+
     selected: Annotated[tuple[ScreeningSelection, ...], Field(max_length=30)]
 
     @field_validator("selected")
@@ -108,6 +110,8 @@ class MatchDimensionAnalysis(_StrictMatchModel):
 
 class PairwiseMatchBrief(_MatchStageOutput):
     """One qualitative, evidence-backed Game/Creator comparison."""
+
+    deepseek_max_tokens: ClassVar[int] = 16_384
 
     creator_id: CreatorID
     content_fit: MatchDimensionAnalysis
@@ -152,6 +156,8 @@ class RankingItem(_StrictMatchModel):
 
 class FinalRankingOutput(_MatchStageOutput):
     """Complete internal ranking output for all successful pairwise briefs."""
+
+    deepseek_max_tokens: ClassVar[int] = 65_536
 
     items: Annotated[tuple[RankingItem, ...], Field(max_length=30)]
 

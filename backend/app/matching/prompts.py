@@ -12,12 +12,17 @@ from app.schemas.ai_game import GameBrief
 from app.schemas.ai_match import PairwiseMatchBrief
 
 
-SCREENING_PROMPT_VERSION = "match-screening-v1"
-PAIRWISE_MATCH_PROMPT_VERSION = "pairwise-match-v1"
-RANKING_PROMPT_VERSION = "match-ranking-v1"
+SCREENING_PROMPT_VERSION = "match-screening-v2"
+PAIRWISE_MATCH_PROMPT_VERSION = "pairwise-match-v2"
+RANKING_PROMPT_VERSION = "match-ranking-v2"
 MAX_MATCH_MESSAGES = 100
-MAX_MATCH_TOTAL_MESSAGE_CHARACTERS = 1_000_000
-SCREENING_CHUNK_BYTES = 120_000
+# Bound the whole request, not just each message. UTF-8 bytes are a conservative
+# proxy rather than an exact tokenizer count. Against V4's 1M-token window this
+# leaves ample room for the schemas, one repair context, and up to 65,536 output
+# tokens. A 100-Creator library fits even at the 4,500-byte Brief contract limit;
+# larger libraries are accepted only when the complete input fits this budget.
+MAX_MATCH_TOTAL_MESSAGE_BYTES = 512_000
+MATCH_CHUNK_BYTES = 120_000
 
 _MATCH_COMMON_RULES = """Return English only.
 Return schema-only JSON with no Markdown, prose, or keys outside the supplied JSON Schema.
@@ -142,19 +147,23 @@ def build_screening_prompt(
         )
     if len(creator_ids) != len(set(creator_ids)):
         raise ValueError("screening creator IDs must be unique")
-    return _build_screening_messages(
+    return _build_grouped_messages(
         version=SCREENING_PROMPT_VERSION,
         stage_rules=(
             "Select zero to 30 plausible candidates for later independent comparison. "
+            "Consider every Creator across all supplied user messages as one candidate "
+            "pool. Message boundaries and input order carry no preference; do not "
+            "select separately per message. "
             "This is candidate screening, not a final rank, score, recommendation group, "
             "or ordinal result. Return only selected stable creator IDs with concise "
-            "screening reasons and evidence. Input contains only the locked Game Brief "
+            "screening reasons and concise evidence. Input contains only the locked Game Brief "
             "and compact locked Creator Briefs."
         ),
         payload={
             "game_brief": game_brief.model_dump(mode="json"),
             "creators": creators,
         },
+        items_key="creators",
     )
 
 
@@ -173,7 +182,9 @@ def build_pairwise_prompt(
             "Content Fit, Audience Fit, Performance Fit, Promotion Fit, Brand Safety, "
             "Strengths, Risks, Evidence, and Match Reasons. Do not produce a final rank, "
             "recommendation group, backend order, or score. The Creator Profile below is "
-            "an explicit fit-only projection of the locked full Profile snapshot."
+            "an explicit fit-only projection of the locked full Profile snapshot. "
+            "Keep each dimension analysis to one to three concise sentences, with "
+            "specific evidence; avoid repeating the same explanation across sections."
         ),
         payload={
             "game_brief": game_brief.model_dump(mode="json"),
@@ -203,11 +214,14 @@ def build_ranking_prompt(
         serialized.append(brief.model_dump(mode="json"))
     if len(creator_ids) != len(set(creator_ids)):
         raise ValueError("ranking creator IDs must be unique")
-    return _build_messages(
+    return _build_grouped_messages(
         version=RANKING_PROMPT_VERSION,
         stage_rules=(
             f"{_FIT_NEUTRALITY_RULE}\nRank only the validated successful Match Briefs "
-            "supplied below. Return each supplied creator ID exactly once, with hidden "
+            "supplied below. Compare all Match Briefs across all supplied user messages "
+            "together in one global ranking, never independent per-message rankings. "
+            "Message boundaries and input order carry no preference. "
+            "Return each supplied creator ID exactly once, with hidden "
             "total and five dimension scores from 0 through 1, a unique non-negative "
             "backend order, result group, qualitative label, qualitative dimension "
             "outcomes, and final Match Reasons. Scores are internal comparative "
@@ -216,12 +230,14 @@ def build_ranking_prompt(
             "recommended when quantized total_score >= recommended_match_threshold; "
             "otherwise result_group must be other. Never restate Match or fit scores, "
             "rank, backend order, threshold, or grouping mechanics in qualitative "
-            "dimension outcomes or final Match Reasons."
+            "dimension outcomes or final Match Reasons. Keep qualitative outcomes "
+            "and final reasons concise without omitting any supplied Creator."
         ),
         payload={
             "recommended_match_threshold": canonical_threshold,
             "match_briefs": serialized,
         },
+        items_key="match_briefs",
     )
 
 
@@ -397,13 +413,25 @@ def _build_messages(
     return [system, user]
 
 
-def _build_screening_messages(
+def _build_grouped_messages(
     *,
     version: str,
     stage_rules: str,
     payload: Mapping[str, object],
+    items_key: str,
 ) -> list[Message]:
+    """One global model call, with whole records grouped into bounded messages."""
+
     encoded = _encoded_user_content(payload)
+    system = Message(
+        role="system",
+        content=f"Prompt version: {version}\n{_MATCH_COMMON_RULES}\n{stage_rules}",
+    )
+    if (
+        len(system.content.encode("utf-8")) + len(encoded.encode("utf-8"))
+        > MAX_MATCH_TOTAL_MESSAGE_BYTES
+    ):
+        raise ValueError("match prompt exceeds its total byte budget")
     if len(encoded.encode("utf-8")) <= MAX_USER_MESSAGE_BYTES:
         return _build_messages(
             version=version,
@@ -411,30 +439,30 @@ def _build_screening_messages(
             payload=payload,
         )
 
-    system = Message(
-        role="system",
-        content=f"Prompt version: {version}\n{_MATCH_COMMON_RULES}\n{stage_rules}",
-    )
-    game_brief = payload["game_brief"]
-    raw_creators = payload["creators"]
-    if not isinstance(raw_creators, list):  # pragma: no cover - private invariant
-        raise TypeError("screening creators must be a list")
-    grouped_payloads: list[dict[str, object]] = [{"game_brief": game_brief}]
+    raw_items = payload[items_key]
+    if not isinstance(raw_items, list):  # pragma: no cover - private invariant
+        raise TypeError("grouped match inputs must be a list")
+    grouped_payloads = [
+        {key: value for key, value in payload.items() if key != items_key}
+    ]
     current_group: list[object] = []
-    for creator in raw_creators:
-        candidate_group = [*current_group, creator]
-        candidate_payload = {"creators": candidate_group}
+    for item in raw_items:
+        if (
+            len(_encoded_user_content({items_key: [item]}).encode("utf-8"))
+            > MATCH_CHUNK_BYTES
+        ):
+            raise ValueError("one Match input exceeds the message byte budget")
+        candidate_group = [*current_group, item]
+        candidate_payload = {items_key: candidate_group}
         if len(_encoded_user_content(candidate_payload).encode("utf-8")) <= (
-            SCREENING_CHUNK_BYTES
+            MATCH_CHUNK_BYTES
         ):
             current_group = candidate_group
             continue
-        if not current_group:
-            raise ValueError("one Creator Brief exceeds the screening chunk budget")
-        grouped_payloads.append({"creators": current_group})
-        current_group = [creator]
+        grouped_payloads.append({items_key: current_group})
+        current_group = [item]
     if current_group:
-        grouped_payloads.append({"creators": current_group})
+        grouped_payloads.append({items_key: current_group})
 
     messages = [
         system,
@@ -445,10 +473,10 @@ def _build_screening_messages(
     ]
     if (
         len(messages) > MAX_MATCH_MESSAGES
-        or sum(len(message.content) for message in messages)
-        > MAX_MATCH_TOTAL_MESSAGE_CHARACTERS
+        or sum(len(message.content.encode("utf-8")) for message in messages)
+        > MAX_MATCH_TOTAL_MESSAGE_BYTES
     ):
-        raise ValueError("match prompt exceeds the DeepSeek message budget")
+        raise ValueError("match prompt exceeds its total byte budget")
     return messages
 
 
