@@ -37,7 +37,7 @@ from tests.unit.analysis.test_creator_pipeline import _source
 NOW = datetime(2026, 9, 7, 10, 0, tzinfo=UTC)
 
 
-def seed(factory, *, succeeded=False):
+def seed(factory, *, succeeded=False, missing_content_format=False):
     source = _source()
     videos = tuple(
         source.videos[0].model_copy(update={"id": f"video-{i}"}) for i in range(50)
@@ -63,6 +63,8 @@ def seed(factory, *, succeeded=False):
         outputs[REDUCTION_NODE_KEYS[name]] = _output_for(schema)
     if succeeded:
         outputs[BRIEF_NODE_KEY] = _output_for(CreatorBriefSynthesis)
+    if missing_content_format:
+        del outputs[REDUCTION_NODE_KEYS["content_format"]]
     job_id, profile_id = uuid4(), uuid4()
     created = NOW - timedelta(hours=1)
     with factory.begin() as session:
@@ -98,7 +100,15 @@ def seed(factory, *, succeeded=False):
                 started_at=created,
                 completed_at=created + timedelta(minutes=2),
                 retryable=not succeeded,
-                error_code=None if succeeded else "deepseek_model_output_invalid",
+                error_code=(
+                    None
+                    if succeeded
+                    else (
+                        "deepseek_model_evidence_invalid"
+                        if missing_content_format
+                        else "deepseek_model_output_invalid"
+                    )
+                ),
                 error_message=(
                     None
                     if succeeded
@@ -150,11 +160,17 @@ def resumer(factory, dispatcher=None):
     )
 
 
-@pytest.mark.parametrize(("mode", "expected"), [("brief", 12), ("visual", 10)])
+@pytest.mark.parametrize(
+    ("mode", "expected"), [("brief", 12), ("visual", 10), ("content-format", 11)]
+)
 def test_resume_clones_only_required_nodes_after_commit_and_preserves_history(
     committed_factory, mode, expected
 ):
-    source_id, profile_id, outputs = seed(committed_factory, succeeded=mode == "visual")
+    source_id, profile_id, outputs = seed(
+        committed_factory,
+        succeeded=mode == "visual",
+        missing_content_format=mode == "content-format",
+    )
     dispatcher = Dispatcher(committed_factory)
     result = resumer(committed_factory, dispatcher).run(source_id, mode=mode)
     assert result.created and result.dispatched
@@ -183,6 +199,15 @@ def test_resume_clones_only_required_nodes_after_commit_and_preserves_history(
             )
             assert node.created_at == old.created_at
         assert BRIEF_NODE_KEY not in result.copied_nodes
+        if mode == "content-format":
+            assert original.retryable is True
+            assert original.error_code == "deepseek_model_evidence_invalid"
+            assert original.completed_at == NOW - timedelta(minutes=58)
+            assert set(result.recomputed_nodes) == {
+                REDUCTION_NODE_KEYS["content_format"],
+                BRIEF_NODE_KEY,
+            }
+            assert REDUCTION_NODE_KEYS["content_format"] not in result.copied_nodes
         if mode == "visual":
             assert VISUAL_NODE_KEY not in result.copied_nodes
             assert REDUCTION_NODE_KEYS["presentation"] not in result.copied_nodes
@@ -192,27 +217,36 @@ def test_resume_clones_only_required_nodes_after_commit_and_preserves_history(
     assert dispatcher.calls == [result.job_id]
 
 
+@pytest.mark.parametrize("mode", ["brief", "content-format"])
 def test_repeated_resume_reuses_active_job_without_duplicate_dispatch(
     committed_factory,
+    mode,
 ):
-    source_id, _, _ = seed(committed_factory)
+    source_id, _, _ = seed(
+        committed_factory, missing_content_format=mode == "content-format"
+    )
     dispatcher = Dispatcher(committed_factory)
     service = resumer(committed_factory, dispatcher)
-    first = service.run(source_id, mode="brief")
-    second = service.run(source_id, mode="brief")
+    first = service.run(source_id, mode=mode)
+    second = service.run(source_id, mode=mode)
     assert first.job_id == second.job_id
     assert not second.created and not second.dispatched
     assert dispatcher.calls == [first.job_id]
 
 
-def test_dry_run_validates_but_does_not_write_or_dispatch(committed_factory):
-    source_id, _, _ = seed(committed_factory)
+@pytest.mark.parametrize(("mode", "expected"), [("brief", 12), ("content-format", 11)])
+def test_dry_run_validates_but_does_not_write_or_dispatch(
+    committed_factory, mode, expected
+):
+    source_id, _, _ = seed(
+        committed_factory, missing_content_format=mode == "content-format"
+    )
     dispatcher = Dispatcher(committed_factory)
     result = resumer(committed_factory, dispatcher).run(
-        source_id, mode="brief", dry_run=True
+        source_id, mode=mode, dry_run=True
     )
     assert result.dry_run and result.job_id is None
-    assert len(result.copied_nodes) == 12
+    assert len(result.copied_nodes) == expected
     with committed_factory() as session:
         assert session.scalar(select(func.count()).select_from(AnalysisJob)) == 1
     assert dispatcher.calls == []
@@ -221,8 +255,13 @@ def test_dry_run_validates_but_does_not_write_or_dispatch(committed_factory):
 @pytest.mark.parametrize(
     "change", ["expired", "identity", "unknown", "invalid", "missing", "running"]
 )
-def test_unsupported_source_is_rejected_without_partial_job(committed_factory, change):
-    source_id, _, _ = seed(committed_factory)
+@pytest.mark.parametrize("mode", ["brief", "content-format"])
+def test_unsupported_source_is_rejected_without_partial_job(
+    committed_factory, change, mode
+):
+    source_id, _, _ = seed(
+        committed_factory, missing_content_format=mode == "content-format"
+    )
     with committed_factory.begin() as session:
         source_node = session.get(CreatorAnalysisNode, (source_id, SOURCE_NODE_KEY))
         if change == "expired":
@@ -250,7 +289,7 @@ def test_unsupported_source_is_rejected_without_partial_job(committed_factory, c
             job.completed_at = job.error_code = job.error_message = None
             job.retryable = False
     with pytest.raises(ResumeCreatorError):
-        resumer(committed_factory).run(source_id, mode="brief")
+        resumer(committed_factory).run(source_id, mode=mode)
     with committed_factory() as session:
         assert session.scalar(select(func.count()).select_from(AnalysisJob)) == 1
 
@@ -292,7 +331,7 @@ def test_queue_failure_preserves_source_and_allows_normal_resume_again(
     assert resumer(committed_factory).run(source_id, mode="brief").dispatched
 
 
-@pytest.mark.parametrize("mode", ["brief", "visual"])
+@pytest.mark.parametrize("mode", ["brief", "visual", "content-format"])
 def test_resumed_job_uses_normal_pipeline_and_only_recomputes_planned_nodes(
     committed_factory, mode
 ):
@@ -304,7 +343,9 @@ def test_resumed_job_uses_normal_pipeline_and_only_recomputes_planned_nodes(
     from tests.unit.analysis.test_prompts import available_creator_visual
 
     source_id, previous_profile_id, _ = seed(
-        committed_factory, succeeded=mode == "visual"
+        committed_factory,
+        succeeded=mode == "visual",
+        missing_content_format=mode == "content-format",
     )
     result = resumer(committed_factory).run(source_id, mode=mode)
 
@@ -317,7 +358,11 @@ def test_resumed_job_uses_normal_pipeline_and_only_recomputes_planned_nodes(
 
         def complete_structured(self, model, messages, schema, **kwargs):
             self.calls.append(schema)
-            assert schema in {CreatorBriefSynthesis, CreatorPresentationReduction}
+            assert schema in {
+                CreatorBriefSynthesis,
+                CreatorPresentationReduction,
+                CreatorContentFormatReduction,
+            }
             return _output_for(schema)
 
         def complete_vision(self, model, prompt, image_urls, schema, **kwargs):
@@ -340,15 +385,15 @@ def test_resumed_job_uses_normal_pipeline_and_only_recomputes_planned_nodes(
         checkpoints=CreatorAnalysisCheckpointStore(session_factory=committed_factory),
     )
     profile_id = pipeline.run(result.job_id)
-    expected = (
-        [CreatorBriefSynthesis]
-        if mode == "brief"
-        else [
+    expected = {
+        "brief": [CreatorBriefSynthesis],
+        "visual": [
             CreatorVisualAnalysis,
             CreatorPresentationReduction,
             CreatorBriefSynthesis,
-        ]
-    )
+        ],
+        "content-format": [CreatorContentFormatReduction, CreatorBriefSynthesis],
+    }[mode]
     assert ai.calls == expected
     with committed_factory() as session:
         assert session.get(AnalysisJob, result.job_id).status is JobStatus.SUCCEEDED
@@ -379,19 +424,60 @@ def test_visual_recovery_refuses_stale_or_already_fixed_profile(
         resumer(committed_factory).run(source_id, mode="visual")
 
 
-def test_cli_dry_run_reports_plan_without_payloads(committed_factory, capsys):
+@pytest.mark.parametrize(("mode", "expected"), [("brief", 12), ("content-format", 11)])
+def test_cli_dry_run_reports_plan_without_payloads(
+    committed_factory, capsys, mode, expected
+):
     import json
     from app.cli.resume_creator_analysis import main
 
-    source_id, _, _ = seed(committed_factory)
+    source_id, _, _ = seed(
+        committed_factory, missing_content_format=mode == "content-format"
+    )
     assert (
         main(
-            [str(source_id), "--mode", "brief", "--dry-run"],
+            [str(source_id), "--mode", mode, "--dry-run"],
             service_factory=lambda: resumer(committed_factory),
         )
         == 0
     )
     report = json.loads(capsys.readouterr().out)
     assert report["source_job_id"] == str(source_id)
-    assert report["dry_run"] is True and len(report["copied_nodes"]) == 12
+    assert report["dry_run"] is True and len(report["copied_nodes"]) == expected
     assert "output_payload" not in report
+
+
+def test_content_format_recovery_excludes_existing_content_and_brief_nodes(
+    committed_factory,
+):
+    source_id, _, _ = seed(committed_factory)
+    with committed_factory.begin() as session:
+        session.add(
+            CreatorAnalysisNode(
+                job_id=source_id,
+                node_key=BRIEF_NODE_KEY,
+                output_payload=_output_for(CreatorBriefSynthesis).model_dump(
+                    mode="json"
+                ),
+                created_at=NOW - timedelta(hours=1),
+                updated_at=NOW - timedelta(hours=1),
+            )
+        )
+    result = resumer(committed_factory).run(source_id, mode="content-format")
+    assert len(result.copied_nodes) == 11
+    assert set(result.recomputed_nodes) == {
+        REDUCTION_NODE_KEYS["content_format"],
+        BRIEF_NODE_KEY,
+    }
+    with committed_factory() as session:
+        for key in result.recomputed_nodes:
+            assert session.get(CreatorAnalysisNode, (source_id, key)) is not None
+            assert session.get(CreatorAnalysisNode, (result.job_id, key)) is None
+
+
+def test_content_format_recovery_refuses_successful_source(committed_factory):
+    source_id, _, _ = seed(committed_factory, succeeded=True)
+    with pytest.raises(ResumeCreatorError, match="not eligible"):
+        resumer(committed_factory).run(source_id, mode="content-format")
+    with committed_factory() as session:
+        assert session.scalar(select(func.count()).select_from(AnalysisJob)) == 1

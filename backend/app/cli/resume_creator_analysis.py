@@ -49,7 +49,7 @@ from app.schemas.ai_creator_map_reduce import (
 )
 
 
-Mode = Literal["brief", "visual"]
+Mode = Literal["brief", "visual", "content-format"]
 SessionFactory = Callable[[], AbstractContextManager[Session]]
 
 
@@ -90,8 +90,10 @@ class CreatorAnalysisResumer:
     ) -> ResumeResult:
         if not isinstance(source_job_id, UUID) or source_job_id.int == 0:
             raise ResumeCreatorError("A nonzero source Job UUID is required.")
-        if mode not in {"brief", "visual"}:
-            raise ResumeCreatorError("Recovery mode must be brief or visual.")
+        if mode not in {"brief", "visual", "content-format"}:
+            raise ResumeCreatorError(
+                "Recovery mode must be brief, visual, or content-format."
+            )
         try:
             result = self._prepare(source_job_id, mode=mode, dry_run=dry_run)
         except ResumeCreatorError:
@@ -122,13 +124,13 @@ class CreatorAnalysisResumer:
             if source is None or source.target_type is not TargetType.CREATOR:
                 raise ResumeCreatorError("The source must be an existing Creator Job.")
             expected_status = (
-                JobStatus.FAILED if mode == "brief" else JobStatus.SUCCEEDED
+                JobStatus.SUCCEEDED if mode == "visual" else JobStatus.FAILED
             )
             if source.status is not expected_status:
                 raise ResumeCreatorError(
                     "The source Job is not eligible for this recovery mode."
                 )
-            if mode == "brief" and not source.retryable:
+            if mode != "visual" and not source.retryable:
                 raise ResumeCreatorError("The failed source Job is not retryable.")
             target = canonicalize_target(TargetType.CREATOR, source.canonical_url)
             if (
@@ -199,7 +201,10 @@ class CreatorAnalysisResumer:
                     raise ResumeCreatorError(
                         "Unknown checkpoint versions require normal reanalysis."
                     )
-                if set(schemas) - {BRIEF_NODE_KEY} - set(nodes):
+                optional_nodes = {BRIEF_NODE_KEY}
+                if mode == "content-format":
+                    optional_nodes.add(REDUCTION_NODE_KEYS["content_format"])
+                if set(schemas) - optional_nodes - set(nodes):
                     raise ResumeCreatorError(
                         "Required successful checkpoints are missing."
                     )
@@ -223,6 +228,8 @@ class CreatorAnalysisResumer:
             excluded = {BRIEF_NODE_KEY}
             if mode == "visual":
                 excluded.update({VISUAL_NODE_KEY, REDUCTION_NODE_KEYS["presentation"]})
+            elif mode == "content-format":
+                excluded.add(REDUCTION_NODE_KEYS["content_format"])
             copied = tuple(sorted(set(nodes) - excluded))
             recomputed = tuple(sorted(excluded))
             active = repository.active_job(target)
@@ -310,7 +317,9 @@ def build_production_service() -> CreatorAnalysisResumer:
 def main(argv=None, *, service_factory=build_production_service) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source_job_id", type=UUID)
-    parser.add_argument("--mode", choices=("brief", "visual"), required=True)
+    parser.add_argument(
+        "--mode", choices=("brief", "visual", "content-format"), required=True
+    )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     try:

@@ -20,7 +20,7 @@ from app.schemas.ai_creator_map_reduce import (
 from app.schemas.ai_game import EvidenceCatalog, EvidenceCatalogEntry, StrictAIModel
 
 CREATOR_VIDEO_BATCH_PROMPT_VERSION = "creator-video-batch-v2"
-CREATOR_CONTENT_FORMAT_PROMPT_VERSION = "creator-content-format-v2"
+CREATOR_CONTENT_FORMAT_PROMPT_VERSION = "creator-content-format-v3"
 CREATOR_PRESENTATION_PROMPT_VERSION = "creator-presentation-v2"
 CREATOR_PERFORMANCE_AUDIENCE_PROMPT_VERSION = "creator-performance-audience-v2"
 CREATOR_COMMERCIAL_SAFETY_PROMPT_VERSION = "creator-commercial-safety-v2"
@@ -123,6 +123,18 @@ def build_creator_content_format_bundle(
 ) -> PromptBundle:
     validated = _validated_digests(digests)
     payload, catalog = _dimension_inputs(validated, "content_format")
+    for index, batch in enumerate(payload):
+        # Keep the full validated digest, including its original provenance, but
+        # place the current-stage citation identity beside each available field.
+        batch["citation_targets"] = {
+            entry.reference.rsplit(".", 1)[-1]: {
+                "reference": entry.reference,
+                "source_type": entry.source_type,
+                "kind": "ai_inference",
+            }
+            for entry in catalog.entries
+            if entry.reference.startswith(f"batch:{index}:content_format.")
+        }
     return _reducer_bundle(
         version=CREATOR_CONTENT_FORMAT_PROMPT_VERSION,
         label="VALIDATED_CONTENT_FORMAT_INTERMEDIATES",
@@ -134,9 +146,54 @@ def build_creator_content_format_bundle(
             "livestream_tendency, long_form_tendency, short_form_tendency, "
             "representative_video_context, and suitable_game_types. Do not output "
             "presentation, audience, performance, commercial, safety, contact, or "
-            "Creator Brief fields."
+            "Creator Brief fields. Every output citation must copy an exact "
+            "citation_targets reference with source_type=intermediate_output and "
+            "kind=ai_inference, as required by this stage's evidence_catalog. "
+            "Do not copy nested video or channel citations from a digest's evidence; "
+            "those describe earlier provenance, not valid current-stage citations. "
+            "Do not construct reference paths from output field names: content_summary "
+            "and the separate livestream/long-form/short-form tendencies are output "
+            "fields, not batch fields. Trace them to supplied content_focus, "
+            "format_tendencies, or other genuinely supporting available batch fields. "
+            "Use the original evidence observations to assess support, but cite the "
+            "matching current-stage target. Never invent a batch index or cite an "
+            "unavailable field."
         ),
     )
+
+
+def build_creator_content_format_binding_repair(
+    messages: list[Message],
+    output: CreatorContentFormatReduction,
+    *,
+    reason: str,
+) -> list[Message]:
+    """One bounded correction of citation identity, not a new content analysis."""
+
+    return [
+        *messages,
+        Message(role="assistant", content=output.model_dump_json()),
+        Message(
+            role="user",
+            content=(
+                f"Evidence binding validation failed: {reason}. "
+                "The previous JSON is schema-valid but its citations do not bind to "
+                "the current evidence_catalog. Change only evidence reference, "
+                "source_type, and kind. Preserve every claim value, values list, "
+                "status, reason, confidence, evidence observation, and evidence "
+                "count/order exactly. Do not remove claims or make them unavailable "
+                "to evade validation. Trace each observation to its genuinely "
+                "supporting supplied batch field and use that field's exact "
+                "citation_targets triplet: source_type=intermediate_output, "
+                "kind=ai_inference, and the reference present in evidence_catalog. "
+                "Nested video/channel references and paths invented from output "
+                "field names are not valid. If no supplied target supports an "
+                "observation, do not invent a citation; retain the unresolved "
+                "citation so the operation fails safely. Return the complete JSON "
+                "object with no Markdown or commentary."
+            ),
+        ),
+    ]
 
 
 def build_creator_presentation_prompt(
@@ -546,6 +603,7 @@ __all__ = [
     "build_creator_commercial_safety_bundle",
     "build_creator_commercial_safety_prompt",
     "build_creator_content_format_bundle",
+    "build_creator_content_format_binding_repair",
     "build_creator_content_format_prompt",
     "build_creator_performance_audience_bundle",
     "build_creator_performance_audience_prompt",
