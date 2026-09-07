@@ -19,6 +19,7 @@ from app.integrations.errors import (
     PermanentIntegrationError,
     TransientIntegrationError,
 )
+from app.integrations.creator_brief_repair import repair_creator_brief_text
 from app.integrations.http import (
     InvalidContentLength,
     ResponseTooLarge,
@@ -26,6 +27,7 @@ from app.integrations.http import (
     streaming_response,
 )
 from app.integrations.vision_images import VisionImageLoader
+from app.schemas.ai_creator_map_reduce import CreatorBriefSynthesis
 
 T = TypeVar("T", bound=BaseModel)
 DEFAULT_DEEPSEEK_API_BASE_URL = "https://api.deepseek.com"
@@ -46,6 +48,15 @@ _dns_label = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _hex_pair = re.compile(r"^[0-9A-Fa-f]{2}$")
 _numeric_host_label = re.compile(r"^(?:[0-9]+|0[xX][0-9A-Fa-f]+)$")
 logger = logging.getLogger(__name__)
+_VALIDATION_REASON_CODES = {
+    "unavailable visual analysis requires a reason and unavailable claims": "visual_unavailable_shape_invalid",
+    "available visual analysis cannot carry an unavailable reason": "visual_available_reason_invalid",
+    "available visual analysis requires an available claim": "visual_available_claim_missing",
+    "available visual claims require visual-observation evidence": "visual_claim_evidence_kind_invalid",
+    "visual observations must reference a visual asset": "visual_asset_source_type_required",
+    "text must be nonblank without surrounding whitespace": "text_blank_or_untrimmed",
+    "text contains unsupported control characters": "text_control_characters",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,6 +175,16 @@ class DeepSeekGateway:
             return schema.model_validate_json(content)
         except (ValidationError, ValueError) as error:
             _log_schema_failure(schema_payload, "initial", error)
+            if schema is CreatorBriefSynthesis:
+                brief = repair_creator_brief_text(
+                    content,
+                    error,
+                    lambda messages, text_schema: self.complete_structured(
+                        model, messages, text_schema, max_tokens=2_048
+                    ),
+                )
+                if brief is not None:
+                    return brief
             repair_messages = [
                 *request_messages,
                 *_repair_messages(content, schema_payload, error),
@@ -177,6 +198,16 @@ class DeepSeekGateway:
             return schema.model_validate_json(repaired)
         except (ValidationError, ValueError) as error:
             _log_schema_failure(schema_payload, "repair", error)
+            if schema is CreatorBriefSynthesis:
+                brief = repair_creator_brief_text(
+                    repaired,
+                    error,
+                    lambda messages, text_schema: self.complete_structured(
+                        model, messages, text_schema, max_tokens=2_048
+                    ),
+                )
+                if brief is not None:
+                    return brief
             raise InvalidModelOutput("deepseek_model_output_invalid") from None
 
     def _request(
@@ -395,7 +426,7 @@ def _safe_validation_errors(
 ) -> list[dict[str, Any]]:
     allowed_names = _schema_location_names(schema_payload["schema"])
     errors = (
-        error.errors(include_input=False, include_context=False, include_url=False)
+        error.errors(include_input=False, include_url=False)
         if isinstance(error, ValidationError)
         else [{"type": "value_error", "loc": ()}]
     )
@@ -425,6 +456,11 @@ def _safe_validation_errors(
                 "loc": location,
             }
         )
+        # Never log raw validator messages/context: they may include model text.
+        # Only exact, code-owned reasons become fixed diagnostic codes.
+        reason = _VALIDATION_REASON_CODES.get(str(item.get("ctx", {}).get("error")))
+        if reason is not None:
+            safe_errors[-1]["reason"] = reason
     return safe_errors
 
 

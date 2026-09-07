@@ -305,7 +305,7 @@ def test_prompt_versions_are_exact_and_stage_specific() -> None:
     assert GAME_VISUAL_PROMPT_VERSION == "game-visual-v1"
     assert GAME_SYNTHESIS_PROMPT_VERSION == "game-synthesis-v2"
     assert CREATOR_METADATA_PROMPT_VERSION == "creator-metadata-v1"
-    assert CREATOR_VISUAL_PROMPT_VERSION == "creator-visual-v1"
+    assert CREATOR_VISUAL_PROMPT_VERSION == "creator-visual-v2"
     assert CREATOR_SYNTHESIS_PROMPT_VERSION == "creator-synthesis-v1"
 
 

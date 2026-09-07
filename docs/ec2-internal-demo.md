@@ -71,3 +71,36 @@ For deployment verification, rerun a real Game and Creator analysis and require
 both `source_status.visual_analysis=available` and
 `model_metadata.vision_available=true`; a successful job with visual fallback
 alone does not verify this fix.
+
+## Targeted Creator recovery
+
+For a recent failed final Brief, or a current successful Profile with unavailable
+visual analysis, a maintenance-only CLI can reuse validated checkpoints. This
+does not change the client's normal Retry/Reanalyze API behavior.
+
+```sh
+sudo docker compose --project-directory /opt/find-me-gamer \
+  --env-file /etc/find-me-gamer/app.env exec -T api \
+  python -m app.cli.resume_creator_analysis <source-job-uuid> --mode brief --dry-run
+```
+
+Use `--mode visual` for the current successful but visually degraded result.
+Review the dry-run node plan, then remove `--dry-run` to start the approved repair.
+`brief` reuses source, batches, contacts, visual and all four reductions. `visual`
+recomputes visual, its dependent presentation reduction, and Brief; the other
+nodes are reused. The command creates a new Job and keeps the old terminal Job
+and checkpoints unchanged. Normal publication updates the same Creator Profile
+only after successful validation. Existing favorites, manual notes and manual
+contacts remain owned by the user. Sources older than 30 days, unsupported
+checkpoint versions, or an already superseded Profile require normal reanalysis.
+
+Brief text remains limited to 144 characters (64 per list item). The provider
+adapter can make one small batch of semantic text repairs, with its usual one
+schema-repair attempt, without rewriting evidence, contacts or other fields.
+No string truncation, claim deletion or schema relaxation is used. Invalid
+remaining output still fails honestly and keeps prior successful checkpoints.
+
+Creator visual prompts use `visual_observation` only, matching the visual schema.
+An available result must contain at least one supported claim and a null top-level
+unavailable reason. Unsupported individual claims remain unavailable. Safe logs
+use fixed validator reason codes instead of model payloads or credentials.
