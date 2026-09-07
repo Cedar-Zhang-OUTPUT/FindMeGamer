@@ -6,6 +6,7 @@ struct SettingsView: View {
   @SceneStorage("settings-category") private var categoryRawValue = SettingsCategory.appearance
     .rawValue
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
+  @Environment(AppUpdateChecker.self) private var updates
 
   var body: some View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
@@ -101,6 +102,7 @@ struct SettingsView: View {
       case .connections: ConnectionsSettings(model: model)
       case .reanalysis: ReanalysisSettings(model: model)
       case .workspace: WorkspaceSettings(model: model)
+      case .updates: AppUpdatesSettings(checker: updates)
       }
     }
     .formStyle(.grouped)
@@ -110,7 +112,7 @@ struct SettingsView: View {
 }
 
 private enum SettingsCategory: String, CaseIterable {
-  case appearance, connections, reanalysis, workspace
+  case appearance, connections, reanalysis, workspace, updates
 
   var title: String {
     switch self {
@@ -118,6 +120,7 @@ private enum SettingsCategory: String, CaseIterable {
     case .connections: "Connections"
     case .reanalysis: "Auto-refresh"
     case .workspace: "Workspace"
+    case .updates: "Software Update"
     }
   }
 
@@ -127,6 +130,7 @@ private enum SettingsCategory: String, CaseIterable {
     case .connections: "point.3.connected.trianglepath.dotted"
     case .reanalysis: "arrow.triangle.2.circlepath"
     case .workspace: "desktopcomputer"
+    case .updates: "arrow.down.circle"
     }
   }
 }
