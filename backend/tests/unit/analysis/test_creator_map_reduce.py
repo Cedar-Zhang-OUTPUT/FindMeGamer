@@ -391,6 +391,39 @@ def test_reducer_catalog_binds_only_the_selected_dimension() -> None:
         )
 
 
+def test_content_format_prompt_maps_current_citations_without_losing_batch_evidence() -> (
+    None
+):
+    raw = _batch_payload()
+    raw["content_format"]["genres"] = unavailable()
+    digest = CreatorVideoBatchDigest.model_validate(raw)
+
+    bundle = build_creator_content_format_bundle((digest, digest))
+    payload = parse_prompt_payload(bundle.messages)
+    rules = "\n".join(
+        message.content for message in bundle.messages if message.role == "system"
+    )
+
+    assert CREATOR_CONTENT_FORMAT_PROMPT_VERSION == "creator-content-format-v3"
+    assert "source_type=intermediate_output" in rules
+    assert "kind=ai_inference" in rules
+    assert "Do not copy nested video or channel citations" in rules
+    assert "output field names" in rules
+    for index, batch in enumerate(payload["validated_content_format_batches"]):
+        assert batch["digest"] == digest.content_format.model_dump(mode="json")
+        assert batch["citation_targets"]["content_focus"] == {
+            "reference": f"batch:{index}:content_format.content_focus",
+            "source_type": "intermediate_output",
+            "kind": "ai_inference",
+        }
+        assert "genres" not in batch["citation_targets"]
+        assert set(batch["citation_targets"]) == {
+            entry.reference.rsplit(".", 1)[-1]
+            for entry in bundle.evidence_catalog.entries
+            if entry.reference.startswith(f"batch:{index}:")
+        }
+
+
 def test_batch_and_brief_evidence_bind_to_their_exact_stage_inputs() -> None:
     source = sample_creator_source()
     batch_bundle = build_creator_video_batch_bundle(source, batch_index=0)
@@ -526,9 +559,11 @@ def test_map_reduce_prompt_versions_are_stage_specific() -> None:
     }
     assert len(versions) == 6
     assert CREATOR_BRIEF_PROMPT_VERSION == "creator-brief-v2"
+    assert CREATOR_CONTENT_FORMAT_PROMPT_VERSION == "creator-content-format-v3"
     assert all(
         version.startswith("creator-") and version.endswith("-v2")
-        for version in versions - {CREATOR_BRIEF_PROMPT_VERSION}
+        for version in versions
+        - {CREATOR_BRIEF_PROMPT_VERSION, CREATOR_CONTENT_FORMAT_PROMPT_VERSION}
     )
 
 

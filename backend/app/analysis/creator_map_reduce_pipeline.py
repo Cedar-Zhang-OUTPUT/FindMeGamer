@@ -33,6 +33,7 @@ from app.analysis.prompts.creator_map_reduce import (
     build_creator_brief_bundle,
     build_creator_commercial_safety_bundle,
     build_creator_content_format_bundle,
+    build_creator_content_format_binding_repair,
     build_creator_performance_audience_bundle,
     build_creator_presentation_bundle,
     build_creator_video_batch_bundle,
@@ -536,19 +537,47 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
         schema: type[S],
         catalog: EvidenceCatalog,
     ) -> S:
+        request_messages = messages
+        original_content: dict[str, object] | None = None
         for attempt in range(2):
             output = self._deepseek.complete_structured(
                 model,
-                messages,
+                request_messages,
                 schema,
                 max_tokens=schema.deepseek_max_tokens,
             )
             try:
                 validate_stage_evidence(output, catalog)
             except ValueError:
+                if schema is CreatorContentFormatReduction:
+                    content = cast(CreatorContentFormatReduction, output)
+                    reason = _content_format_binding_reason(content, catalog)
+                    logger.warning(
+                        "creator_content_format_evidence_rejected attempt=%d reason=%s",
+                        attempt + 1,
+                        reason,
+                    )
+                    if attempt == 0:
+                        original_content = _content_format_without_bindings(content)
+                        request_messages = build_creator_content_format_binding_repair(
+                            messages, content, reason=reason
+                        )
                 if attempt == 0:
                     continue
                 raise InvalidModelOutput("deepseek_model_evidence_invalid") from None
+            if (
+                original_content is not None
+                and _content_format_without_bindings(
+                    cast(CreatorContentFormatReduction, output)
+                )
+                != original_content
+            ):
+                logger.warning(
+                    "creator_content_format_evidence_rejected "
+                    "attempt=%d reason=repair_content_changed",
+                    attempt + 1,
+                )
+                raise InvalidModelOutput("deepseek_model_evidence_invalid")
             return output
         raise AssertionError("bounded Creator stage attempts exhausted")
 
@@ -638,6 +667,40 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
             errors.sort(key=lambda item: item[0])
             raise errors[0][1]
         return completed
+
+
+def _content_format_binding_reason(
+    output: CreatorContentFormatReduction, catalog: EvidenceCatalog
+) -> str:
+    """Return code-owned diagnostics only: never emit model/source references."""
+
+    allowed = {entry.reference: entry for entry in catalog.entries}
+    for field_name in type(output).model_fields:
+        claim = getattr(output, field_name)
+        for reference in getattr(claim, "evidence", ()):
+            entry = allowed.get(reference.reference)
+            if entry is None:
+                return "unknown_reference"
+            if entry.source_type != reference.source_type:
+                return "source_type_mismatch"
+            if reference.kind not in entry.allowed_kinds:
+                return "kind_not_allowed"
+    return "evidence_catalog_mismatch"
+
+
+def _content_format_without_bindings(
+    output: CreatorContentFormatReduction,
+) -> dict[str, object]:
+    """Only citation identity may change in the bounded evidence repair."""
+
+    payload = output.model_dump(mode="json")
+    for claim in payload.values():
+        if not isinstance(claim, dict):
+            continue
+        for reference in claim.get("evidence", []):
+            for key in ("reference", "source_type", "kind"):
+                reference.pop(key)
+    return payload
 
 
 __all__ = [
