@@ -1,3 +1,4 @@
+from app.db.models.discovery_plan import DiscoveryPlan
 from app.db.models.discovery import (
     Activity,
     DiscoveryQuery,
@@ -31,6 +32,7 @@ from app.db.models.profiles import (
 from app.db.models.settings import ServiceSecret, SharedSettings
 
 __all__ = [
+    "DiscoveryPlan",
     "Activity",
     "DiscoveryQuery",
     "DiscoveryBatch",

@@ -5705,6 +5705,241 @@
         "title": "OutreachTemplateUpdate",
         "type": "object"
       },
+      "PlanAccepted": {
+        "properties": {
+          "plan_id": {
+            "format": "uuid",
+            "title": "Plan Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan_id",
+          "status"
+        ],
+        "title": "PlanAccepted",
+        "type": "object"
+      },
+      "PlanCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_request_budget": {
+            "default": 20,
+            "maximum": 40.0,
+            "minimum": 1.0,
+            "title": "Batch Request Budget",
+            "type": "integer"
+          },
+          "batch_scan_budget": {
+            "default": 1000,
+            "maximum": 2000.0,
+            "minimum": 1.0,
+            "title": "Batch Scan Budget",
+            "type": "integer"
+          },
+          "batch_target": {
+            "default": 100,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Batch Target",
+            "type": "integer"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/CandidateFilters"
+          },
+          "keywords": {
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Keywords",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "preview",
+              "discover"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "platforms": {
+            "items": {
+              "enum": [
+                "youtube",
+                "x"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Platforms",
+            "type": "array"
+          },
+          "result_limit": {
+            "default": 600,
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Result Limit",
+            "type": "integer"
+          },
+          "total_request_budget": {
+            "default": 120,
+            "maximum": 240.0,
+            "minimum": 1.0,
+            "title": "Total Request Budget",
+            "type": "integer"
+          },
+          "total_scan_budget": {
+            "default": 6000,
+            "maximum": 12000.0,
+            "minimum": 1.0,
+            "title": "Total Scan Budget",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "platforms"
+        ],
+        "title": "PlanCreate",
+        "type": "object"
+      },
+      "PlanPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlanView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "PlanPage",
+        "type": "object"
+      },
+      "PlanView": {
+        "properties": {
+          "activity_id": {
+            "format": "uuid",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "conditions": {
+            "$ref": "#/components/schemas/PlanCreate"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublishedPlanOutput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "query_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Id"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "source_snapshot": {
+            "additionalProperties": true,
+            "title": "Source Snapshot",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "activity_id",
+          "status",
+          "conditions",
+          "source_snapshot",
+          "output",
+          "error_code",
+          "retryable",
+          "attempt",
+          "model",
+          "query_id",
+          "created_at"
+        ],
+        "title": "PlanView",
+        "type": "object"
+      },
       "PublicJSONObject": {
         "additionalProperties": true,
         "type": "object"
@@ -5739,6 +5974,53 @@
             "type": "null"
           }
         ]
+      },
+      "PublishedPlanOutput": {
+        "additionalProperties": false,
+        "properties": {
+          "provider_queries": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "enum": [
+                "youtube",
+                "x"
+              ]
+            },
+            "title": "Provider Queries",
+            "type": "object"
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/SearchPlanQuery"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Queries",
+            "type": "array"
+          },
+          "rationale": {
+            "maxLength": 1500,
+            "minLength": 1,
+            "title": "Rationale",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 1500,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "summary",
+          "rationale",
+          "queries",
+          "provider_queries"
+        ],
+        "title": "PublishedPlanOutput",
+        "type": "object"
       },
       "QueryCreate": {
         "additionalProperties": false,
@@ -6286,6 +6568,36 @@
           "last_tested_at"
         ],
         "title": "SMTPTestResult",
+        "type": "object"
+      },
+      "SearchPlanQuery": {
+        "additionalProperties": false,
+        "properties": {
+          "platform": {
+            "enum": [
+              "youtube",
+              "x"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "terms": {
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 3,
+            "minItems": 1,
+            "title": "Terms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "platform",
+          "terms"
+        ],
+        "title": "SearchPlanQuery",
         "type": "object"
       },
       "SessionResponse": {
@@ -9267,6 +9579,142 @@
         ]
       }
     },
+    "/api/v2/activities/{activity_id}/discovery-plans": {
+      "get": {
+        "operationId": "listDiscoveryPlansV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Plans",
+        "tags": [
+          "discovery-planning"
+        ]
+      },
+      "post": {
+        "operationId": "createDiscoveryPlanV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Plan",
+        "tags": [
+          "discovery-planning"
+        ]
+      }
+    },
     "/api/v2/activities/{activity_id}/queries": {
       "post": {
         "operationId": "createDiscoveryQueryV2",
@@ -9331,6 +9779,111 @@
         "summary": "Create Query",
         "tags": [
           "activities-discovery"
+        ]
+      }
+    },
+    "/api/v2/discovery/plans/{plan_id}": {
+      "get": {
+        "operationId": "getDiscoveryPlanV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Plan",
+        "tags": [
+          "discovery-planning"
+        ]
+      }
+    },
+    "/api/v2/discovery/plans/{plan_id}/retry": {
+      "post": {
+        "operationId": "retryDiscoveryPlanV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "plan_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Plan Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry Plan",
+        "tags": [
+          "discovery-planning"
         ]
       }
     },

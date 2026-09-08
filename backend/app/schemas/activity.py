@@ -51,8 +51,7 @@ class ActivityCreate(StrictModel):
     reference_work_ids: list[UUID] = Field(default_factory=list, max_length=100)
 
 
-class QueryCreate(StrictModel):
-    providers: list[DiscoveryRequest] = Field(min_length=1, max_length=4)
+class DiscoveryOptions(StrictModel):
     filters: CandidateFilters = Field(default_factory=CandidateFilters)
     batch_target: Annotated[StrictInt, Field(ge=1, le=100)] = 100
     result_limit: Annotated[StrictInt, Field(ge=1, le=600)] = 600
@@ -60,6 +59,10 @@ class QueryCreate(StrictModel):
     batch_scan_budget: Annotated[StrictInt, Field(ge=1, le=2000)] = 1000
     total_request_budget: Annotated[StrictInt, Field(ge=1, le=240)] = 120
     total_scan_budget: Annotated[StrictInt, Field(ge=1, le=12000)] = 6000
+
+
+class QueryCreate(DiscoveryOptions):
+    providers: list[DiscoveryRequest] = Field(min_length=1, max_length=4)
 
     @model_validator(mode="after")
     def sources(self):
