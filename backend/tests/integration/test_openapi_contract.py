@@ -18,6 +18,27 @@ EXPORTER = BACKEND_ROOT / "scripts" / "export_openapi.py"
 COMMITTED_SCHEMA = BACKEND_ROOT / "openapi.json"
 
 EXPECTED_OPERATIONS = {
+    (
+        "POST",
+        "/api/v2/outreach/compositions/{composition_id}/qualification",
+    ): "qualifyActivityOutreachV2",
+    (
+        "POST",
+        "/api/v2/outreach/compositions/{composition_id}/send-batches",
+    ): "confirmActivityOutreachSendV2",
+    ("GET", "/api/v2/outreach/send-batches/{batch_id}"): "getActivitySendBatchV2",
+    (
+        "GET",
+        "/api/v2/activities/{activity_id}/send-batches",
+    ): "listActivitySendBatchesV2",
+    (
+        "POST",
+        "/api/v2/outreach/deliveries/{delivery_id}/retry",
+    ): "retryActivityDeliveryV2",
+    (
+        "POST",
+        "/api/v2/outreach/deliveries/{delivery_id}/resolve",
+    ): "resolveActivityDeliveryV2",
     ("GET", "/api/v2/outreach/template-versions"): "listOutreachTemplateVersionsV2",
     ("POST", "/api/v2/outreach/template-versions"): "createOutreachTemplateVersionV2",
     (

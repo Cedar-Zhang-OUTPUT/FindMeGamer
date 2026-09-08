@@ -469,11 +469,13 @@ class OutreachCreatorIdentity(OutreachValue):
 
 class OutreachSMTPError(OutreachValue):
     code: Literal[
+        "smtp_outcome_unknown",
         "smtp_rejected",
         "smtp_temporarily_unavailable",
         "outreach_delivery_invalid",
     ]
     message: Literal[
+        "SMTP submission outcome is unknown. Verify before sending again.",
         "SMTP rejected the request.",
         "SMTP is temporarily unavailable.",
         "Outreach delivery could not be prepared.",

@@ -113,6 +113,11 @@ _PREVIEW_URLS = ResponseURLs(
 _CURSOR_LIMIT = 2048
 _SAFE_SMTP_ERRORS = frozenset(
     {
+        (
+            "smtp_outcome_unknown",
+            "SMTP submission outcome is unknown. Verify before sending again.",
+            False,
+        ),
         ("smtp_rejected", "SMTP rejected the request.", False),
         ("smtp_temporarily_unavailable", "SMTP is temporarily unavailable.", True),
         (

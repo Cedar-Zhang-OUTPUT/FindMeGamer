@@ -127,6 +127,26 @@ def test_smtp_acceptance_is_sent_not_delivered(auth_client, session: Session) ->
     assert len(gateway.calls) == 1
 
 
+def test_legacy_submission_unknown_is_terminal_without_automatic_retry(
+    auth_client, session
+):
+    from app.outreach.smtp import SMTPUnknownOutcome
+
+    _, delivery = _queued_delivery(auth_client, session)
+    gateway = RecordingGateway(SMTPUnknownOutcome("Do not expose upstream text"))
+    _executor(session, gateway).execute(delivery.id, retrying=False)
+    session.expire_all()
+    saved = session.get(Delivery, delivery.id)
+    assert saved.send_state is DeliverySendState.FAILED
+    assert saved.smtp_error_code == "smtp_outcome_unknown" and not saved.smtp_retryable
+    public = auth_client.get(f"/api/v1/outreach/deliveries/{delivery.id}")
+    assert public.status_code == 200, public.text
+    assert public.json()["smtp_error"]["code"] == "smtp_outcome_unknown"
+    assert not public.json()["smtp_error"]["retryable"]
+    _executor(session, gateway).execute(delivery.id, retrying=False)
+    assert len(gateway.calls) == 1
+
+
 def test_actual_message_uses_snapshot_and_absolute_response_links_without_persisting_token(
     auth_client, session: Session
 ) -> None:

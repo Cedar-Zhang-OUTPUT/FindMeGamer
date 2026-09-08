@@ -2966,6 +2966,169 @@
         "title": "CursorPage[GameProfileCard]",
         "type": "object"
       },
+      "DeliveryResolution": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_attempt": {
+            "minimum": 0.0,
+            "title": "Expected Attempt",
+            "type": "integer"
+          },
+          "outcome": {
+            "enum": [
+              "sent",
+              "not_sent"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "source_note": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Source Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_attempt",
+          "outcome",
+          "source_note"
+        ],
+        "title": "DeliveryResolution",
+        "type": "object"
+      },
+      "DeliveryRetry": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_attempt": {
+            "minimum": 0.0,
+            "title": "Expected Attempt",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_attempt"
+        ],
+        "title": "DeliveryRetry",
+        "type": "object"
+      },
+      "DeliveryView": {
+        "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "draft_id": {
+            "format": "uuid",
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "failed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "recipient_snapshot_id": {
+            "format": "uuid",
+            "title": "Recipient Snapshot Id",
+            "type": "string"
+          },
+          "resolution": {
+            "additionalProperties": true,
+            "title": "Resolution",
+            "type": "object"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "send_batch_id": {
+            "format": "uuid",
+            "title": "Send Batch Id",
+            "type": "string"
+          },
+          "sending_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sending At"
+          },
+          "sent_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sent At"
+          },
+          "snapshot": {
+            "additionalProperties": true,
+            "title": "Snapshot",
+            "type": "object"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "sending",
+              "sent",
+              "failed",
+              "unknown"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "send_batch_id",
+          "draft_id",
+          "recipient_snapshot_id",
+          "snapshot",
+          "state",
+          "attempt",
+          "retryable",
+          "error_code",
+          "sending_at",
+          "sent_at",
+          "failed_at",
+          "resolution"
+        ],
+        "title": "DeliveryView",
+        "type": "object"
+      },
       "DiscoveryAccepted": {
         "properties": {
           "batch_id": {
@@ -3784,6 +3947,28 @@
         "title": "EvaluationView",
         "type": "object"
       },
+      "Exclusion": {
+        "additionalProperties": false,
+        "properties": {
+          "draft_id": {
+            "format": "uuid",
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "draft_id",
+          "reason"
+        ],
+        "title": "Exclusion",
+        "type": "object"
+      },
       "ExistingProfileResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3857,6 +4042,35 @@
           "favorite"
         ],
         "title": "FavoriteUpdate",
+        "type": "object"
+      },
+      "FinalSendRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "excluded": {
+            "items": {
+              "$ref": "#/components/schemas/Exclusion"
+            },
+            "maxItems": 600,
+            "title": "Excluded",
+            "type": "array"
+          },
+          "qualification_token": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Qualification Token",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "qualification_token"
+        ],
+        "title": "FinalSendRequest",
         "type": "object"
       },
       "FollowerRange": {
@@ -6354,6 +6568,7 @@
         "properties": {
           "code": {
             "enum": [
+              "smtp_outcome_unknown",
               "smtp_rejected",
               "smtp_temporarily_unavailable",
               "outreach_delivery_invalid"
@@ -6363,6 +6578,7 @@
           },
           "message": {
             "enum": [
+              "SMTP submission outcome is unknown. Verify before sending again.",
               "SMTP rejected the request.",
               "SMTP is temporarily unavailable.",
               "Outreach delivery could not be prepared."
@@ -7778,6 +7994,242 @@
         "title": "PublishedPlanOutput",
         "type": "object"
       },
+      "Qualification": {
+        "properties": {
+          "activity_id": {
+            "format": "uuid",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "composition_id": {
+            "format": "uuid",
+            "title": "Composition Id",
+            "type": "string"
+          },
+          "eligible_count": {
+            "title": "Eligible Count",
+            "type": "integer"
+          },
+          "excluded_count": {
+            "title": "Excluded Count",
+            "type": "integer"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/QualifiedMember"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "qualification_token": {
+            "title": "Qualification Token",
+            "type": "string"
+          },
+          "repair_count": {
+            "title": "Repair Count",
+            "type": "integer"
+          },
+          "send_ready": {
+            "title": "Send Ready",
+            "type": "boolean"
+          },
+          "sender": {
+            "$ref": "#/components/schemas/SendingIdentity"
+          },
+          "sending_account_token": {
+            "title": "Sending Account Token",
+            "type": "string"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "composition_id",
+          "activity_id",
+          "qualification_token",
+          "sending_account_token",
+          "total_count",
+          "eligible_count",
+          "repair_count",
+          "excluded_count",
+          "sender",
+          "members",
+          "send_ready"
+        ],
+        "title": "Qualification",
+        "type": "object"
+      },
+      "QualificationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "excluded": {
+            "items": {
+              "$ref": "#/components/schemas/Exclusion"
+            },
+            "maxItems": 600,
+            "title": "Excluded",
+            "type": "array"
+          }
+        },
+        "title": "QualificationRequest",
+        "type": "object"
+      },
+      "QualifiedMember": {
+        "properties": {
+          "blocking_delivery_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocking Delivery Id"
+          },
+          "context_token": {
+            "title": "Context Token",
+            "type": "string"
+          },
+          "draft_id": {
+            "format": "uuid",
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "exclusion_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusion Reason"
+          },
+          "fixed_hash": {
+            "title": "Fixed Hash",
+            "type": "string"
+          },
+          "html": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Html"
+          },
+          "identity": {
+            "additionalProperties": true,
+            "title": "Identity",
+            "type": "object"
+          },
+          "missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Fields",
+            "type": "array"
+          },
+          "recipient_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient Email"
+          },
+          "recipient_snapshot_id": {
+            "format": "uuid",
+            "title": "Recipient Snapshot Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "sender_facts": {
+            "additionalProperties": true,
+            "title": "Sender Facts",
+            "type": "object"
+          },
+          "slot_sources": {
+            "additionalProperties": true,
+            "title": "Slot Sources",
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "eligible",
+              "needs_repair",
+              "excluded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "template_version_id": {
+            "format": "uuid",
+            "title": "Template Version Id",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SlotValues"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "draft_id",
+          "recipient_snapshot_id",
+          "status",
+          "missing_fields",
+          "exclusion_reason",
+          "recipient_email",
+          "subject",
+          "html",
+          "text",
+          "values",
+          "slot_sources",
+          "template_version_id",
+          "fixed_hash",
+          "revision",
+          "context_token",
+          "sender_facts",
+          "identity",
+          "blocking_delivery_id"
+        ],
+        "title": "QualifiedMember",
+        "type": "object"
+      },
       "QueryCreate": {
         "additionalProperties": false,
         "properties": {
@@ -8976,6 +9428,81 @@
         "title": "SelectionUpdate",
         "type": "object"
       },
+      "SendBatchPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SendBatchView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "SendBatchPage",
+        "type": "object"
+      },
+      "SendBatchView": {
+        "properties": {
+          "activity_id": {
+            "format": "uuid",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "composition_id": {
+            "format": "uuid",
+            "title": "Composition Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deliveries": {
+            "items": {
+              "$ref": "#/components/schemas/DeliveryView"
+            },
+            "title": "Deliveries",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "qualification": {
+            "$ref": "#/components/schemas/Qualification"
+          }
+        },
+        "required": [
+          "id",
+          "activity_id",
+          "composition_id",
+          "created_at",
+          "qualification",
+          "deliveries"
+        ],
+        "title": "SendBatchView",
+        "type": "object"
+      },
       "SenderFacts": {
         "additionalProperties": false,
         "properties": {
@@ -9008,6 +9535,50 @@
           "liked"
         ],
         "title": "SenderFacts",
+        "type": "object"
+      },
+      "SendingIdentity": {
+        "properties": {
+          "address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Address"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          }
+        },
+        "required": [
+          "address",
+          "name",
+          "reply_to"
+        ],
+        "title": "SendingIdentity",
         "type": "object"
       },
       "SessionResponse": {
@@ -13374,6 +13945,77 @@
         ]
       }
     },
+    "/api/v2/activities/{activity_id}/send-batches": {
+      "get": {
+        "operationId": "listActivitySendBatchesV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendBatchPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Batches",
+        "tags": [
+          "activity-sending"
+        ]
+      }
+    },
     "/api/v2/discovery/evaluations/{run_id}": {
       "get": {
         "operationId": "getDiscoveryEvaluationV2",
@@ -15351,6 +15993,131 @@
         ]
       }
     },
+    "/api/v2/outreach/compositions/{composition_id}/qualification": {
+      "post": {
+        "operationId": "qualifyActivityOutreachV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "composition_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Composition Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Qualification"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Qualification",
+        "tags": [
+          "activity-sending"
+        ]
+      }
+    },
+    "/api/v2/outreach/compositions/{composition_id}/send-batches": {
+      "post": {
+        "operationId": "confirmActivityOutreachSendV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "composition_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Composition Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalSendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendBatchView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Confirm",
+        "tags": [
+          "activity-sending"
+        ]
+      }
+    },
     "/api/v2/outreach/compositions/{composition_id}/sender-facts": {
       "post": {
         "operationId": "confirmOutreachSenderFactsV2",
@@ -15406,6 +16173,122 @@
         "summary": "Sender Facts",
         "tags": [
           "outreach-drafts"
+        ]
+      }
+    },
+    "/api/v2/outreach/deliveries/{delivery_id}/resolve": {
+      "post": {
+        "operationId": "resolveActivityDeliveryV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Delivery Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryResolution"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve",
+        "tags": [
+          "activity-sending"
+        ]
+      }
+    },
+    "/api/v2/outreach/deliveries/{delivery_id}/retry": {
+      "post": {
+        "operationId": "retryActivityDeliveryV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "delivery_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Delivery Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeliveryRetry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeliveryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry",
+        "tags": [
+          "activity-sending"
         ]
       }
     },
@@ -15580,6 +16463,54 @@
         "summary": "Retry",
         "tags": [
           "outreach-drafts"
+        ]
+      }
+    },
+    "/api/v2/outreach/send-batches/{batch_id}": {
+      "get": {
+        "operationId": "getActivitySendBatchV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendBatchView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Batch",
+        "tags": [
+          "activity-sending"
         ]
       }
     },

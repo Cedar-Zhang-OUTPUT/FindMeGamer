@@ -1,6 +1,7 @@
 from app.db.models.discovery_plan import DiscoveryPlan
 from app.db.models.saved_candidate_set import SavedCandidateSet
 from app.db.models.outreach_drafts import OutreachTemplateVersion, OutreachComposition, OutreachDraft
+from app.db.models.activity_sending import ActivitySendBatch, ActivityDelivery
 from app.db.models.discovery_evaluation import EvaluationRun, EvaluationItem, EvaluationStep
 from app.db.models.discovery import (
     Activity,
@@ -35,6 +36,7 @@ from app.db.models.profiles import (
 from app.db.models.settings import ServiceSecret, SharedSettings
 
 __all__ = [
+    "ActivitySendBatch", "ActivityDelivery",
     "OutreachTemplateVersion",
     "OutreachComposition", "OutreachDraft",
     "SavedCandidateSet",

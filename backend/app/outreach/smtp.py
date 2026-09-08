@@ -29,6 +29,10 @@ class SMTPTransientError(SMTPError):
     """SMTP failed in a way that may succeed on a later attempt."""
 
 
+class SMTPUnknownOutcome(SMTPError):
+    """Submission may have succeeded; never automatically send it again."""
+
+
 @dataclass(frozen=True, slots=True)
 class SMTPConfig:
     host: str
@@ -159,6 +163,7 @@ class SMTPGateway:
 
     def _run(self, config: SMTPConfig, message: EmailMessage | None) -> SMTPReceipt:
         connection: SMTPConnection | None = None
+        submitting = False
         try:
             try:
                 host = normalize_smtp_host(config.host)
@@ -183,6 +188,7 @@ class SMTPGateway:
             connection.login(config.username, config.password)
             if message is None:
                 return SMTPReceipt(accepted_recipients=0)
+            submitting = True
             refusals = connection.send_message(message)
             recipients = len(message.get_all("To", []))
             accepted = max(0, recipients - len(refusals))
@@ -192,6 +198,12 @@ class SMTPGateway:
         except SMTPError:
             raise
         except Exception as error:
+            if submitting and not isinstance(
+                error, (smtplib.SMTPResponseException, smtplib.SMTPRecipientsRefused)
+            ):
+                raise SMTPUnknownOutcome(
+                    "SMTP submission outcome is unknown. Verify before sending again."
+                ) from None
             raise _classify_smtp_error(error) from None
         finally:
             if connection is not None:
@@ -233,5 +245,6 @@ __all__ = [
     "SMTPPermanentError",
     "SMTPReceipt",
     "SMTPTransientError",
+    "SMTPUnknownOutcome",
     "normalize_smtp_host",
 ]

@@ -34,6 +34,7 @@ from app.outreach.smtp import (
     SMTPGateway,
     SMTPPermanentError,
     SMTPTransientError,
+    SMTPUnknownOutcome,
 )
 from app.repositories.settings import SHARED_SETTINGS_ID, SMTP_PUBLIC_FIELDS
 from app.schemas.outreach import (
@@ -51,6 +52,8 @@ _PERMANENT_CODE = "smtp_rejected"
 _PERMANENT_MESSAGE = "SMTP rejected the request."
 _PREPARATION_CODE = "outreach_delivery_invalid"
 _PREPARATION_MESSAGE = "Outreach delivery could not be prepared."
+_UNKNOWN_CODE = "smtp_outcome_unknown"
+_UNKNOWN_MESSAGE = "SMTP submission outcome is unknown. Verify before sending again."
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
 
@@ -289,6 +292,7 @@ class DeliveryTaskStore:
         retryable: bool,
     ) -> bool:
         allowed = {
+            (_UNKNOWN_CODE, _UNKNOWN_MESSAGE, False),
             (_PERMANENT_CODE, _PERMANENT_MESSAGE, False),
             (_PREPARATION_CODE, _PREPARATION_MESSAGE, False),
             (_TEMPORARY_CODE, _TEMPORARY_MESSAGE, True),
@@ -371,6 +375,14 @@ class DeliveryExecutor:
                     break
                 self._sleeper(delay)
             self._smtp_gateway.send(config, message)
+        except SMTPUnknownOutcome:
+            self._store.mark_failed(
+                delivery_id,
+                code=_UNKNOWN_CODE,
+                message=_UNKNOWN_MESSAGE,
+                retryable=False,
+            )
+            return
         except SMTPPermanentError:
             self._store.mark_failed(
                 delivery_id,
