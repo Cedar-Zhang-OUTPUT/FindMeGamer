@@ -2,11 +2,13 @@ import { test, expect, _electron as electron, type ElectronApplication } from '@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { isolatedPreferences } from './preferences';
 
 test.use({trace:'off'});
 test('system-proxy HTTPS works without shell proxy variables or credentials', async () => {
   test.skip(process.env.FMG_VERIFY_SYSTEM_HTTPS !== '1', 'Explicit opt-in for a read-only public health request.');
   const userData = await mkdtemp(path.join(tmpdir(),'fmg-proxy-e2e-'));
+  await isolatedPreferences(userData);
   let app: ElectronApplication | undefined;
   try {
     const env = Object.fromEntries(Object.entries(process.env).filter(([name,value]) => value !== undefined && !/^(https?_proxy|all_proxy|no_proxy|ELECTRON_RUN_AS_NODE)$/i.test(name))) as Record<string,string>;

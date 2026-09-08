@@ -3,20 +3,23 @@ import type { ConnectionInput, ConnectionStatus, PublicError } from '../../share
 import { ConfirmDisconnect, ErrorNotice, Icon, Loading } from './Primitives';
 
 export type ConnectionPhase = 'loading' | 'disconnected' | 'saving' | 'checking' | 'connected' | 'error';
-export function ConnectionSettings({ status, phase, error, route, recovering = false, onConnect, onTest, onDisconnect, onLibrary }: {
+export function ConnectionSettings({ status, phase, error, route, recovering = false, embedded = false, blocked = false, resetSignal = 0, onDraftStateChange, onConnect, onTest, onDisconnect, onLibrary }: {
   status: ConnectionStatus | null; phase: ConnectionPhase; error: PublicError | null; route: 'direct' | 'proxy' | null;
   recovering?: boolean;
+  embedded?: boolean; blocked?: boolean; resetSignal?: number; onDraftStateChange?: (dirty:boolean)=>void;
   onConnect: (input: ConnectionInput) => Promise<void>; onTest: () => void; onDisconnect: () => void; onLibrary: () => void;
 }) {
   const [serviceUrl, setServiceUrl] = useState(status?.serviceUrl ?? '');
   const [key, setKey] = useState('');
   const [confirming, setConfirming] = useState(false);
   useEffect(() => setServiceUrl(status?.serviceUrl ?? ''), [status?.serviceUrl, recovering]);
-  const busy = phase === 'loading' || phase === 'saving' || phase === 'checking';
+  useEffect(() => {setServiceUrl(status?.serviceUrl ?? '');setKey('');}, [resetSignal]);
+  const busy = blocked || phase === 'loading' || phase === 'saving' || phase === 'checking';
   const dirty = serviceUrl.trim() !== (status?.serviceUrl ?? '') || key.length > 0;
+  useEffect(()=>{onDraftStateChange?.(dirty);},[dirty,onDraftStateChange]);
   const hasExistingKey = Boolean(status?.hasKey);
   return <>
-    <div className="page-heading"><h1>Settings</h1></div>
+    {!embedded && <div className="page-heading"><h1>Settings</h1></div>}
     <section className="settings-panel" aria-label="Workspace connection"><div className="section-heading"><h2>Connection</h2><span className={`status-badge ${phase === 'connected' ? 'connected' : ''}`}><span className="status-dot"/>{phase === 'connected' ? 'Connected' : busy ? 'Checking' : 'Not connected'}</span></div>
       {recovering && <p className="inline-warning" role="status">Game draft retained · Repair this workspace’s key to continue.</p>}
       <form onSubmit={event => { event.preventDefault(); if (busy) return; const submittedKey = key; setKey(''); void onConnect({ serviceUrl: serviceUrl.trim(), ...(submittedKey ? { key: submittedKey } : {}) }); }}>

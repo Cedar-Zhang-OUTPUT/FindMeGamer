@@ -13,6 +13,24 @@ function fixture() {
 }
 
 describe('connection changes', () => {
+  it('fences Settings responses and never retries a changed-workspace send', async () => {
+    let complete!: (value:Response)=>void;
+    const gateway=new WorkspaceGateway(fixture(),()=>new Promise(resolve=>{complete=resolve;}));
+    const pending=gateway.settingsRequest({method:'POST',path:'/api/v1/outreach/smtp/test-email',body:{recipient:'company@example.com'}});
+    await new Promise(resolve=>setTimeout(resolve,0));
+    await gateway.clear();complete(new Response('{}'));
+    await expect(pending).rejects.toMatchObject({code:'connection_changed',retryable:false});
+  });
+  it('rejects disconnected or inaccessible-credential settings before dispatch',async()=>{
+    let count=0;const store=fixture();
+    const gateway=new WorkspaceGateway(store,async()=>{count++;return new Response('{}');});
+    await gateway.clear();
+    await expect(gateway.settingsRequest({method:'GET',path:'/api/v1/settings/reanalysis'})).rejects.toMatchObject({code:'not_connected'});
+    store.getConnection=async()=>{throw Error('secret-storage-value');};
+    const result=await publicResult(()=>gateway.settingsRequest({method:'GET',path:'/api/v1/settings/reanalysis'}));
+    expect(result).toMatchObject({ok:false,error:{code:'secure_storage_unavailable'}});
+    expect(JSON.stringify(result)).not.toContain('secret-storage-value');expect(count).toBe(0);
+  });
   it('does not allow a previous workspace response to appear after disconnect', async () => {
     let complete!: (r: Response) => void;
     const gateway = new WorkspaceGateway(fixture(), () => new Promise(r => { complete = r; }));

@@ -5,6 +5,9 @@ import { CredentialStore } from './credential-store';
 import { WorkspaceGateway } from './gateway';
 import { LibraryClient, LibraryClientError } from './library-client';
 import { GameClient } from './game-client';
+import { SettingsClient } from './settings-client';
+import { PreferencesStore } from './preferences-store';
+import { UpdateChecker } from './update-checker';
 import { APP_URL, CONTENT_POLICY, externalUrl, isTrustedFrame, resourcePath } from './policies';
 import { PublicFailure, publicResult } from './transport';
 
@@ -24,6 +27,12 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   const gateway = new WorkspaceGateway(store, (url, init) => network.fetch(url, init));
   const library = new LibraryClient((route, query) => gateway.request(route, query));
   const games = new GameClient(input => gateway.gameRequest(input));
+  const settings = new SettingsClient(input => gateway.settingsRequest(input));
+  const preferences = new PreferencesStore(options.userDataDirectory ?? app.getPath('userData'));
+  // A separate ephemeral session follows the system proxy without workspace headers.
+  const updateNetwork = session.fromPartition('updates-network');
+  await updateNetwork.setProxy({mode:'system'});
+  const updates = new UpdateChecker({installedVersion:app.getVersion(),fetcher:(url,init)=>updateNetwork.fetch(url as string,init),preferences});
   const rendererSession = session.fromPartition('renderer');
   rendererSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   rendererSession.setPermissionCheckHandler(() => false);
@@ -86,16 +95,33 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('games:detail', input => games.detail(input));
   handle('games:create', input => games.create(input));
   handle('games:update', input => games.update(input));
+  handle('settings:connection', input => settings.connection(input));
+  handle('settings:replace-connection', input => settings.replaceConnection(input));
+  handle('settings:test-connection', input => settings.testConnection(input));
+  handle('settings:reanalysis', () => settings.reanalysis());
+  handle('settings:save-reanalysis', input => settings.saveReanalysis(input));
+  handle('settings:smtp', () => settings.smtp());
+  handle('settings:save-smtp', input => settings.saveSMTP(input));
+  handle('settings:test-smtp', () => settings.testSMTP());
+  handle('settings:send-test-email', input => settings.sendTestEmail(input));
+  handle('preferences:read', () => preferences.read());
+  handle('preferences:update', input => preferences.update(input));
+  handle('preferences:restore-appearance', () => preferences.restoreAppearance());
+  handle('updates:status', () => updates.status());
+  handle('updates:check', () => updates.check());
   handle('system:open-external', async value => {
     let url: string;
     try { url = externalUrl(value); } catch { throw new PublicFailure('invalid_link', 'Only valid HTTPS links can be opened.'); }
     await shell.openExternal(url);
   });
-  window.on('closed', () => { for (const channel of channels) ipcMain.removeHandler(channel); rendererSession.protocol.unhandle('fmg'); });
+  const automaticCheck = () => {void updates.checkAutomatically().catch(()=>{});};
+  app.on('activate',automaticCheck);
+  window.on('closed', () => { app.removeListener('activate',automaticCheck);for (const channel of channels) ipcMain.removeHandler(channel); rendererSession.protocol.unhandle('fmg'); });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { role: 'appMenu' }, { role: 'editMenu' },
     { label: 'View', submenu: [{ role: 'reload' }, { role: 'togglefullscreen' }] }, { role: 'windowMenu' },
   ]));
   await window.loadURL(APP_URL);
+  automaticCheck();
   return { window, gateway, network };
 }

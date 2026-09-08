@@ -33,12 +33,13 @@ Open Settings and enter the service origin and Workspace Key. HTTPS is required 
 - Complete public Creator detail data and contact purposes/sources remain available; missing counts remain unknown. Returning from details preserves context. Failed loading and retry do not masquerade as empty success.
 - Game drafts survive local failures; revision conflicts require explicit per-field choices. Unknown creation results retain the frozen request/idempotency key, and successful creation is followed by a current-detail read.
 - Service origin and OS-encrypted Workspace Key configuration, explicit authentication feedback, disconnect and connection-generation isolation.
+- Full Settings: local system/light/dark appearance and five text sizes, workspace connection, shared service credentials/probes, two auto-refresh intervals and actual schedule disclosure, shared SMTP configuration/tests, local software update checks with manual GitHub downloads. Categories preserve drafts; shared operations require confirmation and block connection changes while pending.
 
-Match and Outreach are explicitly **Not connected yet**. The frontend exposes no analysis, matching, Creator writes, send or paid-platform methods. Instagram is an unconnected platform placeholder. Existing v1 Library creators are YouTube profiles; this is not evidence of Twitch/X/Instagram discovery integration.
+Match and Outreach are explicitly **Not connected yet**. No campaign send, analysis, matching, Creator writes or Discovery UI is exposed. Settings can send one SMTP test email only after explicit recipient confirmation. Steam credentials can be saved but testing is unavailable in the accepted backend; X testing checks usage access only, not recent search, balance or analysis. Twitch/Instagram are unavailable without fake actions. Existing v1 Library creators are YouTube profiles; this is not evidence of Twitch/X/Instagram discovery integration.
 
 ## Exact existing API
 
-All business requests originate in main and include `Authorization: Bearer …`. The key is never returned through preload. Creator/session operations are read-only; only the four specified Game v2 operations support editing. Routes were checked against the delivered backend contract, not guessed from the prototype.
+All business requests originate in main and include `Authorization: Bearer …`. The key is never returned through preload. Creator/session operations are read-only. Game writes and Settings operations use narrow validated methods. Routes were checked against the delivered backend contract, not guessed from the prototype.
 
 | Purpose | Route / fields |
 | --- | --- |
@@ -50,6 +51,11 @@ All business requests originate in main and include `Authorization: Bearer …`.
 | Game list query / page | `query`, `only_collection`, `offset`, `limit`; `{ items, total, limit, offset }` |
 | Create game | `POST /api/v2/library/games` with `Idempotency-Key` |
 | Edit game | `PATCH /api/v2/library/games/{uuid}` with `expected_revision` |
+| Service credentials | `GET/PUT/POST /api/v1/settings/connections/{service}`; PUT secret is write-only; POST tests stored credentials |
+| Refresh intervals | `GET/PATCH /api/v1/settings/reanalysis`; Game 1–90 days, Creator 1–30 days, both fields saved together |
+| Refresh activity | Existing v1 profile lists (Steam-linked games / YouTube creators), expansion-only bounded pages; actual last/next analysis timestamps |
+| Shared SMTP | `GET/PUT /api/v1/outreach/smtp`; optional write-only password replacement |
+| SMTP tests | `POST /api/v1/outreach/smtp/test-connection`, `POST /api/v1/outreach/smtp/test-email` with explicit `recipient` |
 
 Changing search or favorites resets that tab's pagination; switching type restores each tab's independent query and page. The backend owns ordering; the client does not claim unsupported sorting or platform filters. Analysis dates are not general edit timestamps.
 
@@ -64,10 +70,12 @@ Task guidance lives in controls: new references expand and focus their name fiel
 ## Desktop boundary
 
 - Main: authenticated network, encrypted credential file, system proxy, restricted external HTTPS links.
-- Preload: `connection.status/save/test/clear`, Creator `library.list/detail`, `games.list/detail/create/update`, `openExternal`. No generic fetch, IPC channel, Node, filesystem or shell access.
+- Preload: typed `connection`, `library`, `games`, `settings`, `preferences`, `updates`, and `openExternal` business methods. No generic fetch, IPC channel, Node, filesystem or shell access.
 - Renderer: sandboxed, context-isolated, Node disabled, restrictive CSP and navigation/window-creation policy. IPC checks the exact app main frame, excluding child/preview frames.
 - Credentials: `safeStorage` async OS encryption; atomic mode-0600 encrypted file under `FindMeGamerDesktop` user data. Encryption unavailable means save fails, not plaintext fallback. Changing service origins requires a newly entered key.
 - Requests omit cookies, reject redirects, retain TLS verification, use bounded responses and timeout. Game writes have strict method/path/body validation and no automatic retry. Error output never echoes raw proxy/service responses which could include credentials.
+- Settings project known public response fields only; credentials/passwords never return to the renderer or local preferences. Failed shared writes require read-only reconciliation before dependent tests. Unknown SMTP delivery is never automatically retried. Saving SMTP never sends a message.
+- Local preferences store only appearance/update preferences and verified update metadata. Software checks use a separate system-proxy-aware ephemeral session with no workspace headers, fixed HTTPS feed, strict GitHub repository/tag verification, 32 KiB response bound and 24-hour automatic-check cooldown. No installer or auto-download is included.
 - Future email preview primitive: sandboxed iframe with no scripts, forms, external requests or business IPC. It is not an implemented email workflow.
 
 Electron's [security guidance](https://www.electronjs.org/docs/latest/tutorial/security), [safeStorage API](https://www.electronjs.org/docs/latest/api/safe-storage) and [system-proxy-aware net API](https://www.electronjs.org/docs/latest/api/net) inform these boundaries. Keychain authorization can still be requested by macOS, especially across unsigned development builds; do not automatically approve it on the user's behalf.
@@ -93,10 +101,11 @@ Optional real-desktop acceptance (no credential is printed; the isolated fixture
 FMG_BACKEND_FIXTURE_FILE=/absolute/path/to/authorized/client.json npx playwright test e2e/backend.spec.ts
 FMG_BACKEND_FIXTURE_FILE=/absolute/path/to/authorized/client.json npx playwright test e2e/games.spec.ts
 FMG_VERIFY_SYSTEM_HTTPS=1 npx playwright test e2e/network.spec.ts
+FMG_BACKEND_FIXTURE_FILE=/absolute/path/to/authorized/client.json FMG_SETTINGS_CAPTURE_DIR=/absolute/path/to/isolated/capture npx playwright test e2e/settings.spec.ts
 ```
 
 Set `FMG_PACKAGED_EXECUTABLE` to the full `FindMeGamer.app/Contents/MacOS/FindMeGamer` path to repeat these checks against the packaged app. The network check makes one anonymous request to the approved service's public health endpoint, keeps TLS validation enabled, removes shell proxy variables from Electron, and expects a machine with its macOS system proxy enabled. It is opt-in and is not a production-authentication test.
 
-The read-only first unit and separate Game v2 unit are followed by the coordinated full Settings migration. Settings is **not being reduced permanently to connection fields**; its migration scope is recorded in the first-unit delivery document. Creator v2 editing remains a separate, not-yet-integrated unit.
+The read-only first unit, Game v2 unit and full Settings migration are independent source units. Creator v2 editing remains a separate, not-yet-integrated unit. Settings tests use unchanged accepted backend code, strict HTTPX provider fixtures and an SMTP capture gateway; they do not establish real provider access or an actual TLS handshake. Test bootstrap/compose helpers under `e2e/fixtures/settings/` are excluded from production packaging.
 
-See [first-unit.md](docs/first-unit.md) and [game-v2-unit.md](docs/game-v2-unit.md) for state design, verification results and outstanding limits. `e2e/games.spec.ts` is explicitly opt-in and writes only disposable records in the coordinator-owned isolated API; it simulates a lost successful response and a second editor to test real persistence/idempotency/conflicts.
+See [first-unit.md](docs/first-unit.md), [game-v2-unit.md](docs/game-v2-unit.md) and [settings-unit.md](docs/settings-unit.md) for state design, verification results and outstanding limits. Opt-in Game/Settings tests mutate only the coordinator-owned isolated API. Settings SMTP capture is not external mail delivery.

@@ -1,0 +1,21 @@
+:root { color-scheme:light; }
+:root[data-theme=dark] { color-scheme:dark;color:var(--ink);background:var(--canvas);--canvas:#101b29;--surface:#192738;--ink:#e4edf4;--muted:#abbac8;--primary:#ca3f59;--teal:#77d1d7;--line:#3d4e60;--selected:#213c49;--danger:#f17d91;--success:#89d3b3; }
+:root[data-theme=dark] .landscape-shade { background:linear-gradient(#101b2955,#101b2920); }
+:root[data-theme=dark] :is(.profile-list,.profile-identity,.record-group,.game-primary-fields,.button.secondary,.icon-button,.confirm-dialog,.game-creation-lookup>div) { background:var(--surface);color:var(--ink);border-color:var(--line); }
+:root[data-theme=dark] :is(.game-references,.game-provenance,.game-conflict-rows label,.game-latest-record pre,.empty-state) { background:#192738a6;border-color:var(--line); }
+:root[data-theme=dark] :is(.form-field input,.game-form-fields textarea,.settings-panel input,.settings-panel select) { background:var(--canvas);color:var(--ink);border-color:var(--line); }
+:root[data-theme=dark] :is(.segmented,.count,.small-badge,.game-source-badge,.tags li,.row-tags>span,.artwork,.empty-icon) { background:var(--selected);color:var(--teal); }
+:root[data-theme=dark] .segmented button[aria-selected=true] { background:var(--surface);color:var(--ink); }
+:root[data-theme=dark] :is(.profile-row:hover,.button.secondary:hover:not(:disabled),.record-group>summary:hover) { background:var(--selected); }
+:root[data-theme=dark] :is(.profile-list li+li,.profile-metrics,.record-group[open]>summary,.contacts li+li,.game-additional) { border-color:var(--line); }
+:root[data-theme=dark] :is(.game-conflict,.game-uncertain) { background:#352e21;border-color:#786747; }
+:root[data-theme=dark] :is(.game-conflict>p,.game-uncertain>p,.game-latest-record summary) { color:#e0c693; }
+:root[data-theme=dark] :is(.error-notice,.game-validation-summary,.inline-warning) { background:#3b2733;color:#ffbdca;border-color:#8c4e60; }
+:root[data-theme=dark] :is(.status-badge,.read-only-label) { background:var(--surface);color:var(--muted);border-color:var(--line); }
+:root[data-theme=dark] :is(.status-badge.connected,.verified-state,.saved-key) { background:#213b33;color:var(--success);border-color:#3b6a56; }
+:root[data-theme=dark] :is(.manual-notes p,.field-value,.contact-source,.game-discard,.game-remove-reference) { color:var(--muted); }
+:root[data-theme=dark] :is(.form-field input:disabled,.game-form-fields textarea:disabled) { background:#223143;color:var(--muted); }
+:root[data-theme=dark] .skeleton-rows span { background:var(--surface);border-color:var(--line); }
+:root[data-theme=dark] .game-conflict-rows label:has(input:checked) { background:var(--selected);border-color:var(--teal); }
+:root[data-theme=dark] .button.danger { background:#a73350;color:#fff; }
+@media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important;transition:none!important;scroll-behavior:auto!important; } }

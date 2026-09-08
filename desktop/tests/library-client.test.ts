@@ -66,7 +66,14 @@ describe('LibraryClient read-only contract', () => {
     expect(result.items[0]).toEqual({ id: gameId, kind: 'games', name: 'Forest Signals',
       sourceId: '123456', canonicalUrl: 'https://store.steampowered.com/app/123456/',
       summary: 'A tactical expedition.', artworkUrl: 'https://images.example/game.jpg',
-      favorite: false, updatedAt: timestamp, subscribers: null, tags: ['Strategy'] });
+      favorite: false, updatedAt: timestamp, nextAnalysisAt: null, subscribers: null, tags: ['Strategy'] });
+  });
+
+  it('maps validated next analysis timestamps without inventing a schedule', async () => {
+    const request = vi.fn().mockResolvedValue({ items: [game({ next_analysis_at: timestamp })], next_cursor: null });
+    expect((await new LibraryClient(request).list({ kind: 'games' })).items[0]).toHaveProperty('nextAnalysisAt', timestamp);
+    request.mockResolvedValue({ items: [game({ next_analysis_at: 'tomorrow' })], next_cursor: null });
+    await expect(new LibraryClient(request).list({ kind: 'games' })).rejects.toMatchObject({ code: 'invalid_response' });
   });
 
   it('omits a first-page cursor and respects an empty successful final page', async () => {

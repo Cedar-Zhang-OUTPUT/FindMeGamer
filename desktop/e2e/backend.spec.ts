@@ -2,6 +2,7 @@ import { test, expect, _electron as electron, type ElectronApplication } from '@
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { isolatedPreferences } from './preferences';
 
 // Optional coordinator-provided isolated API, never a production credential import.
 // No trace/video/screenshot: the key is a test secret even though this DB is synthetic.
@@ -14,6 +15,7 @@ test('isolated backend through the real desktop Settings and Library', async () 
   const fixture = JSON.parse(await readFile(file, 'utf8')) as {base_url:string;workspace_key:string};
   expect(new URL(fixture.base_url).hostname).toBe('127.0.0.1');
   const userData = await mkdtemp(path.join(tmpdir(), 'fmg-backend-e2e-'));
+  await isolatedPreferences(userData);
   let app: ElectronApplication | undefined;
   try {
     const env = Object.fromEntries(Object.entries(process.env).filter(([name, value]) => value !== undefined && !/^(https?_proxy|all_proxy|no_proxy|ELECTRON_RUN_AS_NODE)$/i.test(name))) as Record<string,string>;

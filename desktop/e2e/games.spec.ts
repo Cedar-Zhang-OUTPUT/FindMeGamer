@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { GameDetail, GamePage } from '../src/shared/games';
+import { isolatedPreferences } from './preferences';
 
 // Opt-in writes only to the coordinator-owned isolated API. No production key,
 // mail, provider tasks, trace, video or credential screenshots are permitted.
@@ -76,6 +77,7 @@ test('Game v2 persists edits, deduplicates retries, resolves conflicts and repai
   const port = (relay.address() as {port:number}).port;
   const relayOrigin = `http://127.0.0.1:${port}`;
   const userData = await mkdtemp(path.join(tmpdir(),'fmg-game-v2-e2e-'));
+  await isolatedPreferences(userData);
   const suffix = randomUUID().slice(0,8);
   const name = `Desktop Test ${suffix}`;
   let app: ElectronApplication | undefined;

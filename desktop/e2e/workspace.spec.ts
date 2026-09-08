@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { previewDocument } from '../src/shared/mail-preview';
 import { gameFixture } from '../tests/game-fixtures';
+import { isolatedPreferences } from './preferences';
 
 const gameId = '11111111-1111-4111-8111-111111111111';
 const creatorId = '22222222-2222-4222-8222-222222222222';
@@ -41,6 +42,7 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as {port: number};
   const userData = await mkdtemp(path.join(tmpdir(), 'fmg-desktop-e2e-'));
+  await isolatedPreferences(userData);
   const environment = Object.fromEntries(Object.entries(process.env).filter(([name, value]) => value !== undefined && !/^(https?_proxy|all_proxy|no_proxy|ELECTRON_RUN_AS_NODE)$/i.test(name))) as Record<string, string>;
   let app: ElectronApplication | undefined;
   try {
@@ -71,7 +73,7 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({path:'/tmp/fmg-library-narrow.png'});
     const boundary = await page.evaluate(() => ({node: typeof (window as any).require, process: typeof (window as any).process, keyInDOM: document.body.innerText.includes('local-fixture-only-not-a-production-key'), methods: Object.keys(window.desktop).sort(), storage: localStorage.length}));
-    expect(boundary).toEqual({node:'undefined',process:'undefined',keyInDOM:false,methods:['connection','games','library','openExternal'],storage:0});
+    expect(boundary).toEqual({node:'undefined',process:'undefined',keyInDOM:false,methods:['connection','games','library','openExternal','preferences','settings','updates'],storage:0});
     const stored = await readFile(path.join(userData, 'credentials.json'), 'utf8');
     expect(stored).not.toContain(testKey);
     const denied = await page.evaluate(() => window.desktop.openExternal('file:///etc/passwd'));

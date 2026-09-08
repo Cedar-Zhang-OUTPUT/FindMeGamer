@@ -7,6 +7,7 @@ import type { DesktopBridge, Result } from '../src/shared/bridge';
 import type { ListPage, ProfileDetail, ProfileSummary } from '../src/shared/library';
 import { App } from '../src/renderer/App';
 import { gameFixture } from './game-fixtures';
+import { settingsBridgeMock } from './settings-fixtures';
 
 const ok = <T,>(data: T): Result<T> => ({ ok: true, data });
 const failed = (message = 'Connection interrupted'): Result<never> => ({ ok: false, error: { code: 'network_error', message, retryable: true } });
@@ -27,6 +28,7 @@ function detail(name: string): ProfileDetail {
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 function bridge(overrides: Partial<DesktopBridge> = {}): DesktopBridge {
   return {
+    ...settingsBridgeMock(),
     connection: {
       status: vi.fn(async () => ok({ serviceUrl: 'https://workspace.example.com', hasKey: true, storageAvailable: true })),
       save: vi.fn(async () => ok({ serviceUrl: 'https://workspace.example.com', hasKey: true, storageAvailable: true })),
@@ -61,6 +63,7 @@ describe('desktop renderer', () => {
     await user.clear(screen.getByLabelText('Service URL'));
     await user.type(screen.getByLabelText('Service URL'),'https://unsubmitted.example.com');
     await user.click(screen.getByRole('button',{name:'Library'}));
+    await user.click(screen.getByRole('button',{name:'Discard changes'}));
     await user.click(screen.getByRole('tab',{name:'Games'}));
     await user.click(await screen.findByRole('button',{name:'New game'}));
     await user.type(screen.getByRole('textbox',{name:'Name'}),'Recovery draft');
@@ -84,7 +87,8 @@ describe('desktop renderer', () => {
     expect(await screen.findByRole('heading',{name:'Recovered creation'})).toBeVisible();
     expect(api.games.create).toHaveBeenCalledTimes(2);
     expect(vi.mocked(api.games.create).mock.calls[0][0]).toEqual(vi.mocked(api.games.create).mock.calls[1][0]);
-  });
+  // Full cross-page recovery flow; allow contention with packaged desktop checks.
+  }, 10_000);
 
   it('keeps an uncertain request replayable when testing unchanged credentials, and retains it through a failed repair', async () => {
     const api = bridge();

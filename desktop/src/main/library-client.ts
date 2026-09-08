@@ -153,7 +153,6 @@ function card(value: unknown, requestedKind: ProfileKind) {
   const facts = object(raw.current_facts) as JsonObject;
   const brief = object(raw.brief) as JsonObject;
   object(raw.source_status);
-  timestamp(raw.next_analysis_at);
   const count = facts.subscriber_count;
   const factTags = strings(facts.genres);
   const summary: ProfileSummary = {
@@ -161,6 +160,7 @@ function card(value: unknown, requestedKind: ProfileKind) {
     sourceId: string(requestedKind === 'games' ? raw.steam_app_id : raw.youtube_channel_id),
     canonicalUrl: string(raw.canonical_url), favorite: boolean(raw.favorite),
     updatedAt: timestamp(raw.last_analyzed_at),
+    nextAnalysisAt: timestamp(raw.next_analysis_at),
     summary: requestedKind === 'games'
       ? text(facts.short_description) ?? text(brief.positioning_premise)
       : text(brief.performance_context),

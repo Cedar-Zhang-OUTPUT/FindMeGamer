@@ -1,5 +1,7 @@
 import type { ListProfilesInput, ProfileDetail, ProfileKind, ListPage } from './library';
 import type { CreateGameInput, GameDetail, GameListInput, GamePage, UpdateGameInput } from './games';
+import type { SettingsAPI } from './settings';
+import type { PreferencesAPI, UpdatesAPI } from './preferences';
 
 export interface ConnectionStatus {
   serviceUrl: string;
@@ -13,6 +15,9 @@ export interface ConnectionCheck { authenticated: true; proxy: 'system'; route: 
 
 /** Business methods only. No generic request, filesystem, shell, or IPC channel access. */
 export interface DesktopBridge {
+  settings: SettingsAPI;
+  preferences: PreferencesAPI;
+  updates: UpdatesAPI;
   connection: {
     status(): Promise<Result<ConnectionStatus>>;
     save(input: ConnectionInput): Promise<Result<ConnectionStatus>>;

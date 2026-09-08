@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ConnectionInput, ConnectionStatus, DesktopBridge, PublicError } from '../shared/bridge';
-import { ConnectionSettings, type ConnectionPhase } from './components/ConnectionSettings';
+import { type ConnectionPhase } from './components/ConnectionSettings';
 import { EmptyState, ErrorNotice, Icon, Loading, type IconName } from './components/Primitives';
 import { LibraryView } from './components/LibraryView';
 import { useNavigationGuard } from './hooks/useNavigationGuard';
+import { useAppearance } from './hooks/useAppearance';
+import { SettingsView } from './components/settings/SettingsView';
+import './settings.css';
+import './settings-cloud.css';
+import './appearance.css';
 
 type Navigation = 'match' | 'outreach' | 'library' | 'settings';
 const navigation: { id: Navigation; label: string; icon: IconName }[] = [
@@ -14,6 +19,7 @@ const interrupted: PublicError = { code: 'desktop_unavailable', message: 'The de
 
 export function App() {
   const api: DesktopBridge | undefined = window.desktop;
+  const appearance = useAppearance(api?.preferences);
   const [page, setPage] = useState<Navigation>('library');
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [phase, setPhase] = useState<ConnectionPhase>('loading');
@@ -25,6 +31,7 @@ export function App() {
   const operation = useRef(0);
   const mounted = useRef(true);
   const navigationGate = useNavigationGuard();
+  const settingsGate = useNavigationGuard();
   const pageScroll = useRef<Record<Navigation, number>>({match:0,outreach:0,library:0,settings:0});
   function navigate(target: Navigation) {
     if (page === target) return;
@@ -38,8 +45,9 @@ export function App() {
     if (target === 'settings' && status?.serviceUrl && navigationGate.getRecovery()) {
       setRecoveryOrigin(status.serviceUrl); proceed();
     } else if (target === 'library' && recoveryOrigin) {
-      setRecoveryOrigin(null); proceed();
-    } else navigationGate.request(() => { setRecoveryOrigin(null); proceed(); });
+      settingsGate.request(()=>{setRecoveryOrigin(null); proceed();});
+    } else if(page==='settings') settingsGate.request(()=>navigationGate.request(()=>{setRecoveryOrigin(null);proceed();}));
+    else navigationGate.request(() => { setRecoveryOrigin(null); proceed(); });
   }
 
   async function verify(token: number) {
@@ -49,8 +57,8 @@ export function App() {
       const result = await api.connection.test();
       if (!mounted.current || operation.current !== token) return;
       if (result.ok) { setPhase('connected'); setHasLibrarySession(true); setRoute(result.data.route); setError(null); }
-      else { setPhase('error'); if (!navigationGate.hasPending()) setHasLibrarySession(false); setError(result.error); }
-    } catch { if (mounted.current && operation.current === token) { setPhase('error'); if (!navigationGate.hasPending()) setHasLibrarySession(false); setError(interrupted); } }
+      else { setPhase('error'); if (!navigationGate.hasPending()&&!settingsGate.hasPending()) setHasLibrarySession(false); setError(result.error); }
+    } catch { if (mounted.current && operation.current === token) { setPhase('error'); if (!navigationGate.hasPending()&&!settingsGate.hasPending()) setHasLibrarySession(false); setError(interrupted); } }
   }
   async function readStatus() {
     if (!api) return;
@@ -123,7 +131,7 @@ export function App() {
           <div className="page-heading"><h1>Library</h1></div>
           {phase === 'loading' || phase === 'checking' || phase === 'saving' ? <Loading label={phase === 'loading' ? 'Opening workspace…' : 'Verifying connection…'}/> : <><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={() => navigate('settings')}>Open Settings</button>}/>{error && <ErrorNotice error={error} onRetry={status?.hasKey ? testConnection : () => void readStatus()}/>}</>}
         </>}</section>
-        <section className="page-content" hidden={page !== 'settings'} aria-label="Settings page"><ConnectionSettings status={status} phase={phase} error={error} route={route} recovering={Boolean(recoveryOrigin)} onConnect={connect} onTest={testConnection} onDisconnect={() => void disconnect()} onLibrary={() => navigate('library')}/></section>
+        <section className="page-content" hidden={page !== 'settings'} aria-label="Settings page"><SettingsView api={api} active={page==='settings'} available={hasLibrarySession&&Boolean(status?.hasKey)} workspaceEpoch={epoch} appearance={appearance} onNavigationGuardChange={settingsGate.register} connection={{status,phase,error,route,recovering:Boolean(recoveryOrigin),onConnect:connect,onTest:testConnection,onDisconnect:()=>void disconnect(),onLibrary:()=>navigate('library')}}/></section>
         {(['match', 'outreach'] as const).map(target => <section className="page-content" key={target} hidden={page !== target} aria-label={`${target} page`}><div className="page-heading"><h1>{target === 'match' ? 'Match' : 'Outreach'}</h1></div><div className="feature-unavailable"><span className="feature-icon"><Icon name={target}/></span><span className="status-badge">Not connected yet</span><button className="button primary" onClick={() => navigate('library')}>Open Library<Icon name="chevron"/></button></div></section>)}
       </main>
     </div>

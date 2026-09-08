@@ -7,6 +7,7 @@ import { StrictMode } from 'react';
 import type { DesktopBridge, Result } from '../src/shared/bridge';
 import type { GameDetail, GameFields, GamePage, NavigationGuard } from '../src/shared/games';
 import { GameLibrary } from '../src/renderer/components/GameLibrary';
+import { settingsBridgeMock } from './settings-fixtures';
 
 const ok = <T,>(data: T): Result<T> => ({ ok: true, data });
 const error = (code = 'network_error', message = 'Connection interrupted'): Result<never> => ({ ok: false, error: { code, message, retryable: code === 'network_error' } });
@@ -15,7 +16,7 @@ const game = (overrides: Partial<GameDetail> = {}): GameDetail => ({ ...fields, 
 const page = (items = [game()], offset = 0, total = items.length): GamePage => ({ items, total, offset, limit: 24 });
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 function apiMock(): DesktopBridge {
-  return { connection: {} as DesktopBridge['connection'], library: {} as DesktopBridge['library'], openExternal: vi.fn(async () => ok(undefined)), games: {
+  return { ...settingsBridgeMock(), connection: {} as DesktopBridge['connection'], library: {} as DesktopBridge['library'], openExternal: vi.fn(async () => ok(undefined)), games: {
     list: vi.fn(async () => ok(page())), detail: vi.fn(async () => ok(game())),
     create: vi.fn(async () => ok(game({ revision: 1 }))), update: vi.fn(async () => ok(game({ revision: 8 }))),
   } };

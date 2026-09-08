@@ -30,6 +30,8 @@ export interface ProfileSummary {
   favorite: boolean;
   /** The API exposes last_analyzed_at, not a general profile updated_at. */
   updatedAt: string | null;
+  /** Missing means unavailable metadata; null means no scheduled analysis. */
+  nextAnalysisAt?: string | null;
   subscribers: number | null;
   tags: string[];
 }

@@ -1,0 +1,14 @@
+# Overlay ONLY for the existing fmg-frontend-http isolated frontend stack.
+# Retain integration/compose.frontend.yaml and settings-override.yaml first.
+services:
+  api:
+    command: [python, /settings-fixture/settings_runtime.py, serve]
+    environment:
+      PYTHONPATH: /app:/harness:/settings-fixture
+      PYTHONDONTWRITEBYTECODE: '1'
+      FAKE_STATE_DIR: /settings-capture
+    volumes:
+      - /tmp/fmg-frontend-stable.bpM1DM/repo/backend/app:/app/app:ro
+      - /tmp/fmg-frontend-stable.bpM1DM/repo/integration/runtime:/harness:ro
+      - /Users/cedar/.codex/worktrees/c3a0/FindMeGamer/desktop/e2e/fixtures/settings:/settings-fixture:ro
+      - ${FMG_SETTINGS_CAPTURE_DIR:?set dedicated capture directory}:/settings-capture

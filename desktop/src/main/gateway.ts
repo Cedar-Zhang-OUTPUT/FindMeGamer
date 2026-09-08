@@ -2,6 +2,7 @@ import type { ConnectionInput, ConnectionStatus } from '../shared/bridge';
 import type { Connection, Fetcher, GameRequest } from './transport';
 import { authenticatedGameRequest, authenticatedGet, PublicFailure } from './transport';
 import { normalizeServiceUrl } from './policies';
+import { authenticatedSettingsRequest, validateSettingsRequest, type SettingsRequest } from './settings-transport';
 
 interface Store {
   status(): Promise<ConnectionStatus>;
@@ -69,6 +70,19 @@ export class WorkspaceGateway {
       this.assertGeneration(generation, !options.isWrite);
       throw error;
     }
+  }
+  async settingsRequest(input:SettingsRequest):Promise<unknown> {
+    const request=validateSettingsRequest(input);
+    const isWrite=request.method!=='GET';
+    return this.runCurrent(async()=>{
+      const generation=this.generation;
+      let connection:Connection|null;
+      try {connection=await this.store.getConnection();}
+      catch {throw new PublicFailure('secure_storage_unavailable','Could not read your workspace key. Check Keychain access or reconnect in Settings.');}
+      if(!connection)throw new PublicFailure('not_connected','Connect your workspace in Settings.');
+      this.assertGeneration(generation,!isWrite);
+      return authenticatedSettingsRequest(this.fetcher,connection,request);
+    },{isWrite});
   }
   private assertGeneration(generation: number, retryable = true) {
     if (generation !== this.generation) throw new PublicFailure('connection_changed', retryable
