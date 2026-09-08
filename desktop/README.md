@@ -57,7 +57,7 @@ All business requests originate in main and include `Authorization: Bearer …`.
 | Discovery tasks / candidates | `GET /api/v2/discovery/queries/{uuid}`, `GET .../queries/{uuid}/results`, bodyless `POST .../stop`, `POST .../continue` |
 | Explicit evaluation / briefs | `GET/POST .../queries/{uuid}/evaluations`, `GET .../evaluations/{uuid}`, `GET .../evaluations/{uuid}/results`, `POST .../evaluations/{uuid}/retry`; all POSTs require an idempotency key |
 | Games | `GET /api/v2/library/games`, `GET /api/v2/library/games/{uuid}` |
-| Game list query / page | `query`, `only_collection`, `offset`, `limit`; `{ items, total, limit, offset }` |
+| Game list query / page | `query`, `only_collection`, `website_status`, `sort`, `offset`, `limit`; `{ items, total, limit, offset }` |
 | Create game | `POST /api/v2/library/games` with `Idempotency-Key` |
 | Edit game | `PATCH /api/v2/library/games/{uuid}` with `expected_revision` |
 | Service credentials | `GET/PUT/POST /api/v1/settings/connections/{service}`; PUT secret is write-only; POST tests stored credentials |
@@ -80,7 +80,7 @@ Task guidance lives in controls: new references expand and focus their name fiel
 ## Desktop boundary
 
 - Main: authenticated network, encrypted credential file, system proxy, restricted external HTTPS links.
-- Preload: typed `connection`, `library`, `creators`, `games`, `match`, `settings`, `preferences`, `updates`, and `openExternal` business methods. No generic fetch, IPC channel, Node, filesystem or shell access.
+- Preload: typed `connection`, `library`, `creators`, `games`, `match`, `savedSets`, `settings`, `preferences`, `updates`, and `openExternal` business methods. No generic fetch, IPC channel, Node, filesystem or shell access.
 - Renderer: sandboxed, context-isolated, Node disabled, restrictive CSP and navigation/window-creation policy. IPC checks the exact app main frame, excluding child/preview frames.
 - Credentials: `safeStorage` async OS encryption; atomic mode-0600 encrypted file under `FindMeGamerDesktop` user data. Encryption unavailable means save fails, not plaintext fallback. Changing service origins requires a newly entered key.
 - Requests omit cookies, reject redirects, retain TLS verification, use bounded responses and timeout. Creator/Game writes have strict method/path/body validation and no automatic retry. Error output never echoes raw proxy/service responses which could include credentials.
@@ -116,6 +116,14 @@ FMG_BACKEND_FIXTURE_FILE=/absolute/path/to/authorized/client.json FMG_SETTINGS_C
 ```
 
 The separate collection policy HTTP check is `FMG_COLLECTION_FIXTURE_FILE=/absolute/path/to/authorized/client.json npx playwright test e2e/collection-http.spec.ts`. It requires exclusive access to the coordinator-owned `b2b15f4` / migration `0014` fixture, changes and restores one synthetic shared flag, verifies retained Match state and zero provider/model events, and launches no Electron process. See [collection-switches-unit.md](docs/collection-switches-unit.md). This is not packaged GUI acceptance. The original `cad5565` Match fixture has no collection endpoint and must not be used to validate this newer source's collection-dependent flow.
+
+Full-query and named-list controls target the separately accepted `a852307` / migration `0015` contract. Creator filters use repeated platforms/languages, Game filters use website presence, and Match/Saved lists use server-side evidence/order before pagination. Defaults are search relevance for Creator/Match, and recently updated for Games. Creator rows show up to three recorded works and current active-email counts, not outreach eligibility. Language presets send one code; backend comparison handles the accepted labels without rewriting records.
+
+**Save list** opens explicit subset marking and naming. It is not an outreach selection. Reopening reads the original query and immutable membership, with current Creator details; it never starts collection, evaluation or sending. Unknown saves retain the same body, persistent `request_id` and HTTP key for explicit retries, including after the HTTP replay window. This persistence is on the server: the client retains the frozen intent only for the current window, not across a process crash. Credential replacement blocks replay until the user locates the matching saved list.
+
+`FMG_QUERY_FIXTURE_FILE=/absolute/path/to/authorized/client.json npx playwright test e2e/query-http.spec.ts` uses only the exclusive synthetic `a852307` environment, adds three clearly marked manual language samples and a separate Activity/query/named list, exercises actual HTTP planning/discovery against local fixture upstreams, and verifies read-only restore with no new events. It does not change fault controls or edit existing manual fields; ordinary discovery can refresh source records. This test is production-adapter HTTP acceptance, **not** native window/Keychain/final-package acceptance. See [query-lists-unit.md](docs/query-lists-unit.md).
+
+Final source checks:803 tests/57 files, typecheck and build passed; the opt-in HTTP test passed1/1. `FMG_QUERY_RENDERER_FIXTURE_FILE=/absolute/path/to/authorized/client.json npx playwright test e2e/query-renderer.spec.ts` additionally requires the matching managed Chromium. It is compiled but runtime-unverified on this host because Chromium was absent; that attempt made no fixture calls and produced no screenshots. Native packaged-app acceptance is also pending. Neither visual gate is represented by the source/HTTP passes.
 
 Set `FMG_PACKAGED_EXECUTABLE` to the full `FindMeGamer.app/Contents/MacOS/FindMeGamer` path to repeat these checks against the packaged app. The network check makes one anonymous request to the approved service's public health endpoint, keeps TLS validation enabled, removes shell proxy variables from Electron, and expects a machine with its macOS system proxy enabled. It is opt-in and is not a production-authentication test.
 

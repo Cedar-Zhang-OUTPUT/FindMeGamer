@@ -1,4 +1,4 @@
-import type { CandidateView, EvaluationResult, KnownEvaluationEvidence } from '../../../shared/match';
+import type { CandidateSort, CandidateView, EvaluationResult, KnownEvaluationEvidence } from '../../../shared/match';
 import type { JsonObject, JsonValue } from '../../../shared/library';
 import { analyzedDate, Artwork, EmptyState, friendlyLabel, Icon, Loading } from '../Primitives';
 import './matchResults.css';
@@ -10,8 +10,11 @@ interface CandidateResultsProps {
   candidates: CandidateView[];
   total: number;
   loading: boolean;
+  stale?: boolean;
+  sort?: CandidateSort;
   onLoadMore: () => void;
   onOpenCreator: OpenCreator;
+  selection?: { ids: readonly string[]; disabled: boolean; onToggle:(id:string)=>void };
 }
 
 interface EvaluationResultsProps {
@@ -126,7 +129,25 @@ function CandidateDetails({ candidate }: { candidate: CandidateView }) {
   </details>;
 }
 
-function CandidateCard({ candidate, onOpenCreator }: { candidate: CandidateView; onOpenCreator: OpenCreator }) {
+const CANDIDATE_EVIDENCE_NAMES: Record<NonNullable<CandidateView['evidence_groups']>[number], string> = {
+  current_game: 'Current game evidence', reference_game: 'Reference game evidence', related_content: 'Other recorded content',
+};
+
+function CandidateEvidence({ candidate, sort }: { candidate: CandidateView; sort?: CandidateSort }) {
+  const groups = candidate.evidence_groups;
+  const relevance = sort === 'relevance' && candidate.relevance_status
+    ? candidate.relevance_status === 'available' ? 'Relevance available'
+      : candidate.relevance_status === 'stale' ? 'Relevance outdated' : 'Relevance unavailable'
+    : null;
+  if (groups === undefined && !relevance) return null;
+  return <div className="match-candidate-evidence" aria-label="Candidate evidence">
+    {groups?.length ? groups.map(group => <span className="match-note-chip" key={group}>{CANDIDATE_EVIDENCE_NAMES[group]}</span>)
+      : groups ? <span className="match-note-chip">Evidence unknown</span> : null}
+    {relevance ? <span className={`match-note-chip relevance ${candidate.relevance_status}`}>{relevance}</span> : null}
+  </div>;
+}
+
+function CandidateCard({ candidate, onOpenCreator, sort, selection }: { candidate: CandidateView; onOpenCreator: OpenCreator; sort?: CandidateSort; selection?:CandidateResultsProps['selection'] }) {
   const account = candidate.account;
   const name = snapshotName(candidate);
   const handle = textValue(account.handle);
@@ -135,11 +156,13 @@ function CandidateCard({ candidate, onOpenCreator }: { candidate: CandidateView;
   const followers = numberValue(account.follower_count);
 
   return <article className="match-card match-candidate-card" aria-label={name}>
+    {selection&&<label className="saved-list-mark"><input type="checkbox" aria-label={`Include ${name} in saved list`} checked={selection.ids.includes(candidate.id)} disabled={selection.disabled||(!selection.ids.includes(candidate.id)&&selection.ids.length>=600)} onChange={()=>selection.onToggle(candidate.id)}/>Mark for list</label>}
     <header className="match-card-header">
       <Artwork url={avatar} name={name} kind="creators"/>
       <div className="match-card-title"><h3>{name}</h3>{handle && handle !== name ? <p>{handle}</p> : null}</div>
       <div className="match-card-actions">{candidate.identity_changed ? <span className="match-badge warning">Account changed</span> : null}{candidate.creator ? <button className="button secondary" onClick={() => onOpenCreator(candidate.creator_id, 'overview')}>{candidate.identity_changed ? 'View current creator' : 'View creator'}</button> : null}</div>
     </header>
+    <CandidateEvidence candidate={candidate} sort={sort}/>
     <dl className="match-quick-facts">
       <div><dt>Platform</dt><dd>{platformName(candidate.platform)}</dd></div>
       <div><dt>Country</dt><dd>{country || 'Country unknown'}</dd></div>
@@ -159,11 +182,12 @@ function ResultsFooter({ kind, shown, total, loading, onLoadMore }: { kind: 'can
   </footer>;
 }
 
-export function CandidateResults({ candidates, total, loading, onLoadMore, onOpenCreator }: CandidateResultsProps) {
+export function CandidateResults({ candidates, total, loading, stale = false, sort, onLoadMore, onOpenCreator, selection }: CandidateResultsProps) {
   if (candidates.length === 0) return loading ? <Loading label="Loading candidates…"/> : <EmptyState title="No candidates found" icon="match"/>;
   return <section className="match-results" aria-label="Candidate results">
-    <ul className="match-result-list">{candidates.map(candidate => <li key={candidate.id}><CandidateCard candidate={candidate} onOpenCreator={onOpenCreator}/></li>)}</ul>
-    <ResultsFooter kind="candidates" shown={candidates.length} total={total} loading={loading} onLoadMore={onLoadMore}/>
+    {stale ? <p className="match-stale-results" role="status">Showing {candidates.length} previous candidate result{candidates.length === 1 ? '' : 's'} while the new filter loads.</p> : null}
+    <ul className="match-result-list">{candidates.map(candidate => <li key={candidate.id}><CandidateCard candidate={candidate} sort={sort} onOpenCreator={onOpenCreator} selection={selection}/></li>)}</ul>
+    {stale ? null : <ResultsFooter kind="candidates" shown={candidates.length} total={total} loading={loading} onLoadMore={onLoadMore}/>}
   </section>;
 }
 

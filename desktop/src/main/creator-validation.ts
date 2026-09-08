@@ -1,6 +1,6 @@
 import { domainToASCII } from 'node:url';
 import { CONTACT_FIELDS, CREATOR_FIELDS, CREATOR_PLATFORMS, WORK_FIELDS } from '../shared/creators';
-import type { ContactDetail, CreatorDetail, CreatorFields, WorkDetail } from '../shared/creators';
+import type { ContactDetail, CreatorDetail, CreatorFields, CreatorSort, RecentWorkSummary, WorkDetail } from '../shared/creators';
 import { PublicFailure } from './transport';
 
 export type Mode = 'input' | 'response';
@@ -33,6 +33,15 @@ function enumValue<T extends string>(value: unknown, allowed: readonly T[], mode
   if (typeof value !== 'string' || !allowed.includes(value as T)) fail(mode); return value as T;
 }
 export function platform(value: unknown, mode: Mode) { return enumValue(value, CREATOR_PLATFORMS, mode); }
+export function creatorSort(value: unknown, mode: Mode): CreatorSort {
+  return enumValue(value, ['name', 'relevance', 'followers', 'recent_publish', 'recent_added'] as const, mode);
+}
+export function platformList(value: unknown, mode: Mode) {
+  return array(value, mode, 4, item => platform(item, mode));
+}
+export function languageList(value: unknown, mode: Mode) {
+  return array(value, mode, 30, item => text(item, mode, 255, 1));
+}
 export function timestamp(value: unknown, mode: Mode): string | null {
   if (value === null) return null;
   const result = text(value, mode, 100);
@@ -169,13 +178,27 @@ function contact(value: unknown, identityRevision: number): ContactDetail {
 }
 export function decodeCreator(value: unknown, expectedId?: string): CreatorDetail {
   const raw = object(value, 'response');
-  keys(raw, [...CREATOR_FIELDS, 'id', 'platform', 'revision', 'favorite', 'source_identity', 'source_fields', 'manual_overrides', 'overridden_fields', 'contacts', 'work_count', 'last_analyzed_at', 'next_analysis_at', 'analysis_available'], 'response');
+  const summaries = ['created_at', 'updated_at', 'latest_published_at', 'recent_works', 'active_email_count', 'contact_status'] as const;
+  keys(raw, [...CREATOR_FIELDS, 'id', 'platform', 'revision', 'favorite', 'source_identity', 'source_fields', 'manual_overrides', 'overridden_fields', 'contacts', 'work_count', 'last_analyzed_at', 'next_analysis_at', 'analysis_available', ...summaries], 'response');
   const id = identifier(raw.id, 'response'); if (expectedId && id.toLowerCase() !== expectedId.toLowerCase()) fail('response');
   const identity = object(raw.source_identity, 'response'); keys(identity, ['platform', 'account_id', 'canonical_url', 'revision'], 'response');
   const identityRevision = integer(identity.revision, 'response'); const servicePlatform = platform(raw.platform, 'response');
   if (platform(identity.platform, 'response') !== servicePlatform) fail('response');
   const overridden = array(raw.overridden_fields, 'response', CREATOR_FIELDS.length, name => enumValue(name, CREATOR_FIELDS, 'response'));
   if (new Set(overridden).size !== overridden.length) fail('response');
+  const optionalSummaries: Partial<Pick<CreatorDetail, typeof summaries[number]>> = {};
+  if (Object.hasOwn(raw, 'created_at')) optionalSummaries.created_at = timestamp(raw.created_at, 'response');
+  if (Object.hasOwn(raw, 'updated_at')) optionalSummaries.updated_at = timestamp(raw.updated_at, 'response');
+  if (Object.hasOwn(raw, 'latest_published_at')) optionalSummaries.latest_published_at = timestamp(raw.latest_published_at, 'response');
+  if (Object.hasOwn(raw, 'active_email_count')) optionalSummaries.active_email_count = integer(raw.active_email_count, 'response');
+  if (Object.hasOwn(raw, 'contact_status')) optionalSummaries.contact_status = enumValue(raw.contact_status, ['available', 'missing'] as const, 'response');
+  if (Object.hasOwn(raw, 'recent_works')) optionalSummaries.recent_works = uniqueIDs(array(raw.recent_works, 'response', 3, item => {
+    const work = object(item, 'response');
+    keys(work, ['id', 'work_name', 'content_title', 'source_url', 'published_at', 'content_type'], 'response');
+    return { id: identifier(work.id, 'response'), work_name: optionalText(work.work_name, 'response', Number.MAX_SAFE_INTEGER),
+      content_title: optionalText(work.content_title, 'response', Number.MAX_SAFE_INTEGER), source_url: optionalText(work.source_url, 'response', Number.MAX_SAFE_INTEGER),
+      published_at: timestamp(work.published_at, 'response'), content_type: text(work.content_type, 'response', Number.MAX_SAFE_INTEGER) } satisfies RecentWorkSummary;
+  }));
   return { ...fields(raw, 'creator', 'response', true), id, platform: servicePlatform,
     revision: integer(raw.revision, 'response'), favorite: bool(raw.favorite, 'response'),
     source_identity: { platform: servicePlatform, account_id: optionalText(identity.account_id, 'response', 128), canonical_url: webURL(identity.canonical_url, 'response'), revision: identityRevision },
@@ -183,7 +206,7 @@ export function decodeCreator(value: unknown, expectedId?: string): CreatorDetai
     manual_overrides: source(raw.manual_overrides, 'creator'), overridden_fields: overridden,
     contacts: uniqueIDs(array(raw.contacts, 'response', Number.MAX_SAFE_INTEGER, item => contact(item, identityRevision))),
     work_count: integer(raw.work_count, 'response'), last_analyzed_at: timestamp(raw.last_analyzed_at, 'response'),
-    next_analysis_at: timestamp(raw.next_analysis_at, 'response'), analysis_available: bool(raw.analysis_available, 'response') } as CreatorDetail;
+    next_analysis_at: timestamp(raw.next_analysis_at, 'response'), analysis_available: bool(raw.analysis_available, 'response'), ...optionalSummaries } as CreatorDetail;
 }
 export function decodeWork(value: unknown, creatorId: string, expectedId?: string): WorkDetail {
   const raw = object(value, 'response');

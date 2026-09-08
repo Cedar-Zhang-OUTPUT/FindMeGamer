@@ -29,7 +29,7 @@ export function settingsBridgeMock() {
   const creators = creatorAPIMock();
   vi.mocked(creators.list).mockResolvedValue(ok({items:[creatorFixture('Pixel Harbor','Pixel Harbor')],total:1,limit:50,offset:0}));
   vi.mocked(creators.detail).mockImplementation(async id => ok(creatorFixture(id,id)));
-  return { match:matchAPIMock(), creators, settings, preferences: {
+  return { savedSets:{list:vi.fn(async()=>ok({items:[],total:0,offset:0,limit:50})),detail:vi.fn(),results:vi.fn(),create:vi.fn()}, match:matchAPIMock(), creators, settings, preferences: {
     read: vi.fn(async () => ok(preferences)),
     update: vi.fn(async (input: Partial<Preferences>) => ok(preferences = {...preferences,...input})),
     restoreAppearance: vi.fn(async () => ok(preferences = {...preferences,appearance:'system',fontSize:'default'})),

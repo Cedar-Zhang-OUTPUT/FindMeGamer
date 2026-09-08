@@ -1,5 +1,5 @@
 import type { CreatorAPI, CreatorDetail, CreatorListInput, CreatorPage, WorkDetail, WorkListInput, WorkPage } from '../shared/creators';
-import { bool, decodeCreator, decodePage, decodeWork, fail, identifier, integer, keys, object, platform, text } from './creator-validation';
+import { bool, creatorSort, decodeCreator, decodePage, decodeWork, fail, identifier, integer, keys, languageList, object, platform, platformList, text } from './creator-validation';
 import { creatorOutcomeUnknown, validateCreatorRequest, type CreatorRequest } from './creator-transport';
 export type { CreatorRequest } from './creator-transport';
 export { creatorOutcomeUnknown, validateCreatorRequest } from './creator-transport';
@@ -17,11 +17,14 @@ export class CreatorClient {
     try { return decode(value); } catch { throw creatorOutcomeUnknown(); }
   }
   async list(input: CreatorListInput): Promise<CreatorPage> {
-    const raw = object(input, 'input'); keys(raw, ['query', 'platform', 'language', 'onlyCollection', 'offset', 'limit'], 'input');
+    const raw = object(input, 'input'); keys(raw, ['query', 'platform', 'language', 'platforms', 'languages', 'sort', 'onlyCollection', 'offset', 'limit'], 'input');
     const query = { query: raw.query === undefined ? '' : text(raw.query, 'input', 255),
       language: raw.language === undefined ? '' : text(raw.language, 'input', 255),
       only_collection: String(raw.onlyCollection === undefined ? false : bool(raw.onlyCollection, 'input')),
-      ...(raw.platform === undefined ? {} : { platform: platform(raw.platform, 'input') }), ...pagination(raw) };
+      ...(raw.platform === undefined ? {} : { platform: platform(raw.platform, 'input') }),
+      ...(raw.platforms === undefined ? {} : { platforms: platformList(raw.platforms, 'input') }),
+      ...(raw.languages === undefined ? {} : { languages: languageList(raw.languages, 'input') }),
+      ...(raw.sort === undefined ? {} : { sort: creatorSort(raw.sort, 'input') }), ...pagination(raw) };
     return decodePage(await this.send({ method: 'GET', path: collection, query }), item => decodeCreator(item));
   }
   async detail(id: string): Promise<CreatorDetail> {

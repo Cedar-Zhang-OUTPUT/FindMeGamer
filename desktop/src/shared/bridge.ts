@@ -4,6 +4,7 @@ import type { SettingsAPI } from './settings';
 import type { PreferencesAPI, UpdatesAPI } from './preferences';
 import type { CreatorAPI } from './creators';
 import type { MatchAPI } from './match';
+import type { SavedSetsAPI } from './savedSets';
 
 export interface ConnectionStatus {
   serviceUrl: string;
@@ -17,6 +18,7 @@ export interface ConnectionCheck { authenticated: true; proxy: 'system'; route: 
 
 /** Business methods only. No generic request, filesystem, shell, or IPC channel access. */
 export interface DesktopBridge {
+  savedSets: SavedSetsAPI;
   match: MatchAPI;
   creators: CreatorAPI;
   settings: SettingsAPI;

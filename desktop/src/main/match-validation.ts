@@ -127,9 +127,13 @@ const planOutput = record({ summary: narrative(1500), rationale: narrative(1500)
 const plan = record({ id: identifier, activity_id: identifier, status: enumeration('queued', 'running', 'ready', 'failed'),
   conditions: planCreate, source_snapshot: jsonObject, output: nullable(planOutput), error_code: nullable(string(255)),
   retryable: boolean, attempt: count(), model: string(255), query_id: nullable(identifier), created_at: time });
+const candidateEvidenceGroup = enumeration('current_game', 'reference_game', 'related_content');
 const candidate = record({ id: identifier, creator_id: identifier, platform: string(100, 1), account_id: string(512, 1),
   account: jsonObject, creator: nullable((value, mode) => { try { return decodeCreator(value); } catch { fail(mode); } }),
-  filter_notes: jsonObject, identity_revision: count(), identity_changed: boolean, added_at: time }, { selected: enumeration(false) });
+  filter_notes: jsonObject, identity_revision: count(), identity_changed: boolean, added_at: time }, {
+  selected: enumeration(false), evidence_groups: list(candidateEvidenceGroup, 3),
+  relevance_status: enumeration('available', 'stale', 'not_evaluated'),
+});
 const evaluationUsage = record({ model_operations_started: count(), succeeded_steps: count(), failed_steps: count(), pending_steps: count(), running_steps: count() });
 const evaluationStep = record({ id: identifier, kind: string(100, 1), status: string(100, 1), error_code: nullable(string(255)), attempt: count() });
 const evaluation = record({ id: identifier, query_id: identifier, status: enumeration('queued', 'running', 'completed', 'partial', 'failed', 'no_matches'),

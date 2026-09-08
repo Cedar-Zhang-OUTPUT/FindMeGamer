@@ -57,10 +57,18 @@ export interface QueryView {
   requests_reserved: number; scanned_reserved: number; sources: JsonObject;
   batches: BatchView[]; usage: QueryUsage; created_at: string;
 }
+export const CANDIDATE_EVIDENCE_FILTERS = ['all', 'current_game', 'reference_game', 'related_content', 'none'] as const;
+export type CandidateEvidenceFilter = typeof CANDIDATE_EVIDENCE_FILTERS[number];
+export const CANDIDATE_SORTS = ['added', 'relevance', 'followers', 'recent_publish', 'recent_added'] as const;
+export type CandidateSort = typeof CANDIDATE_SORTS[number];
+export interface CandidateQueryOptions { evidence?: CandidateEvidenceFilter; sort?: CandidateSort }
+export type CandidateListInput = Pagination & CandidateQueryOptions & { queryId: string };
 export interface CandidateView {
   id: string; creator_id: string; platform: string; account_id: string; account: JsonObject;
   creator: CreatorDetail | null; filter_notes: JsonObject; identity_revision: number;
   identity_changed: boolean; added_at: string; selected: false;
+  evidence_groups?: ('current_game' | 'reference_game' | 'related_content')[];
+  relevance_status?: 'available' | 'stale' | 'not_evaluated';
 }
 export type CandidatePage = MatchPage<CandidateView>;
 export interface ContinueDiscovery { acknowledge_unknown?: boolean }
@@ -105,7 +113,7 @@ export interface MatchAPI {
   plan(id: string): Promise<ApiResult<PlanView>>;
   retryPlan(input: { id: string; idempotencyKey: string }): Promise<ApiResult<PlanAccepted>>;
   query(id: string): Promise<ApiResult<QueryView>>;
-  candidates(input: Pagination & { queryId: string }): Promise<ApiResult<CandidatePage>>;
+  candidates(input: CandidateListInput): Promise<ApiResult<CandidatePage>>;
   stop(input: { queryId: string; idempotencyKey: string }): Promise<ApiResult<DiscoveryStopped>>;
   continueDiscovery(input: { queryId: string; data: ContinueDiscovery; idempotencyKey: string }): Promise<ApiResult<DiscoveryAccepted>>;
   evaluations(input: Pagination & { queryId: string }): Promise<ApiResult<EvaluationPage>>;

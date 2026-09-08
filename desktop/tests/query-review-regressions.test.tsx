@@ -1,0 +1,50 @@
+// @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
+import {act,cleanup,render,screen,within} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {afterEach,expect,it,vi} from 'vitest';
+import type {DesktopBridge,Result} from '../src/shared/bridge';
+import type {CreatorPage} from '../src/shared/creators';
+import {CreatorLibrary} from '../src/renderer/components/creators/CreatorLibrary';
+import {MatchActivity} from '../src/renderer/components/match/MatchActivity';
+import {creatorAPIMock} from './creator-api-mock';
+import {creatorFixture} from './creator-fixtures';
+import {matchAPIMock,activityFixture} from './match-api-mock';
+import {settingsBridgeMock} from './settings-fixtures';
+afterEach(cleanup);
+it('combines desired Creator controls even while the earlier platform response is pending',async()=>{
+  const creators=creatorAPIMock(),user=userEvent.setup();let finish!:(value:Result<CreatorPage>)=>void;
+  render(<CreatorLibrary api={{creators} as unknown as DesktopBridge} active/>);
+  await screen.findByRole('button',{name:'Open Creator fixture'});
+  vi.mocked(creators.list).mockImplementationOnce(()=>new Promise(resolve=>finish=resolve));
+  await user.click(screen.getByRole('button',{name:'Platforms: Any'}));
+  await user.click(within(screen.getByRole('dialog',{name:'Platforms'})).getByRole('checkbox',{name:'YouTube'}));
+  await user.click(within(screen.getByRole('dialog',{name:'Platforms'})).getByRole('button',{name:'Apply'}));
+  await user.click(screen.getByRole('button',{name:'Languages: Any'}));
+  await user.click(within(screen.getByRole('dialog',{name:'Languages'})).getByRole('checkbox',{name:'English · en'}));
+  await user.click(within(screen.getByRole('dialog',{name:'Languages'})).getByRole('button',{name:'Apply'}));
+  expect(creators.list).toHaveBeenLastCalledWith(expect.objectContaining({platforms:['youtube'],languages:['en'],offset:0}));
+  await user.selectOptions(screen.getByRole('combobox',{name:'Sort creators'}),'followers');
+  expect(creators.list).toHaveBeenLastCalledWith(expect.objectContaining({platforms:['youtube'],languages:['en'],sort:'followers'}));
+  await act(async()=>finish({ok:true,data:{items:[creatorFixture('Outdated')],total:1,offset:0,limit:50}}));
+  expect(screen.queryByRole('button',{name:'Open Outdated'})).not.toBeInTheDocument();
+});
+it('does not describe an absent updated timestamp as an analysis state',async()=>{
+  const creators=creatorAPIMock();render(<CreatorLibrary api={{creators} as unknown as DesktopBridge} active/>);
+  const row=await screen.findByRole('button',{name:'Open Creator fixture'});
+  expect(within(row).queryByText('Not analyzed')).not.toBeInTheDocument();
+});
+it.each([false,true])('disables stale membership after a same-query refresh failure and restores it only after success (throw=%s)',async thrown=>{
+  const api={...settingsBridgeMock(),match:matchAPIMock()} as unknown as DesktopBridge,user=userEvent.setup();
+  render(<MatchActivity api={api} activityId={activityFixture().id} active onBack={()=>{}} onOpenCreator={()=>{}}/>);
+  await user.click(await screen.findByRole('button',{name:'Save list'}));
+  await user.click(screen.getByRole('checkbox',{name:'Include Creator 1 in saved list'}));await user.type(screen.getByRole('textbox',{name:'List name'}),'Kept draft');
+  if(thrown)vi.mocked(api.match.candidates).mockRejectedValueOnce(Error('Interrupted'));
+  else vi.mocked(api.match.candidates).mockResolvedValueOnce({ok:false,error:{code:'network_error',message:'Interrupted',retryable:true}});
+  await user.click(screen.getByRole('button',{name:'Refresh activity'}));
+  expect(await screen.findByText(/Filtered results unavailable/)).toBeVisible();
+  expect(screen.getByRole('heading',{name:'Creator 1'})).toBeVisible();expect(screen.getByRole('textbox',{name:'List name'})).toHaveValue('Kept draft');
+  expect(screen.getByRole('checkbox',{name:'Include Creator 1 in saved list'})).toBeDisabled();expect(screen.getByRole('button',{name:'Save 1 creator'})).toBeDisabled();expect(screen.getByRole('button',{name:'Evaluate 2 loaded'})).toBeDisabled();
+  await user.click(screen.getByRole('button',{name:'Try again'}));
+  expect(await screen.findByText('2 matching of 2 discovered')).toBeVisible();expect(screen.getByRole('button',{name:'Save 1 creator'})).toBeEnabled();
+});

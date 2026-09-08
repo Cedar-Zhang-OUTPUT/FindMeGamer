@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { CANDIDATE_EVIDENCE_FILTERS, CANDIDATE_SORTS } from '../shared/match';
 import { normalizeServiceUrl } from './policies';
 import { PublicFailure, type Connection, type Fetcher } from './transport';
 import { body, fail, integer, keys, object, text, UUID_PATTERN, UUID_SOURCE, type BodyKind } from './match-validation';
@@ -24,13 +25,29 @@ function pagination(value: unknown, max: number): Record<string, string> {
     return [key, result];
   }));
 }
+export function exactCandidateQueryOptions(value: unknown): Record<string, string> {
+  const raw = object(value, 'input');
+  keys(raw, ['offset', 'limit', 'evidence', 'sort'], 'input');
+  const result = pagination(Object.fromEntries(Object.entries(raw).filter(([key]) => key === 'offset' || key === 'limit')), 100);
+  if (Object.hasOwn(raw, 'evidence')) {
+    const evidence = text(raw.evidence, 'input', 32, 1);
+    if (!(CANDIDATE_EVIDENCE_FILTERS as readonly string[]).includes(evidence)) fail('input');
+    result.evidence = evidence;
+  }
+  if (Object.hasOwn(raw, 'sort')) {
+    const sort = text(raw.sort, 'input', 32, 1);
+    if (!(CANDIDATE_SORTS as readonly string[]).includes(sort)) fail('input');
+    result.sort = sort;
+  }
+  return result;
+}
 export function validateMatchRequest(input: MatchRequest): MatchRequest {
   const raw = object(input, 'input'); const { method, path } = raw; if (typeof path !== 'string') fail('input');
   if (method === 'GET') {
     keys(raw, ['method', 'path', 'query'], 'input');
     const max = path === activities || candidates.test(path) ? 100 : plans.test(path) || evaluations.test(path) || evaluationResults.test(path) ? 200 : 0;
     if (!max && !activity.test(path) && !plan.test(path) && !query.test(path) && !evaluation.test(path)) fail('input');
-    return { method, path, ...(Object.hasOwn(raw, 'query') ? { query: pagination(raw.query, max) } : {}) };
+    return { method, path, ...(Object.hasOwn(raw, 'query') ? { query: candidates.test(path) ? exactCandidateQueryOptions(raw.query) : pagination(raw.query, max) } : {}) };
   }
   if (method !== 'POST') fail('input');
   const bodyless = retryPlan.test(path) || stop.test(path);

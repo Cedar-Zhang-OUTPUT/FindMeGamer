@@ -1,0 +1,11 @@
+.saved-list-composer { display: flex; flex-wrap: wrap; align-items: end; gap: 15px; padding: 18px; margin: 14px 0; background: #f0f7f6; border: 1px solid #cbdedb; border-radius: 10px; }
+.saved-list-composer > label { display: flex; flex: 1 1 180px; flex-direction: column; gap: 7px; min-width: 0; font-size: .75rem; }
+.saved-list-composer input { width: 100%; border: 1px solid #b8cfcc; border-radius: 6px; padding: 10px; background: white; font: inherit; font-size: .875rem; color: var(--ink); }
+.saved-list-members, .saved-list-actions { display: flex; flex-wrap: wrap; gap: 11px; align-items: center; font-size: .75rem; }
+.saved-list-members { min-height: 40px; }
+.saved-list-mark { display: inline-flex; gap: 8px; align-items: center; font-size: .75rem; font-weight: 600; }
+.saved-list-mark input { width: 17px; height: 17px; accent-color: var(--teal); }
+.saved-list-tools { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center; margin: 14px 0; }
+.saved-list-recovery { padding: 18px 0; }
+.saved-list-recovery label { display: flex; flex-direction: column; gap: 7px; font-size: .75rem; }
+.saved-list-recovery select { font: inherit; max-width: 100%; padding: 9px; margin-bottom: 12px; }

@@ -1,6 +1,6 @@
 import type * as DTO from '../shared/match';
 import { decodeActivity, decodeActivityDetail, decodeCandidate, decodeDiscoveryAccepted, decodeEvaluation, decodeEvaluationAccepted, decodeEvaluationResult, decodePage, decodePlan, decodePlanAccepted, decodeQuery, decodeStopped, identifier, integer, keys, object, sameID } from './match-validation';
-import { matchOutcomeUnknown, validateMatchRequest, type MatchRequest } from './match-transport';
+import { exactCandidateQueryOptions, matchOutcomeUnknown, validateMatchRequest, type MatchRequest } from './match-transport';
 export type { MatchRequest } from './match-transport';
 export { matchOutcomeUnknown, validateMatchRequest } from './match-transport';
 type Input<K extends keyof DTO.MatchAPI> = Parameters<DTO.MatchAPI[K]>[0];
@@ -50,8 +50,11 @@ export class MatchClient {
     identifier(id, 'input'); return this.send({ method: 'GET', path: `${discovery}/queries/${id}` }, value => decodeQuery(value, id));
   }
   async candidates(value: Input<'candidates'>): Promise<DTO.CandidatePage> {
-    const raw = input(value, ['queryId', 'offset', 'limit']), id = identifier(raw.queryId, 'input');
-    return this.send({ method: 'GET', path: `${discovery}/queries/${id}/results`, query: pagination(raw, 100) }, result => decodePage(result, decodeCandidate, 100, item => item.id));
+    const raw = input(value, ['queryId', 'offset', 'limit', 'evidence', 'sort']), id = identifier(raw.queryId, 'input');
+    const query = exactCandidateQueryOptions({ ...pagination(raw, 100),
+      ...(Object.hasOwn(raw, 'evidence') ? { evidence: raw.evidence } : {}),
+      ...(Object.hasOwn(raw, 'sort') ? { sort: raw.sort } : {}) });
+    return this.send({ method: 'GET', path: `${discovery}/queries/${id}/results`, query }, result => decodePage(result, decodeCandidate, 100, item => item.id));
   }
   async stop(value: Input<'stop'>): Promise<DTO.DiscoveryStopped> {
     const raw = input(value, ['queryId', 'idempotencyKey']), id = identifier(raw.queryId, 'input');

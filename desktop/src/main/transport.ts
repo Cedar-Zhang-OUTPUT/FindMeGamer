@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { PublicError, Result } from '../shared/bridge';
 import { normalizeServiceUrl } from './policies';
+import { GAME_SORTS, GAME_WEBSITE_STATUSES } from '../shared/games';
 
 export class PublicFailure extends Error implements PublicError {
   constructor(public code: string, message: string, public retryable = false, public correlationId?: string) { super(message); }
@@ -76,7 +77,9 @@ export async function authenticatedGameRequest(fetcher: Fetcher, connection: Con
     : post ? input.path !== gameCollection : !gameDetailPattern.test(input.path)) throw invalid();
   const query = get && 'query' in input ? input.query : undefined;
   const url = requestURL(connection, input.path, query ?? {},
-    input.path === gameCollection && get ? ['query', 'only_collection', 'offset', 'limit'] : []);
+    input.path === gameCollection && get ? ['query', 'only_collection', 'website_status', 'sort', 'offset', 'limit'] : []);
+  if (query?.website_status !== undefined && !(GAME_WEBSITE_STATUSES as readonly string[]).includes(query.website_status)) throw invalid();
+  if (query?.sort !== undefined && !(GAME_SORTS as readonly string[]).includes(query.sort)) throw invalid();
   if (get) return perform(fetcher, connection, url, { method: 'GET' }, true);
   if (!('body' in input) || !record(input.body)) throw invalid();
   let body: string;

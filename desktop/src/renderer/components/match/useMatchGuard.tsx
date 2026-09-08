@@ -1,9 +1,11 @@
 import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import type {NavigationGuard} from '../../../shared/games';
 import {CreatorDialog} from '../creators/CreatorDialog';
-import type {useMatchOperation} from './useMatchOperation';
+import type {PublicError} from '../../../shared/bridge';
 
-export function useMatchGuard({operation,dirty,enabled=true,readRepair=false,onChange,onDiscard}:{operation:ReturnType<typeof useMatchOperation>;dirty:boolean;enabled?:boolean;readRepair?:boolean;onChange?: (guard:NavigationGuard|null)=>void;onDiscard:()=>void}){
+interface GuardOperation { busy:boolean; locked:boolean; state:{error:PublicError|null}; credentialsChanged:()=>void }
+
+export function useMatchGuard({operation,dirty,enabled=true,readRepair=false,onChange,onDiscard}:{operation:GuardOperation;dirty:boolean;enabled?:boolean;readRepair?:boolean;onChange?: (guard:NavigationGuard|null)=>void;onDiscard:()=>void}){
   const [pending,setPending]=useState<(()=>void)|null>(null);
   const discard=useRef(onDiscard);discard.current=onDiscard;
   const needed=dirty||operation.busy||operation.locked;

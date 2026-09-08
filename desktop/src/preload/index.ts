@@ -2,6 +2,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopBridge } from '../shared/bridge';
 
 const bridge: DesktopBridge = {
+  savedSets: {
+    list:input=>ipcRenderer.invoke('saved-sets:list',input),
+    detail:id=>ipcRenderer.invoke('saved-sets:detail',id),
+    results:input=>ipcRenderer.invoke('saved-sets:results',input),
+    create:input=>ipcRenderer.invoke('saved-sets:create',input),
+  },
   match: {
     activities:input=>ipcRenderer.invoke('match:activities',input),
     createActivity:input=>ipcRenderer.invoke('match:create-activity',input),

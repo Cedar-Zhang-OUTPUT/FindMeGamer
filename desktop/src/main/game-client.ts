@@ -1,4 +1,4 @@
-import { GAME_FIELDS } from '../shared/games';
+import { GAME_FIELDS, GAME_SORTS, GAME_WEBSITE_STATUSES } from '../shared/games';
 import type { CreateGameInput, GameDetail, GameField, GameFields, GameListInput, GamePage,
   ReferenceWork, UpdateGameInput } from '../shared/games';
 import type { JsonObject, JsonValue } from '../shared/library';
@@ -12,7 +12,7 @@ const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 const steamId = /^[1-9][0-9]{0,19}$/;
 const fieldNames: readonly string[] = GAME_FIELDS;
 const metadata = ['id', 'revision', 'favorite', 'reference_works', 'source_fields', 'manual_overrides',
-  'overridden_fields', 'source_identity', 'last_analyzed_at', 'next_analysis_at'];
+  'overridden_fields', 'source_identity', 'last_analyzed_at', 'next_analysis_at', 'created_at', 'updated_at'];
 
 function fail(mode: Mode): never {
   throw new PublicFailure(mode === 'input' ? 'request_invalid' : 'invalid_response', mode === 'input'
@@ -135,6 +135,12 @@ function timestamp(value: unknown): string | null {
   const result = nullableString(value, 'response');
   if (result !== null && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i.test(result)
     || !Number.isFinite(Date.parse(result)))) fail('response');
+  if (result !== null) {
+    const [year, month, day, hour, minute, second] = result.slice(0,19).split(/[-T:]/i).map(Number);
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+    if (month < 1 || month > 12 || day < 1 || day > days[month-1] || hour > 23 || minute > 59 || second > 59) fail('response');
+  }
   return result;
 }
 
@@ -155,7 +161,9 @@ function decodeDetail(value: unknown, expectedId?: string): GameDetail {
     // Acquisition binding must not be reconstructed from editable website/Steam values.
     source_identity: { steam_app_id: nullableString(identity.steam_app_id, 'response'),
       canonical_url: nullableString(identity.canonical_url, 'response') },
-    last_analyzed_at: timestamp(raw.last_analyzed_at), next_analysis_at: timestamp(raw.next_analysis_at) };
+    last_analyzed_at: timestamp(raw.last_analyzed_at), next_analysis_at: timestamp(raw.next_analysis_at),
+    ...(Object.hasOwn(raw,'created_at') ? {created_at:timestamp(raw.created_at)} : {}),
+    ...(Object.hasOwn(raw,'updated_at') ? {updated_at:timestamp(raw.updated_at)} : {}) };
 }
 
 function body(value: unknown, patch: boolean): Record<string, unknown> {
@@ -187,14 +195,18 @@ export class GameClient {
 
   async list(input: GameListInput): Promise<GamePage> {
     const raw = object(input, 'input');
-    keys(raw, ['query', 'onlyCollection', 'offset', 'limit'], 'input');
+    keys(raw, ['query', 'onlyCollection', 'websiteStatus', 'sort', 'offset', 'limit'], 'input');
+    if (raw.websiteStatus !== undefined && !(GAME_WEBSITE_STATUSES as readonly unknown[]).includes(raw.websiteStatus)) fail('input');
+    if (raw.sort !== undefined && !(GAME_SORTS as readonly unknown[]).includes(raw.sort)) fail('input');
     const query = raw.query === undefined ? '' : raw.query;
     if (typeof query !== 'string' || [...query].length > 255) fail('input');
     const offset = integer(raw.offset === undefined ? 0 : raw.offset, 0, Number.MAX_SAFE_INTEGER, 'input');
     const limit = integer(raw.limit === undefined ? 50 : raw.limit, 1, 100, 'input');
     const onlyCollection = raw.onlyCollection === undefined ? false : boolean(raw.onlyCollection, 'input');
     const page = object(await this.request({ method: 'GET', path: collection,
-      query: { query, only_collection: String(onlyCollection), offset: String(offset), limit: String(limit) } }), 'response');
+      query: { query, only_collection: String(onlyCollection), offset: String(offset), limit: String(limit),
+        ...(raw.websiteStatus === undefined ? {} : {website_status:raw.websiteStatus as string}),
+        ...(raw.sort === undefined ? {} : {sort:raw.sort as string}) } }), 'response');
     keys(page, ['items', 'total', 'offset', 'limit'], 'response');
     if (!Array.isArray(page.items)) fail('response');
     return { items: Array.from(page.items, item => decodeDetail(item)),

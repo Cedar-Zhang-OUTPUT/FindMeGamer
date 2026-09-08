@@ -4,6 +4,11 @@ import type { JsonObject } from './library';
 /** Existing v2 contract DTOs, deliberately keeping backend snake_case. */
 export type CreatorPlatform = 'youtube' | 'x' | 'twitch' | 'instagram';
 export const CREATOR_PLATFORMS: CreatorPlatform[] = ['youtube', 'x', 'twitch', 'instagram'];
+export type CreatorSort = 'name' | 'relevance' | 'followers' | 'recent_publish' | 'recent_added';
+export interface RecentWorkSummary {
+  id: string; work_name: string | null; content_title: string | null; source_url: string | null;
+  published_at: string | null; content_type: string;
+}
 export interface OtherContact { label: string | null; value: string; url: string | null }
 export interface CreatorFields {
   name: string | null; public_name: string | null; public_name_confirmed: boolean;
@@ -27,9 +32,14 @@ export interface CreatorDetail extends CreatorFields {
   source_identity: CreatorIdentity; source_fields: CreatorFields; manual_overrides: JsonObject;
   overridden_fields: CreatorField[]; contacts: ContactDetail[]; work_count: number;
   last_analyzed_at: string | null; next_analysis_at: string | null; analysis_available: boolean;
+  created_at?: string | null; updated_at?: string | null; latest_published_at?: string | null;
+  recent_works?: RecentWorkSummary[]; active_email_count?: number; contact_status?: 'available' | 'missing';
 }
 export interface CreatorPage { items: CreatorDetail[]; total: number; limit: number; offset: number }
-export interface CreatorListInput { query?: string; platform?: CreatorPlatform; language?: string; onlyCollection?: boolean; limit?: number; offset?: number }
+export interface CreatorListInput {
+  query?: string; platform?: CreatorPlatform; language?: string; platforms?: CreatorPlatform[]; languages?: string[];
+  sort?: CreatorSort; onlyCollection?: boolean; limit?: number; offset?: number;
+}
 export type CreatorCreate = Partial<CreatorFields> & { platform?: CreatorPlatform; account_id?: string | null; favorite?: boolean };
 export type CreatorPatch = Partial<CreatorFields> & { favorite?: boolean; expected_revision: number; reset_fields?: CreatorField[] };
 export interface IdentityUpdate { platform: CreatorPlatform; account_id?: string | null; profile_url?: string | null; confirmed: true; expected_revision: number }

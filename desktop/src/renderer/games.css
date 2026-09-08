@@ -1,6 +1,10 @@
 .game-library-tools { display: flex; gap: 14px; align-items: center; }
 .game-library-tools .search-form { max-width: none; }
-.game-list-filter { display: flex; justify-content: space-between; margin: 14px 0 19px; align-items: center; }
+.game-list-filter { display: flex; flex-wrap: wrap; gap: 12px 20px; margin: 14px 0 19px; align-items: center; }
+.game-list-filter > .text-button { margin-left: auto; }
+.game-query-choice { display: flex; gap: 8px; align-items: center; font-size: .75rem; color: var(--muted); }
+.game-query-choice select { font: inherit; color: var(--ink); background: #fff; border: 1px solid var(--line); border-radius: 7px; padding: 8px; max-width: 100%; }
+.game-results-status { color: var(--muted); font-size: .75rem; margin-block: 12px; }
 .game-pagination { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 20px; color: var(--muted); font-size: 0.75rem; }
 .game-pagination > div { display: flex; gap: 9px; }
 .game-pagination .button { min-height: 35px; padding: 7px 12px; font-size: 0.75rem; }

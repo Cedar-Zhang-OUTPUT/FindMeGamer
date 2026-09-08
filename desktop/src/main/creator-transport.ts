@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { normalizeServiceUrl } from './policies';
 import { PublicFailure, type Connection, type Fetcher } from './transport';
-import { body, fail, integer, keys, object, platform, text, UUID_PATTERN, UUID_SOURCE, type BodyKind } from './creator-validation';
+import { body, creatorSort, fail, integer, keys, languageList, object, platform, platformList, text, UUID_PATTERN, UUID_SOURCE, type BodyKind } from './creator-validation';
+
+type CreatorQuery = Record<string, string | string[]>;
 
 export type CreatorRequest =
-  | { method: 'GET'; path: string; query?: Record<string, string> }
+  | { method: 'GET'; path: string; query?: CreatorQuery }
   | { method: 'POST'; path: string; body: Record<string, unknown>; idempotencyKey: string }
   | { method: 'PATCH' | 'PUT'; path: string; body: Record<string, unknown> };
 const collection = '/api/v2/library/creators';
@@ -19,9 +21,11 @@ const LIMIT = 8 * 1024 * 1024;
 export function creatorOutcomeUnknown(): PublicFailure {
   return new PublicFailure('save_outcome_unknown', 'The save result could not be confirmed. Reload the Creator and its contacts or works before saving again; do not start a duplicate save.', false);
 }
-function query(value: unknown, allowed: string[]): Record<string, string> {
+function query(value: unknown, allowed: string[]): CreatorQuery {
   const raw = object(value, 'input'); keys(raw, allowed, 'input');
   return Object.fromEntries(Object.entries(raw).map(([name, value]) => {
+    if (name === 'platforms') return [name, platformList(value, 'input')];
+    if (name === 'languages') return [name, languageList(value, 'input')];
     const result = text(value, 'input', 255);
     if (['offset', 'limit'].includes(name)) {
       if (!/^(0|[1-9][0-9]*)$/.test(result)) fail('input');
@@ -29,6 +33,7 @@ function query(value: unknown, allowed: string[]): Record<string, string> {
     } else if (['only_collection', 'include_previous_identity'].includes(name)) {
       if (!['true', 'false'].includes(result)) fail('input');
     } else if (name === 'platform') platform(result, 'input');
+    else if (name === 'sort') creatorSort(result, 'input');
     return [name, result];
   }));
 }
@@ -38,7 +43,7 @@ export function validateCreatorRequest(value: CreatorRequest): CreatorRequest {
   if (method === 'GET') {
     keys(raw, ['method', 'path', 'query'], 'input');
     if (path !== collection && !detail.test(path) && !works.test(path)) fail('input');
-    const allowed = path === collection ? ['query', 'platform', 'language', 'only_collection', 'offset', 'limit']
+    const allowed = path === collection ? ['query', 'platform', 'language', 'platforms', 'languages', 'sort', 'only_collection', 'offset', 'limit']
       : works.test(path) ? ['include_previous_identity', 'offset', 'limit'] : [];
     return { method, path, ...(Object.hasOwn(raw, 'query') ? { query: query(raw.query, allowed) } : {}) };
   }
@@ -108,7 +113,10 @@ export async function authenticatedCreatorRequest(fetcher: Fetcher, connection: 
   let url: URL;
   try { url = new URL(request.path, normalizeServiceUrl(connection.serviceUrl)); }
   catch { throw new PublicFailure('request_invalid', 'Check the workspace service address.', false); }
-  if ('query' in request) for (const [name, value] of Object.entries(request.query ?? {})) url.searchParams.set(name, value);
+  if ('query' in request) for (const [name, value] of Object.entries(request.query ?? {})) {
+    if (Array.isArray(value)) for (const item of value) url.searchParams.append(name, item);
+    else url.searchParams.set(name, value);
+  }
   const mutation = request.method !== 'GET';
   try {
     const response = await fetcher(url.href, { method: request.method,

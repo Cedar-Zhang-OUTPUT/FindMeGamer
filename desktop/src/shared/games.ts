@@ -26,9 +26,15 @@ export interface GameDetail extends GameFields {
   source_identity: { steam_app_id: string | null; canonical_url: string | null };
   last_analyzed_at: string | null;
   next_analysis_at: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 }
 export interface GamePage { items: GameDetail[]; total: number; offset: number; limit: number }
-export interface GameListInput { query?: string; onlyCollection?: boolean; offset?: number; limit?: number }
+export const GAME_SORTS = ['name', 'recent_updated', 'recent_added'] as const;
+export const GAME_WEBSITE_STATUSES = ['all', 'available', 'missing'] as const;
+export type GameSort = typeof GAME_SORTS[number];
+export type GameWebsiteStatus = typeof GAME_WEBSITE_STATUSES[number];
+export interface GameListInput { query?: string; onlyCollection?: boolean; websiteStatus?: GameWebsiteStatus; sort?: GameSort; offset?: number; limit?: number }
 export type GameCreate = Partial<GameFields> & { favorite?: boolean; reference_works?: ReferenceWork[] };
 export type GamePatch = GameCreate & { expected_revision: number; reset_fields?: GameField[] };
 export interface CreateGameInput { data: GameCreate; idempotencyKey: string }
