@@ -13,6 +13,7 @@ from app.api.routes import profiles as profile_routes
 from app.api.routes import library_v2
 from app.api.routes import creator_library
 from app.api.routes import activity
+from app.api.routes import activity_outreach
 from app.api.routes import discovery_planning
 from app.api.routes import discovery_evaluation
 from app.api.routes import jobs as job_routes
@@ -192,6 +193,7 @@ def create_app(
         )
     )
     app.include_router(discovery_evaluation.create_router(authenticate_workspace, dispatcher=evaluation_dispatcher))
+    app.include_router(activity_outreach.create_router(authenticate_workspace))
     app.include_router(
         settings_routes.create_router(
             authenticate_workspace,

@@ -33,6 +33,7 @@ from app.db.models.profiles import (
 from app.db.models.settings import ServiceSecret, SharedSettings
 
 __all__ = [
+    "ActivitySelection", "RecipientBatch", "RecipientSnapshot",
     "EvaluationRun", "EvaluationItem", "EvaluationStep",
     "DiscoveryPlan",
     "Activity",
@@ -61,3 +62,5 @@ __all__ = [
     "SharedSettings",
     "Template",
 ]
+
+from app.db.models.activity_outreach import ActivitySelection, RecipientBatch, RecipientSnapshot

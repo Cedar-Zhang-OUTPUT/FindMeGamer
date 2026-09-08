@@ -3307,6 +3307,47 @@
         "title": "FollowerRange",
         "type": "object"
       },
+      "FrozenRecipient": {
+        "properties": {
+          "current_missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Current Missing Fields",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "preparation": {
+            "$ref": "#/components/schemas/Preparation"
+          },
+          "selection_id": {
+            "format": "uuid",
+            "title": "Selection Id",
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/Preparation"
+          },
+          "source_changed": {
+            "title": "Source Changed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "selection_id",
+          "snapshot",
+          "preparation",
+          "source_changed",
+          "current_missing_fields"
+        ],
+        "title": "FrozenRecipient",
+        "type": "object"
+      },
       "GameCreate": {
         "additionalProperties": false,
         "properties": {
@@ -6489,6 +6530,565 @@
         "title": "PlanView",
         "type": "object"
       },
+      "Preparation": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "activity_id": {
+            "format": "uuid",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "contact_options": {
+            "items": {
+              "$ref": "#/components/schemas/PreparationContact"
+            },
+            "title": "Contact Options",
+            "type": "array"
+          },
+          "contact_status": {
+            "enum": [
+              "not_selected",
+              "eligible",
+              "changed",
+              "inactive",
+              "invalid",
+              "historical",
+              "missing"
+            ],
+            "title": "Contact Status",
+            "type": "string"
+          },
+          "context_token": {
+            "title": "Context Token",
+            "type": "string"
+          },
+          "creator_id": {
+            "format": "uuid",
+            "title": "Creator Id",
+            "type": "string"
+          },
+          "evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluation_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Run Id"
+          },
+          "freeze_ready": {
+            "title": "Freeze Ready",
+            "type": "boolean"
+          },
+          "game_changed": {
+            "title": "Game Changed",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identity": {
+            "$ref": "#/components/schemas/SelectionIdentity"
+          },
+          "identity_changed": {
+            "title": "Identity Changed",
+            "type": "boolean"
+          },
+          "missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Fields",
+            "type": "array"
+          },
+          "missing_work_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Missing Work Ids",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "name_confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name Confirmed At"
+          },
+          "pending_send_requirements": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pending Send Requirements",
+            "type": "array"
+          },
+          "public_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Name"
+          },
+          "public_name_confirmed": {
+            "title": "Public Name Confirmed",
+            "type": "boolean"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "selected_contact": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreparationContact"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "send_ready": {
+            "const": false,
+            "default": false,
+            "title": "Send Ready",
+            "type": "boolean"
+          },
+          "sender_watched": {
+            "const": false,
+            "default": false,
+            "title": "Sender Watched",
+            "type": "boolean"
+          },
+          "works": {
+            "items": {
+              "$ref": "#/components/schemas/PreparationWork"
+            },
+            "title": "Works",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "activity_id",
+          "creator_id",
+          "candidate_id",
+          "active",
+          "revision",
+          "identity",
+          "identity_changed",
+          "game_changed",
+          "name",
+          "public_name",
+          "public_name_confirmed",
+          "name_confirmed_at",
+          "contact_options",
+          "selected_contact",
+          "contact_status",
+          "works",
+          "missing_work_ids",
+          "evaluation",
+          "evaluation_run_id",
+          "missing_fields",
+          "context_token",
+          "freeze_ready",
+          "pending_send_requirements"
+        ],
+        "title": "Preparation",
+        "type": "object"
+      },
+      "PreparationContact": {
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identity_revision": {
+            "title": "Identity Revision",
+            "type": "integer"
+          },
+          "manual_overrides": {
+            "additionalProperties": true,
+            "title": "Manual Overrides",
+            "type": "object"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "source_fields": {
+            "additionalProperties": true,
+            "title": "Source Fields",
+            "type": "object"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "enum": [
+              "eligible",
+              "inactive",
+              "invalid",
+              "historical"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "validation_state": {
+            "title": "Validation State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "purpose",
+          "source_url",
+          "source_type",
+          "source_fields",
+          "manual_overrides",
+          "validation_state",
+          "identity_revision",
+          "updated_at",
+          "status"
+        ],
+        "title": "PreparationContact",
+        "type": "object"
+      },
+      "PreparationWork": {
+        "additionalProperties": false,
+        "properties": {
+          "collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collected At"
+          },
+          "content_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Id"
+          },
+          "content_title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Title"
+          },
+          "content_type": {
+            "default": "unverified",
+            "enum": [
+              "unverified",
+              "gameplay",
+              "livestream",
+              "review",
+              "commentary",
+              "trailer",
+              "news",
+              "other"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "creator_id": {
+            "format": "uuid",
+            "title": "Creator Id",
+            "type": "string"
+          },
+          "evidence_excerpt": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Excerpt"
+          },
+          "evidence_status": {
+            "enum": [
+              "recorded_evidence",
+              "metadata_only"
+            ],
+            "title": "Evidence Status",
+            "type": "string"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identity_revision": {
+            "title": "Identity Revision",
+            "type": "integer"
+          },
+          "is_current_identity": {
+            "title": "Is Current Identity",
+            "type": "boolean"
+          },
+          "manual_overrides": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/WorkMetric"
+            },
+            "maxItems": 30,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "origin": {
+            "enum": [
+              "manual",
+              "source"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "relation": {
+            "enum": [
+              "current_game",
+              "reference_game",
+              "related_content"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source_collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Collected At"
+          },
+          "source_content_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Content Id"
+          },
+          "source_fields": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "source_platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Source Platform",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "timestamp_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp Seconds"
+          },
+          "verification_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Notes"
+          },
+          "work_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Name"
+          }
+        },
+        "required": [
+          "platform",
+          "id",
+          "creator_id",
+          "source_platform",
+          "origin",
+          "revision",
+          "identity_revision",
+          "is_current_identity",
+          "source_content_id",
+          "source_collected_at",
+          "source_fields",
+          "manual_overrides",
+          "relation",
+          "evidence_status"
+        ],
+        "title": "PreparationWork",
+        "type": "object"
+      },
       "PublicJSONObject": {
         "additionalProperties": true,
         "type": "object"
@@ -6780,6 +7380,223 @@
           "game_interval_days"
         ],
         "title": "ReanalysisSettingsUpdate",
+        "type": "object"
+      },
+      "RecipientBatchCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/RecipientChoice"
+            },
+            "maxItems": 600,
+            "minItems": 1,
+            "title": "Recipients",
+            "type": "array"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "recipients"
+        ],
+        "title": "RecipientBatchCreate",
+        "type": "object"
+      },
+      "RecipientBatchDetail": {
+        "properties": {
+          "activity_id": {
+            "format": "uuid",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "needs_repair_count": {
+            "title": "Needs Repair Count",
+            "type": "integer"
+          },
+          "recipient_count": {
+            "title": "Recipient Count",
+            "type": "integer"
+          },
+          "recipients": {
+            "items": {
+              "$ref": "#/components/schemas/FrozenRecipient"
+            },
+            "title": "Recipients",
+            "type": "array"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "send_ready": {
+            "const": false,
+            "default": false,
+            "title": "Send Ready",
+            "type": "boolean"
+          },
+          "send_ready_count": {
+            "const": 0,
+            "default": 0,
+            "title": "Send Ready Count",
+            "type": "integer"
+          },
+          "source_snapshot": {
+            "additionalProperties": true,
+            "title": "Source Snapshot",
+            "type": "object"
+          },
+          "status": {
+            "const": "frozen",
+            "default": "frozen",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "activity_id",
+          "request_id",
+          "recipient_count",
+          "needs_repair_count",
+          "created_at",
+          "source_snapshot",
+          "recipients"
+        ],
+        "title": "RecipientBatchDetail",
+        "type": "object"
+      },
+      "RecipientBatchPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecipientBatchSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "RecipientBatchPage",
+        "type": "object"
+      },
+      "RecipientBatchSummary": {
+        "properties": {
+          "activity_id": {
+            "format": "uuid",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "needs_repair_count": {
+            "title": "Needs Repair Count",
+            "type": "integer"
+          },
+          "recipient_count": {
+            "title": "Recipient Count",
+            "type": "integer"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "send_ready": {
+            "const": false,
+            "default": false,
+            "title": "Send Ready",
+            "type": "boolean"
+          },
+          "send_ready_count": {
+            "const": 0,
+            "default": 0,
+            "title": "Send Ready Count",
+            "type": "integer"
+          },
+          "status": {
+            "const": "frozen",
+            "default": "frozen",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "activity_id",
+          "request_id",
+          "recipient_count",
+          "needs_repair_count",
+          "created_at"
+        ],
+        "title": "RecipientBatchSummary",
+        "type": "object"
+      },
+      "RecipientChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "context_token": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Context Token",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "selection_id": {
+            "format": "uuid",
+            "title": "Selection Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "selection_id",
+          "context_token"
+        ],
+        "title": "RecipientChoice",
         "type": "object"
       },
       "ReferenceWork": {
@@ -7147,6 +7964,226 @@
           "terms"
         ],
         "title": "SearchPlanQuery",
+        "type": "object"
+      },
+      "SelectionBulkChange": {
+        "additionalProperties": false,
+        "properties": {
+          "add_candidate_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 600,
+            "title": "Add Candidate Ids",
+            "type": "array"
+          },
+          "cancel_selections": {
+            "items": {
+              "$ref": "#/components/schemas/SelectionCancelChoice"
+            },
+            "maxItems": 600,
+            "title": "Cancel Selections",
+            "type": "array"
+          }
+        },
+        "title": "SelectionBulkChange",
+        "type": "object"
+      },
+      "SelectionBulkResult": {
+        "properties": {
+          "added_selection_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Added Selection Ids",
+            "type": "array"
+          },
+          "cancelled_selection_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Cancelled Selection Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "added_selection_ids",
+          "cancelled_selection_ids"
+        ],
+        "title": "SelectionBulkResult",
+        "type": "object"
+      },
+      "SelectionCancelChoice": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "selection_id": {
+            "format": "uuid",
+            "title": "Selection Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "selection_id"
+        ],
+        "title": "SelectionCancelChoice",
+        "type": "object"
+      },
+      "SelectionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id"
+        ],
+        "title": "SelectionCreate",
+        "type": "object"
+      },
+      "SelectionIdentity": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "platform",
+          "account_id",
+          "revision"
+        ],
+        "title": "SelectionIdentity",
+        "type": "object"
+      },
+      "SelectionPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Preparation"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "SelectionPage",
+        "type": "object"
+      },
+      "SelectionRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "SelectionRevision",
+        "type": "object"
+      },
+      "SelectionUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_public_name": {
+            "default": false,
+            "title": "Confirm Public Name",
+            "type": "boolean"
+          },
+          "contact_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contact Id"
+          },
+          "context_token": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Context Token",
+            "type": "string"
+          },
+          "evaluation_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evaluation Run Id"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "work_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Work Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "context_token"
+        ],
+        "title": "SelectionUpdate",
         "type": "object"
       },
       "SessionResponse": {
@@ -10328,6 +11365,625 @@
         "summary": "Create Query",
         "tags": [
           "activities-discovery"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/recipient-batches": {
+      "get": {
+        "operationId": "listActivityRecipientBatchesV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientBatchPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Batches",
+        "tags": [
+          "activity-outreach"
+        ]
+      },
+      "post": {
+        "operationId": "createActivityRecipientBatchV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipientBatchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientBatchDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Freeze",
+        "tags": [
+          "activity-outreach"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/recipient-batches/{batch_id}": {
+      "get": {
+        "operationId": "getActivityRecipientBatchV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecipientBatchDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Batch",
+        "tags": [
+          "activity-outreach"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/selections": {
+      "get": {
+        "operationId": "listActivitySelectionsV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_cancelled",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Cancelled",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listing",
+        "tags": [
+          "activity-outreach"
+        ]
+      },
+      "post": {
+        "operationId": "addActivitySelectionV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preparation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create",
+        "tags": [
+          "activity-outreach"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/selections/bulk": {
+      "post": {
+        "operationId": "bulkActivitySelectionsV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionBulkChange"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SelectionBulkResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Bulk",
+        "tags": [
+          "activity-outreach"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/selections/{selection_id}": {
+      "get": {
+        "operationId": "getActivitySelectionV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "selection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Selection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preparation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get",
+        "tags": [
+          "activity-outreach"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/selections/{selection_id}/cancel": {
+      "post": {
+        "operationId": "cancelActivitySelectionV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "selection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Selection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionRevision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preparation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancel",
+        "tags": [
+          "activity-outreach"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/selections/{selection_id}/update": {
+      "post": {
+        "operationId": "updateActivitySelectionV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "selection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Selection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preparation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update",
+        "tags": [
+          "activity-outreach"
         ]
       }
     },

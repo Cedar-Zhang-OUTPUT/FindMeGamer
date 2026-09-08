@@ -146,6 +146,42 @@ EXPECTED_OPERATIONS = {
 }
 EXPECTED_OPERATIONS.update(
     {
+        (
+            "POST",
+            "/api/v2/activities/{activity_id}/selections",
+        ): "addActivitySelectionV2",
+        (
+            "GET",
+            "/api/v2/activities/{activity_id}/selections",
+        ): "listActivitySelectionsV2",
+        (
+            "POST",
+            "/api/v2/activities/{activity_id}/selections/bulk",
+        ): "bulkActivitySelectionsV2",
+        (
+            "GET",
+            "/api/v2/activities/{activity_id}/selections/{selection_id}",
+        ): "getActivitySelectionV2",
+        (
+            "POST",
+            "/api/v2/activities/{activity_id}/selections/{selection_id}/update",
+        ): "updateActivitySelectionV2",
+        (
+            "POST",
+            "/api/v2/activities/{activity_id}/selections/{selection_id}/cancel",
+        ): "cancelActivitySelectionV2",
+        (
+            "POST",
+            "/api/v2/activities/{activity_id}/recipient-batches",
+        ): "createActivityRecipientBatchV2",
+        (
+            "GET",
+            "/api/v2/activities/{activity_id}/recipient-batches",
+        ): "listActivityRecipientBatchesV2",
+        (
+            "GET",
+            "/api/v2/activities/{activity_id}/recipient-batches/{batch_id}",
+        ): "getActivityRecipientBatchV2",
         ("POST", "/api/v2/activities"): "createActivityV2",
         ("GET", "/api/v2/activities"): "listActivitiesV2",
         ("GET", "/api/v2/activities/{activity_id}"): "getActivityV2",
