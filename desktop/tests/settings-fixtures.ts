@@ -9,6 +9,8 @@ import { collectionSettingsFixture } from './collection-fixtures';
 import { outreachAPIMock } from './outreach-api-mock';
 import type { DraftsAPI } from '../src/shared/drafts';
 import { builtinTemplate, compositionFixture, draftFixture, templateVersion } from './drafts-fixtures';
+import { qualificationFixture, sendBatchFixture, deliveryFixture } from './sending-fixtures';
+import type { SendingAPI } from '../src/shared/sending';
 
 export const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 export const emptySMTP: SMTPStatus = { configured: false, host: null, port: null, encryption: null, username: null, fromName: null, replyTo: null, emailsPerMinute: 10, lastTestStatus: null, lastTestedAt: null };
@@ -30,6 +32,11 @@ export function settingsBridgeMock() {
     sendTestEmail: vi.fn(async () => ok({succeeded:true,lastTestStatus:'success' as const,lastTestedAt:'2026-09-08T01:00:00Z'})),
   };
   const creators = creatorAPIMock();
+  const sending: SendingAPI = {
+    qualify: vi.fn(async () => ok(qualificationFixture())), send: vi.fn(async () => ok(sendBatchFixture())),
+    batches: vi.fn(async input => ok({items:[],total:0,offset:input.offset??0,limit:input.limit??50})),
+    batch: vi.fn(async () => ok(sendBatchFixture())), retry: vi.fn(async () => ok(deliveryFixture())), resolve: vi.fn(async () => ok(deliveryFixture())),
+  };
   const drafts: DraftsAPI = {
     templates: vi.fn(async () => ok({ items: [], builtin: structuredClone(builtinTemplate) })),
     template: vi.fn(async () => ok(structuredClone(templateVersion))),
@@ -45,7 +52,7 @@ export function settingsBridgeMock() {
   };
   vi.mocked(creators.list).mockResolvedValue(ok({items:[creatorFixture('Pixel Harbor','Pixel Harbor')],total:1,limit:50,offset:0}));
   vi.mocked(creators.detail).mockImplementation(async id => ok(creatorFixture(id,id)));
-  return { drafts, outreach:outreachAPIMock(),savedSets:{list:vi.fn(async()=>ok({items:[],total:0,offset:0,limit:50})),detail:vi.fn(),results:vi.fn(),create:vi.fn()}, match:matchAPIMock(), creators, settings, preferences: {
+  return { sending, drafts, outreach:outreachAPIMock(),savedSets:{list:vi.fn(async()=>ok({items:[],total:0,offset:0,limit:50})),detail:vi.fn(),results:vi.fn(),create:vi.fn()}, match:matchAPIMock(), creators, settings, preferences: {
     read: vi.fn(async () => ok(preferences)),
     update: vi.fn(async (input: Partial<Preferences>) => ok(preferences = {...preferences,...input})),
     restoreAppearance: vi.fn(async () => ok(preferences = {...preferences,appearance:'system',fontSize:'default'})),

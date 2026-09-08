@@ -15,9 +15,9 @@ const sections = [
 ] as const;
 type Section = typeof sections[number]['id'];
 type ConnectionProps = ComponentProps<typeof ConnectionSettings>;
-export function SettingsView({api,active,available,workspaceEpoch,appearance,connection,collectionRequest=0,onNavigationGuardChange}: {
+export function SettingsView({api,active,available,workspaceEpoch,appearance,connection,collectionRequest=0,smtpRequest=0,onNavigationGuardChange}: {
   api:DesktopBridge;active:boolean;available:boolean;workspaceEpoch:number;appearance:AppearanceState;
-  connection:ConnectionProps;collectionRequest?:number;onNavigationGuardChange:(guard:NavigationGuard|null)=>void;
+  connection:ConnectionProps;collectionRequest?:number;smtpRequest?:number;onNavigationGuardChange:(guard:NavigationGuard|null)=>void;
 }) {
   // Workspace first preserves the most common recovery/connect entry. Category selection persists.
   const [section,setSection]=useState<Section>('workspace');
@@ -45,6 +45,7 @@ export function SettingsView({api,active,available,workspaceEpoch,appearance,con
   const busy=sharedBusy||connection.phase==='saving';
   const dirty=connectionDirty||sharedDirty;
   const previousCollectionRequest=useRef(0);
+  const previousSMTPRequest=useRef(0);
   useEffect(()=>{
     onNavigationGuardChange(dirty||busy?(proceed)=>{pending.current=proceed;setLeaving(busy?'busy':'dirty');}:null);
     return()=>onNavigationGuardChange(null);
@@ -58,6 +59,11 @@ export function SettingsView({api,active,available,workspaceEpoch,appearance,con
       if(active)requestAnimationFrame(()=>document.getElementById('settings-tab-collection')?.focus());
     }
   },[active,collectionRequest,connection.recovering]);
+  useEffect(()=>{
+    if(smtpRequest===previousSMTPRequest.current)return;
+    previousSMTPRequest.current=smtpRequest;
+    if(smtpRequest>0&&!connection.recovering){choose('email');if(active)requestAnimationFrame(()=>document.getElementById('settings-tab-email')?.focus());}
+  },[active,smtpRequest,connection.recovering]);
   useEffect(()=>{if(leaving==='busy'&&!busy){pending.current=null;setLeaving(null);}},[leaving,busy]);
   function choose(next:Section){
     const scroller=document.querySelector<HTMLElement>('.main-scroll');
@@ -69,7 +75,7 @@ export function SettingsView({api,active,available,workspaceEpoch,appearance,con
   }
   function discard(){cloud.current.discard();collection.current.discard();setResetConnection(value=>value+1);setConnectionDirty(false);const proceed=pending.current;pending.current=null;setLeaving(null);proceed?.();}
   return <div className="settings-workspace">
-    <div className="page-heading"><h1>Settings</h1></div>
+    <div className="page-heading"><h1>Settings</h1>{connection.returnLabel&&section!=='workspace'&&<button type="button" className="text-button" onClick={connection.onLibrary}>{connection.returnLabel}</button>}</div>
     <div className="settings-layout">
       <div className="settings-categories" role="tablist" aria-label="Settings categories" onKeyDown={event=>{
         if(!['ArrowDown','ArrowUp','ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;

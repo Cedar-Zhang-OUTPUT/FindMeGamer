@@ -8,10 +8,10 @@ import { SenderFactsEditor } from './SenderFactsEditor';
 import { PreparationSnapshot } from './PreparationEditor';
 import { ErrorNotice, Loading, analyzedDate } from '../Primitives';
 import './draftsWorkspace.css';
-export interface DraftsWorkspaceProps { api: DesktopBridge; controller: ReturnType<typeof useActivityDrafts>; active: boolean; onRequest(action: () => void): void; onBack(): void; onRepairPerson(selectionId: string, section: 'overview' | 'contacts' | 'works'): void; onConnectionRepair?(): void }
+export interface DraftsWorkspaceProps { api: DesktopBridge; controller: ReturnType<typeof useActivityDrafts>; active: boolean; onRequest(action: () => void): void; onBack(): void; onRepairPerson(selectionId: string, section: 'overview' | 'contacts' | 'works'): void; onConnectionRepair?(): void; onReviewSending?():void; sendingDisabled?:boolean }
 export interface CompositionHistoryProps { api: DraftsAPI; activityId: string; active: boolean; epoch: number; disabled: boolean; onOpen(id: string): void }
 const labels: Record<DraftView['status'], string> = { pending: 'Queued', running: 'Generating', succeeded: 'Complete', failed: 'Failed', needs_repair: 'Needs repair' };
-export function DraftsWorkspace({ controller: c, active, onRequest, onBack, onRepairPerson, onConnectionRepair }: DraftsWorkspaceProps) {
+export function DraftsWorkspace({ controller: c, active, onRequest, onBack, onRepairPerson, onConnectionRepair, onReviewSending, sendingDisabled=false }: DraftsWorkspaceProps) {
   // Keep the form owner mounted while credential repair invalidates fetched data.
   // The retained game is display context only; writes stay disabled until reread.
   const retainedGame=useRef(c.game);if(c.game)retainedGame.current=c.game;
@@ -71,6 +71,7 @@ export function DraftsWorkspace({ controller: c, active, onRequest, onBack, onRe
       </div>
       <SenderFactsEditor key={`facts:${c.editorEpoch}:${c.composition.id}`} composition={c.composition} busy={busy} current={editing && c.current}
         onSave={c.saveFacts} onDirtyChange={value => c.setDirty('facts', value)} />
+      {onReviewSending&&<footer className="qualification-actions"><button type="button" className="button primary" disabled={busy||!c.current||c.dirty||sendingDisabled} onClick={onReviewSending}>Review sending</button></footer>}
     </div>}
   </section>;
 }

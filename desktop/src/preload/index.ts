@@ -2,6 +2,14 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopBridge } from '../shared/bridge';
 
 const bridge: DesktopBridge = {
+  sending: {
+    qualify: input => ipcRenderer.invoke('sending:qualify', input),
+    send: input => ipcRenderer.invoke('sending:send', input),
+    batches: input => ipcRenderer.invoke('sending:batches', input),
+    batch: id => ipcRenderer.invoke('sending:batch', id),
+    retry: input => ipcRenderer.invoke('sending:retry', input),
+    resolve: input => ipcRenderer.invoke('sending:resolve', input),
+  },
   drafts: {
     templates: input => ipcRenderer.invoke('drafts:templates', input),
     template: id => ipcRenderer.invoke('drafts:template', id),

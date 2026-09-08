@@ -34,7 +34,7 @@ it('selects explicitly, then prepares every chosen person after stopping discove
   await waitFor(()=>expect(api.outreach.freeze).toHaveBeenCalledOnce());
   expect(await screen.findByRole('heading',{name:'Preparation · 1'})).toBeVisible();
   expect(screen.getByRole('button',{name:/Edit Creator 1/})).toBeVisible();
-  expect(screen.queryByRole('button',{name:/^Send/})).not.toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:/^Send(?:\s|$)/})).not.toBeInTheDocument();
   await user.click(screen.getByRole('button',{name:/Edit Creator 1/}));
   expect(await screen.findByRole('radio',{name:/None/})).toBeChecked();
   expect(api.outreach.update).not.toHaveBeenCalled();

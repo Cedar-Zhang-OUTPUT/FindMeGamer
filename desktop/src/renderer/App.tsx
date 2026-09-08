@@ -32,6 +32,7 @@ export function App() {
   const [recoveryPage,setRecoveryPage]=useState<'library'|'match'>('library');
   const [collectionReturn,setCollectionReturn]=useState(false);
   const [collectionRequest,setCollectionRequest]=useState(0);
+  const [smtpRequest,setSMTPRequest]=useState(0);
   const operation = useRef(0);
   const mounted = useRef(true);
   const navigationGate = useNavigationGuard();
@@ -70,6 +71,11 @@ export function App() {
     if(page!=='match')return;
     pageScroll.current.match=document.querySelector<HTMLElement>('.main-scroll')?.scrollTop??0;
     setRecoveryOrigin(null);setCollectionReturn(true);setCollectionRequest(value=>value+1);setPage('settings');
+  }
+  function openSMTPSettings() {
+    if(page!=='match')return;
+    pageScroll.current.match=document.querySelector<HTMLElement>('.main-scroll')?.scrollTop??0;
+    setRecoveryOrigin(null);setCollectionReturn(true);setSMTPRequest(value=>value+1);setPage('settings');
   }
 
   async function verify(token: number) {
@@ -154,8 +160,8 @@ export function App() {
           <div className="page-heading"><h1>Library</h1></div>
           {phase === 'loading' || phase === 'checking' || phase === 'saving' ? <Loading label={phase === 'loading' ? 'Opening workspace…' : 'Verifying connection…'}/> : <><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={() => navigate('settings')}>Open Settings</button>}/>{error && <ErrorNotice error={error} onRetry={status?.hasKey ? testConnection : () => void readStatus()}/>}</>}
         </>}</section>
-        <section className="page-content" hidden={page !== 'settings'} aria-label="Settings page"><SettingsView api={api} active={page==='settings'} available={hasLibrarySession&&Boolean(status?.hasKey)} workspaceEpoch={epoch} appearance={appearance} collectionRequest={collectionRequest} onNavigationGuardChange={settingsGate.register} connection={{status,phase,error,route,blocked:collectionReturn,recovering:Boolean(recoveryOrigin),onConnect:connect,onTest:testConnection,onDisconnect:()=>void disconnect(),returnLabel:collectionReturn||recoveryOrigin&&recoveryPage==='match'?'Return to Match':undefined,onLibrary:()=>navigate(collectionReturn?'match':recoveryOrigin?recoveryPage:'library')}}/></section>
-        <section className="page-content" hidden={page!=='match'} aria-label="match page">{hasLibrarySession&&<div hidden={!connected}><MatchWorkspace key={epoch} api={api} active={page==='match'&&connected} onNavigationGuardChange={matchGate.register} onConnectionRepair={()=>navigate('settings')} onCollectionSettings={openCollectionSettings}/></div>}{!connected&&<><div className="page-heading"><h1>Match</h1></div>{phase==='loading'||phase==='checking'||phase==='saving'?<Loading label="Opening workspace…"/>:<><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={()=>navigate('settings')}>Open Settings</button>}/>{error&&<ErrorNotice error={error} onRetry={status?.hasKey?testConnection:()=>void readStatus()}/>}</>}</>}</section>
+        <section className="page-content" hidden={page !== 'settings'} aria-label="Settings page"><SettingsView api={api} active={page==='settings'} available={hasLibrarySession&&Boolean(status?.hasKey)} workspaceEpoch={epoch} appearance={appearance} collectionRequest={collectionRequest} smtpRequest={smtpRequest} onNavigationGuardChange={settingsGate.register} connection={{status,phase,error,route,blocked:collectionReturn,recovering:Boolean(recoveryOrigin),onConnect:connect,onTest:testConnection,onDisconnect:()=>void disconnect(),returnLabel:collectionReturn||recoveryOrigin&&recoveryPage==='match'?'Return to Match':undefined,onLibrary:()=>navigate(collectionReturn?'match':recoveryOrigin?recoveryPage:'library')}}/></section>
+        <section className="page-content" hidden={page!=='match'} aria-label="match page">{hasLibrarySession&&<div hidden={!connected}><MatchWorkspace key={epoch} api={api} active={page==='match'&&connected} onNavigationGuardChange={matchGate.register} onConnectionRepair={()=>navigate('settings')} onCollectionSettings={openCollectionSettings} onSMTPSettings={openSMTPSettings}/></div>}{!connected&&<><div className="page-heading"><h1>Match</h1></div>{phase==='loading'||phase==='checking'||phase==='saving'?<Loading label="Opening workspace…"/>:<><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={()=>navigate('settings')}>Open Settings</button>}/>{error&&<ErrorNotice error={error} onRetry={status?.hasKey?testConnection:()=>void readStatus()}/>}</>}</>}</section>
         <section className="page-content" hidden={page!=='outreach'} aria-label="outreach page"><div className="page-heading"><h1>Outreach</h1></div><div className="feature-unavailable"><span className="feature-icon"><Icon name="outreach"/></span><span className="status-badge">Not connected yet</span><button className="button primary" onClick={()=>navigate('library')}>Open Library<Icon name="chevron"/></button></div></section>
       </main>
     </div>

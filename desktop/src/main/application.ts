@@ -11,6 +11,7 @@ import { MatchClient } from './match-client';
 import { SavedSetClient } from './saved-set-client';
 import { OutreachClient } from './outreach-client';
 import { DraftsClient } from './drafts-client';
+import { SendingClient } from './sending-client';
 import { PreferencesStore } from './preferences-store';
 import { UpdateChecker } from './update-checker';
 import { APP_URL, CONTENT_POLICY, externalUrl, isTrustedFrame, resourcePath } from './policies';
@@ -38,6 +39,7 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   const savedSets = new SavedSetClient(input => gateway.savedSetRequest(input));
   const outreach = new OutreachClient(input => gateway.outreachRequest(input));
   const drafts = new DraftsClient(input => gateway.draftsRequest(input));
+  const sending = new SendingClient(input => gateway.sendingRequest(input));
   const preferences = new PreferencesStore(options.userDataDirectory ?? app.getPath('userData'));
   // A separate ephemeral session follows the system proxy without workspace headers.
   const updateNetwork = session.fromPartition('updates-network');
@@ -115,6 +117,12 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('outreach:batches',input=>outreach.batches(input));
   handle('outreach:batch',input=>outreach.batch(input));
   handle('outreach:freeze',input=>outreach.freeze(input));
+  handle('sending:qualify', input => sending.qualify(input));
+  handle('sending:send', input => sending.send(input));
+  handle('sending:batches', input => sending.batches(input));
+  handle('sending:batch', input => sending.batch(input));
+  handle('sending:retry', input => sending.retry(input));
+  handle('sending:resolve', input => sending.resolve(input));
   handle('drafts:templates', input => drafts.templates(input));
   handle('drafts:template', input => drafts.template(input));
   handle('drafts:register-canonical', input => drafts.registerCanonical(input));

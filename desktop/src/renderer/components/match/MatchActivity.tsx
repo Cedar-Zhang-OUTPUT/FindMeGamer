@@ -24,6 +24,8 @@ import {useActivityOutreach} from './useActivityOutreach';
 import {OutreachNotice,OutreachWorkspace,PreparationHistory} from './OutreachWorkspace';
 import {useActivityDrafts} from './useActivityDrafts';
 import {DraftsWorkspace,CompositionHistory} from './DraftsWorkspace';
+import {useActivitySending} from './useActivitySending';
+import {SendingWorkspace,SendBatchHistory} from './SendingWorkspace';
 
 function ResultTabs({value,onChange,count}:{value:'candidates'|'briefs';onChange:(value:'candidates'|'briefs')=>void;count?:number}){
   return <div role="tablist" aria-label="Match results" onKeyDown={event=>{
@@ -33,7 +35,7 @@ function ResultTabs({value,onChange,count}:{value:'candidates'|'briefs';onChange
   }}><button role="tab" tabIndex={value==='candidates'?0:-1} aria-selected={value==='candidates'} onClick={()=>onChange('candidates')}>Candidates</button><button role="tab" tabIndex={value==='briefs'?0:-1} aria-selected={value==='briefs'} onClick={()=>onChange('briefs')}>Match briefs{count!==undefined?` · ${count}`:''}</button></div>;
 }
 
-export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavigationGuardChange,onConnectionRepair,onCollectionSettings}:{api:DesktopBridge;activityId:string;active:boolean;onBack:()=>void;onOpenCreator:(id:string,section?:'overview'|'contacts'|'works')=>void;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void}){
+export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavigationGuardChange,onConnectionRepair,onCollectionSettings,onSMTPSettings}:{api:DesktopBridge;activityId:string;active:boolean;onBack:()=>void;onOpenCreator:(id:string,section?:'overview'|'contacts'|'works')=>void;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void;onSMTPSettings?:()=>void}){
   const session=useMatchSession(api.match,activityId,active),operation=useMatchOperation(api.match);
   const savedOperation=useSavedSetOperation(api.savedSets);
   const [listDraft,setListDraft]=useState<SavedListDraft|null>(null),[openedSetId,setOpenedSetId]=useState<string|null>(null),[setsRefresh,setSetsRefresh]=useState(0);
@@ -45,10 +47,11 @@ export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavi
   const [checking,setChecking]=useState(false),[recoveredId,setRecoveredId]=useState(''),[knownBatches,setKnownBatches]=useState<string[]>([]);
   const {activity,plan,query,evaluation}=session;
   const drafts=useActivityDrafts({api,activityId,gameId:activity?.game_id??null,active});
-  const outreach=useActivityOutreach({api,activityId,active,queryId:query?.id??null,candidates:session.candidates,candidateCurrent:session.candidateMembershipCurrent,options:session.candidateOptions,onOptions:session.setCandidateOptions,blocked:operation.busy||operation.locked||savedOperation.busy||savedOperation.locked||drafts.busy||drafts.locked||Boolean(listDraft)||Boolean(draft)});
+  const sending=useActivitySending({api:api.sending,activityId,composition:drafts.composition,active,blocked:operation.busy||operation.locked||savedOperation.busy||savedOperation.locked||drafts.busy||drafts.locked||drafts.dirty||Boolean(listDraft)||Boolean(draft)});
+  const outreach=useActivityOutreach({api,activityId,active,queryId:query?.id??null,candidates:session.candidates,candidateCurrent:session.candidateMembershipCurrent,options:session.candidateOptions,onOptions:session.setCandidateOptions,blocked:operation.busy||operation.locked||savedOperation.busy||savedOperation.locked||drafts.busy||drafts.locked||sending.busy||sending.locked||Boolean(listDraft)||Boolean(draft)});
   const policyNeedsRepair=Boolean(policy.error&&matchAuthErrors.has(policy.error.code));
-  const credentialsChanged=useCallback(()=>{operation.credentialsChanged();savedOperation.credentialsChanged();outreach.credentialsChanged();drafts.credentialsChanged();setReadVersion.current++;setRecoveredSet(null);setSetReadBusy(false);},[operation.credentialsChanged,savedOperation.credentialsChanged,outreach.credentialsChanged,drafts.credentialsChanged]);
-  const guard=useMatchGuard({operation:{busy:operation.busy||savedOperation.busy||outreach.busy||drafts.busy,locked:operation.locked||savedOperation.locked||outreach.locked||drafts.locked,state:{error:operation.state.error??savedOperation.state.error??outreach.operation.state.error??outreach.stopOperation.state.error??drafts.operation.state.error},credentialsChanged},dirty:draft!==null||listDraft!==null||outreach.dirty||drafts.dirty,readRepair:policyNeedsRepair,onChange:onNavigationGuardChange,onDiscard:()=>{setDraft(null);setListDraft(null);outreach.setDirty(false);outreach.setSelectedId(null);drafts.discardEdits();}});
+  const credentialsChanged=useCallback(()=>{operation.credentialsChanged();savedOperation.credentialsChanged();outreach.credentialsChanged();drafts.credentialsChanged();sending.credentialsChanged();setReadVersion.current++;setRecoveredSet(null);setSetReadBusy(false);},[operation.credentialsChanged,savedOperation.credentialsChanged,outreach.credentialsChanged,drafts.credentialsChanged,sending.credentialsChanged]);
+  const guard=useMatchGuard({operation:{busy:operation.busy||savedOperation.busy||outreach.busy||drafts.busy||sending.busy,locked:operation.locked||savedOperation.locked||outreach.locked||drafts.locked||sending.locked,state:{error:operation.state.error??savedOperation.state.error??outreach.operation.state.error??outreach.stopOperation.state.error??drafts.operation.state.error??sending.operation.state.error??sending.error},credentialsChanged},dirty:draft!==null||listDraft!==null||outreach.dirty||drafts.dirty||sending.dirty,readRepair:policyNeedsRepair,onChange:onNavigationGuardChange,onDiscard:()=>{setDraft(null);setListDraft(null);outreach.setDirty(false);outreach.setSelectedId(null);drafts.discardEdits();sending.discardEdits();}});
   const showingConditions=draft!==null||(session.ready&&!session.scope?.planId&&!session.scope?.queryId);
   function complete(receipt:OperationReceipt|null){
     if(!receipt)return;setChecking(false);setRecoveredId('');setAcknowledge(false);setRetryAcknowledged(false);
@@ -58,8 +61,8 @@ export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavi
   }
   function execute(command:MatchCommand){if(command.kind==='continueDiscovery')setKnownBatches(query?.batches.map(batch=>batch.id)??[]);void operation.execute(command).then(complete);}
   function startDiscovery(){const conditions=draft??defaultConditions();if(policy.phase!=='ready'||!eligiblePlatforms(conditions.platforms,policy.data).length||Object.keys(validateConditions(conditions)).length)return;execute({kind:'createPlan',activityId,data:{...conditions,mode:'discover'}});}
-  function refresh(){session.refresh();policy.refresh();void outreach.refresh();void drafts.refresh();}
-  const locked=operation.busy||operation.locked||savedOperation.busy||savedOperation.locked||outreach.busy||outreach.locked||drafts.busy||drafts.locked;
+  function refresh(){session.refresh();policy.refresh();void outreach.refresh();void drafts.refresh();sending.invalidate();if(sending.mode.kind==='deliveries')void sending.refreshBatch();}
+  const locked=operation.busy||operation.locked||savedOperation.busy||savedOperation.locked||outreach.busy||outreach.locked||drafts.busy||drafts.locked||sending.busy||sending.locked;
   function savedList(metadata:SavedSetView|null){if(!metadata)return;setListDraft(null);setCheckingSet(false);setRecoveredSet(null);setOpenedSetId(metadata.id);setSetsRefresh(value=>value+1);}
   function saveList(){if(!listDraft||!session.candidateMembershipCurrent||locked)return;void savedOperation.execute({queryId:listDraft.queryId,name:listDraft.name,candidateIds:listDraft.ids}).then(savedList);}
   function markCandidate(id:string){if(!session.candidateMembershipCurrent||locked)return;setListDraft(previous=>previous?{...previous,ids:previous.ids.includes(id)?previous.ids.filter(value=>value!==id):previous.ids.length<600?[...previous.ids,id]:previous.ids}:null);}
@@ -96,10 +99,12 @@ export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavi
       <details className="match-context"><summary>Game context</summary><p>{gameName} · Saved {taskDate(activity.created_at)}</p><p>Library edits do not change this activity’s saved game or references.</p>{game&&typeof game==='object'&&!Array.isArray(game)&&typeof game.description==='string'&&<p>{game.description}</p>}
         {Array.isArray(activity.source_snapshot.references)&&<ul>{activity.source_snapshot.references.map((reference,index)=><li key={index}>{reference&&typeof reference==='object'&&!Array.isArray(reference)&&typeof reference.name==='string'?reference.name:'Reference work'}</li>)}</ul>}
       </details>
-      <PreparationHistory api={api.outreach} activityId={activityId} active={active} epoch={outreach.historyEpoch} disabled={locked} onOpen={id=>guard.request(()=>{drafts.setMode({kind:'people'});void outreach.openBatch(id);})}/>
-      <CompositionHistory api={api.drafts} activityId={activityId} active={active} epoch={drafts.historyEpoch} disabled={locked} onOpen={id=>guard.request(()=>void drafts.open(id))}/>
-      <DraftsWorkspace api={api} controller={drafts} active={active} onRequest={action=>{if(locked)guard.request(action);else action();}} onBack={()=>drafts.setMode({kind:'people'})} onConnectionRepair={onConnectionRepair} onRepairPerson={selectionId=>{if(drafts.batch)void outreach.openCurrentBatch(drafts.batch.id,selectionId).then(opened=>{if(opened)drafts.setMode({kind:'people'});});}}/>
-      <div hidden={drafts.mode.kind!=='people'}>
+      <PreparationHistory api={api.outreach} activityId={activityId} active={active} epoch={outreach.historyEpoch} disabled={locked} onOpen={id=>guard.request(()=>{sending.backToDrafts();drafts.setMode({kind:'people'});void outreach.openBatch(id);})}/>
+      <CompositionHistory api={api.drafts} activityId={activityId} active={active} epoch={drafts.historyEpoch} disabled={locked} onOpen={id=>guard.request(()=>{sending.backToDrafts();void drafts.open(id);})}/>
+      <SendBatchHistory api={api.sending} activityId={activityId} active={active} epoch={sending.historyEpoch} disabled={locked} onOpen={id=>guard.request(()=>void sending.openBatch(id))}/>
+      <SendingWorkspace controller={sending} composition={drafts.composition} active={active} onConnectionRepair={onConnectionRepair} onSettings={()=>{sending.invalidate();(onSMTPSettings??onConnectionRepair)?.();}} onRepairDraft={id=>{sending.backToDrafts();if(drafts.composition){drafts.setMode({kind:'composition',id:drafts.composition.id});drafts.setSelectedId(id);void drafts.open(drafts.composition.id);}}}/>
+      <DraftsWorkspace api={api} controller={drafts} active={active&&sending.mode.kind==='drafts'} onRequest={action=>{if(locked)guard.request(action);else action();}} onBack={()=>drafts.setMode({kind:'people'})} onConnectionRepair={onConnectionRepair} onReviewSending={()=>void sending.begin()} sendingDisabled={locked||outreach.dirty} onRepairPerson={selectionId=>{if(drafts.batch)void outreach.openCurrentBatch(drafts.batch.id,selectionId).then(opened=>{if(opened)drafts.setMode({kind:'people'});});}}/>
+      <div hidden={drafts.mode.kind!=='people'||sending.mode.kind!=='drafts'}>
       {drafts.composition&&<button className="button secondary" disabled={locked||outreach.dirty} onClick={()=>{drafts.setMode({kind:'composition',id:drafts.composition!.id});void drafts.open(drafts.composition!.id);}}>Back to drafts</button>}
       <OutreachNotice controller={outreach} onRepair={onConnectionRepair}/>
       {outreach.panel!=='candidates'&&<OutreachWorkspace api={api} controller={outreach} active={active&&drafts.mode.kind==='people'} onRequest={guard.request} onOpenCreator={openCreator} onChooseTemplate={()=>guard.request(()=>{if(outreach.batch)void drafts.begin(outreach.batch);})} evaluationChoices={session.runs.map(run=>({id:run.id,label:`${taskDate(run.created_at)} · ${taskLabel(run.status)}`}))}/>}
