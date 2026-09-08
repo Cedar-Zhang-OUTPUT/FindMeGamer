@@ -1,6 +1,6 @@
 # Match frontend fixture
 
-This is a separate, test-only environment for packaged Electron Match E2E. It runs the accepted backend revision `cad55656a9a15ef183c6e0ba4ba608bd61a7a1b5` from a `git archive` snapshot, with fresh PostgreSQL migrations through `20260908_0012`, Redis, and an actual Celery worker. It never mounts the changing repository backend. The existing `fmg-frontend-http` environment on port 18090 is unrelated.
+This is a separate, test-only environment for packaged Electron Match E2E. Each instance runs an explicitly accepted backend revision from a `git archive` snapshot, with PostgreSQL, Redis, and an actual Celery worker. The default remains `cad55656a9a15ef183c6e0ba4ba608bd61a7a1b5` / `20260908_0012`; a separate instance can now select the accepted collection-switch revision below. It never mounts the changing repository backend. The existing `fmg-frontend-http` environment on port 18090 is unrelated.
 
 ## Current running instance
 
@@ -61,3 +61,25 @@ Validated on 2026-09-08: 10 focused harness tests pass, both actual HTTP smoke c
 The coordinator independently repeated all 10 harness tests (3.216 seconds), the success smoke, and the failure smoke on the same date; all completed successfully. Success exercised two pages per platform, six unique creators, eight works, one planning call, one screening call, six deep calls and one ranking call. Failure recovery exercised planning unavailability, a failed X source while preserving YouTube results, failed deep evaluations, and Stop during a held page followed by explicit Continue. These are actual accepted-backend HTTP/worker/database flows against synthetic upstreams, not live provider acceptance.
 
 The instance has now been formally handed to **FindMeGamer 前端优化** for the Match packaged E2E unit. That task owns the fixture control window until it reports completion; the coordinator and other tests must not change global controls concurrently. Leave the instance and the unrelated port-18090 environment intact.
+
+## Separate collection-switch instance
+
+The coordinator created this additional instance on 2026-09-08 for the next Settings/Match collection-switch increment. It does **not** replace or upgrade the original Match instance.
+
+- API origin: `http://127.0.0.1:59414`
+- Backend: `b2b15f40e0ed0f8c7de7bf17ec190acb4c0e3857`; actual PostgreSQL migration independently read as `20260908_0014`.
+- Docker project: `fmg-match-frontend-737717b10d72`; queue: `match-frontend-737717b10d72`.
+- Private directory: `/var/folders/p4/5cgpbz2n2hj98xdvs3_b1hlc0000gn/T/fmg-match-frontend-7bmwetos/private`.
+- Private client file: the same directory's `client.json`. Credentials and Game/reference IDs are separate; never use the old instance's key or IDs.
+
+To create another fresh instance at this accepted revision:
+
+```sh
+python3 integration/match_frontend/manage.py start --backend-revision b2b15f40e0ed0f8c7de7bf17ec190acb4c0e3857
+```
+
+Only explicitly accepted hashes are supported, not branches or `HEAD`. An existing owned directory cannot change revision; the CLI rejects that operation before starting anything. Existing-instance commands still use its exact private directory, and the default old-revision instance remains operable. Shared private files and controls must not be changed by concurrent tests.
+
+The manager extension was verified with RED→GREEN tests: 14 harness tests pass. One bounded independent read-only review found no blocker. Both actual HTTP success/failure smokes passed against the new instance. An additional real API/worker check confirmed shared GET/PUT persistence without clearing credentials, zero YouTube requests while disabled and two X pages yielding three retained creators, no automatic continuation when re-enabled, explicit Continue adding YouTube to reach six without losing those three, and an enabled Twitch preset remaining `not_implemented`. The test restored YouTube/Twitch policy values; fault controls are at their defaults. The verifier is retained at `/tmp/fmg-collection-b2b15f4.ECWBeS/shared_http_check.py`; it only targets this synthetic instance.
+
+This instance supports the accepted collection settings and persisted Match flow, not successful provider connection probes or actual SMTP delivery. Continue using the separate old Settings fixture for its connection/capture tests. Neither these checks nor the test-only transports satisfy final packaged GUI/Keychain acceptance.

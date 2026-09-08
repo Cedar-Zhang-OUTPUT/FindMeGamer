@@ -242,6 +242,55 @@ class LifecycleContracts(unittest.TestCase):
         self.module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.module)
 
+    def test_explicit_accepted_revision_has_its_own_migration_and_preserves_old_runs(self):
+        revision = "b2b15f40e0ed0f8c7de7bf17ec190acb4c0e3857"
+        with tempfile.TemporaryDirectory() as temporary:
+            old_directory = Path(temporary) / "old"
+            old = self.module.initialize(old_directory)
+            new_directory = Path(temporary) / "new"
+            new = self.module.initialize(new_directory, backend_revision=revision)
+            self.assertEqual(new["backend_revision"], revision)
+            self.assertEqual(new["migration"], "20260908_0014")
+            self.assertEqual(self.module.load_owned(new_directory), new)
+            self.assertEqual(self.module.load_owned(old_directory), old)
+            self.assertEqual(old["migration"], "20260908_0012")
+            self.assertNotEqual(old["project"], new["project"])
+            self.assertNotEqual(old["workspace_key"], new["workspace_key"])
+
+    def test_unaccepted_revision_is_rejected_before_creating_private_files(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "unaccepted"
+            with self.assertRaises(ValueError):
+                self.module.initialize(directory, backend_revision="HEAD")
+            self.assertFalse(directory.exists())
+
+    def test_cli_can_start_a_separate_accepted_revision_without_printing_keys(self):
+        revision = "b2b15f40e0ed0f8c7de7bf17ec190acb4c0e3857"
+        with tempfile.TemporaryDirectory() as temporary:
+            output = io.StringIO()
+            with patch.object(self.module.tempfile, "mkdtemp", return_value=temporary), \
+                 patch.object(self.module, "start", side_effect=self.module.load_owned) as start, \
+                 contextlib.redirect_stdout(output):
+                self.module.main(["start", "--backend-revision", revision])
+            directory = Path(temporary) / "private"
+            config = self.module.load_owned(directory)
+            start.assert_called_once_with(directory)
+            self.assertEqual(config["backend_revision"], revision)
+            self.assertNotIn(config["workspace_key"], output.getvalue())
+
+    def test_cli_does_not_upgrade_an_existing_owned_instance(self):
+        revision = "b2b15f40e0ed0f8c7de7bf17ec190acb4c0e3857"
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary) / "old"
+            old = self.module.initialize(directory)
+            with patch.object(self.module, "start") as start, \
+                 contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as failure:
+                    self.module.main(["start", "--directory", str(directory), "--backend-revision", revision])
+            self.assertEqual(failure.exception.code, 2)
+            start.assert_not_called()
+            self.assertEqual(self.module.load_owned(directory), old)
+
     def test_generated_credentials_are_private_and_reopening_preserves_identity(self):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary) / "run"

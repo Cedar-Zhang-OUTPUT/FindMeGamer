@@ -20,6 +20,10 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 PIN = "cad55656a9a15ef183c6e0ba4ba608bd61a7a1b5"
 MIGRATION = "20260908_0012"
+ACCEPTED_REVISIONS = {
+    PIN: MIGRATION,
+    "b2b15f40e0ed0f8c7de7bf17ec190acb4c0e3857": "20260908_0014",
+}
 
 
 def private_write(path, value, *, replace=False):
@@ -28,7 +32,9 @@ def private_write(path, value, *, replace=False):
         stream.write(value)
 
 
-def initialize(directory):
+def initialize(directory, *, backend_revision=PIN):
+    if backend_revision not in ACCEPTED_REVISIONS:
+        raise ValueError("Backend revision has not been accepted for this fixture")
     directory = Path(directory).absolute()
     directory.mkdir(mode=0o700, parents=True)
     directory.chmod(0o700)
@@ -38,8 +44,8 @@ def initialize(directory):
         "workspace_key": secrets.token_urlsafe(32),
         "project": "fmg-match-frontend-" + run_id,
         "queue": "match-frontend-" + run_id,
-        "backend_revision": PIN,
-        "migration": MIGRATION,
+        "backend_revision": backend_revision,
+        "migration": ACCEPTED_REVISIONS[backend_revision],
     }
     private_write(directory / "client.json", json.dumps(config, indent=2) + "\n")
     private_write(
@@ -52,7 +58,7 @@ def initialize(directory):
                 "kind": "match-frontend-synthetic-v1",
                 "directory": str(directory),
                 "project": config["project"],
-                "revision": PIN,
+                "revision": backend_revision,
             }
         ),
     )
@@ -78,8 +84,9 @@ def load_owned(directory):
         if (
             owner["kind"] != "match-frontend-synthetic-v1"
             or owner["directory"] != str(directory)
-            or owner["revision"] != PIN
-            or config["backend_revision"] != PIN
+            or config["backend_revision"] not in ACCEPTED_REVISIONS
+            or owner["revision"] != config["backend_revision"]
+            or config["migration"] != ACCEPTED_REVISIONS[config["backend_revision"]]
             or not re.fullmatch(r"fmg-match-frontend-[0-9a-f]{12}", owner["project"])
             or config["project"] != owner["project"]
             or config["queue"] != owner["project"].removeprefix("fmg-")
@@ -158,7 +165,7 @@ def start(directory):
     if not source.exists():
         source.mkdir(mode=0o700)
         archive = subprocess.run(
-            ["git", "archive", PIN, "backend"],
+            ["git", "archive", config["backend_revision"], "backend"],
             cwd=ROOT,
             capture_output=True,
             check=True,
@@ -167,7 +174,7 @@ def start(directory):
             bundle.extractall(source, filter="data")
     private_write(
         directory / "compose.env",
-        f"FMG_MATCH_SOURCE={source}\nFMG_MATCH_HARNESS={HERE}\nFMG_MATCH_PRIVATE={directory}\nFMG_MATCH_QUEUE={config['queue']}\nFMG_MATCH_IMAGE={config['project']}:cad5565\n",
+        f"FMG_MATCH_SOURCE={source}\nFMG_MATCH_HARNESS={HERE}\nFMG_MATCH_PRIVATE={directory}\nFMG_MATCH_QUEUE={config['queue']}\nFMG_MATCH_IMAGE={config['project']}:{config['backend_revision'][:7]}\n",
         replace=True,
     )
     command(directory, "config", "--quiet")
@@ -254,6 +261,7 @@ def main(arguments=None):
         "action", choices=["start", "status", "stop", "control", "smoke", "failures"]
     )
     parser.add_argument("--directory", type=Path)
+    parser.add_argument("--backend-revision", choices=sorted(ACCEPTED_REVISIONS))
     parser.add_argument(
         "--source-fail", choices=["none", "youtube", "x"], default="none"
     )
@@ -268,14 +276,18 @@ def main(arguments=None):
         default="none",
     )
     args = parser.parse_args(arguments)
+    if args.backend_revision is not None and args.action != "start":
+        parser.error("--backend-revision is only valid when starting an instance")
     directory = args.directory
     if directory is None:
         if args.action != "start":
             parser.error("An owned --directory is required")
         directory = Path(tempfile.mkdtemp(prefix="fmg-match-frontend-")) / "private"
-        initialize(directory)
+        initialize(directory, backend_revision=args.backend_revision or PIN)
     directory = directory.absolute()
     config = load_owned(directory)
+    if args.backend_revision is not None and args.backend_revision != config["backend_revision"]:
+        parser.error("An existing instance cannot change revision; start a separate instance")
     if args.action == "start":
         config = start(directory)
     elif args.action == "stop":
