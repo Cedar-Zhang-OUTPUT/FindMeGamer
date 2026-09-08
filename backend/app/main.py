@@ -10,6 +10,7 @@ from app.api.dependencies import create_workspace_authenticator
 from app.api.routes import health
 from app.api.routes.health import ReadinessProbe
 from app.api.routes import profiles as profile_routes
+from app.api.routes import library_v2
 from app.api.routes import jobs as job_routes
 from app.api.routes import match as match_routes
 from app.api.routes import outreach as outreach_routes
@@ -172,6 +173,7 @@ def create_app(
         )
     )
     app.include_router(session.create_router(authenticate_workspace))
+    app.include_router(library_v2.create_router(authenticate_workspace))
     app.include_router(
         settings_routes.create_router(
             authenticate_workspace,

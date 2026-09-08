@@ -1,0 +1,13 @@
+**
+!backend/
+!backend/pyproject.toml
+!backend/alembic.ini
+!backend/app/
+!backend/app/**
+!backend/migrations/
+!backend/migrations/**
+!integration/
+!integration/runtime/
+!integration/runtime/frontend_runtime.py
+**/__pycache__/
+**/*.pyc

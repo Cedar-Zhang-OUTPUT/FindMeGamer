@@ -1,0 +1,57 @@
+# Standalone fixture-only stack. Never merge this with production compose.yaml.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: frontend_fixture
+      POSTGRES_USER: fixture
+      POSTGRES_PASSWORD: synthetic-local-only
+    volumes:
+      - frontend_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U fixture -d frontend_fixture]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+  api:
+    build:
+      context: ..
+      dockerfile: integration/frontend.Dockerfile
+    working_dir: /app
+    command: [python, /harness/frontend_runtime.py, serve]
+    ports:
+      - "127.0.0.1:${FMG_FRONTEND_PORT}:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://fixture:synthetic-local-only@postgres:5432/frontend_fixture
+      REDIS_URL: redis://redis:6379/0
+      MASTER_KEY_FILE: /private/master.key
+      EXTERNAL_BASE_URL: http://127.0.0.1:${FMG_FRONTEND_PORT}
+      WORKSPACE_RATE_LIMIT: "10000"
+      AWS_EC2_METADATA_DISABLED: "true"
+      ARTIFACT_STORE: filesystem
+      ARTIFACT_DIRECTORY: /tmp/frontend-artifacts
+      STEAM_STORE_BASE_URL: http://127.0.0.1:9
+      YOUTUBE_API_BASE_URL: http://127.0.0.1:9
+      DEEPSEEK_API_BASE_URL: http://127.0.0.1:9
+      GOOGLE_AI_API_BASE_URL: http://127.0.0.1:9
+    volumes:
+      - ${FMG_FRONTEND_PRIVATE_DIR}:/private:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+volumes:
+  frontend_data:
+networks:
+  default:
+    # Docker Desktop does not publish ports on an internal-only bridge.
+    # No workers exist; every provider endpoint is redirected to closed loopback.
+    driver: bridge

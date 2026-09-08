@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import or_, select, tuple_
 from sqlalchemy.orm import Session, load_only
 
 from app.analysis.targets import CanonicalTarget, InvalidTarget, canonicalize_target
@@ -255,7 +255,12 @@ class JobsRepository:
             if target.target_type is TargetType.GAME:
                 profile_id = self._session.scalar(
                     select(GameProfile.id).where(
-                        GameProfile.steam_app_id == target.canonical_id
+                        GameProfile.steam_app_id == target.canonical_id,
+                        # Hand-entered Steam seeds need their first real analysis.
+                        or_(
+                            GameProfile.manual_revision == 0,
+                            GameProfile.last_analyzed_at.is_not(None),
+                        ),
                     )
                 )
             else:

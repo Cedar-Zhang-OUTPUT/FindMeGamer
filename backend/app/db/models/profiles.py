@@ -24,7 +24,9 @@ class ProfileFieldsMixin(TimestampMixin):
     current_facts: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
     )
-    analysis: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    analysis: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict
+    )
     brief: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     source_status: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
@@ -45,14 +47,29 @@ class ProfileFieldsMixin(TimestampMixin):
 class GameProfile(ProfileFieldsMixin, Base):
     __tablename__ = "game_profiles"
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
-    steam_app_id: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    steam_app_id: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, unique=True
+    )
+    manual_overrides: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    reference_works: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
+    )
+    manual_revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
 
 
 class CreatorProfile(ProfileFieldsMixin, Base):
     __tablename__ = "creator_profiles"
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid4
+    )
     youtube_channel_id: Mapped[str] = mapped_column(
         String(128), nullable=False, unique=True
     )
@@ -73,9 +90,13 @@ class CreatorContact(TimestampMixin, Base):
         ),
     )
 
-    id: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid4
+    )
     creator_id: Mapped[UUID] = mapped_column(
-        ForeignKey("creator_profiles.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("creator_profiles.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     purpose: Mapped[str | None] = mapped_column(String(512))

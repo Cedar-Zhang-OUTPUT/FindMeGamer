@@ -258,8 +258,13 @@ class GameAnalysisService:
                 "synthesis_prompt_version": GAME_SYNTHESIS_PROMPT_VERSION,
             }
             profile.canonical_url = source.canonical_url
-            profile.sort_name = self._sort_name(source.name, lease.app_id)
             profile.current_facts = public_json_object(current_facts)
+            if profile.manual_overrides:
+                from app.repositories.library_v2 import effective_sort_name
+
+                profile.sort_name = effective_sort_name(profile)
+            else:
+                profile.sort_name = self._sort_name(source.name, lease.app_id)
             profile.analysis = public_json_object(analysis)
             profile.brief = public_json_object(brief)
             profile.source_status = public_json_object(source_status)

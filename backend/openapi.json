@@ -1012,6 +1012,617 @@
         "title": "FavoriteUpdate",
         "type": "object"
       },
+      "GameCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "developer": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Developer"
+          },
+          "favorite": {
+            "default": false,
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "languages": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Languages",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reference_works": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceWork"
+            },
+            "maxItems": 100,
+            "title": "Reference Works",
+            "type": "array"
+          },
+          "release_date": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Date"
+          },
+          "steam_app_id": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9][0-9]{0,19}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam App Id"
+          },
+          "tags": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "title": "GameCreate",
+        "type": "object"
+      },
+      "GameDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "developer": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Developer"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "languages": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Languages",
+            "type": "array"
+          },
+          "last_analyzed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Analyzed At"
+          },
+          "manual_overrides": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "next_analysis_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Analysis At"
+          },
+          "overridden_fields": {
+            "items": {
+              "enum": [
+                "name",
+                "website_url",
+                "steam_app_id",
+                "developer",
+                "description",
+                "tags",
+                "languages",
+                "release_date",
+                "cover_url"
+              ],
+              "type": "string"
+            },
+            "title": "Overridden Fields",
+            "type": "array"
+          },
+          "reference_works": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceWork"
+            },
+            "title": "Reference Works",
+            "type": "array"
+          },
+          "release_date": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Date"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source_fields": {
+            "$ref": "#/components/schemas/GameFields"
+          },
+          "source_identity": {
+            "$ref": "#/components/schemas/SourceIdentity"
+          },
+          "steam_app_id": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9][0-9]{0,19}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam App Id"
+          },
+          "tags": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "favorite",
+          "reference_works",
+          "source_fields",
+          "manual_overrides",
+          "overridden_fields",
+          "source_identity",
+          "last_analyzed_at",
+          "next_analysis_at"
+        ],
+        "title": "GameDetail",
+        "type": "object"
+      },
+      "GameFields": {
+        "additionalProperties": false,
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "developer": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Developer"
+          },
+          "languages": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Languages",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "release_date": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Date"
+          },
+          "steam_app_id": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9][0-9]{0,19}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam App Id"
+          },
+          "tags": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "title": "GameFields",
+        "type": "object"
+      },
+      "GamePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GameDetail"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "GamePage",
+        "type": "object"
+      },
+      "GamePatch": {
+        "additionalProperties": false,
+        "properties": {
+          "cover_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Url"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "developer": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Developer"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "favorite": {
+            "default": false,
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "languages": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Languages",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reference_works": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceWork"
+            },
+            "maxItems": 100,
+            "title": "Reference Works",
+            "type": "array"
+          },
+          "release_date": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Date"
+          },
+          "reset_fields": {
+            "items": {
+              "enum": [
+                "name",
+                "website_url",
+                "steam_app_id",
+                "developer",
+                "description",
+                "tags",
+                "languages",
+                "release_date",
+                "cover_url"
+              ],
+              "type": "string"
+            },
+            "maxItems": 9,
+            "title": "Reset Fields",
+            "type": "array"
+          },
+          "steam_app_id": {
+            "anyOf": [
+              {
+                "pattern": "^[1-9][0-9]{0,19}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam App Id"
+          },
+          "tags": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Tags",
+            "type": "array"
+          },
+          "website_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Website Url"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "GamePatch",
+        "type": "object"
+      },
       "GameProfileCard": {
         "properties": {
           "brief": {
@@ -3257,6 +3868,71 @@
         "title": "ReanalysisSettingsUpdate",
         "type": "object"
       },
+      "ReferenceWork": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "similarities": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Similarities",
+            "type": "array"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "title": "ReferenceWork",
+        "type": "object"
+      },
       "RenderedDelivery": {
         "additionalProperties": false,
         "properties": {
@@ -3553,6 +4229,38 @@
           "service_connections"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "SourceIdentity": {
+        "properties": {
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url"
+          },
+          "steam_app_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam App Id"
+          }
+        },
+        "required": [
+          "steam_app_id",
+          "canonical_url"
+        ],
+        "title": "SourceIdentity",
         "type": "object"
       },
       "TargetType": {
@@ -5641,6 +6349,247 @@
         "summary": "Update Reanalysis",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/api/v2/library/games": {
+      "get": {
+        "operationId": "listLibraryGamesV2",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 255,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "only_collection",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only Collection",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GamePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Games",
+        "tags": [
+          "library-v2"
+        ]
+      },
+      "post": {
+        "operationId": "createLibraryGameV2",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GameCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Game",
+        "tags": [
+          "library-v2"
+        ]
+      }
+    },
+    "/api/v2/library/games/{game_id}": {
+      "get": {
+        "operationId": "getLibraryGameV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Game",
+        "tags": [
+          "library-v2"
+        ]
+      },
+      "patch": {
+        "operationId": "updateLibraryGameV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GamePatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Game",
+        "tags": [
+          "library-v2"
         ]
       }
     },

@@ -97,6 +97,8 @@ class MatchRepository:
         )
         if game is None:
             raise MatchInputError("game_profile_not_found")
+        if game.steam_app_id is None:
+            raise MatchInputError("game_brief_invalid")
         try:
             game_brief = GameBrief.model_validate(game.brief)
         except Exception:

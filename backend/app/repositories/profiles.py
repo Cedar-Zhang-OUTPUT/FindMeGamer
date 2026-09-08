@@ -38,7 +38,7 @@ class ProfilesRepository:
         cursor: CursorValue | None,
         limit: int,
     ) -> tuple[Sequence[GameProfile], bool]:
-        statement = select(GameProfile)
+        statement = select(GameProfile).where(GameProfile.steam_app_id.is_not(None))
         statement = self._apply_filters(
             statement,
             GameProfile,
@@ -84,6 +84,8 @@ class ProfilesRepository:
             model.id == profile_id,
             model.sort_name == sort_name,
         )
+        if profile_type == "games":
+            statement = statement.where(GameProfile.steam_app_id.is_not(None))
         statement = self._apply_search_and_collection(
             statement,
             model,
@@ -93,7 +95,11 @@ class ProfilesRepository:
         return self._session.scalar(statement) is not None
 
     def get_game(self, profile_id: UUID) -> GameProfile | None:
-        return self._session.get(GameProfile, profile_id)
+        return self._session.scalar(
+            select(GameProfile).where(
+                GameProfile.id == profile_id, GameProfile.steam_app_id.is_not(None)
+            )
+        )
 
     def get_creator(self, profile_id: UUID) -> CreatorProfile | None:
         return self._session.scalar(
@@ -139,6 +145,7 @@ class ProfilesRepository:
                 GameProfile.canonical_url.label("canonical_url"),
             ).where(
                 GameProfile.next_analysis_at.is_not(None),
+                GameProfile.steam_app_id.is_not(None),
                 GameProfile.next_analysis_at <= now,
                 ~active_game,
             ),

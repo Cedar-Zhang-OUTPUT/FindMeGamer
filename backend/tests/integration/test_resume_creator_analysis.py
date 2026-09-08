@@ -37,6 +37,21 @@ from tests.unit.analysis.test_creator_pipeline import _source
 NOW = datetime(2026, 9, 7, 10, 0, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def align_new_job_creation_with_test_clock():
+    # Recovery jobs otherwise use database wall time while these tests inject
+    # NOW for starting/failing them. Keep both on the same deterministic clock.
+    def set_created_at(_mapper, _connection, target):
+        if target.created_at is None:
+            target.created_at = NOW
+
+    event.listen(AnalysisJob, "before_insert", set_created_at)
+    try:
+        yield
+    finally:
+        event.remove(AnalysisJob, "before_insert", set_created_at)
+
+
 def seed(factory, *, succeeded=False, missing_content_format=False):
     source = _source()
     videos = tuple(

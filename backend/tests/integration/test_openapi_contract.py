@@ -18,6 +18,10 @@ EXPORTER = BACKEND_ROOT / "scripts" / "export_openapi.py"
 COMMITTED_SCHEMA = BACKEND_ROOT / "openapi.json"
 
 EXPECTED_OPERATIONS = {
+    ("GET", "/api/v2/library/games"): "listLibraryGamesV2",
+    ("POST", "/api/v2/library/games"): "createLibraryGameV2",
+    ("GET", "/api/v2/library/games/{game_id}"): "getLibraryGameV2",
+    ("PATCH", "/api/v2/library/games/{game_id}"): "updateLibraryGameV2",
     ("GET", "/r/{token}"): "showCreatorResponseConfirmation",
     ("POST", "/r/{token}"): "confirmCreatorResponse",
     ("GET", "/health/live"): "checkLiveness",
@@ -182,13 +186,14 @@ def test_openapi_retains_bearer_auth_and_required_idempotency_headers(client) ->
     }
     for (method, path), _operation_id in EXPECTED_OPERATIONS.items():
         operation = _operation(schema, method, path)
-        if path.startswith("/api/v1/"):
+        if path.startswith("/api/"):
             assert operation["security"] == [{"HTTPBearer": []}]
 
     for method in ("GET", "POST"):
         assert _operation(schema, method, "/r/{token}").get("security") in (None, [])
 
     for method, path in (
+        ("POST", "/api/v2/library/games"),
         ("POST", "/api/v1/jobs/analysis"),
         ("POST", "/api/v1/jobs/analysis/{job_id}/retry"),
         ("POST", "/api/v1/matches"),

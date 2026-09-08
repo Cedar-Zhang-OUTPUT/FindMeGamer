@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from alembic import command
+from alembic.script import ScriptDirectory
 from sqlalchemy import event, func, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -58,7 +59,7 @@ def test_creator_contact_purpose_migrates_from_and_back_to_0006(
         with database_engine.connect() as connection:
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260904_0007"
+                == ScriptDirectory.from_config(alembic_config).get_current_head()
             )
 
         command.downgrade(alembic_config, "20260904_0006")
@@ -746,7 +747,7 @@ def test_runtime_job_mutation_and_public_state_migration_share_lock_order(
         with database_engine.connect() as verification:
             assert (
                 verification.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260904_0007"
+                == ScriptDirectory.from_config(alembic_config).get_current_head()
             )
     finally:
         release_worker.set()
@@ -837,7 +838,7 @@ def test_public_state_migration_does_not_deadlock_frozen_old_writer_order(
         with database_engine.connect() as verification:
             assert (
                 verification.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260904_0007"
+                == ScriptDirectory.from_config(alembic_config).get_current_head()
             )
             assert (
                 verification.scalar(
