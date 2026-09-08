@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analysis.contracts import CreatorSource, SteamGameSource, VideoSource
@@ -26,7 +26,7 @@ from app.analysis.prompts.game import (
 from app.core.analysis_job_contract import valid_analysis_job_state
 from app.db.models.enums import AnalysisStage, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
-from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
+from app.db.models.profiles import CreatorProfile, GameProfile
 from app.db.models.settings import SharedSettings
 from app.integrations.errors import PermanentIntegrationError
 from app.repositories.jobs import require_valid_succeeded_job_result
@@ -563,47 +563,9 @@ class CreatorAnalysisService:
             profile.last_analyzed_at = analyzed_at
             profile.next_analysis_at = analyzed_at + timedelta(days=interval_days)
 
-            session.execute(
-                delete(CreatorContact).where(
-                    CreatorContact.creator_id == profile.id,
-                    CreatorContact.is_manual.is_(False),
-                )
-            )
-            selected_email = publication.contacts.public_email
-            discovered_emails = [
-                candidate
-                for candidate in publication.contact_evidence.candidates
-                if isinstance(candidate, EmailContactCandidate)
-            ]
-            seen_emails: set[str] = set()
-            for position, discovered_email in enumerate(discovered_emails):
-                email_key = discovered_email.value.casefold()
-                if email_key in seen_emails:
-                    continue
-                seen_emails.add(email_key)
-                session.add(
-                    CreatorContact(
-                        creator_id=profile.id,
-                        email=discovered_email.value,
-                        purpose=discovered_email.purpose,
-                        source_type=discovered_email.source_type,
-                        source_url=discovered_email.source_url,
-                        is_manual=False,
-                        validation_state=(
-                            "valid"
-                            if discovered_email.validation_state == "validated"
-                            else "unverified"
-                        ),
-                        priority=(
-                            10
-                            if selected_email is not None
-                            and discovered_email.candidate_id
-                            == selected_email.candidate_id
-                            else max(1, 9 - position)
-                        ),
-                        is_active=True,
-                    )
-                )
+            from app.analysis.creator_library_sync import sync_creator_library
+
+            sync_creator_library(session, profile, publication, analyzed_at)
             session.flush()
 
             job.status = JobStatus.SUCCEEDED
@@ -626,6 +588,7 @@ class CreatorAnalysisService:
             "channel_id": source.channel_id,
             "canonical_url": source.canonical_url,
             "title": source.title,
+            "description": source.description,
             "custom_url": source.custom_url,
             "published_at": (
                 source.published_at.isoformat() if source.published_at else None

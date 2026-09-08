@@ -333,6 +333,15 @@ def _load_composition(
                 "creator_not_in_match",
                 "Every Creator must belong to the Match result.",
             )
+        if (
+            creator.identity_changed_at is not None
+            and creator.identity_changed_at > task.created_at
+        ):
+            raise _error(
+                409,
+                "creator_identity_changed",
+                "Run a new Match after changing this Creator's identity.",
+            )
         available = _available_contacts(
             contacts[creator_id], manual_only=_creator_is_stale(creator.source_status)
         )

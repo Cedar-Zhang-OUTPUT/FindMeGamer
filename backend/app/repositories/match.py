@@ -105,7 +105,13 @@ class MatchRepository:
             raise MatchInputError("game_brief_invalid") from None
 
         creators = self._session.scalars(
-            select(CreatorProfile).order_by(CreatorProfile.id).with_for_update()
+            select(CreatorProfile)
+            .where(
+                CreatorProfile.platform == "youtube",
+                CreatorProfile.youtube_channel_id.is_not(None),
+            )
+            .order_by(CreatorProfile.id)
+            .with_for_update()
         ).all()
         eligible: dict[UUID, tuple[CreatorProfile, CreatorBrief]] = {}
         cutoff = now - MATCH_INPUT_RETENTION

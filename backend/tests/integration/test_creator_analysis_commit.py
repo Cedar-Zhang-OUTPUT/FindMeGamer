@@ -470,7 +470,9 @@ def test_reanalysis_preserves_manual_contact_notes_favorite_and_replaces_discove
         0,
         True,
     ) in snapshot["contacts"]
-    assert all(item[0] != "old@example.net" for item in snapshot["contacts"])
+    assert all(
+        not item[-1] for item in snapshot["contacts"] if item[0] == "old@example.net"
+    )
     assert (
         "press@example.com",
         None,
@@ -532,6 +534,7 @@ def test_no_contact_publication_replaces_discovered_rows_with_explicit_empty_pro
             select(CreatorContact).where(
                 CreatorContact.creator_id == profile_id,
                 CreatorContact.is_manual.is_(False),
+                CreatorContact.is_active.is_(True),
             )
         ).all()
         assert contacts == []

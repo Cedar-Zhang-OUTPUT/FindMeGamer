@@ -235,7 +235,9 @@ def test_profile_identifiers_are_unique(session: Session, first, duplicate) -> N
         savepoint.rollback()
 
 
-def test_only_one_active_manual_contact_exists_per_creator(session: Session) -> None:
+def test_duplicate_active_manual_email_is_rejected_per_creator(
+    session: Session,
+) -> None:
     creator = CreatorProfile(
         youtube_channel_id=f"manual-constraint-{uuid4()}",
         canonical_url="https://youtube.com/channel/manual-constraint",
@@ -259,7 +261,7 @@ def test_only_one_active_manual_contact_exists_per_creator(session: Session) -> 
         session.add(
             CreatorContact(
                 creator_id=creator.id,
-                email="second@example.com",
+                email="FIRST@example.com",
                 source_type="manual",
                 is_manual=True,
                 is_active=True,
@@ -268,7 +270,8 @@ def test_only_one_active_manual_contact_exists_per_creator(session: Session) -> 
         with pytest.raises(IntegrityError) as error:
             session.flush()
         assert (
-            error.value.orig.diag.constraint_name == "uq_creator_contacts_active_manual"
+            error.value.orig.diag.constraint_name
+            == "uq_creator_contacts_active_manual_email"
         )
     finally:
         savepoint.rollback()

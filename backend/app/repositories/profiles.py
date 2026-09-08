@@ -8,6 +8,8 @@ from sqlalchemy import Select, cast, func, literal, select, tuple_, union_all, u
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.errors import APIError
+
 from app.db.models.enums import JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
@@ -57,8 +59,13 @@ class ProfilesRepository:
         cursor: CursorValue | None,
         limit: int,
     ) -> tuple[Sequence[CreatorProfile], bool]:
-        statement = select(CreatorProfile).options(
-            selectinload(CreatorProfile.contacts)
+        statement = (
+            select(CreatorProfile)
+            .where(
+                CreatorProfile.platform == "youtube",
+                CreatorProfile.youtube_channel_id.is_not(None),
+            )
+            .options(selectinload(CreatorProfile.contacts))
         )
         statement = self._apply_filters(
             statement,
@@ -86,6 +93,11 @@ class ProfilesRepository:
         )
         if profile_type == "games":
             statement = statement.where(GameProfile.steam_app_id.is_not(None))
+        else:
+            statement = statement.where(
+                CreatorProfile.platform == "youtube",
+                CreatorProfile.youtube_channel_id.is_not(None),
+            )
         statement = self._apply_search_and_collection(
             statement,
             model,
@@ -104,7 +116,11 @@ class ProfilesRepository:
     def get_creator(self, profile_id: UUID) -> CreatorProfile | None:
         return self._session.scalar(
             select(CreatorProfile)
-            .where(CreatorProfile.id == profile_id)
+            .where(
+                CreatorProfile.id == profile_id,
+                CreatorProfile.platform == "youtube",
+                CreatorProfile.youtube_channel_id.is_not(None),
+            )
             .options(selectinload(CreatorProfile.contacts))
         )
 
@@ -112,7 +128,11 @@ class ProfilesRepository:
         acquire_job_change_lock(self._session)
         return self._session.scalar(
             select(CreatorProfile)
-            .where(CreatorProfile.id == profile_id)
+            .where(
+                CreatorProfile.id == profile_id,
+                CreatorProfile.platform == "youtube",
+                CreatorProfile.youtube_channel_id.is_not(None),
+            )
             .with_for_update()
             .options(selectinload(CreatorProfile.contacts))
         )
@@ -157,6 +177,8 @@ class ProfilesRepository:
                 CreatorProfile.canonical_url.label("canonical_url"),
             ).where(
                 CreatorProfile.next_analysis_at.is_not(None),
+                CreatorProfile.platform == "youtube",
+                CreatorProfile.youtube_channel_id.is_not(None),
                 CreatorProfile.next_analysis_at <= now,
                 ~active_creator,
             ),
@@ -190,6 +212,8 @@ class ProfilesRepository:
         result = self._session.execute(
             update(CreatorProfile)
             .where(
+                CreatorProfile.platform == "youtube",
+                CreatorProfile.youtube_channel_id.is_not(None),
                 CreatorProfile.last_analyzed_at.is_not(None),
                 CreatorProfile.last_analyzed_at < cutoff,
                 (
@@ -236,18 +260,48 @@ class ProfilesRepository:
         creator = self.get_creator_for_update(profile_id)
         if creator is None:
             return None
+        if creator.identity_revision > 0:
+            raise APIError(
+                status_code=409,
+                code="creator_identity_changed",
+                message="This account was rebound. Use the current Creator editor before saving contacts.",
+            )
 
         creator.manual_notes = notes
+        creator.manual_overrides = dict(creator.manual_overrides or {}) | {
+            "internal_notes": notes
+        }
+        creator.manual_revision += 1
         manual_contacts = sorted(
-            (contact for contact in creator.contacts if contact.is_manual),
-            key=lambda contact: (contact.created_at, str(contact.id)),
+            (
+                contact
+                for contact in creator.contacts
+                if contact.is_manual
+                and contact.identity_revision == creator.identity_revision
+            ),
+            key=lambda contact: (
+                not contact.is_active,
+                contact.created_at,
+                str(contact.id),
+            ),
         )
-        for contact in manual_contacts:
-            contact.is_active = False
+        # The legacy editor controls one email, not every new multi-email row.
+        if manual_contacts and contact_email is None:
+            manual_contacts[0].is_active = False
+            manual_contacts[0].manual_overrides = dict(
+                manual_contacts[0].manual_overrides or {}
+            ) | {"is_active": False}
 
         if contact_email is not None:
             if manual_contacts:
-                manual_contact = manual_contacts[0]
+                manual_contact = next(
+                    (
+                        contact
+                        for contact in manual_contacts
+                        if contact.email.casefold() == contact_email.casefold()
+                    ),
+                    manual_contacts[0],
+                )
             else:
                 manual_contact = CreatorContact(
                     creator_id=creator.id,
@@ -257,15 +311,26 @@ class ProfilesRepository:
                     validation_state="unverified",
                     priority=0,
                     is_active=True,
+                    identity_revision=creator.identity_revision,
                 )
                 creator.contacts.append(manual_contact)
+            email_changed = manual_contact.email.casefold() != contact_email.casefold()
             manual_contact.email = contact_email
             manual_contact.source_type = "manual"
-            manual_contact.source_url = None
+            if email_changed:
+                manual_contact.source_url = None
+                manual_contact.validation_state = "unverified"
             manual_contact.is_manual = True
-            manual_contact.validation_state = "unverified"
             manual_contact.priority = 0
             manual_contact.is_active = True
+            manual_contact.manual_overrides = dict(
+                manual_contact.manual_overrides or {}
+            ) | {
+                "email": contact_email,
+                "source_url": manual_contact.source_url,
+                "is_active": True,
+                "validation_state": manual_contact.validation_state,
+            }
 
         self._session.flush()
         return creator

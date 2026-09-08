@@ -18,6 +18,28 @@ EXPORTER = BACKEND_ROOT / "scripts" / "export_openapi.py"
 COMMITTED_SCHEMA = BACKEND_ROOT / "openapi.json"
 
 EXPECTED_OPERATIONS = {
+    ("GET", "/api/v2/library/creators"): "listLibraryCreatorsV2",
+    ("POST", "/api/v2/library/creators"): "createLibraryCreatorV2",
+    ("GET", "/api/v2/library/creators/{creator_id}"): "getLibraryCreatorV2",
+    ("PATCH", "/api/v2/library/creators/{creator_id}"): "updateLibraryCreatorV2",
+    (
+        "PUT",
+        "/api/v2/library/creators/{creator_id}/identity",
+    ): "rebindLibraryCreatorIdentityV2",
+    (
+        "POST",
+        "/api/v2/library/creators/{creator_id}/contacts",
+    ): "addLibraryCreatorContactV2",
+    (
+        "PATCH",
+        "/api/v2/library/creators/{creator_id}/contacts/{contact_id}",
+    ): "updateLibraryCreatorContactV2",
+    ("GET", "/api/v2/library/creators/{creator_id}/works"): "listLibraryCreatorWorksV2",
+    ("POST", "/api/v2/library/creators/{creator_id}/works"): "addLibraryCreatorWorkV2",
+    (
+        "PATCH",
+        "/api/v2/library/creators/{creator_id}/works/{work_id}",
+    ): "updateLibraryCreatorWorkV2",
     ("GET", "/api/v2/library/games"): "listLibraryGamesV2",
     ("POST", "/api/v2/library/games"): "createLibraryGameV2",
     ("GET", "/api/v2/library/games/{game_id}"): "getLibraryGameV2",

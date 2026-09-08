@@ -13,7 +13,7 @@ from app.db.models.jobs import (
     acquire_job_change_lock,
     next_job_change_timestamp,
 )
-from app.db.models.profiles import CreatorProfile, GameProfile
+from app.db.models.profiles import CreatorIdentityBinding, CreatorProfile, GameProfile
 from app.integrations.errors import PermanentIntegrationError
 
 
@@ -76,6 +76,27 @@ def require_valid_succeeded_job_result(
             and profile.youtube_channel_id == job.canonical_target_id
             and profile.canonical_url == job.canonical_url
         )
+        if (
+            not valid
+            and profile is not None
+            and _is_canonical_identity(
+                TargetType.CREATOR, job.canonical_target_id, job.canonical_url
+            )
+        ):
+            valid = (
+                session.scalar(
+                    select(CreatorIdentityBinding.creator_id)
+                    .where(
+                        CreatorIdentityBinding.creator_id == job.profile_id,
+                        CreatorIdentityBinding.revision < profile.identity_revision,
+                        CreatorIdentityBinding.platform == "youtube",
+                        CreatorIdentityBinding.account_id == job.canonical_target_id,
+                        CreatorIdentityBinding.canonical_url == job.canonical_url,
+                    )
+                    .limit(1)
+                )
+                is not None
+            )
     else:
         valid = False
     if not valid:
@@ -221,6 +242,7 @@ class JobsRepository:
                         CreatorProfile.id,
                         CreatorProfile.youtube_channel_id,
                         CreatorProfile.canonical_url,
+                        CreatorProfile.identity_revision,
                     )
                 )
                 .where(CreatorProfile.id.in_(creator_ids))
@@ -266,7 +288,12 @@ class JobsRepository:
             else:
                 profile_id = self._session.scalar(
                     select(CreatorProfile.id).where(
-                        CreatorProfile.youtube_channel_id == target.canonical_id
+                        CreatorProfile.youtube_channel_id == target.canonical_id,
+                        CreatorProfile.platform == "youtube",
+                        or_(
+                            CreatorProfile.manual_revision == 0,
+                            CreatorProfile.last_analyzed_at.is_not(None),
+                        ),
                     )
                 )
             if profile_id is not None:

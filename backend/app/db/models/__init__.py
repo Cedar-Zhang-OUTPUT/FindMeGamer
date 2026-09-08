@@ -14,15 +14,23 @@ from app.db.models.outreach import (
     SendBatch,
     Template,
 )
-from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
+from app.db.models.profiles import (
+    CreatorContact,
+    CreatorIdentityBinding,
+    CreatorProfile,
+    CreatorWork,
+    GameProfile,
+)
 from app.db.models.settings import ServiceSecret, SharedSettings
 
 __all__ = [
     "AnalysisJob",
     "CampaignCreatorResponse",
     "CreatorContact",
+    "CreatorIdentityBinding",
     "CreatorAnalysisNode",
     "CreatorProfile",
+    "CreatorWork",
     "Delivery",
     "GameProfile",
     "IdempotencyRecord",

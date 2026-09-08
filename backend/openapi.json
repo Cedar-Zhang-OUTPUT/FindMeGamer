@@ -616,6 +616,255 @@
         "title": "ConnectionStatusResponse",
         "type": "object"
       },
+      "ContactCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "verification_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Notes"
+          }
+        },
+        "required": [
+          "email",
+          "expected_revision"
+        ],
+        "title": "ContactCreate",
+        "type": "object"
+      },
+      "ContactDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identity_revision": {
+            "title": "Identity Revision",
+            "type": "integer"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "is_current_identity": {
+            "title": "Is Current Identity",
+            "type": "boolean"
+          },
+          "manual_overrides": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "origin": {
+            "enum": [
+              "manual",
+              "source"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "source_fields": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "source_type": {
+            "title": "Source Type",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "validation_state": {
+            "title": "Validation State",
+            "type": "string"
+          },
+          "verification_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Notes"
+          }
+        },
+        "required": [
+          "email",
+          "id",
+          "origin",
+          "source_type",
+          "validation_state",
+          "source_fields",
+          "manual_overrides",
+          "identity_revision",
+          "is_current_identity",
+          "updated_at"
+        ],
+        "title": "ContactDetail",
+        "type": "object"
+      },
+      "ContactPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "anyOf": [
+              {
+                "format": "email",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "is_active": {
+            "default": true,
+            "title": "Is Active",
+            "type": "boolean"
+          },
+          "purpose": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purpose"
+          },
+          "reset_fields": {
+            "items": {
+              "enum": [
+                "email",
+                "purpose",
+                "source_url",
+                "is_active",
+                "verification_notes"
+              ],
+              "type": "string"
+            },
+            "title": "Reset Fields",
+            "type": "array"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "verification_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Notes"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "ContactPatch",
+        "type": "object"
+      },
       "CreatorContactResponse": {
         "properties": {
           "email": {
@@ -662,6 +911,734 @@
         "title": "CreatorContactResponse",
         "type": "object"
       },
+      "CreatorCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "favorite": {
+            "default": false,
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "follower_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follower Count"
+          },
+          "follower_count_collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follower Count Collected At"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "interest_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Notes"
+          },
+          "internal_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Notes"
+          },
+          "languages": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Languages",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "other_contacts": {
+            "items": {
+              "$ref": "#/components/schemas/OtherContact"
+            },
+            "maxItems": 100,
+            "title": "Other Contacts",
+            "type": "array"
+          },
+          "platform": {
+            "default": "youtube",
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "profile_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Url"
+          },
+          "public_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Name"
+          },
+          "public_name_confirmed": {
+            "default": false,
+            "title": "Public Name Confirmed",
+            "type": "boolean"
+          },
+          "source_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Notes"
+          }
+        },
+        "title": "CreatorCreate",
+        "type": "object"
+      },
+      "CreatorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_available": {
+            "title": "Analysis Available",
+            "type": "boolean"
+          },
+          "avatar_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/ContactDetail"
+            },
+            "title": "Contacts",
+            "type": "array"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "favorite": {
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "follower_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follower Count"
+          },
+          "follower_count_collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follower Count Collected At"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "interest_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Notes"
+          },
+          "internal_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Notes"
+          },
+          "languages": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Languages",
+            "type": "array"
+          },
+          "last_analyzed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Analyzed At"
+          },
+          "manual_overrides": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "next_analysis_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Analysis At"
+          },
+          "other_contacts": {
+            "items": {
+              "$ref": "#/components/schemas/OtherContact"
+            },
+            "maxItems": 100,
+            "title": "Other Contacts",
+            "type": "array"
+          },
+          "overridden_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Overridden Fields",
+            "type": "array"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "profile_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Url"
+          },
+          "public_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Name"
+          },
+          "public_name_confirmed": {
+            "default": false,
+            "title": "Public Name Confirmed",
+            "type": "boolean"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source_fields": {
+            "$ref": "#/components/schemas/CreatorFields"
+          },
+          "source_identity": {
+            "$ref": "#/components/schemas/CreatorIdentity"
+          },
+          "source_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Notes"
+          },
+          "work_count": {
+            "title": "Work Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "revision",
+          "favorite",
+          "source_identity",
+          "source_fields",
+          "manual_overrides",
+          "overridden_fields",
+          "contacts",
+          "work_count",
+          "last_analyzed_at",
+          "next_analysis_at",
+          "analysis_available"
+        ],
+        "title": "CreatorDetail",
+        "type": "object"
+      },
+      "CreatorFields": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "follower_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follower Count"
+          },
+          "follower_count_collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follower Count Collected At"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "interest_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Notes"
+          },
+          "internal_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Notes"
+          },
+          "languages": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Languages",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "other_contacts": {
+            "items": {
+              "$ref": "#/components/schemas/OtherContact"
+            },
+            "maxItems": 100,
+            "title": "Other Contacts",
+            "type": "array"
+          },
+          "profile_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Url"
+          },
+          "public_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Name"
+          },
+          "public_name_confirmed": {
+            "default": false,
+            "title": "Public Name Confirmed",
+            "type": "boolean"
+          },
+          "source_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Notes"
+          }
+        },
+        "title": "CreatorFields",
+        "type": "object"
+      },
+      "CreatorIdentity": {
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "platform",
+          "account_id",
+          "canonical_url",
+          "revision"
+        ],
+        "title": "CreatorIdentity",
+        "type": "object"
+      },
       "CreatorManualUpdate": {
         "properties": {
           "contact_email": {
@@ -690,6 +1667,261 @@
           }
         },
         "title": "CreatorManualUpdate",
+        "type": "object"
+      },
+      "CreatorPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CreatorDetail"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "CreatorPage",
+        "type": "object"
+      },
+      "CreatorPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "country_code": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Code"
+          },
+          "country_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Country Name"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "favorite": {
+            "default": false,
+            "title": "Favorite",
+            "type": "boolean"
+          },
+          "follower_count": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follower Count"
+          },
+          "follower_count_collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follower Count Collected At"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "interest_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interest Notes"
+          },
+          "internal_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Internal Notes"
+          },
+          "languages": {
+            "items": {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Languages",
+            "type": "array"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "other_contacts": {
+            "items": {
+              "$ref": "#/components/schemas/OtherContact"
+            },
+            "maxItems": 100,
+            "title": "Other Contacts",
+            "type": "array"
+          },
+          "profile_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Url"
+          },
+          "public_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Name"
+          },
+          "public_name_confirmed": {
+            "default": false,
+            "title": "Public Name Confirmed",
+            "type": "boolean"
+          },
+          "reset_fields": {
+            "items": {
+              "enum": [
+                "name",
+                "public_name",
+                "public_name_confirmed",
+                "handle",
+                "profile_url",
+                "avatar_url",
+                "description",
+                "follower_count",
+                "follower_count_collected_at",
+                "languages",
+                "country_code",
+                "country_name",
+                "other_contacts",
+                "source_notes",
+                "internal_notes",
+                "interest_notes"
+              ],
+              "type": "string"
+            },
+            "title": "Reset Fields",
+            "type": "array"
+          },
+          "source_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Notes"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "CreatorPatch",
         "type": "object"
       },
       "CreatorProfileCard": {
@@ -1804,6 +3036,63 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "IdentityUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "confirmed": {
+            "const": true,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "profile_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Url"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "platform",
+          "confirmed"
+        ],
+        "title": "IdentityUpdate",
+        "type": "object"
+      },
       "JobMode": {
         "enum": [
           "create",
@@ -2646,6 +3935,46 @@
           "completed_at"
         ],
         "title": "MatchSummary",
+        "type": "object"
+      },
+      "OtherContact": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          },
+          "value": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ],
+        "title": "OtherContact",
         "type": "object"
       },
       "OutreachCampaignDetail": {
@@ -4302,6 +5631,674 @@
           "type"
         ],
         "title": "ValidationError",
+        "type": "object"
+      },
+      "WorkCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collected At"
+          },
+          "content_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Id"
+          },
+          "content_title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Title"
+          },
+          "content_type": {
+            "default": "unverified",
+            "enum": [
+              "unverified",
+              "gameplay",
+              "livestream",
+              "review",
+              "commentary",
+              "trailer",
+              "news",
+              "other"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "evidence_excerpt": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Excerpt"
+          },
+          "expected_identity_revision": {
+            "minimum": 0.0,
+            "title": "Expected Identity Revision",
+            "type": "integer"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/WorkMetric"
+            },
+            "maxItems": 30,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "enum": [
+                  "youtube",
+                  "x",
+                  "twitch",
+                  "instagram"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "timestamp_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp Seconds"
+          },
+          "verification_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Notes"
+          },
+          "work_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Name"
+          }
+        },
+        "required": [
+          "expected_identity_revision"
+        ],
+        "title": "WorkCreate",
+        "type": "object"
+      },
+      "WorkDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collected At"
+          },
+          "content_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Id"
+          },
+          "content_title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Title"
+          },
+          "content_type": {
+            "default": "unverified",
+            "enum": [
+              "unverified",
+              "gameplay",
+              "livestream",
+              "review",
+              "commentary",
+              "trailer",
+              "news",
+              "other"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "creator_id": {
+            "format": "uuid",
+            "title": "Creator Id",
+            "type": "string"
+          },
+          "evidence_excerpt": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Excerpt"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identity_revision": {
+            "title": "Identity Revision",
+            "type": "integer"
+          },
+          "is_current_identity": {
+            "title": "Is Current Identity",
+            "type": "boolean"
+          },
+          "manual_overrides": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/WorkMetric"
+            },
+            "maxItems": 30,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "origin": {
+            "enum": [
+              "manual",
+              "source"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source_collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Collected At"
+          },
+          "source_content_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Content Id"
+          },
+          "source_fields": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
+          "source_platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Source Platform",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "timestamp_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp Seconds"
+          },
+          "verification_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Notes"
+          },
+          "work_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Name"
+          }
+        },
+        "required": [
+          "platform",
+          "id",
+          "creator_id",
+          "source_platform",
+          "origin",
+          "revision",
+          "identity_revision",
+          "is_current_identity",
+          "source_content_id",
+          "source_collected_at",
+          "source_fields",
+          "manual_overrides"
+        ],
+        "title": "WorkDetail",
+        "type": "object"
+      },
+      "WorkMetric": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "minimum": 0.0,
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "WorkMetric",
+        "type": "object"
+      },
+      "WorkPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/WorkDetail"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "WorkPage",
+        "type": "object"
+      },
+      "WorkPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "collected_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Collected At"
+          },
+          "content_id": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Id"
+          },
+          "content_title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Title"
+          },
+          "content_type": {
+            "default": "unverified",
+            "enum": [
+              "unverified",
+              "gameplay",
+              "livestream",
+              "review",
+              "commentary",
+              "trailer",
+              "news",
+              "other"
+            ],
+            "title": "Content Type",
+            "type": "string"
+          },
+          "evidence_excerpt": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Excerpt"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/WorkMetric"
+            },
+            "maxItems": 30,
+            "title": "Metrics",
+            "type": "array"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "enum": [
+                  "youtube",
+                  "x",
+                  "twitch",
+                  "instagram"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "reset_fields": {
+            "items": {
+              "enum": [
+                "platform",
+                "work_name",
+                "content_title",
+                "content_type",
+                "source_url",
+                "content_id",
+                "published_at",
+                "collected_at",
+                "metrics",
+                "game_id",
+                "verification_notes",
+                "evidence_excerpt",
+                "timestamp_seconds"
+              ],
+              "type": "string"
+            },
+            "title": "Reset Fields",
+            "type": "array"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "timestamp_seconds": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp Seconds"
+          },
+          "verification_notes": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Notes"
+          },
+          "work_name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Name"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "WorkPatch",
         "type": "object"
       }
     },
@@ -6349,6 +8346,687 @@
         "summary": "Update Reanalysis",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/api/v2/library/creators": {
+      "get": {
+        "operationId": "listLibraryCreatorsV2",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 255,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platform",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "youtube",
+                    "x",
+                    "twitch",
+                    "instagram"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Platform"
+            }
+          },
+          {
+            "in": "query",
+            "name": "language",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 255,
+              "title": "Language",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "only_collection",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only Collection",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatorPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Creators",
+        "tags": [
+          "library-v2"
+        ]
+      },
+      "post": {
+        "operationId": "createLibraryCreatorV2",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatorCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatorDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Creator",
+        "tags": [
+          "library-v2"
+        ]
+      }
+    },
+    "/api/v2/library/creators/{creator_id}": {
+      "get": {
+        "operationId": "getLibraryCreatorV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "creator_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Creator Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatorDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Creator",
+        "tags": [
+          "library-v2"
+        ]
+      },
+      "patch": {
+        "operationId": "updateLibraryCreatorV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "creator_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Creator Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatorPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatorDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Creator",
+        "tags": [
+          "library-v2"
+        ]
+      }
+    },
+    "/api/v2/library/creators/{creator_id}/contacts": {
+      "post": {
+        "operationId": "addLibraryCreatorContactV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "creator_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Creator Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatorDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Contact",
+        "tags": [
+          "library-v2"
+        ]
+      }
+    },
+    "/api/v2/library/creators/{creator_id}/contacts/{contact_id}": {
+      "patch": {
+        "operationId": "updateLibraryCreatorContactV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "creator_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Creator Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "contact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Contact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatorDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Contact",
+        "tags": [
+          "library-v2"
+        ]
+      }
+    },
+    "/api/v2/library/creators/{creator_id}/identity": {
+      "put": {
+        "operationId": "rebindLibraryCreatorIdentityV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "creator_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Creator Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentityUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatorDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rebind Identity",
+        "tags": [
+          "library-v2"
+        ]
+      }
+    },
+    "/api/v2/library/creators/{creator_id}/works": {
+      "get": {
+        "operationId": "listLibraryCreatorWorksV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "creator_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Creator Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_previous_identity",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Previous Identity",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Works",
+        "tags": [
+          "library-v2"
+        ]
+      },
+      "post": {
+        "operationId": "addLibraryCreatorWorkV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "creator_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Creator Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Add Work",
+        "tags": [
+          "library-v2"
+        ]
+      }
+    },
+    "/api/v2/library/creators/{creator_id}/works/{work_id}": {
+      "patch": {
+        "operationId": "updateLibraryCreatorWorkV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "creator_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Creator Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "work_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Work Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Patch Work",
+        "tags": [
+          "library-v2"
         ]
       }
     },
