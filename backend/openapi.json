@@ -437,6 +437,53 @@
         "title": "BatchView",
         "type": "object"
       },
+      "BuiltinTemplate": {
+        "properties": {
+          "fixed_fragments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fixed Fragments",
+            "type": "array"
+          },
+          "fixed_hash": {
+            "title": "Fixed Hash",
+            "type": "string"
+          },
+          "key": {
+            "const": "liminal-revision-69",
+            "default": "liminal-revision-69",
+            "title": "Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "requires_explicit_registration": {
+            "const": true,
+            "default": true,
+            "title": "Requires Explicit Registration",
+            "type": "boolean"
+          },
+          "source_metadata": {
+            "$ref": "#/components/schemas/TemplateSource"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "subject",
+          "fixed_fragments",
+          "fixed_hash",
+          "source_metadata"
+        ],
+        "title": "BuiltinTemplate",
+        "type": "object"
+      },
       "CandidateFilters": {
         "additionalProperties": false,
         "properties": {
@@ -632,6 +679,21 @@
           "added_at"
         ],
         "title": "CandidateView",
+        "type": "object"
+      },
+      "CanonicalRegistration": {
+        "additionalProperties": false,
+        "properties": {
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "game_id"
+        ],
+        "title": "CanonicalRegistration",
         "type": "object"
       },
       "ChangedAnalysisJobResponse": {
@@ -1080,6 +1142,121 @@
           "items"
         ],
         "title": "CollectionSettingsResponse",
+        "type": "object"
+      },
+      "CompositionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "recipient_batch_id": {
+            "format": "uuid",
+            "title": "Recipient Batch Id",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "template_version_id": {
+            "format": "uuid",
+            "title": "Template Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "recipient_batch_id",
+          "template_version_id"
+        ],
+        "title": "CompositionCreate",
+        "type": "object"
+      },
+      "CompositionPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CompositionView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "CompositionPage",
+        "type": "object"
+      },
+      "CompositionView": {
+        "properties": {
+          "activity_id": {
+            "format": "uuid",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "drafts": {
+            "items": {
+              "$ref": "#/components/schemas/DraftView"
+            },
+            "title": "Drafts",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "recipient_batch_id": {
+            "format": "uuid",
+            "title": "Recipient Batch Id",
+            "type": "string"
+          },
+          "recipient_count": {
+            "title": "Recipient Count",
+            "type": "integer"
+          },
+          "send_ready": {
+            "const": false,
+            "default": false,
+            "title": "Send Ready",
+            "type": "boolean"
+          },
+          "template_version_id": {
+            "format": "uuid",
+            "title": "Template Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "activity_id",
+          "recipient_batch_id",
+          "template_version_id",
+          "created_at",
+          "recipient_count",
+          "drafts"
+        ],
+        "title": "CompositionView",
         "type": "object"
       },
       "ConnectionSecretUpdate": {
@@ -2942,6 +3119,191 @@
         "title": "DiscoveryStopped",
         "type": "object"
       },
+      "DraftEdit": {
+        "additionalProperties": false,
+        "properties": {
+          "context_token": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Context Token",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "values": {
+            "$ref": "#/components/schemas/SlotValues"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "context_token",
+          "values"
+        ],
+        "title": "DraftEdit",
+        "type": "object"
+      },
+      "DraftRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "context_token": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Context Token",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "context_token"
+        ],
+        "title": "DraftRevision",
+        "type": "object"
+      },
+      "DraftView": {
+        "properties": {
+          "composition_id": {
+            "format": "uuid",
+            "title": "Composition Id",
+            "type": "string"
+          },
+          "context_token": {
+            "title": "Context Token",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "input": {
+            "additionalProperties": true,
+            "title": "Input",
+            "type": "object"
+          },
+          "input_order": {
+            "title": "Input Order",
+            "type": "integer"
+          },
+          "missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Fields",
+            "type": "array"
+          },
+          "recipient_snapshot_id": {
+            "format": "uuid",
+            "title": "Recipient Snapshot Id",
+            "type": "string"
+          },
+          "rendered": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rendered"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "selection_id": {
+            "format": "uuid",
+            "title": "Selection Id",
+            "type": "string"
+          },
+          "send_ready": {
+            "const": false,
+            "default": false,
+            "title": "Send Ready",
+            "type": "boolean"
+          },
+          "sender_facts": {
+            "additionalProperties": true,
+            "title": "Sender Facts",
+            "type": "object"
+          },
+          "sender_facts_valid": {
+            "title": "Sender Facts Valid",
+            "type": "boolean"
+          },
+          "slot_sources": {
+            "additionalProperties": true,
+            "title": "Slot Sources",
+            "type": "object"
+          },
+          "source_changed": {
+            "title": "Source Changed",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "needs_repair"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SlotValues"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "composition_id",
+          "recipient_snapshot_id",
+          "selection_id",
+          "input_order",
+          "revision",
+          "context_token",
+          "source_changed",
+          "status",
+          "error_code",
+          "input",
+          "values",
+          "missing_fields",
+          "slot_sources",
+          "rendered",
+          "sender_facts_valid",
+          "sender_facts"
+        ],
+        "title": "DraftView",
+        "type": "object"
+      },
       "EvaluationAccepted": {
         "properties": {
           "evaluation_id": {
@@ -3455,6 +3817,33 @@
           "canonical_url"
         ],
         "title": "ExistingProfileResponse",
+        "type": "object"
+      },
+      "FactMember": {
+        "additionalProperties": false,
+        "properties": {
+          "context_token": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Context Token",
+            "type": "string"
+          },
+          "draft_id": {
+            "format": "uuid",
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "context_token",
+          "draft_id"
+        ],
+        "title": "FactMember",
         "type": "object"
       },
       "FavoriteUpdate": {
@@ -8587,6 +8976,40 @@
         "title": "SelectionUpdate",
         "type": "object"
       },
+      "SenderFacts": {
+        "additionalProperties": false,
+        "properties": {
+          "enjoyed": {
+            "title": "Enjoyed",
+            "type": "boolean"
+          },
+          "following": {
+            "title": "Following",
+            "type": "boolean"
+          },
+          "liked": {
+            "title": "Liked",
+            "type": "boolean"
+          },
+          "members": {
+            "items": {
+              "$ref": "#/components/schemas/FactMember"
+            },
+            "maxItems": 600,
+            "minItems": 1,
+            "title": "Members",
+            "type": "array"
+          }
+        },
+        "required": [
+          "members",
+          "following",
+          "enjoyed",
+          "liked"
+        ],
+        "title": "SenderFacts",
+        "type": "object"
+      },
       "SessionResponse": {
         "properties": {
           "api_version": {
@@ -8611,6 +9034,43 @@
           "service_connections"
         ],
         "title": "SessionResponse",
+        "type": "object"
+      },
+      "SlotValues": {
+        "additionalProperties": false,
+        "properties": {
+          "channelName": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Channelname",
+            "type": "string"
+          },
+          "firstName": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Firstname",
+            "type": "string"
+          },
+          "observation": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Observation",
+            "type": "string"
+          },
+          "reference": {
+            "maxLength": 600,
+            "minLength": 1,
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "firstName",
+          "channelName",
+          "reference",
+          "observation"
+        ],
+        "title": "SlotValues",
         "type": "object"
       },
       "SourceIdentity": {
@@ -8652,6 +9112,185 @@
         ],
         "title": "TargetType",
         "type": "string"
+      },
+      "TemplateCatalog": {
+        "properties": {
+          "builtin": {
+            "$ref": "#/components/schemas/BuiltinTemplate"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TemplateVersionView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "builtin"
+        ],
+        "title": "TemplateCatalog",
+        "type": "object"
+      },
+      "TemplateSource": {
+        "properties": {
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "kind": {
+            "enum": [
+              "canonical",
+              "user_saved"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "raw_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Hash"
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revision"
+          },
+          "steam_app_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam App Id"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "TemplateSource",
+        "type": "object"
+      },
+      "TemplateVersionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "fixed_fragments": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 5,
+            "title": "Fixed Fragments",
+            "type": "array"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "request_id": {
+            "format": "uuid",
+            "title": "Request Id",
+            "type": "string"
+          },
+          "subject": {
+            "maxLength": 998,
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "game_id",
+          "request_id",
+          "name",
+          "subject",
+          "fixed_fragments"
+        ],
+        "title": "TemplateVersionCreate",
+        "type": "object"
+      },
+      "TemplateVersionView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "fixed_fragments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fixed Fragments",
+            "type": "array"
+          },
+          "fixed_hash": {
+            "title": "Fixed Hash",
+            "type": "string"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source_metadata": {
+            "$ref": "#/components/schemas/TemplateSource"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "subject",
+          "fixed_fragments",
+          "fixed_hash",
+          "source_metadata",
+          "id",
+          "game_id",
+          "created_at"
+        ],
+        "title": "TemplateVersionView",
+        "type": "object"
       },
       "ValidationError": {
         "properties": {
@@ -11706,6 +12345,142 @@
         ]
       }
     },
+    "/api/v2/activities/{activity_id}/compositions": {
+      "get": {
+        "operationId": "listOutreachCompositionsV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompositionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Compositions",
+        "tags": [
+          "outreach-drafts"
+        ]
+      },
+      "post": {
+        "operationId": "createOutreachCompositionV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompositionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompositionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Compose",
+        "tags": [
+          "outreach-drafts"
+        ]
+      }
+    },
     "/api/v2/activities/{activity_id}/discovery-plans": {
       "get": {
         "operationId": "listDiscoveryPlansV2",
@@ -14525,6 +15300,501 @@
         "summary": "Patch Game",
         "tags": [
           "library-v2"
+        ]
+      }
+    },
+    "/api/v2/outreach/compositions/{composition_id}": {
+      "get": {
+        "operationId": "getOutreachCompositionV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "composition_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Composition Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompositionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Composition",
+        "tags": [
+          "outreach-drafts"
+        ]
+      }
+    },
+    "/api/v2/outreach/compositions/{composition_id}/sender-facts": {
+      "post": {
+        "operationId": "confirmOutreachSenderFactsV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "composition_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Composition Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SenderFacts"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompositionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sender Facts",
+        "tags": [
+          "outreach-drafts"
+        ]
+      }
+    },
+    "/api/v2/outreach/drafts/{draft_id}": {
+      "patch": {
+        "operationId": "editOutreachDraftV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftEdit"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Edit",
+        "tags": [
+          "outreach-drafts"
+        ]
+      }
+    },
+    "/api/v2/outreach/drafts/{draft_id}/refresh": {
+      "post": {
+        "operationId": "refreshOutreachDraftV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRevision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Refresh",
+        "tags": [
+          "outreach-drafts"
+        ]
+      }
+    },
+    "/api/v2/outreach/drafts/{draft_id}/retry": {
+      "post": {
+        "operationId": "retryOutreachDraftV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draft_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Draft Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftRevision"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry",
+        "tags": [
+          "outreach-drafts"
+        ]
+      }
+    },
+    "/api/v2/outreach/template-versions": {
+      "get": {
+        "operationId": "listOutreachTemplateVersionsV2",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "game_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Game Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateCatalog"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Templates",
+        "tags": [
+          "outreach-drafts"
+        ]
+      },
+      "post": {
+        "operationId": "createOutreachTemplateVersionV2",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateVersionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateVersionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create",
+        "tags": [
+          "outreach-drafts"
+        ]
+      }
+    },
+    "/api/v2/outreach/template-versions/canonical": {
+      "post": {
+        "operationId": "registerCanonicalOutreachTemplateV2",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanonicalRegistration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateVersionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Canonical",
+        "tags": [
+          "outreach-drafts"
+        ]
+      }
+    },
+    "/api/v2/outreach/template-versions/{version_id}": {
+      "get": {
+        "operationId": "getOutreachTemplateVersionV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateVersionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get",
+        "tags": [
+          "outreach-drafts"
         ]
       }
     },
