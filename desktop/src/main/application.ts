@@ -7,6 +7,7 @@ import { LibraryClient, LibraryClientError } from './library-client';
 import { GameClient } from './game-client';
 import { CreatorClient } from './creator-client';
 import { SettingsClient } from './settings-client';
+import { MatchClient } from './match-client';
 import { PreferencesStore } from './preferences-store';
 import { UpdateChecker } from './update-checker';
 import { APP_URL, CONTENT_POLICY, externalUrl, isTrustedFrame, resourcePath } from './policies';
@@ -30,6 +31,7 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   const games = new GameClient(input => gateway.gameRequest(input));
   const creators = new CreatorClient(input => gateway.creatorRequest(input));
   const settings = new SettingsClient(input => gateway.settingsRequest(input));
+  const match = new MatchClient(input => gateway.matchRequest(input));
   const preferences = new PreferencesStore(options.userDataDirectory ?? app.getPath('userData'));
   // A separate ephemeral session follows the system proxy without workspace headers.
   const updateNetwork = session.fromPartition('updates-network');
@@ -98,6 +100,22 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('games:create', input => games.create(input));
   handle('games:update', input => games.update(input));
   handle('creators:list',input=>creators.list(input));
+  handle('match:activities',input=>match.activities(input));
+  handle('match:create-activity',input=>match.createActivity(input));
+  handle('match:activity',input=>match.activity(input));
+  handle('match:plans',input=>match.plans(input));
+  handle('match:create-plan',input=>match.createPlan(input));
+  handle('match:plan',input=>match.plan(input));
+  handle('match:retry-plan',input=>match.retryPlan(input));
+  handle('match:query',input=>match.query(input));
+  handle('match:candidates',input=>match.candidates(input));
+  handle('match:stop',input=>match.stop(input));
+  handle('match:continue',input=>match.continueDiscovery(input));
+  handle('match:evaluations',input=>match.evaluations(input));
+  handle('match:evaluate',input=>match.evaluate(input));
+  handle('match:evaluation',input=>match.evaluation(input));
+  handle('match:evaluation-results',input=>match.evaluationResults(input));
+  handle('match:retry-evaluation',input=>match.retryEvaluation(input));
   handle('creators:detail',input=>creators.detail(input));
   handle('creators:create',input=>creators.create(input));
   handle('creators:update',input=>creators.update(input));

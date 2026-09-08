@@ -35,6 +35,7 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
     response.setHeader('Content-Type', 'application/json');
     if (request.method !== 'GET' || request.headers.authorization !== `Bearer ${testKey}`) { response.writeHead(401).end('{}'); return; }
     if (url.pathname === '/api/v1/session') response.end(JSON.stringify({ workspace_name: 'LOCAL TEST FIXTURE', api_version: 'v1', service_connections: {} }));
+    else if (url.pathname === '/api/v2/activities') response.end(JSON.stringify({items:[],total:0,offset:0,limit:50}));
     else if (url.pathname === '/api/v2/library/creators' && failCreators) response.writeHead(503).end('{}');
     else if (url.pathname === '/api/v2/library/creators') response.end(JSON.stringify({ items: [creator], total: 1, offset: 0, limit: 50 }));
     else if (url.pathname === '/api/v2/library/games') response.end(JSON.stringify({ items: [gameFixture('Test Fixture — Forest Signal', gameId)], total:1,offset:0,limit:24 }));
@@ -133,16 +134,16 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1320, 920));
     await page.screenshot({path:testInfo.outputPath('game-detail.png')});
     await page.getByRole('button',{name:'Back to games',exact:true}).click();
-    for (const name of ['Match', 'Outreach']) {
-      await page.getByRole('button', {name, exact: true}).click();
-      await expect(page.getByRole('region', {name:`${name.toLowerCase()} page`,exact:true}).getByText('Not connected yet', {exact: true})).toBeVisible();
-    }
+    await page.getByRole('button',{name:'Match',exact:true}).click();
+    await expect(page.getByRole('button',{name:'New activity',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Outreach',exact:true}).click();
+    await expect(page.getByRole('region',{name:'outreach page',exact:true}).getByText('Not connected yet',{exact:true})).toBeVisible();
     await page.getByRole('button', {name: 'Library', exact: true}).click();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 660));
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({path:testInfo.outputPath('library-narrow.png')});
     const boundary = await page.evaluate(() => ({node: typeof (window as any).require, process: typeof (window as any).process, keyInDOM: document.body.innerText.includes('local-fixture-only-not-a-production-key'), methods: Object.keys(window.desktop).sort(), storage: localStorage.length}));
-    expect(boundary).toEqual({node:'undefined',process:'undefined',keyInDOM:false,methods:['connection','creators','games','library','openExternal','preferences','settings','updates'],storage:0});
+    expect(boundary).toEqual({node:'undefined',process:'undefined',keyInDOM:false,methods:['connection','creators','games','library','match','openExternal','preferences','settings','updates'],storage:0});
     const stored = await readFile(path.join(userData, 'credentials.json'), 'utf8');
     expect(stored).not.toContain(testKey);
     const denied = await page.evaluate(() => window.desktop.openExternal('file:///etc/passwd'));

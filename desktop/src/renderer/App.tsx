@@ -6,6 +6,7 @@ import { LibraryView } from './components/LibraryView';
 import { useNavigationGuard } from './hooks/useNavigationGuard';
 import { useAppearance } from './hooks/useAppearance';
 import { SettingsView } from './components/settings/SettingsView';
+import { MatchWorkspace } from './components/match/MatchWorkspace';
 import './settings.css';
 import './settings-cloud.css';
 import './appearance.css';
@@ -28,10 +29,13 @@ export function App() {
   const [epoch, setEpoch] = useState(0);
   const [hasLibrarySession, setHasLibrarySession] = useState(false);
   const [recoveryOrigin, setRecoveryOrigin] = useState<string | null>(null);
+  const [recoveryPage,setRecoveryPage]=useState<'library'|'match'>('library');
   const operation = useRef(0);
   const mounted = useRef(true);
   const navigationGate = useNavigationGuard();
+  const matchGate = useNavigationGuard();
   const settingsGate = useNavigationGuard();
+  const taskGate=page==='match'||(page==='settings'&&recoveryOrigin&&recoveryPage==='match')?matchGate:navigationGate;
   const pageScroll = useRef<Record<Navigation, number>>({match:0,outreach:0,library:0,settings:0});
   function navigate(target: Navigation) {
     if (page === target) return;
@@ -42,12 +46,12 @@ export function App() {
       requestAnimationFrame(() => { if (scroller) scroller.scrollTop = pageScroll.current[target]; });
     };
     // A task can lend navigation to credential repair without surrendering its draft.
-    if (target === 'settings' && status?.serviceUrl && navigationGate.getRecovery()) {
-      setRecoveryOrigin(status.serviceUrl); proceed();
-    } else if (target === 'library' && recoveryOrigin) {
+    if (target === 'settings' && status?.serviceUrl && taskGate.getRecovery()) {
+      setRecoveryOrigin(status.serviceUrl);setRecoveryPage(page==='match'?'match':'library'); proceed();
+    } else if (target === recoveryPage && recoveryOrigin) {
       settingsGate.request(()=>{setRecoveryOrigin(null); proceed();});
-    } else if(page==='settings') settingsGate.request(()=>navigationGate.request(()=>{setRecoveryOrigin(null);proceed();}));
-    else navigationGate.request(() => { setRecoveryOrigin(null); proceed(); });
+    } else if(page==='settings') settingsGate.request(()=>taskGate.request(()=>{setRecoveryOrigin(null);proceed();}));
+    else taskGate.request(() => { setRecoveryOrigin(null); proceed(); });
   }
 
   async function verify(token: number) {
@@ -57,8 +61,8 @@ export function App() {
       const result = await api.connection.test();
       if (!mounted.current || operation.current !== token) return;
       if (result.ok) { setPhase('connected'); setHasLibrarySession(true); setRoute(result.data.route); setError(null); }
-      else { setPhase('error'); if (!navigationGate.hasPending()&&!settingsGate.hasPending()) setHasLibrarySession(false); setError(result.error); }
-    } catch { if (mounted.current && operation.current === token) { setPhase('error'); if (!navigationGate.hasPending()&&!settingsGate.hasPending()) setHasLibrarySession(false); setError(interrupted); } }
+      else { setPhase('error'); if (!navigationGate.hasPending()&&!matchGate.hasPending()&&!settingsGate.hasPending()) setHasLibrarySession(false); setError(result.error); }
+    } catch { if (mounted.current && operation.current === token) { setPhase('error'); if (!navigationGate.hasPending()&&!matchGate.hasPending()&&!settingsGate.hasPending()) setHasLibrarySession(false); setError(interrupted); } }
   }
   async function readStatus() {
     if (!api) return;
@@ -82,7 +86,7 @@ export function App() {
 
   async function connect(input: ConnectionInput) {
     if (!api) return;
-    const recovery = recoveryOrigin ? navigationGate.getRecovery() : undefined;
+    const recovery = recoveryOrigin ? (recoveryPage==='match'?matchGate:navigationGate).getRecovery() : undefined;
     if (recoveryOrigin && (!recovery || input.serviceUrl !== recoveryOrigin)) return;
     if (status?.hasKey && !input.key && input.serviceUrl === status.serviceUrl) {
       testConnection();
@@ -131,8 +135,9 @@ export function App() {
           <div className="page-heading"><h1>Library</h1></div>
           {phase === 'loading' || phase === 'checking' || phase === 'saving' ? <Loading label={phase === 'loading' ? 'Opening workspace…' : 'Verifying connection…'}/> : <><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={() => navigate('settings')}>Open Settings</button>}/>{error && <ErrorNotice error={error} onRetry={status?.hasKey ? testConnection : () => void readStatus()}/>}</>}
         </>}</section>
-        <section className="page-content" hidden={page !== 'settings'} aria-label="Settings page"><SettingsView api={api} active={page==='settings'} available={hasLibrarySession&&Boolean(status?.hasKey)} workspaceEpoch={epoch} appearance={appearance} onNavigationGuardChange={settingsGate.register} connection={{status,phase,error,route,recovering:Boolean(recoveryOrigin),onConnect:connect,onTest:testConnection,onDisconnect:()=>void disconnect(),onLibrary:()=>navigate('library')}}/></section>
-        {(['match', 'outreach'] as const).map(target => <section className="page-content" key={target} hidden={page !== target} aria-label={`${target} page`}><div className="page-heading"><h1>{target === 'match' ? 'Match' : 'Outreach'}</h1></div><div className="feature-unavailable"><span className="feature-icon"><Icon name={target}/></span><span className="status-badge">Not connected yet</span><button className="button primary" onClick={() => navigate('library')}>Open Library<Icon name="chevron"/></button></div></section>)}
+        <section className="page-content" hidden={page !== 'settings'} aria-label="Settings page"><SettingsView api={api} active={page==='settings'} available={hasLibrarySession&&Boolean(status?.hasKey)} workspaceEpoch={epoch} appearance={appearance} onNavigationGuardChange={settingsGate.register} connection={{status,phase,error,route,recovering:Boolean(recoveryOrigin),onConnect:connect,onTest:testConnection,onDisconnect:()=>void disconnect(),returnLabel:recoveryOrigin&&recoveryPage==='match'?'Return to Match':undefined,onLibrary:()=>navigate(recoveryOrigin?recoveryPage:'library')}}/></section>
+        <section className="page-content" hidden={page!=='match'} aria-label="match page">{hasLibrarySession&&<div hidden={!connected}><MatchWorkspace key={epoch} api={api} active={page==='match'&&connected} onNavigationGuardChange={matchGate.register} onConnectionRepair={()=>navigate('settings')}/></div>}{!connected&&<><div className="page-heading"><h1>Match</h1></div>{phase==='loading'||phase==='checking'||phase==='saving'?<Loading label="Opening workspace…"/>:<><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={()=>navigate('settings')}>Open Settings</button>}/>{error&&<ErrorNotice error={error} onRetry={status?.hasKey?testConnection:()=>void readStatus()}/>}</>}</>}</section>
+        <section className="page-content" hidden={page!=='outreach'} aria-label="outreach page"><div className="page-heading"><h1>Outreach</h1></div><div className="feature-unavailable"><span className="feature-icon"><Icon name="outreach"/></span><span className="status-badge">Not connected yet</span><button className="button primary" onClick={()=>navigate('library')}>Open Library<Icon name="chevron"/></button></div></section>
       </main>
     </div>
   </div>;

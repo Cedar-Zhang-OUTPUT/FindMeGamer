@@ -2,6 +2,24 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopBridge } from '../shared/bridge';
 
 const bridge: DesktopBridge = {
+  match: {
+    activities:input=>ipcRenderer.invoke('match:activities',input),
+    createActivity:input=>ipcRenderer.invoke('match:create-activity',input),
+    activity:id=>ipcRenderer.invoke('match:activity',id),
+    plans:input=>ipcRenderer.invoke('match:plans',input),
+    createPlan:input=>ipcRenderer.invoke('match:create-plan',input),
+    plan:id=>ipcRenderer.invoke('match:plan',id),
+    retryPlan:input=>ipcRenderer.invoke('match:retry-plan',input),
+    query:id=>ipcRenderer.invoke('match:query',id),
+    candidates:input=>ipcRenderer.invoke('match:candidates',input),
+    stop:input=>ipcRenderer.invoke('match:stop',input),
+    continueDiscovery:input=>ipcRenderer.invoke('match:continue',input),
+    evaluations:input=>ipcRenderer.invoke('match:evaluations',input),
+    evaluate:input=>ipcRenderer.invoke('match:evaluate',input),
+    evaluation:id=>ipcRenderer.invoke('match:evaluation',id),
+    evaluationResults:input=>ipcRenderer.invoke('match:evaluation-results',input),
+    retryEvaluation:input=>ipcRenderer.invoke('match:retry-evaluation',input),
+  },
   creators: {
     list: input => ipcRenderer.invoke('creators:list',input),
     detail: id => ipcRenderer.invoke('creators:detail',id),

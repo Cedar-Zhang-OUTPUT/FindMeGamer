@@ -3,9 +3,9 @@ import type { ConnectionInput, ConnectionStatus, PublicError } from '../../share
 import { ConfirmDisconnect, ErrorNotice, Icon, Loading } from './Primitives';
 
 export type ConnectionPhase = 'loading' | 'disconnected' | 'saving' | 'checking' | 'connected' | 'error';
-export function ConnectionSettings({ status, phase, error, route, recovering = false, embedded = false, blocked = false, resetSignal = 0, onDraftStateChange, onConnect, onTest, onDisconnect, onLibrary }: {
+export function ConnectionSettings({ status, phase, error, route, recovering = false, embedded = false, blocked = false, resetSignal = 0, returnLabel='Open Library', onDraftStateChange, onConnect, onTest, onDisconnect, onLibrary }: {
   status: ConnectionStatus | null; phase: ConnectionPhase; error: PublicError | null; route: 'direct' | 'proxy' | null;
-  recovering?: boolean;
+  recovering?: boolean;returnLabel?:string;
   embedded?: boolean; blocked?: boolean; resetSignal?: number; onDraftStateChange?: (dirty:boolean)=>void;
   onConnect: (input: ConnectionInput) => Promise<void>; onTest: () => void; onDisconnect: () => void; onLibrary: () => void;
 }) {
@@ -29,7 +29,7 @@ export function ConnectionSettings({ status, phase, error, route, recovering = f
         <div className="connection-actions">{(phase !== 'connected' || dirty) && <button className="button primary" type="submit" disabled={busy || status?.storageAvailable === false || !serviceUrl.trim() || (!key && !hasExistingKey)}>{phase === 'saving' ? 'Saving…' : phase === 'checking' ? 'Connecting…' : 'Connect'}</button>}{hasExistingKey && <button className="button secondary" type="button" disabled={busy || dirty} onClick={onTest}>Test connection</button>}{hasExistingKey && <button className="text-button disconnect-action" type="button" disabled={busy || recovering} onClick={() => setConfirming(true)}>Disconnect</button>}</div>
       </form>
       {error && <ErrorNotice error={error} onRetry={hasExistingKey && !dirty ? onTest : undefined}/>}
-      {phase === 'connected' && <><div className="verified-state"><button className="button primary" onClick={onLibrary}>Open Library<Icon name="chevron"/></button></div><details className="connection-details"><summary>Connection details</summary><p>System proxy · {route === 'proxy' ? 'Proxy route' : 'Direct route'}</p></details></>}
+      {phase === 'connected' && <><div className="verified-state"><button className="button primary" onClick={onLibrary}>{returnLabel}<Icon name="chevron"/></button></div><details className="connection-details"><summary>Connection details</summary><p>System proxy · {route === 'proxy' ? 'Proxy route' : 'Direct route'}</p></details></>}
       {phase === 'checking' && <Loading label="Saved · Verifying workspace…"/>}
       {phase === 'disconnected' && hasExistingKey && <p className="muted" role="status">Saved · Not checked</p>}
     </section>

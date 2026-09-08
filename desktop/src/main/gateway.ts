@@ -4,6 +4,7 @@ import { authenticatedGameRequest, authenticatedGet, PublicFailure } from './tra
 import { normalizeServiceUrl } from './policies';
 import { authenticatedSettingsRequest, validateSettingsRequest, type SettingsRequest } from './settings-transport';
 import { authenticatedCreatorRequest, validateCreatorRequest, type CreatorRequest } from './creator-transport';
+import { authenticatedMatchRequest, validateMatchRequest, type MatchRequest } from './match-transport';
 
 interface Store {
   status(): Promise<ConnectionStatus>;
@@ -96,6 +97,17 @@ export class WorkspaceGateway {
       if(!connection)throw new PublicFailure('not_connected','Connect your workspace in Settings.');
       this.assertGeneration(generation,!isWrite);
       return authenticatedCreatorRequest(this.fetcher,connection,request);
+    },{isWrite});
+  }
+  async matchRequest(input:MatchRequest):Promise<unknown> {
+    const request=validateMatchRequest(input),isWrite=request.method!=='GET';
+    return this.runCurrent(async()=>{
+      const generation=this.generation;let connection:Connection|null;
+      try{connection=await this.store.getConnection();}
+      catch{throw new PublicFailure('secure_storage_unavailable','Could not read your workspace key. Check Keychain access or reconnect in Settings.');}
+      if(!connection)throw new PublicFailure('not_connected','Connect your workspace in Settings.');
+      this.assertGeneration(generation,!isWrite);
+      return authenticatedMatchRequest(this.fetcher,connection,request);
     },{isWrite});
   }
   private assertGeneration(generation: number, retryable = true) {

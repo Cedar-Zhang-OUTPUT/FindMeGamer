@@ -3,6 +3,7 @@ import type { CreateGameInput, GameDetail, GameListInput, GamePage, UpdateGameIn
 import type { SettingsAPI } from './settings';
 import type { PreferencesAPI, UpdatesAPI } from './preferences';
 import type { CreatorAPI } from './creators';
+import type { MatchAPI } from './match';
 
 export interface ConnectionStatus {
   serviceUrl: string;
@@ -16,6 +17,7 @@ export interface ConnectionCheck { authenticated: true; proxy: 'system'; route: 
 
 /** Business methods only. No generic request, filesystem, shell, or IPC channel access. */
 export interface DesktopBridge {
+  match: MatchAPI;
   creators: CreatorAPI;
   settings: SettingsAPI;
   preferences: PreferencesAPI;

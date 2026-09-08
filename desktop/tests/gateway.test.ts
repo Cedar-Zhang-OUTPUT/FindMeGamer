@@ -13,6 +13,13 @@ function fixture() {
 }
 
 describe('connection changes', () => {
+  it('fences paid Match operations after a workspace change without repeating them',async()=>{
+    let complete!:(response:Response)=>void;let count=0;
+    const gateway=new WorkspaceGateway(fixture(),()=>{count++;return new Promise(resolve=>{complete=resolve;});});
+    const pending=gateway.matchRequest({method:'POST',path:'/api/v2/discovery/queries/11111111-1111-4111-8111-111111111111/evaluations',body:{},idempotencyKey:'match-evaluation-123'});
+    await new Promise(resolve=>setTimeout(resolve,0));await gateway.clear();complete(new Response('{}'));
+    await expect(pending).rejects.toMatchObject({code:'connection_changed',retryable:false});expect(count).toBe(1);
+  });
   it('rejects disconnected Creator writes without dispatching or exposing storage errors',async()=>{
     let count=0; const store=fixture();
     const gateway=new WorkspaceGateway(store,async()=>{count++;return new Response('{}');});

@@ -27,6 +27,7 @@ Open Settings and enter the service origin and Workspace Key. HTTPS is required 
 ## Delivered scope
 
 - Four stable navigation entries: Match, Outreach, Library and Settings.
+- Match v2 source implementation: Activity/Game/reference selection, explicit server discovery planning, retained paginated candidates, stop/continue and history, explicit frozen-candidate evaluation and grouped Match Briefs. Detail/evidence and usage are disclosed on demand. Source verification passed; packaged real-backend acceptance is pending manual macOS Keychain authorization (see the Match unit record).
 - Responsive PRD-inspired warm surface, coral actions, deep-blue sidebar and local pixel-art backgrounds. FindMeGamer remains the product name; native macOS titlebar controls are not painted into the page.
 - Editable Creator and Game v2 Library, explicit search, independent tab state and saved filters. Both use offset pagination; Creator filters include platform, language and favorites.
 - Games: manual creation with a name or website, grouped field editing, reference works, saved state, source/manual comparison and explicit source restoration. No Steam ID or analysis is required.
@@ -35,7 +36,7 @@ Open Settings and enter the service origin and Workspace Key. HTTPS is required 
 - Service origin and OS-encrypted Workspace Key configuration, explicit authentication feedback, disconnect and connection-generation isolation.
 - Full Settings: local system/light/dark appearance and five text sizes, workspace connection, shared service credentials/probes, two auto-refresh intervals and actual schedule disclosure, shared SMTP configuration/tests, local software update checks with manual GitHub downloads. Categories preserve drafts; shared operations require confirmation and block connection changes while pending.
 
-Match and Outreach are explicitly **Not connected yet**. No campaign send, analysis, matching or Discovery UI is exposed. Settings can send one SMTP test email only after explicit recipient confirmation. Steam credentials can be saved but testing is unavailable in the accepted backend; X testing checks usage access only, not recent search, balance or analysis. Manual multi-platform Creator records do not imply provider discovery or analysis integration; Twitch/Instagram acquisition remains unavailable.
+Outreach is explicitly **Not connected yet**. No campaign send, persisted roster selection or Steam/Analyze Request UI is exposed. Match requires the separately accepted v2 discovery/evaluation backend; the older Library/Settings fixture does not implement it. Match exposes YouTube and X for one run, with Twitch/Instagram visibly unavailable. Settings can send one SMTP test email only after explicit recipient confirmation. Steam credentials can be saved but testing is unavailable in the accepted backend; X credential testing checks usage access only, not recent search, balance or analysis.
 
 ## Exact existing API
 
@@ -50,6 +51,10 @@ All business requests originate in main and include `Authorization: Bearer …`.
 | Email contacts | `POST /api/v2/library/creators/{uuid}/contacts`, `PATCH .../contacts/{contact_uuid}`; parent `expected_revision` and POST idempotency key |
 | Known works | `GET/POST /api/v2/library/creators/{uuid}/works`, `PATCH .../works/{work_uuid}`; POST identity revision/key, PATCH work revision |
 | Identity correction | `PUT /api/v2/library/creators/{uuid}/identity`; explicit `confirmed:true` and Creator `expected_revision` |
+| Match activities | `GET/POST /api/v2/activities`, `GET /api/v2/activities/{uuid}`; POST freezes Game/reference context and requires `Idempotency-Key` |
+| Discovery planning | `GET/POST /api/v2/activities/{uuid}/discovery-plans`, `GET /api/v2/discovery/plans/{uuid}`, bodyless `POST .../plans/{uuid}/retry` |
+| Discovery tasks / candidates | `GET /api/v2/discovery/queries/{uuid}`, `GET .../queries/{uuid}/results`, bodyless `POST .../stop`, `POST .../continue` |
+| Explicit evaluation / briefs | `GET/POST .../queries/{uuid}/evaluations`, `GET .../evaluations/{uuid}`, `GET .../evaluations/{uuid}/results`, `POST .../evaluations/{uuid}/retry`; all POSTs require an idempotency key |
 | Games | `GET /api/v2/library/games`, `GET /api/v2/library/games/{uuid}` |
 | Game list query / page | `query`, `only_collection`, `offset`, `limit`; `{ items, total, limit, offset }` |
 | Create game | `POST /api/v2/library/games` with `Idempotency-Key` |
@@ -73,7 +78,7 @@ Task guidance lives in controls: new references expand and focus their name fiel
 ## Desktop boundary
 
 - Main: authenticated network, encrypted credential file, system proxy, restricted external HTTPS links.
-- Preload: typed `connection`, `library`, `creators`, `games`, `settings`, `preferences`, `updates`, and `openExternal` business methods. No generic fetch, IPC channel, Node, filesystem or shell access.
+- Preload: typed `connection`, `library`, `creators`, `games`, `match`, `settings`, `preferences`, `updates`, and `openExternal` business methods. No generic fetch, IPC channel, Node, filesystem or shell access.
 - Renderer: sandboxed, context-isolated, Node disabled, restrictive CSP and navigation/window-creation policy. IPC checks the exact app main frame, excluding child/preview frames.
 - Credentials: `safeStorage` async OS encryption; atomic mode-0600 encrypted file under `FindMeGamerDesktop` user data. Encryption unavailable means save fails, not plaintext fallback. Changing service origins requires a newly entered key.
 - Requests omit cookies, reject redirects, retain TLS verification, use bounded responses and timeout. Creator/Game writes have strict method/path/body validation and no automatic retry. Error output never echoes raw proxy/service responses which could include credentials.
@@ -112,4 +117,4 @@ Set `FMG_PACKAGED_EXECUTABLE` to the full `FindMeGamer.app/Contents/MacOS/FindMe
 
 The read-only first unit, Game v2, full Settings and Creator v2 migration have separate verification records. Settings tests use unchanged accepted backend code, strict HTTPX provider fixtures and an SMTP capture gateway; they do not establish real provider access or an actual TLS handshake. Test bootstrap/compose helpers under `e2e/fixtures/settings/` are excluded from production packaging.
 
-See [first-unit.md](docs/first-unit.md), [game-v2-unit.md](docs/game-v2-unit.md), [settings-unit.md](docs/settings-unit.md), [creator-v2-unit.md](docs/creator-v2-unit.md) and [ui-information-pass.md](docs/ui-information-pass.md) for state design, verification results and outstanding limits. Opt-in Creator/Game/Settings tests mutate only the coordinator-owned isolated API. Settings SMTP capture is not external mail delivery.
+See [first-unit.md](docs/first-unit.md), [game-v2-unit.md](docs/game-v2-unit.md), [settings-unit.md](docs/settings-unit.md), [creator-v2-unit.md](docs/creator-v2-unit.md), [match-v2-unit.md](docs/match-v2-unit.md) and [ui-information-pass.md](docs/ui-information-pass.md) for state design, verification results and outstanding limits. Opt-in Creator/Game/Settings tests mutate only the coordinator-owned isolated API. Settings SMTP capture is not external mail delivery. Match E2E additionally requires `FMG_MATCH_FIXTURE_FILE` and exclusive access to its separate pinned fixture controls; see its unit record before running.
