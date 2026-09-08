@@ -1,0 +1,77 @@
+# Always use manage.py with this standalone, uniquely owned project.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: match_frontend
+      POSTGRES_USER: match_fixture
+      POSTGRES_PASSWORD: synthetic-match-database-only
+    volumes: ["database:/var/lib/postgresql/data"]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U match_fixture -d match_frontend]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  api:
+    image: ${FMG_MATCH_IMAGE:?owned image required}
+    build:
+      context: ${FMG_MATCH_SOURCE:?pinned archive required}
+      dockerfile: ${FMG_MATCH_HARNESS}/Dockerfile
+    working_dir: /app
+    command: [python, /harness/runtime.py, api]
+    environment: &runtime
+      DATABASE_URL: postgresql+psycopg://match_fixture:synthetic-match-database-only@postgres:5432/match_frontend
+      REDIS_URL: redis://redis:6379/0
+      MASTER_KEY_FILE: /private/master.key
+      WORKSPACE_RATE_LIMIT: "10000"
+      EXTERNAL_BASE_URL: http://127.0.0.1:8000
+      YOUTUBE_API_BASE_URL: http://127.0.0.1:18081/youtube/v3
+      X_API_BASE_URL: http://127.0.0.1:18081/x/2
+      DEEPSEEK_API_BASE_URL: http://127.0.0.1:18081/deepseek
+      STEAM_STORE_BASE_URL: http://127.0.0.1:9
+      GOOGLE_AI_API_BASE_URL: http://127.0.0.1:9
+      AWS_EC2_METADATA_DISABLED: "true"
+      ARTIFACT_STORE: filesystem
+      ARTIFACT_DIRECTORY: /tmp/match-artifacts
+      PYTHONPATH: /app:/harness
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes: &mounts
+      - ${FMG_MATCH_HARNESS}:/harness:ro
+      - ${FMG_MATCH_PRIVATE}/client.json:/private/client.json:ro
+      - ${FMG_MATCH_PRIVATE}/master.key:/private/master.key:ro
+      - ${FMG_MATCH_PRIVATE}/state:/state
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  worker:
+    image: ${FMG_MATCH_IMAGE:?owned image required}
+    working_dir: /app
+    command: [python, /harness/runtime.py, worker]
+    environment: *runtime
+    volumes: *mounts
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  relay:
+    image: python:3.13-slim
+    command: [python, /harness/relay.py]
+    ports: ["127.0.0.1::8000"]
+    volumes:
+      - ${FMG_MATCH_HARNESS}:/harness:ro
+    networks: [default, ingress]
+    depends_on: [api]
+networks:
+  default:
+    internal: true
+  ingress:
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+volumes:
+  database:
