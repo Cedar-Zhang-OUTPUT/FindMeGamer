@@ -1,4 +1,4 @@
-# Small YouTube/X smoke harness — preparation only
+# Small YouTube/X smoke harness
 
 This separate harness pins backend code to
 `c8abe9b1a00d16ae6ea65117d1ec20b412befce1`. It does not change business logic,
@@ -37,11 +37,11 @@ client/master/report files and the pinned worktree remain under
 explicitly leaves only this run's containers for inspection; avoid it for live
 credentials unless that retention is intentional. No mail history is imported.
 
-## Live phase — not authorized or executed by this preparation
+## Live phase — explicit authorization required
 
 The coordinator must first obtain permission for these exact tiny requests and
 X credit consumption. Afterwards provide one **explicitly chosen**, user-owned,
-non-symlink **0600** JSON file with exactly two fields:
+non-symlink **0600** JSON file containing one or both permitted fields:
 
 ```json
 {"youtube": "<YouTube Data API key>", "x": "<X app-only Bearer token>"}
@@ -52,9 +52,13 @@ No credential file is read in fixture mode; supplying one is rejected. Live mode
 requires all three flags: `--live --acknowledge-provider-costs --credentials-file`.
 The tool never searches the Keychain, existing service databases, cloud secrets,
 shell environment or production configuration for missing values.
+An omitted platform is explicitly reported as `not_run` / `credential_not_supplied`
+with zero HTTP requests; the other platform can finish independently. The operator
+must delete the temporary credential handoff file afterwards. The default cleanup
+removes the isolated DB volume containing its encrypted copy, not original keys.
 
 ```sh
-# Only after explicit authorization; this command has NOT been run during setup.
+# Only after explicit authorization.
 python3 integration/discovery_smoke.py --live --acknowledge-provider-costs \
   --credentials-file .local/approved-discovery-credentials.json
 ```
@@ -72,6 +76,12 @@ not tokens, headers, original provider bodies or Creator/email data. Fewer resul
 401/403/429 and uncertain outcomes are reported honestly; the runner does not
 bypass quotas. `completed` describes completion of the inspection workflow, not
 guaranteed provider access. Check each provider's status, issues and usage.
+The worker's test-only HTTP observer records one endpoint label and HTTP status
+per actual transport call (or `transport_error`); it never records the URL,
+query string, headers or response body and never retries. Reports also include
+verified Library identity and persisted work counts, plus each batch stop reason.
+`target_reached` is distinct from budget exhaustion: both can stop a one-page run,
+and the report must not claim a budget stop when the batch stopped at its target.
 The live phase proves only small discovery/Library access, not full AI analysis,
 large pagination coverage, email delivery or production readiness.
 
@@ -83,3 +93,30 @@ responses offered continuation tokens; no follow-up request occurred. Containers
 and database volumes were removed after the run. No real provider calls or user
 credentials were accessed. Unit tests also exercise live guards using explicitly
 synthetic temporary credentials, without network I/O.
+
+The extended fixture run `fmg-discovery-smoke-aacc409d` additionally verified
+three HTTP 200 observations, one persisted work per platform and `target_reached`
+stop reasons. Seven targeted unit tests passed; independent bounded review found
+no blocker in this reporting-only increment.
+
+## Authorized live evidence — 2026-09-08
+
+Run `fmg-discovery-smoke-d89bf7c3`, pinned backend above, query `Minecraft`:
+
+- YouTube: exactly one search and one channels HTTP request, both 200. Five
+  works mapped to four unique accounts; all four Library identities and five
+  persisted works verified through HTTP after real Celery execution.
+- Query paused with source `more`, batch reason `target_reached`, usage 2 requests /
+  5 provider items / 0 unknown requests. No continuation or retry. The hard
+  two-request ceiling was reached, but the actual stop reason was the batch target,
+  not a claimed budget-exhaustion transition.
+- X: not run, zero HTTP requests. Reading the specified project Keychain item
+  did not return; the waiting read was terminated without changing the original
+  credential. It was omitted from the handoff file. This run does not verify X
+  live HTTP-to-Library integration or establish a platform quota/auth failure.
+- Temporary credential handoff file removed; isolated containers and DB volumes
+  removed. Original project configuration was only read, not changed. No cloud,
+  18090, SMTP, model, token-probe, pagination or unrelated service calls.
+
+The final fixture `fmg-discovery-smoke-db7a4d22` passed before this live attempt;
+eight targeted unit tests pass including partial-credential handling.

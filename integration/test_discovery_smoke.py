@@ -4,6 +4,46 @@ from tempfile import TemporaryDirectory
 
 
 class DiscoverySmokeTests(unittest.TestCase):
+    def test_live_allows_one_available_platform_without_fetching_the_other(self):
+        from integration.discovery_smoke import load_credentials
+
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "credentials.json"
+            path.write_text('{"youtube":"synthetic-youtube"}')
+            path.chmod(0o600)
+            self.assertEqual(
+                load_credentials(live=True, acknowledge=True, path=path),
+                {"youtube": "synthetic-youtube"},
+            )
+
+    def test_http_observer_records_only_endpoint_and_status_without_retry(self):
+        import json
+        from types import SimpleNamespace
+        from integration.discovery_smoke_runtime import observe_transport
+
+        class Transport:
+            calls = 0
+
+            def handle_request(self, request):
+                self.calls += 1
+                return SimpleNamespace(status_code=429)
+
+        with TemporaryDirectory() as directory:
+            output = Path(directory) / "http.json"
+            observe_transport(Transport, output)
+            transport = Transport()
+            request = SimpleNamespace(
+                url=SimpleNamespace(path="/2/tweets/search/recent"),
+                headers={"Authorization": "synthetic-secret"},
+            )
+            self.assertEqual(transport.handle_request(request).status_code, 429)
+            self.assertEqual(transport.calls, 1)
+            self.assertEqual(
+                json.loads(output.read_text()),
+                [{"endpoint": "x_search", "status": 429}],
+            )
+            self.assertEqual(output.stat().st_mode & 0o777, 0o600)
+
     def test_live_needs_explicit_flags_and_private_credentials_file(self):
         from integration.discovery_smoke import load_credentials
 

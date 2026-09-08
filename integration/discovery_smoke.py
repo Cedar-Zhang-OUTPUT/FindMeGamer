@@ -70,12 +70,16 @@ def load_credentials(*, live, acknowledge, path):
             "Credential file must be owned by this user, not a symlink, and mode 0600."
         )
     values = json.loads(path.read_text())
-    if set(values) != {"youtube", "x"} or any(
-        not isinstance(v, str)
-        or not v
-        or len(v) > 16384
-        or any(ord(c) <= 32 or ord(c) >= 127 for c in v)
-        for v in values.values()
+    if (
+        not values
+        or not set(values).issubset({"youtube", "x"})
+        or any(
+            not isinstance(v, str)
+            or not v
+            or len(v) > 16384
+            or any(ord(c) <= 32 or ord(c) >= 127 for c in v)
+            for v in values.values()
+        )
     ):
         raise ValueError(
             "Credential file must contain only valid youtube and x secret strings."
@@ -220,16 +224,23 @@ def main():
             config["workspace_key"],
             "POST",
             "/api/v2/library/games",
-            {"name": "Isolated discovery smoke"},
+            {"name": f"Isolated {config['mode']}-smoke Game"},
         )
         activity = api_request(
             base,
             config["workspace_key"],
             "POST",
             "/api/v2/activities",
-            {"name": "Bounded provider smoke", "game_id": game["id"]},
+            {"name": f"Bounded {config['mode']}-smoke Activity", "game_id": game["id"]},
         )
         for platform, query in (("youtube", args.youtube_query), ("x", args.x_query)):
+            if platform not in credentials:
+                report["providers"][platform] = {
+                    "status": "not_run",
+                    "issues": ["credential_not_supplied"],
+                    "actual_http_requests": 0,
+                }
+                continue
             api_request(
                 base,
                 config["workspace_key"],
@@ -262,6 +273,7 @@ def main():
                 "GET",
                 f"/api/v2/discovery/queries/{created['query_id']}/results",
             )
+            works_count = 0
             for item in results["items"]:
                 profile = api_request(
                     base,
@@ -274,6 +286,7 @@ def main():
                     or item["selected"]
                 ):
                     raise RuntimeError("Library identity/selection smoke failed.")
+                works_count += profile["work_count"]
             maximum = 2 if platform == "youtube" else 1
             if state["usage"]["requests_used"] > maximum:
                 raise RuntimeError("Provider request ceiling exceeded.")
@@ -286,7 +299,20 @@ def main():
                     i.get("code")
                     for i in state["sources"].get(platform, {}).get("issues", [])
                 ],
+                "stop_reasons": [b["reason"] for b in state["batches"]],
+                "library_identities_verified": len(results["items"]),
+                "persisted_works": works_count,
             }
+        report["http_requests"] = json.loads(
+            run(
+                "exec",
+                "-T",
+                "worker",
+                "python",
+                "-c",
+                "from pathlib import Path; p=Path('/tmp/smoke-http.json'); print(p.read_text() if p.exists() else '[]')",
+            )
+        )
         if not args.live:
             counts = json.loads(
                 run(

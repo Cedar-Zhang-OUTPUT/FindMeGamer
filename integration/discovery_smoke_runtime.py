@@ -7,6 +7,32 @@ from pathlib import Path
 from threading import Thread
 
 
+def observe_transport(transport_class, output):
+    """Record only endpoint labels/statuses, never URLs, headers or bodies."""
+    original = transport_class.handle_request
+    records = []
+    endpoints = {
+        "/youtube/v3/search": "youtube_search",
+        "/youtube/v3/channels": "youtube_channels",
+        "/x/2/tweets/search/recent": "x_search",
+        "/2/tweets/search/recent": "x_search",
+    }
+
+    def observed(self, request):
+        label = endpoints.get(request.url.path, "unexpected_endpoint")
+        record = {"endpoint": label, "status": "transport_error"}
+        records.append(record)
+        try:
+            response = original(self, request)
+            record["status"] = response.status_code
+            return response
+        finally:
+            output.write_text(json.dumps(records))
+            output.chmod(0o600)
+
+    transport_class.handle_request = observed
+
+
 class ProviderFixture(BaseHTTPRequestHandler):
     counts = {"youtube_search": 0, "youtube_channels": 0, "x_search": 0}
 
@@ -133,6 +159,9 @@ def main():
             log_level="warning",
         )
     elif action == "worker":
+        import httpx
+
+        observe_transport(httpx.HTTPTransport, Path("/tmp/smoke-http.json"))
         from app.workers.celery_app import celery_app
 
         celery_app.worker_main(
