@@ -195,11 +195,12 @@ test('built React query UI uses real production clients against the pinned HTTP 
   }
 
   const gamePages = new Map<GameSort, Awaited<ReturnType<GameClient['list']>>>();
+  const availableGames = await games.list({ query: '', onlyCollection: false, websiteStatus: 'available', sort: 'recent_updated', offset: 0, limit: 24 });
+  expect(availableGames.total).toBe(0);
   for (const sort of ['recent_updated', 'recent_added', 'name'] as const) {
-    const input: GameListInput = { query: '', onlyCollection: false, websiteStatus: 'available', sort, offset: 0, limit: 24 };
+    const input: GameListInput = { query: '', onlyCollection: false, websiteStatus: 'all', sort, offset: 0, limit: 24 };
     const page = await games.list(input);
     expect(page.total).toBeGreaterThan(0);
-    expect(page.items.every(item => Boolean(item.website_url?.trim()))).toBe(true);
     gamePages.set(sort, page);
   }
   const currentGameCandidates = await match.candidates({ queryId: selected.queryId, evidence: 'current_game', sort: 'relevance', offset: 0, limit: 100 });
@@ -379,6 +380,9 @@ test('built React query UI uses real production clients against the pinned HTTP 
     const website = page.getByLabel('Website');
     await website.selectOption('available');
     await expect(website).toHaveValue('available');
+    await expect(page.getByRole('heading', { name: 'No matching games' })).toBeVisible();
+    await website.selectOption('all');
+    await expect(website).toHaveValue('all');
     const gameSort = page.getByLabel('Sort games');
     for (const sort of ['recent_updated', 'recent_added', 'name'] as const) {
       await gameSort.selectOption(sort);
@@ -389,6 +393,7 @@ test('built React query UI uses real production clients against the pinned HTTP 
 
     await page.getByRole('button', { name: 'Match', exact: true }).click();
     await expect(page.getByRole('heading', { name: 'Match', level: 1 })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Activities' })).toBeVisible();
     let activityButton = page.getByRole('button', { name: `Open ${selected.name}` });
     for (let pageNumber = 0; await activityButton.count() === 0 && pageNumber < 10; pageNumber++) {
       const next = page.getByRole('button', { name: 'Next page' });

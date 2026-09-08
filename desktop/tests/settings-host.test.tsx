@@ -58,8 +58,9 @@ describe('complete Settings host',()=>{
     expect(screen.getByRole('alert')).toHaveTextContent('Local preference could not be saved.');
   });
   it('preserves a hidden service draft and blocks workspace replacement until explicitly discarded',async()=>{
-    const {api,user}=start(true);await waitFor(()=>expect(api.settings.smtp).toHaveBeenCalledOnce());
+    const {api,user}=start(true);expect(api.settings.connection).not.toHaveBeenCalled();expect(api.settings.smtp).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button',{name:'Settings'}));await user.click(screen.getByRole('tab',{name:'Services'}));
+    await waitFor(()=>expect(api.settings.connection).toHaveBeenCalledTimes(5));expect(api.settings.smtp).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button',{name:'Replace YouTube credential'}));await user.type(screen.getByLabelText('YouTube replacement credential'),'synthetic-retained');
     await user.click(screen.getByRole('tab',{name:'Appearance'}));await user.click(screen.getByRole('tab',{name:'Services'}));
     expect(screen.getByLabelText('YouTube replacement credential')).toHaveValue('synthetic-retained');
@@ -70,10 +71,11 @@ describe('complete Settings host',()=>{
     await user.click(screen.getByRole('tab',{name:'Services'}));await user.click(screen.getByRole('button',{name:'Replace YouTube credential'}));expect(screen.getByLabelText('YouTube replacement credential')).toHaveValue('');
   });
   it('blocks app exit/navigation while a shared mutation is pending without automatically navigating afterward',async()=>{
-    const {api,user}=start(true);await waitFor(()=>expect(api.settings.smtp).toHaveBeenCalledOnce());
+    const {api,user}=start(true);expect(api.settings.connection).not.toHaveBeenCalled();expect(api.settings.smtp).not.toHaveBeenCalled();
     let resolve!:(value:Awaited<ReturnType<typeof api.settings.replaceConnection>>)=>void;
     vi.mocked(api.settings.replaceConnection).mockReturnValueOnce(new Promise(done=>{resolve=done;}));
     await user.click(screen.getByRole('button',{name:'Settings'}));await user.click(screen.getByRole('tab',{name:'Services'}));
+    await waitFor(()=>expect(api.settings.connection).toHaveBeenCalledTimes(5));expect(api.settings.smtp).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button',{name:'Replace YouTube credential'}));await user.type(screen.getByLabelText('YouTube replacement credential'),'synthetic-pending');await user.click(screen.getByRole('button',{name:'Save YouTube credential'}));await user.click(screen.getByRole('button',{name:'Confirm'}));
     await user.click(screen.getByRole('button',{name:'Library'}));expect(screen.getByRole('dialog',{name:'Action in progress'})).toBeVisible();
     const unload=new Event('beforeunload',{cancelable:true});window.dispatchEvent(unload);expect(unload.defaultPrevented).toBe(true);

@@ -85,7 +85,7 @@ export function SettingsView({api,active,available,workspaceEpoch,appearance,con
           {(sharedDirty||sharedBusy)&&<div className="settings-pending-notice" role="status"><span>{sharedBusy?'Shared settings action in progress.':'Unsaved shared settings'}</span><button className="text-button" onClick={()=>choose(collectionFlags.busy?'collection':cloudFlags.dirty||cloudFlags.busy?lastCloud:lastShared)}>Review settings</button></div>}
           <ConnectionSettings {...connection} embedded blocked={connection.blocked||sharedDirty||sharedBusy} resetSignal={resetConnection} onDraftStateChange={setConnectionDirty}/>
         </div>
-        <div hidden={!['services','refresh','email'].includes(section)}><CloudSettings key={workspaceEpoch} api={api.settings} connected={available} section={section==='services'||section==='refresh'||section==='email'?section:lastCloud} onDraftStateChange={cloudChanged}/></div>
+        <div hidden={!['services','refresh','email'].includes(section)}><CloudSettings key={workspaceEpoch} api={api.settings} connected={available} active={active&&['services','refresh','email'].includes(section)} section={section==='services'||section==='refresh'||section==='email'?section:lastCloud} onDraftStateChange={cloudChanged}/></div>
         <CollectionSettings key={workspaceEpoch} api={api.settings} connected={available} active={active&&section==='collection'} onDraftStateChange={collectionChanged}/>
         <div hidden={section!=='refresh'}><RefreshActivity key={workspaceEpoch} api={api} connected={available}/></div>
         <div id="settings-panel-updates" role="tabpanel" aria-labelledby="settings-tab-updates" hidden={section!=='updates'}><UpdateSettings api={api} active={active&&section==='updates'} appearance={appearance}/></div>

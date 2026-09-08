@@ -17,6 +17,7 @@ export interface CloudDraftState {
 export interface CloudSettingsProps {
   api: SettingsAPI;
   connected: boolean;
+  active?: boolean;
   section: "services" | "refresh" | "email";
   onDraftStateChange?: (state: CloudDraftState) => void;
 }
@@ -181,6 +182,7 @@ function Provider({
   confirm,
   expanded,
   onToggle,
+  active,
 }: {
   api: SettingsAPI;
   name: ServiceName;
@@ -188,6 +190,7 @@ function Provider({
   confirm: Confirm;
   expanded: boolean;
   onToggle: () => void;
+  active: boolean;
 }) {
   const [saved, setSaved] = useState<ServiceStatus | null>(null),
     [loadFailed, setLoadFailed] = useState(false),
@@ -196,11 +199,12 @@ function Provider({
   const op = useOperation();
   const label = labels[name];
   useEffect(() => {
-    let active = true;
+    if (!active) return;
+    let current = true;
     const version = op.revision.current;
     api.connection(name).then(
       (r) => {
-        if (active && version === op.revision.current) {
+        if (current && version === op.revision.current) {
           if (r.ok) {
             setSaved(r.data);
             setLoadFailed(false);
@@ -209,13 +213,13 @@ function Provider({
         }
       },
       () => {
-        if (active) setLoadFailed(true);
+        if (current) setLoadFailed(true);
       },
     );
     return () => {
-      active = false;
+      current = false;
     };
-  }, [api, name, op.revision, op.reconcile, reload]);
+  }, [active, api, name, op.revision, op.reconcile, reload]);
   useDraft(
     name,
     !!secret,
@@ -339,10 +343,12 @@ function Refresh({
   api,
   report,
   confirm,
+  active,
 }: {
   api: SettingsAPI;
   report: Report;
   confirm: Confirm;
+  active: boolean;
 }) {
   const [saved, setSaved] = useState<{
       gameIntervalDays: number;
@@ -360,11 +366,12 @@ function Refresh({
   const edited = useRef(false);
   edited.current = dirty || op.busy;
   useEffect(() => {
-    let active = true;
+    if (!active) return;
+    let current = true;
     const version = op.revision.current;
     api.reanalysis().then(
       (r) => {
-        if (active && version === op.revision.current) {
+        if (current && version === op.revision.current) {
           if (r.ok) {
             setSaved(r.data);
             if (!edited.current) {
@@ -377,13 +384,13 @@ function Refresh({
         }
       },
       () => {
-        if (active) setLoadFailed(true);
+        if (current) setLoadFailed(true);
       },
     );
     return () => {
-      active = false;
+      current = false;
     };
-  }, [api, op.revision, op.reconcile, reload]);
+  }, [active, api, op.revision, op.reconcile, reload]);
   useDraft(
     "refresh",
     dirty,
@@ -497,10 +504,12 @@ function Email({
   api,
   report,
   confirm,
+  active,
 }: {
   api: SettingsAPI;
   report: Report;
   confirm: Confirm;
+  active: boolean;
 }) {
   const [saved, setSaved] = useState<SMTPStatus | null>(null),
     [draft, setDraft] = useState<SMTPInput>(initial),
@@ -521,11 +530,12 @@ function Email({
   const edited = useRef(false);
   edited.current = dirty || op.busy;
   useEffect(() => {
-    let active = true;
+    if (!active) return;
+    let current = true;
     const version = op.revision.current;
     api.smtp().then(
       (r) => {
-        if (active && version === op.revision.current) {
+        if (current && version === op.revision.current) {
           if (r.ok) {
             setSaved(r.data);
             if (!edited.current) setDraft(smtpDraft(r.data));
@@ -535,13 +545,13 @@ function Email({
         }
       },
       () => {
-        if (active) setLoadFailed(true);
+        if (current) setLoadFailed(true);
       },
     );
     return () => {
-      active = false;
+      current = false;
     };
-  }, [api, op.revision, op.reconcile, reload]);
+  }, [active, api, op.revision, op.reconcile, reload]);
   useDraft(
     "email",
     dirty,
@@ -807,6 +817,7 @@ function Email({
 function ConnectedCloud({
   api,
   section,
+  active = true,
   onDraftStateChange,
 }: CloudSettingsProps) {
   const states = useRef(new Map<string, CloudDraftState>()),
@@ -861,6 +872,7 @@ function ConnectedCloud({
             report={report}
             confirm={confirm}
             expanded={expanded === name}
+            active={active && section === "services"}
             onToggle={() =>
               setExpanded((current) => (current === name ? null : name))
             }
@@ -880,7 +892,7 @@ function ConnectedCloud({
         aria-labelledby="settings-tab-refresh"
         hidden={section !== "refresh"}
       >
-        <Refresh api={api} report={report} confirm={confirm} />
+        <Refresh api={api} report={report} confirm={confirm} active={active && section === "refresh"} />
       </section>
       <section
         role="tabpanel"
@@ -889,7 +901,7 @@ function ConnectedCloud({
         aria-labelledby="settings-tab-email"
         hidden={section !== "email"}
       >
-        <Email api={api} report={report} confirm={confirm} />
+        <Email api={api} report={report} confirm={confirm} active={active && section === "email"} />
       </section>
       {confirmation && (
         <Confirmation {...confirmation} cancel={() => setConfirmation(null)} />
