@@ -11040,6 +11040,28 @@
         ],
         "title": "WorkPatch",
         "type": "object"
+      },
+      "YouTubeBinding": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "expected_revision"
+        ],
+        "title": "YouTubeBinding",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -16587,6 +16609,73 @@
         "summary": "Patch Work",
         "tags": [
           "library-v2"
+        ]
+      }
+    },
+    "/api/v2/library/creators/{creator_id}/youtube-binding": {
+      "post": {
+        "operationId": "bindYouTubeCreatorSourceV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "creator_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Creator Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/YouTubeBinding"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatorDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Bind",
+        "tags": [
+          "creator-library"
         ]
       }
     },

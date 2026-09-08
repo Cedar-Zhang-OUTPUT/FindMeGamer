@@ -403,6 +403,9 @@ def _map_video(item: dict[str, Any], *, expected_channel_id: str) -> VideoSource
         duration_seconds=_optional_duration(content.get("duration")),
         definition=_optional_string(content.get("definition"), max_length=16),
         caption_available=_caption_bool(content.get("caption")),
+        audio_language=_optional_string(
+            snippet.get("defaultAudioLanguage"), max_length=255
+        ),
         view_count=_optional_count(statistics.get("viewCount")),
         like_count=_optional_count(statistics.get("likeCount")),
         comment_count=_optional_count(statistics.get("commentCount")),

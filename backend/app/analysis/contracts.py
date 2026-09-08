@@ -67,6 +67,7 @@ class VideoSource(_SourceModel):
     duration_seconds: int | None = None
     definition: str | None = None
     caption_available: bool | None = None
+    audio_language: str | None = None
     view_count: int | None = None
     like_count: int | None = None
     comment_count: int | None = None

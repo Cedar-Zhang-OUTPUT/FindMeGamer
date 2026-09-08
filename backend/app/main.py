@@ -19,6 +19,7 @@ from app.api.routes import outreach_drafts
 from app.api.routes import activity_sending
 from app.api.routes import activity_collaboration
 from app.api.routes import steam_import
+from app.api.routes import youtube_binding
 from app.integrations.steam import SteamGateway
 from app.api.routes import discovery_planning
 from app.api.routes import discovery_evaluation
@@ -201,14 +202,30 @@ def create_app(
             authenticate_workspace, dispatcher=planning_dispatcher
         )
     )
-    app.include_router(discovery_evaluation.create_router(authenticate_workspace, dispatcher=evaluation_dispatcher))
-    app.state.steam_gateway_factory = steam_gateway_factory or (lambda: SteamGateway(base_url=settings.steam_store_base_url))
+    app.include_router(
+        discovery_evaluation.create_router(
+            authenticate_workspace, dispatcher=evaluation_dispatcher
+        )
+    )
+    app.state.steam_gateway_factory = steam_gateway_factory or (
+        lambda: SteamGateway(base_url=settings.steam_store_base_url)
+    )
+    app.state.youtube_binding_resolver = effective_channel_resolver
+    app.include_router(youtube_binding.create_router(authenticate_workspace))
     app.include_router(steam_import.create_router(authenticate_workspace))
     app.include_router(activity_outreach.create_router(authenticate_workspace))
     app.include_router(activity_collaboration.create_router(authenticate_workspace))
     app.include_router(saved_candidate_sets.create_router(authenticate_workspace))
-    app.include_router(outreach_drafts.create_router(authenticate_workspace, dispatcher=draft_dispatcher))
-    app.include_router(activity_sending.create_router(authenticate_workspace, dispatcher=activity_send_dispatcher))
+    app.include_router(
+        outreach_drafts.create_router(
+            authenticate_workspace, dispatcher=draft_dispatcher
+        )
+    )
+    app.include_router(
+        activity_sending.create_router(
+            authenticate_workspace, dispatcher=activity_send_dispatcher
+        )
+    )
     app.include_router(
         settings_routes.create_router(
             authenticate_workspace,

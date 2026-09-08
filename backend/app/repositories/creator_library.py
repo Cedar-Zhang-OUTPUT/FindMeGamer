@@ -55,6 +55,8 @@ def safe_fields(schema, values):
 
 
 def source_fields(creator):
+    from app.core.content_languages import creator_source_languages
+
     facts = creator.current_facts or {}
     return safe_fields(
         CreatorFields,
@@ -67,7 +69,7 @@ def source_fields(creator):
             "follower_count": facts.get("subscriber_count"),
             "follower_count_collected_at": facts.get("follower_count_collected_at")
             or creator.last_analyzed_at,
-            "languages": facts.get("languages", []),
+            "languages": creator_source_languages(creator),
             "country_code": facts.get("country"),
         },
     )

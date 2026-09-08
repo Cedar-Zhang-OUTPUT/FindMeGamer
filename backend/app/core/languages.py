@@ -1,4 +1,6 @@
-"""Explicit UI preset aliases for comparison only; never rewrite source labels."""
+"""Preset/ordinary region comparisons only; never rewrite source labels."""
+
+import re
 
 _PRESETS = (
     ("en", "English", "英语"),
@@ -26,6 +28,14 @@ _ALIASES = {
 
 def language_key(value: str) -> str:
     normalized = value.strip().casefold()
+    if "-" in normalized:
+        prefix, region = normalized.rsplit("-", 1)
+        if prefix in {row[0].casefold() for row in _PRESETS} and re.fullmatch(
+            r"[a-z]{2}|[0-9]{3}", region
+        ):
+            # Explicit zh-Hant-TW can match zh-Hant; ambiguous zh-TW is not
+            # guessed as either Chinese script. Provider storage remains intact.
+            return prefix
     return _ALIASES.get(normalized, normalized)
 
 

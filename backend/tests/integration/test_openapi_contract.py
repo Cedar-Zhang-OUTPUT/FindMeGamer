@@ -20,6 +20,10 @@ COMMITTED_SCHEMA = BACKEND_ROOT / "openapi.json"
 EXPECTED_OPERATIONS = {
     ("POST", "/api/v2/library/games/steam-import"): "importSteamGameSourceV2",
     (
+        "POST",
+        "/api/v2/library/creators/{creator_id}/youtube-binding",
+    ): "bindYouTubeCreatorSourceV2",
+    (
         "GET",
         "/api/v2/activities/{activity_id}/invitations",
     ): "listActivityInvitationsV2",

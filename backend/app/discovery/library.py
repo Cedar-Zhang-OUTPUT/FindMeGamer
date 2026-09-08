@@ -166,7 +166,9 @@ def import_discovered_account(
                 origin="source",
                 source_fields={"content_type": "unverified"},
             )
-            session.add(work)
+            # Language projection may already have loaded this relationship.
+            # Keep same-transaction reads coherent with the newly imported work.
+            creator.works.append(work)
             by_id[item.content_id] = work
         if not _fresh(item.collected_at, work.source_collected_at):
             continue

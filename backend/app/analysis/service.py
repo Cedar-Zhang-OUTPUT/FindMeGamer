@@ -24,6 +24,7 @@ from app.analysis.prompts.game import (
     GAME_VISUAL_PROMPT_VERSION,
 )
 from app.core.analysis_job_contract import valid_analysis_job_state
+from app.core.content_languages import known_content_languages
 from app.db.models.enums import AnalysisStage, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
 from app.db.models.profiles import CreatorProfile, GameProfile
@@ -589,6 +590,18 @@ class CreatorAnalysisService:
         source = publication.source
         return {
             "channel_id": source.channel_id,
+            "languages": known_content_languages(
+                video.audio_language for video in source.videos
+            ),
+            "language_evidence": [
+                {
+                    "language": video.audio_language,
+                    "source_url": f"https://www.youtube.com/watch?v={video.id}",
+                    "source_field": "snippet.defaultAudioLanguage",
+                }
+                for video in source.videos
+                if known_content_languages([video.audio_language])
+            ],
             "canonical_url": source.canonical_url,
             "title": source.title,
             "description": source.description,

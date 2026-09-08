@@ -119,6 +119,10 @@ def sync_creator_library(
         work.source_collected_at = analyzed_at
         work.source_fields = {
             "content_title": video.title,
+            "language": video.audio_language,
+            "language_source_field": (
+                "snippet.defaultAudioLanguage" if video.audio_language else None
+            ),
             "content_id": video.id,
             "source_url": f"https://www.youtube.com/watch?v={video.id}",
             "published_at": (
