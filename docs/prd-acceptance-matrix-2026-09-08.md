@@ -15,6 +15,9 @@
 
 ### 最新接受增量（优先于上述较早进度）
 
+- B16 YouTube绑定/内容语言 `bc96c60b205685fbe8585e5fe5b2394c122342ac` 已接受：[契约](backend-v2-youtube-binding-languages.md)。作者2320passed/3既定skip，唯一review通过、同事务works缓存回归已最小修复；总管固定归档24新+3OpenAPI=27passed10.51秒，actual0018，未重跑全量。报告 `/tmp/fmg-youtube-bc96c60.XwGwCq/verification.md`，临时资源已归属清理，5既存fixture不动。X完整Analyze仍在制。
+- F7人选/明确邮箱/冻结N `8236f6abd76e1394c39ddaf5a82a9c4a6fad5e0f` 已接受源码与所列局部运行范围：[记录](../desktop/docs/outreach-preparation-unit.md)。924/69全量是末次历史时序修复前；修复后执行方35相关、根固定快照211个src/tests/e2e/package文件字节核对并独立41相关/5文件（3.21秒）、typecheck/build90通过，不虚报新全量。首headless前提缺名0POST失败；第二次已到选人/冻结/编辑/返回和截图，但最后历史失败且缺物理写ledger，不称整场PASS。最小修复后history-only1/1通过、物理25GET/0写/单次batch读取；根读ledger并看宽/窄/135%图。原生包/Keychain仍未验，后续F8/P6、B/P7、C/P9、Analyze未因此完成。
+
 - B13 Outreach B `ece2e9d9558dfe057dc40ad58bd98a86e3149dd5` 已接受：[发送契约](backend-v2-activity-sending.md)。执行方最终2267 passed/3既定deferred/0failed（221.26秒），一次有限独立审查闭环；总管固定归档31新测试（19.98秒）、22旧保护（2.50秒）、3OpenAPI（5.52秒）全部通过，实际DB0017。原始日志 `/tmp/fmg-outreach-b-ece2e9d.CP7v7a/` 已核对，临时资源已清理。完整N资格、明确排除、冻结发送、持久重放、普通邀请去重、failed/unknown区分均在本增量范围；尚不代表新独立A+B运行夹具或真实邮件投递验收。后端继续C回复/合作状态。
 - F6补充 `aec17c3` 仅7个desktop文件，cherry-pick为 `17f83f5`，desktop树一致。执行方固定快照805/58、typecheck/build81通过；总管核实5个实现/测试文件字节与提交一致，新跑10个Settings焦点回归和typecheck通过，并检查宽/窄/135%字号截图。HEADLESS生产React+真实HTTP1/1通过4.9秒，隐藏Settings不再提前读取；不等同Electron/IPC/preload/Keychain/最终包。F7人选准备、F8模板草稿仍在后续交付链路。
 - B14 Outreach C `9259d448819e076557e5bb5228104b63fcae543b` 已接受：[合作状态契约](backend-v2-activity-collaboration.md)。作者最终2282 passed/3既定deferred/0failed（203.96秒），唯一review一项旧重试状态投影已红绿修复并原reviewer限定确认；总管独立固定15新C（11.77秒）、7identity（1.36秒）、3OpenAPI（5.44秒），25passed/无skip，实际DB0018。归档SHA256与固定git archive一致，原始日志 `/tmp/fmg-outreach-c-9259d44.TTpdZZ/` 已读，临时资源清理。5个接口、全N历史、活动隔离、手工有据回复/4跟进/8合作状态、在途身份保护；没有新增自动收件箱或发信。后端继续Steam source import及Analyze，前端仍逐单元消费。
