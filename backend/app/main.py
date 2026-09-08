@@ -86,6 +86,7 @@ def create_app(
         deepseek_base_url=settings.deepseek_api_base_url,
         youtube_base_url=settings.youtube_api_base_url,
         google_ai_base_url=settings.google_ai_api_base_url,
+        x_base_url=settings.x_api_base_url,
     )
     effective_channel_resolver = channel_resolver or build_production_channel_resolver(
         settings=settings,

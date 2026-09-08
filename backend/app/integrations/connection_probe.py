@@ -16,10 +16,12 @@ YOUTUBE_PROBE_CHANNEL_ID = "UC_x5XG1OV2P6uZZ5FSM9Ttw"
 
 
 class ProductionConnectionProbe:
-    """Verify only the provider credentials used by the v1 analysis pipeline.
+    """Check access to a small provider endpoint, not every provider capability.
 
     Steam Store analysis is public in v1, so a stored Steam Web API key is not
     claimed as valid until the richer Steam integration actually consumes it.
+    X checks Usage access only: success does not establish recent-search
+    permission, sufficient credits, or availability of full AI analysis.
     """
 
     def __init__(
@@ -28,11 +30,13 @@ class ProductionConnectionProbe:
         deepseek_base_url: str,
         youtube_base_url: str,
         google_ai_base_url: str,
+        x_base_url: str = "https://api.x.com/2",
         http_client: httpx.Client | None = None,
     ) -> None:
         self._deepseek_base_url = validate_external_base_url(deepseek_base_url)
         self._youtube_base_url = validate_external_base_url(youtube_base_url)
         self._google_ai_base_url = validate_external_base_url(google_ai_base_url)
+        self._x_base_url = validate_external_base_url(x_base_url)
         self._http_client = http_client
 
     def test_connection(self, service: str, secret: str) -> bool:
@@ -54,6 +58,12 @@ class ProductionConnectionProbe:
                 return self._get_succeeded(
                     self._google_ai_base_url,
                     headers={"X-Goog-Api-Key": secret},
+                )
+            if service == "x":
+                return self._get_succeeded(
+                    f"{self._x_base_url}/usage/tweets",
+                    headers={"Authorization": f"Bearer {secret}"},
+                    params={"days": "1"},
                 )
         except httpx.HTTPError:
             return False
