@@ -18,6 +18,7 @@ EXPORTER = BACKEND_ROOT / "scripts" / "export_openapi.py"
 COMMITTED_SCHEMA = BACKEND_ROOT / "openapi.json"
 
 EXPECTED_OPERATIONS = {
+    ("POST", "/api/v2/library/games/steam-import"): "importSteamGameSourceV2",
     (
         "GET",
         "/api/v2/activities/{activity_id}/invitations",

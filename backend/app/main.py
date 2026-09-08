@@ -18,6 +18,8 @@ from app.api.routes import saved_candidate_sets
 from app.api.routes import outreach_drafts
 from app.api.routes import activity_sending
 from app.api.routes import activity_collaboration
+from app.api.routes import steam_import
+from app.integrations.steam import SteamGateway
 from app.api.routes import discovery_planning
 from app.api.routes import discovery_evaluation
 from app.api.routes import jobs as job_routes
@@ -74,6 +76,7 @@ def create_app(
     evaluation_dispatcher=None,
     draft_dispatcher=None,
     activity_send_dispatcher=None,
+    steam_gateway_factory=None,
 ) -> FastAPI:
     configure_request_logging()
     settings = get_settings()
@@ -199,6 +202,8 @@ def create_app(
         )
     )
     app.include_router(discovery_evaluation.create_router(authenticate_workspace, dispatcher=evaluation_dispatcher))
+    app.state.steam_gateway_factory = steam_gateway_factory or (lambda: SteamGateway(base_url=settings.steam_store_base_url))
+    app.include_router(steam_import.create_router(authenticate_workspace))
     app.include_router(activity_outreach.create_router(authenticate_workspace))
     app.include_router(activity_collaboration.create_router(authenticate_workspace))
     app.include_router(saved_candidate_sets.create_router(authenticate_workspace))
