@@ -12,6 +12,12 @@ const bridge: DesktopBridge = {
     list: input => ipcRenderer.invoke('library:list', input),
     detail: input => ipcRenderer.invoke('library:detail', input),
   },
+  games: {
+    list: input => ipcRenderer.invoke('games:list', input),
+    detail: id => ipcRenderer.invoke('games:detail', id),
+    create: input => ipcRenderer.invoke('games:create', input),
+    update: input => ipcRenderer.invoke('games:update', input),
+  },
   openExternal: url => ipcRenderer.invoke('system:open-external', url),
 };
 contextBridge.exposeInMainWorld('desktop', bridge);

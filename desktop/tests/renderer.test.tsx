@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DesktopBridge, Result } from '../src/shared/bridge';
 import type { ListPage, ProfileDetail, ProfileSummary } from '../src/shared/library';
 import { App } from '../src/renderer/App';
+import { gameFixture } from './game-fixtures';
 
 const ok = <T,>(data: T): Result<T> => ({ ok: true, data });
 const failed = (message = 'Connection interrupted'): Result<never> => ({ ok: false, error: { code: 'network_error', message, retryable: true } });
@@ -36,6 +37,12 @@ function bridge(overrides: Partial<DesktopBridge> = {}): DesktopBridge {
       list: vi.fn(async () => ok({ items: [profile('Pixel Harbor')], nextCursor: null })),
       detail: vi.fn(async ({ id }) => ok(detail(id))),
     },
+    games: {
+      list: vi.fn(async () => ok({items:[gameFixture()],total:1,limit:24,offset:0})),
+      detail: vi.fn(async id => ok(gameFixture('A game', id))),
+      create: vi.fn(async () => ok(gameFixture())),
+      update: vi.fn(async () => ok(gameFixture())),
+    },
     openExternal: vi.fn(async () => ok(undefined)),
     ...overrides,
   };
@@ -44,6 +51,106 @@ function start(api = bridge()) { window.desktop = api; render(<App />); return {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); Reflect.deleteProperty(window, 'desktop'); });
 
 describe('desktop renderer', () => {
+  it('repairs same-origin authentication without losing an uncertain creation or replaying after credentials change', async () => {
+    const api = bridge();
+    vi.mocked(api.games.create).mockResolvedValueOnce(failed()).mockResolvedValueOnce({ok:false,error:{code:'workspace_key_invalid',message:'Update your workspace key',retryable:false}});
+    vi.mocked(api.games.detail).mockResolvedValue(ok(gameFixture('Recovered creation')));
+    const {user} = start(api);
+    await screen.findByRole('button',{name:'Open Pixel Harbor'});
+    await user.click(screen.getByRole('button',{name:'Settings'}));
+    await user.clear(screen.getByLabelText('Service URL'));
+    await user.type(screen.getByLabelText('Service URL'),'https://unsubmitted.example.com');
+    await user.click(screen.getByRole('button',{name:'Library'}));
+    await user.click(screen.getByRole('tab',{name:'Games'}));
+    await user.click(await screen.findByRole('button',{name:'New game'}));
+    await user.type(screen.getByRole('textbox',{name:'Name'}),'Recovery draft');
+    await user.click(screen.getByRole('button',{name:'Create game'}));
+    await user.click(await screen.findByRole('button',{name:'Retry creation'}));
+    await screen.findByText('Update your workspace key');
+    await user.click(screen.getByRole('button',{name:'Repair connection'}));
+    expect(await screen.findByRole('heading',{name:'Settings'})).toBeVisible();
+    expect(screen.getByLabelText('Service URL')).toBeDisabled();
+    expect(screen.getByLabelText('Service URL')).toHaveValue('https://workspace.example.com');
+    expect(screen.getByRole('button',{name:'Disconnect'})).toBeDisabled();
+    await user.type(screen.getByLabelText('Workspace key'),'repaired-test-key');
+    await user.click(screen.getByRole('button',{name:'Connect'}));
+    await waitFor(() => expect(api.connection.save).toHaveBeenCalledOnce());
+    await screen.findByText('Connection verified');
+    await user.click(screen.getByRole('button',{name:'Open Library'}));
+    expect(screen.getByRole('textbox',{name:'Name'})).toHaveValue('Recovery draft');
+    expect(screen.getByRole('button',{name:'Retry creation'})).toBeDisabled();
+    await user.click(screen.getByRole('button',{name:'Check Library'}));
+    await user.click(await screen.findByRole('button',{name:'Use this record'}));
+    expect(await screen.findByRole('heading',{name:'Recovered creation'})).toBeVisible();
+    expect(api.games.create).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(api.games.create).mock.calls[0][0]).toEqual(vi.mocked(api.games.create).mock.calls[1][0]);
+  });
+
+  it('keeps an uncertain request replayable when testing unchanged credentials, and retains it through a failed repair', async () => {
+    const api = bridge();
+    vi.mocked(api.games.create).mockResolvedValueOnce(failed()).mockResolvedValueOnce({ok:false,error:{code:'workspace_key_invalid',message:'Repair key',retryable:false}});
+    const {user} = start(api);
+    await screen.findByRole('button',{name:'Open Pixel Harbor'});
+    await user.click(screen.getByRole('tab',{name:'Games'}));
+    await user.click(await screen.findByRole('button',{name:'New game'}));
+    await user.type(screen.getByRole('textbox',{name:'Name'}),'Retained draft');
+    await user.click(screen.getByRole('button',{name:'Create game'}));
+    await user.click(await screen.findByRole('button',{name:'Retry creation'}));
+    await screen.findByText('Repair key');
+    await user.click(screen.getByRole('button',{name:'Settings'}));
+    await user.click(screen.getByRole('button',{name:'Test connection'}));
+    await user.click(await screen.findByRole('button',{name:'Open Library'}));
+    expect(screen.getByRole('button',{name:'Retry creation'})).toBeEnabled();
+    expect(api.connection.save).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button',{name:'Settings'}));
+    vi.mocked(api.connection.test).mockResolvedValueOnce({ok:false,error:{code:'workspace_key_invalid',message:'Key still invalid',retryable:false}});
+    await user.type(screen.getByLabelText('Workspace key'),'still-invalid-test-key');
+    await user.click(screen.getByRole('button',{name:'Connect'}));
+    await within(screen.getByRole('region',{name:'Settings page'})).findByText('Key still invalid');
+    expect(screen.getByDisplayValue('Retained draft')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Workspace key'),'corrected-test-key');
+    await user.click(screen.getByRole('button',{name:'Connect'}));
+    await user.click(await screen.findByRole('button',{name:'Open Library'}));
+    expect(screen.getByRole('textbox',{name:'Name'})).toHaveValue('Retained draft');
+    expect(screen.getByRole('button',{name:'Retry creation'})).toBeDisabled();
+    expect(api.games.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('guards both workspace navigation and Library tabs while a game draft is dirty', async () => {
+    const {api,user} = start();
+    await screen.findByRole('button',{name:'Open Pixel Harbor'});
+    await user.click(screen.getByRole('tab',{name:'Games'}));
+    await user.click(await screen.findByRole('button',{name:'Open A game'}));
+    await user.click(await screen.findByRole('button',{name:'Edit game'}));
+    await user.type(screen.getByRole('textbox',{name:'Description'}),'Keep this draft');
+    await user.click(screen.getByRole('button',{name:'Settings'}));
+    expect(screen.getByRole('dialog',{name:'Unsaved game changes'})).toBeVisible();
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('textbox',{name:'Description'})).toHaveValue('Keep this draft');
+    await user.click(screen.getByRole('tab',{name:'Creators'}));
+    expect(screen.getByRole('tab',{name:'Games'})).toHaveAttribute('aria-selected','true');
+    await user.click(screen.getByRole('button',{name:'Discard changes'}));
+    expect(screen.getByRole('button',{name:'Open Pixel Harbor'})).toBeVisible();
+    expect(api.games.update).not.toHaveBeenCalled();
+    expect(api.library.list).toHaveBeenCalledOnce();
+  });
+
+  it('does not navigate away or clear the game draft when Save and leave fails', async () => {
+    const api = bridge(); vi.mocked(api.games.update).mockResolvedValue({ok:false,error:{code:'request_invalid',message:'Review this game',retryable:false}});
+    const {user} = start(api);
+    await screen.findByRole('button',{name:'Open Pixel Harbor'});
+    await user.click(screen.getByRole('tab',{name:'Games'}));
+    await user.click(await screen.findByRole('button',{name:'Open A game'}));
+    await user.click(await screen.findByRole('button',{name:'Edit game'}));
+    await user.type(screen.getByRole('textbox',{name:'Developer'}),'Draft Studio');
+    await user.click(screen.getByRole('button',{name:'Settings'}));
+    await user.click(screen.getByRole('button',{name:'Save and leave'}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Review this game');
+    expect(screen.getByRole('textbox',{name:'Developer'})).toHaveValue('Draft Studio');
+    expect(screen.queryByRole('heading',{name:'Settings'})).not.toBeInTheDocument();
+    expect(api.games.update).toHaveBeenCalledWith({id:gameFixture().id,data:{expected_revision:0,developer:'Draft Studio'}});
+  });
+
   it('requires the desktop bridge and never fabricates a connected browser demo', async () => {
     render(<App />);
     expect(await screen.findByRole('heading', { name: 'Open the desktop app' })).toBeVisible();
@@ -70,6 +177,7 @@ describe('desktop renderer', () => {
   it('submits search explicitly and preserves separate tab queries and pages', async () => {
     const api = bridge();
     vi.mocked(api.library.list).mockImplementation(async input => ok({ items: [profile(`${input.kind}:${input.query || 'all'}`, undefined, input.kind)], nextCursor: null }));
+    vi.mocked(api.games.list).mockImplementation(async input => ok({items:[gameFixture(`games:${input.query || 'all'}`)],total:1,limit:24,offset:0}));
     const { user } = start(api);
     await screen.findByRole('button', { name: 'Open creators:all' });
     const search = screen.getByRole('searchbox', { name: 'Search creators' });
@@ -84,7 +192,9 @@ describe('desktop renderer', () => {
     await user.click(screen.getByRole('tab', { name: 'Creators' }));
     expect(screen.getByRole('searchbox', { name: 'Search creators' })).toHaveValue('cozy');
     expect(screen.getByRole('button', { name: 'Open creators:cozy' })).toBeVisible();
-    expect(api.library.list).toHaveBeenCalledTimes(4);
+    expect(api.library.list).toHaveBeenCalledTimes(2);
+    expect(api.games.list).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(api.library.list).mock.calls.every(([input]) => input.kind === 'creators')).toBe(true);
   });
 
   it('does not let an older search replace the current results', async () => {
@@ -200,6 +310,7 @@ describe('desktop renderer', () => {
 
   it('keeps tab controls keyboard accessible and clears submitted filters explicitly', async () => {
     const api = bridge(); vi.mocked(api.library.list).mockImplementation(async input => ok({ items: input.query ? [] : [profile(input.kind, input.kind, input.kind)], nextCursor: null }));
+    vi.mocked(api.games.list).mockImplementation(async input => ok({items:input.query?[]:[gameFixture('games')],total:input.query?0:1,limit:24,offset:0}));
     const { user } = start(api); await screen.findByRole('button', { name: 'Open creators' });
     screen.getByRole('tab', { name: 'Creators' }).focus();
     await user.keyboard('{ArrowRight}');
@@ -207,8 +318,8 @@ describe('desktop renderer', () => {
     expect(screen.getByRole('tab', { name: 'Games' })).toHaveAttribute('aria-selected', 'true');
     await screen.findByRole('button', { name: 'Open games' });
     await user.type(screen.getByRole('searchbox', { name: 'Search games' }), 'unmatched{Enter}');
-    expect(await screen.findByRole('heading', { name: 'No matching profiles' })).toBeVisible();
-    const empty = screen.getByRole('heading', { name: 'No matching profiles' }).parentElement!;
+    expect(await screen.findByRole('heading', { name: 'No matching games' })).toBeVisible();
+    const empty = screen.getByRole('heading', { name: 'No matching games' }).parentElement!;
     await user.click(within(empty).getByRole('button', { name: 'Clear filters' }));
     expect(await screen.findByRole('button', { name: 'Open games' })).toBeVisible();
     expect(screen.getByRole('searchbox', { name: 'Search games' })).toHaveValue('');
@@ -234,7 +345,8 @@ describe('desktop renderer', () => {
     expect(screen.getByRole('checkbox', { name: 'Saved only' })).toBeChecked();
     expect(screen.getByRole('button', { name: 'Open First saved' })).toBeVisible();
     expect(screen.getByRole('button', { name: 'Open Second saved' })).toBeVisible();
-    expect(api.library.list).toHaveBeenCalledTimes(4);
+    expect(api.library.list).toHaveBeenCalledTimes(3);
+    expect(api.games.list).toHaveBeenCalledOnce();
     expect(vi.mocked(api.library.list).mock.calls[2][0]).toMatchObject({ onlyCollection: true, cursor: 'saved-page-2' });
   });
 

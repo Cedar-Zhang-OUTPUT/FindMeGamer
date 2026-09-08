@@ -1,4 +1,5 @@
 import type { ListProfilesInput, ProfileDetail, ProfileKind, ListPage } from './library';
+import type { CreateGameInput, GameDetail, GameListInput, GamePage, UpdateGameInput } from './games';
 
 export interface ConnectionStatus {
   serviceUrl: string;
@@ -21,6 +22,12 @@ export interface DesktopBridge {
   library: {
     list(input: ListProfilesInput): Promise<Result<ListPage>>;
     detail(input: { kind: ProfileKind; id: string }): Promise<Result<ProfileDetail>>;
+  };
+  games: {
+    list(input: GameListInput): Promise<Result<GamePage>>;
+    detail(id: string): Promise<Result<GameDetail>>;
+    create(input: CreateGameInput): Promise<Result<GameDetail>>;
+    update(input: UpdateGameInput): Promise<Result<GameDetail>>;
   };
   openExternal(url: string): Promise<Result<void>>;
 }

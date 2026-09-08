@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { WorkspaceGateway } from '../src/main/gateway';
+import { publicResult } from '../src/main/transport';
 
 function fixture() {
   let connection: {serviceUrl: string; key: string} | null = {serviceUrl: 'https://workspace.test', key: 'test-key'};
@@ -62,5 +63,44 @@ describe('connection changes', () => {
     await gateway.clear();
     complete();
     await expect(pending).rejects.toMatchObject({code:'connection_changed'});
+  });
+  it.each([true, false])('discards late Game save success/failure after a workspace change: %s', async success => {
+    let complete!: (value: Response) => void;
+    const fetcher = () => new Promise<Response>(resolve => { complete = resolve; });
+    const gateway = new WorkspaceGateway(fixture(), fetcher);
+    const pending = gateway.gameRequest({ method: 'POST', path: '/api/v2/library/games', body: { name: 'Game' }, idempotencyKey: 'new-game-123' });
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await gateway.save({ serviceUrl: 'https://new-workspace.test', key: 'new-key' });
+    complete(new Response('{}', { status: success ? 201 : 401 }));
+    await expect(pending).rejects.toMatchObject({ code: 'connection_changed', retryable: false });
+  });
+  it('disconnected Game writes never reach the network', async () => {
+    let count = 0;
+    const gateway = new WorkspaceGateway(fixture(), async () => { count++; return new Response('{}'); });
+    await gateway.clear();
+    await expect(gateway.gameRequest({ method: 'POST', path: '/api/v2/library/games', body: { name: 'Game' }, idempotencyKey: 'new-game-123' })).rejects.toMatchObject({ code: 'not_connected' });
+    expect(count).toBe(0);
+  });
+  it('reports credential-read failures as rejected Game writes without exposing storage errors', async () => {
+    let count = 0;
+    const store = fixture();
+    store.getConnection = async () => { throw new Error('Keychain denied: secret-workspace-key'); };
+    const gateway = new WorkspaceGateway(store, async () => { count++; return new Response('{}'); });
+    const result = await publicResult(() => gateway.gameRequest({ method: 'POST', path: '/api/v2/library/games', body: { name: 'Game' }, idempotencyKey: 'new-game-123' }));
+    expect(count).toBe(0);
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: 'secure_storage_unavailable',
+        message: 'Could not read your workspace key. Check Keychain access or reconnect in Settings.',
+        retryable: false,
+      },
+    });
+  });
+  it('keeps failures after Game write dispatch uncertain', async () => {
+    let count = 0;
+    const gateway = new WorkspaceGateway(fixture(), async () => { count++; throw new Error('Connection lost'); });
+    await expect(gateway.gameRequest({ method: 'POST', path: '/api/v2/library/games', body: { name: 'Game' }, idempotencyKey: 'new-game-123' })).rejects.toMatchObject({ code: 'save_outcome_unknown', retryable: false });
+    expect(count).toBe(1);
   });
 });

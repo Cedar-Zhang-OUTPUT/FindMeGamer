@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { previewDocument } from '../src/shared/mail-preview';
+import { gameFixture } from '../tests/game-fixtures';
 
 const gameId = '11111111-1111-4111-8111-111111111111';
 const creatorId = '22222222-2222-4222-8222-222222222222';
@@ -32,9 +33,9 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
     if (url.pathname === '/api/v1/session') response.end(JSON.stringify({ workspace_name: 'LOCAL TEST FIXTURE', api_version: 'v1', service_connections: {} }));
     else if (url.pathname === '/api/v1/profiles/creators' && failCreators) response.writeHead(503).end('{}');
     else if (url.pathname === '/api/v1/profiles/creators') response.end(JSON.stringify({ items: [profile('creator')], next_cursor: null }));
-    else if (url.pathname === '/api/v1/profiles/games') response.end(JSON.stringify({ items: [profile('game')], next_cursor: null }));
+    else if (url.pathname === '/api/v2/library/games') response.end(JSON.stringify({ items: [gameFixture('Test Fixture — Forest Signal', gameId)], total:1,offset:0,limit:24 }));
     else if (url.pathname === `/api/v1/profiles/creators/${creatorId}`) response.end(JSON.stringify(profile('creator')));
-    else if (url.pathname === `/api/v1/profiles/games/${gameId}`) response.end(JSON.stringify(profile('game')));
+    else if (url.pathname === `/api/v2/library/games/${gameId}`) response.end(JSON.stringify(gameFixture('Test Fixture — Forest Signal', gameId)));
     else response.writeHead(404).end('{}');
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -43,7 +44,9 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
   const environment = Object.fromEntries(Object.entries(process.env).filter(([name, value]) => value !== undefined && !/^(https?_proxy|all_proxy|no_proxy|ELECTRON_RUN_AS_NODE)$/i.test(name))) as Record<string, string>;
   let app: ElectronApplication | undefined;
   try {
-    app = await electron.launch({ args: ['.', `--user-data-dir=${userData}`], cwd: process.cwd(), env: environment, chromiumSandbox: true });
+    const executablePath = process.env.FMG_PACKAGED_EXECUTABLE;
+    app = await electron.launch({ args: [...(executablePath ? [] : ['.']), `--user-data-dir=${userData}`], ...(executablePath ? {executablePath} : {}), cwd: process.cwd(), env: environment, chromiumSandbox: true });
+    if (executablePath) expect(await app.evaluate(({app}) => app.isPackaged)).toBe(true);
     const page = await app.firstWindow();
     await expect(page.getByRole('heading', { name: 'Connect your workspace' })).toBeVisible();
     await page.getByRole('button', { name: 'Open Settings', exact: true }).click();
@@ -66,9 +69,9 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
     await page.getByRole('button', {name: 'Library', exact: true}).click();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 660));
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({path:'output/playwright/library-narrow.png'});
+    await page.screenshot({path:'/tmp/fmg-library-narrow.png'});
     const boundary = await page.evaluate(() => ({node: typeof (window as any).require, process: typeof (window as any).process, keyInDOM: document.body.innerText.includes('local-fixture-only-not-a-production-key'), methods: Object.keys(window.desktop).sort(), storage: localStorage.length}));
-    expect(boundary).toEqual({node:'undefined',process:'undefined',keyInDOM:false,methods:['connection','library','openExternal'],storage:0});
+    expect(boundary).toEqual({node:'undefined',process:'undefined',keyInDOM:false,methods:['connection','games','library','openExternal'],storage:0});
     const stored = await readFile(path.join(userData, 'credentials.json'), 'utf8');
     expect(stored).not.toContain(testKey);
     const denied = await page.evaluate(() => window.desktop.openExternal('file:///etc/passwd'));

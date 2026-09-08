@@ -1,9 +1,10 @@
-import { app, BrowserWindow, ipcMain, Menu, net, protocol, safeStorage, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, safeStorage, session, shell } from 'electron';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { CredentialStore } from './credential-store';
 import { WorkspaceGateway } from './gateway';
 import { LibraryClient, LibraryClientError } from './library-client';
+import { GameClient } from './game-client';
 import { APP_URL, CONTENT_POLICY, externalUrl, isTrustedFrame, resourcePath } from './policies';
 import { PublicFailure, publicResult } from './transport';
 
@@ -22,6 +23,7 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   });
   const gateway = new WorkspaceGateway(store, (url, init) => network.fetch(url, init));
   const library = new LibraryClient((route, query) => gateway.request(route, query));
+  const games = new GameClient(input => gateway.gameRequest(input));
   const rendererSession = session.fromPartition('renderer');
   rendererSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
   rendererSession.setPermissionCheckHandler(() => false);
@@ -45,6 +47,16 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', event => event.preventDefault());
   window.webContents.on('will-attach-webview', event => event.preventDefault());
+  window.webContents.on('will-prevent-unload', event => {
+    const choice = dialog.showMessageBoxSync(window, {
+      type: 'question', buttons: ['Keep editing', 'Discard and leave'], defaultId: 0, cancelId: 0,
+      message: 'Leave with unsaved changes?',
+      detail: 'Unsaved edits and unresolved saves will be lost from this window. A submitted save may still complete on the server.',
+      noLink: true,
+    });
+    // Electron interprets preventing this event as explicit permission to unload.
+    if (choice === 1) event.preventDefault();
+  });
   const channels: string[] = [];
   function handle(name: string, action: (input: any) => Promise<unknown>) {
     channels.push(name);
@@ -70,6 +82,10 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   }));
   handle('library:list', input => library.list(input));
   handle('library:detail', input => library.detail(input));
+  handle('games:list', input => games.list(input));
+  handle('games:detail', input => games.detail(input));
+  handle('games:create', input => games.create(input));
+  handle('games:update', input => games.update(input));
   handle('system:open-external', async value => {
     let url: string;
     try { url = externalUrl(value); } catch { throw new PublicFailure('invalid_link', 'Only valid HTTPS links can be opened.'); }

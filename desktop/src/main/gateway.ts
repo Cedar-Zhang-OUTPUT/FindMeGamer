@@ -1,6 +1,6 @@
 import type { ConnectionInput, ConnectionStatus } from '../shared/bridge';
-import type { Connection, Fetcher } from './transport';
-import { authenticatedGet, PublicFailure } from './transport';
+import type { Connection, Fetcher, GameRequest } from './transport';
+import { authenticatedGameRequest, authenticatedGet, PublicFailure } from './transport';
 import { normalizeServiceUrl } from './policies';
 
 interface Store {
@@ -44,18 +44,35 @@ export class WorkspaceGateway {
       return authenticatedGet(this.fetcher, connection, route, query);
     });
   }
-  async runCurrent<T>(action: () => Promise<T>): Promise<T> {
+  async gameRequest(input: GameRequest): Promise<unknown> {
+    const isWrite = input?.method !== 'GET';
+    return this.runCurrent(async () => {
+      const generation = this.generation;
+      let connection: Connection | null;
+      try { connection = await this.store.getConnection(); }
+      catch {
+        // Credential access failed before dispatch, so this save can be retried after recovery.
+        throw new PublicFailure('secure_storage_unavailable', 'Could not read your workspace key. Check Keychain access or reconnect in Settings.');
+      }
+      if (!connection) throw new PublicFailure('not_connected', 'Connect your workspace in Settings.');
+      this.assertGeneration(generation, !isWrite);
+      return authenticatedGameRequest(this.fetcher, connection, input);
+    }, { isWrite });
+  }
+  async runCurrent<T>(action: () => Promise<T>, options: { isWrite?: boolean } = {}): Promise<T> {
     const generation = this.generation;
     try {
       const result = await action();
-      this.assertGeneration(generation);
+      this.assertGeneration(generation, !options.isWrite);
       return result;
     } catch (error) {
-      this.assertGeneration(generation);
+      this.assertGeneration(generation, !options.isWrite);
       throw error;
     }
   }
-  private assertGeneration(generation: number) {
-    if (generation !== this.generation) throw new PublicFailure('connection_changed', 'The workspace connection changed. Reload this page.', true);
+  private assertGeneration(generation: number, retryable = true) {
+    if (generation !== this.generation) throw new PublicFailure('connection_changed', retryable
+      ? 'The workspace connection changed. Reload this page.'
+      : 'The workspace changed while saving. Check the original workspace before saving again.', retryable);
   }
 }

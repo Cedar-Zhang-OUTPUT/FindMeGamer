@@ -39,10 +39,12 @@ button { -webkit-app-region: no-drag; }
 .sidebar-connection { display: flex; align-items: center; gap: 7px; margin: 0 10px 14px; font-size: 11px; color: #e0e9f6; }
 .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #8b95a1; flex: 0 0 auto; }
 .status-dot.is-connected { background: #79e3b1; }
+.connection-details { margin-top: 14px; font-size: 12px; color: var(--muted); }
+.connection-details summary { cursor: pointer; padding: 6px 0; }
+.connection-details p { margin-top: 8px; }
 .main-frame { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
 .landscape-header { height: 154px; flex: 0 0 auto; position: relative; background: #e5a38a url('/assets/seaside-sunset.png') center 57% / cover; border-bottom: 3px solid #fbb168; -webkit-app-region: drag; }
 .landscape-shade { position: absolute; inset: 0; background: linear-gradient(90deg, transparent 65%, #061b3e16); }
-.header-edition { position: absolute; right: 24px; bottom: 17px; background: #fff9f1ed; color: var(--navy); padding: 8px 11px; border-radius: 4px; font-size: 10px; letter-spacing: 1.7px; font-weight: 700; box-shadow: 0 2px 10px #061b3e1a; }
 .main-scroll { overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scrollbar-gutter: stable; }
 .page-content { max-width: 1440px; padding: 30px 32px 44px; margin: 0 auto; }
 .page-heading { display: flex; gap: 18px; align-items: center; justify-content: space-between; margin-bottom: 26px; }
@@ -182,8 +184,7 @@ button { -webkit-app-region: no-drag; }
 .connection-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 7px; }
 .disconnect-action { margin-left: auto; color: #944255; font-size: 12px; }
 .verified-state { margin-top: 24px; padding-top: 19px; border-top: 1px solid #e3ebe6; display: flex; align-items: center; gap: 11px; color: var(--success); }
-.verified-state > div { display: flex; flex: 1; flex-direction: column; gap: 4px; }
-.verified-state strong { font-size: 12px; font-weight: 600; }
+.verified-state strong { flex: 1; font-size: 12px; font-weight: 600; }
 .verified-state span { font-size: 11px; color: var(--muted); }
 .verified-state .text-button { font-size: 12px; }
 .settings-footnote { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; margin-top: 20px; }
