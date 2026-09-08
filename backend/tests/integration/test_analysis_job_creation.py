@@ -1130,16 +1130,22 @@ def test_reanalyze_with_existing_profile_still_returns_active_job(
     assert response.json()["id"] == str(active.id)
 
 
-def test_handle_resolves_before_session_and_dedupes_by_channel_id(
+def test_collection_policy_read_closes_before_handle_and_dedupes_by_channel_id(
     session: Session, workspace_access_key: str
 ) -> None:
-    resolver = FakeChannelResolver("UCresolved123")
+    class PolicyAwareResolver(FakeChannelResolver):
+        def resolve_channel(self, target):
+            assert not session.in_transaction(), "policy transaction spans provider I/O"
+            return super().resolve_channel(target)
+
+    resolver = PolicyAwareResolver("UCresolved123")
     session_opened = False
 
     @contextmanager
     def ordered_session_factory() -> Iterator[Session]:
         nonlocal session_opened
-        assert resolver.targets, "database session opened before Handle resolution"
+        if session_opened:
+            assert resolver.targets, "job session opened before Handle resolution"
         session_opened = True
         yield session
 
@@ -1171,7 +1177,7 @@ def test_handle_resolves_before_session_and_dedupes_by_channel_id(
     )
 
 
-def test_unavailable_handle_resolver_fails_safely_without_database_work(
+def test_unavailable_handle_resolver_fails_after_readonly_collection_policy(
     session: Session, workspace_access_key: str
 ) -> None:
     resolver = FakeChannelResolver(error=ChannelResolutionUnavailable("API key=secret"))
@@ -1206,7 +1212,7 @@ def test_unavailable_handle_resolver_fails_safely_without_database_work(
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "channel_resolution_unavailable"
     assert "secret" not in str(response.json())
-    assert session_calls == 0
+    assert session_calls == 1  # Shared policy read only; no job transaction.
 
 
 @pytest.mark.parametrize(
@@ -1273,7 +1279,7 @@ def test_handle_permanent_failures_are_nonretryable_and_safely_classified(
     assert response.status_code == status_code
     assert response.json()["error"]["code"] == code
     assert response.json()["error"]["retryable"] is False
-    assert session_calls == 0
+    assert session_calls == 1  # Shared policy read only; no job transaction.
 
 
 def test_unexpected_handle_failure_stays_internal_and_safe(
@@ -1312,7 +1318,7 @@ def test_unexpected_handle_failure_stays_internal_and_safe(
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "internal_error"
     assert "master-key" not in str(response.json())
-    assert session_calls == 0
+    assert session_calls == 1  # Shared policy read only; no job transaction.
 
 
 def test_default_production_resolver_does_not_treat_handle_as_channel_id(

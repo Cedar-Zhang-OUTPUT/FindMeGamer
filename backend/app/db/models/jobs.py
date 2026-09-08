@@ -199,6 +199,9 @@ class AnalysisJob(TimestampMixin, Base):
     error_code: Mapped[str | None] = mapped_column(String(128))
     error_message: Mapped[str | None] = mapped_column(Text)
     retryable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    collection_paused: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     correlation_id: Mapped[str | None] = mapped_column(String(128))
     profile_id: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     result_payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)

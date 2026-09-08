@@ -12,6 +12,7 @@ from app.core.database import session_scope
 from app.db.models.discovery import DiscoveryAttempt, DiscoveryBatch, DiscoveryCandidate
 from app.repositories.discovery import invalidate_expired, lock_query
 from app.repositories.settings import SettingsRepository
+from app.repositories.collection_settings import collection_enabled
 from app.schemas.discovery import DiscoveryRequest
 from app.workers.celery_app import celery_app
 
@@ -62,7 +63,6 @@ def finish(query, batch, reason):
         "result_limit",
         "providers_finished",
         "total_budget_exhausted",
-        "no_available_sources",
     ):
         query.status = "completed"
     else:
@@ -96,6 +96,20 @@ def reserve(session, batch_id):
     for provider in limits["providers"]:
         platform = provider["platform"]
         state = dict(states.get(platform, {}))
+        state.pop("blocked_reason", None)
+        states[platform] = state
+        if platform not in ("youtube", "x"):
+            states[platform] = {
+                **state,
+                "status": "not_supported",
+                "issues": [{"code": "not_supported"}],
+            }
+            continue
+        if state.get("status") != "exhausted" and not collection_enabled(
+            session, platform
+        ):
+            states[platform] = {**state, "blocked_reason": "collection_disabled"}
+            continue
         if state.get("status") in (
             "exhausted",
             "failed",
@@ -106,12 +120,6 @@ def reserve(session, batch_id):
             "unavailable",
         ):
             continue
-        if platform not in ("youtube", "x"):
-            states[platform] = {
-                "status": "not_supported",
-                "issues": [{"code": "not_supported"}],
-            }
-            continue
         raw = dict(provider)
         raw["cursor"] = state.get("cursor")
         request = DiscoveryRequest.model_validate(raw)
@@ -119,7 +127,12 @@ def reserve(session, batch_id):
     query.provider_states = states
     if request is None:
         statuses = {state.get("status") for state in states.values()}
-        if "failed" in statuses:
+        if any(
+            state.get("blocked_reason") == "collection_disabled"
+            for state in states.values()
+        ):
+            reason = "collection_disabled"
+        elif "failed" in statuses:
             reason = "provider_failed"
         elif "partial" in statuses:
             reason = "source_partial"

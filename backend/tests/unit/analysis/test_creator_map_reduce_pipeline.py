@@ -258,7 +258,13 @@ def _twenty_video_source():
 
 
 def _pipeline(
-    *, source=None, ai=None, checkpoints=None, pages=None, email_research=None
+    *,
+    source=None,
+    ai=None,
+    checkpoints=None,
+    pages=None,
+    email_research=None,
+    acquisition_guard=None,
 ):
     service = FakeService()
     source = source or _twenty_video_source()
@@ -282,8 +288,32 @@ def _pipeline(
         checkpoints=checkpoints,
         max_parallel_calls=5,
         email_research=email_research,
+        **({"acquisition_guard": acquisition_guard} if acquisition_guard else {}),
     )
     return pipeline, service, youtube, artifacts, ai, checkpoints
+
+
+def test_collection_pause_after_source_keeps_checkpoint_and_resumes_without_refetch():
+    from app.repositories.collection_settings import CollectionPaused
+
+    boundaries = []
+    enabled = True
+
+    def guard():
+        boundaries.append("boundary")
+        if not enabled or len(boundaries) == 2:
+            raise CollectionPaused()
+
+    pipeline, service, youtube, artifacts, ai, checkpoints = _pipeline(
+        acquisition_guard=guard
+    )
+    with pytest.raises(CollectionPaused):
+        pipeline.run(service.job_id)
+    assert SOURCE_NODE_KEY in checkpoints.values
+    assert service.publication is None
+    assert ai.calls == []
+    assert pipeline.run(service.job_id) == service.profile_id
+    assert youtube.calls == [("UCcreator123", 50)]
 
 
 def test_contact_and_dependent_brief_checkpoint_versions_are_v2() -> None:

@@ -11,6 +11,8 @@ from app.core.errors import APIError
 from app.db.models.settings import ServiceSecret
 from app.repositories.settings import SettingsRepository
 from app.schemas.settings import (
+    CollectionSettingUpdate,
+    CollectionSettingsResponse,
     ConnectionSecretUpdate,
     ConnectionStatusResponse,
     ReanalysisSettingsResponse,
@@ -73,6 +75,32 @@ def create_router(
         tags=["settings"],
         dependencies=[Depends(authenticate_workspace)],
     )
+
+    @router.get(
+        "/collection",
+        response_model=CollectionSettingsResponse,
+        operation_id="getCollectionSettings",
+    )
+    def read_collection(database_session: Session = Depends(get_session)):
+        from app.repositories.collection_settings import collection_settings
+
+        return collection_settings(database_session)
+
+    @router.put(
+        "/collection/{platform}",
+        response_model=CollectionSettingsResponse,
+        operation_id="updateCollectionSettings",
+    )
+    def set_collection(
+        platform: str,
+        update: CollectionSettingUpdate,
+        database_session: Session = Depends(get_session),
+    ):
+        from app.repositories.collection_settings import update_collection
+
+        response = update_collection(database_session, platform, update.enabled)
+        database_session.commit()
+        return response
 
     @router.get(
         "/reanalysis",

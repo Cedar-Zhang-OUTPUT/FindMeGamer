@@ -301,6 +301,10 @@ class JobsRepository:
         active = self.active_job(target)
         if active is not None:
             return JobCreationResult(job=active)
+        if target.target_type is TargetType.CREATOR:
+            from app.repositories.collection_settings import require_collection
+
+            require_collection(self._session, "youtube")
         job = AnalysisJob(
             target_type=target.target_type,
             canonical_target_id=target.canonical_id,
@@ -325,6 +329,9 @@ class JobsRepository:
         active = self.active_job(target)
         if active is not None:
             return JobCreationResult(job=active)
+        from app.repositories.collection_settings import require_collection
+
+        require_collection(self._session, "youtube")
         job = AnalysisJob(
             target_type=TargetType.CREATOR,
             canonical_target_id=target.canonical_id,
@@ -351,6 +358,10 @@ class JobsRepository:
         active = self.active_job(target)
         if active is not None:
             return JobCreationResult(job=active)
+        if target.target_type is TargetType.CREATOR:
+            from app.repositories.collection_settings import require_collection
+
+            require_collection(self._session, "youtube")
         job = AnalysisJob(
             target_type=source.target_type,
             canonical_target_id=source.canonical_target_id,

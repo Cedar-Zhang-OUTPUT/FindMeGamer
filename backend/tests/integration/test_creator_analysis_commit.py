@@ -412,7 +412,7 @@ def test_publication_uses_canonical_settings_when_rogue_row_exists(
                 session.delete(rogue)
 
 
-def test_publication_fails_when_canonical_settings_are_missing_even_with_rogue_row(
+def test_analysis_fails_before_acquisition_when_canonical_settings_missing_with_rogue_row(
     committed_factory,
 ) -> None:
     rogue_id = uuid4()
@@ -424,7 +424,7 @@ def test_publication_fails_when_canonical_settings_are_missing_even_with_rogue_r
     try:
         job_id = _job(committed_factory)
 
-        with pytest.raises(PermanentIntegrationError, match="shared_settings_missing"):
+        with pytest.raises(RuntimeError, match="shared settings row is missing"):
             _pipeline(committed_factory).run(job_id)
     finally:
         with committed_factory.begin() as session:

@@ -50,6 +50,9 @@ EXPECTED_OPERATIONS = {
     ("GET", "/health/ready"): "checkReadiness",
     ("GET", "/api/v1/session"): "validateSession",
     ("GET", "/api/v1/settings/reanalysis"): "getReanalysisSettings",
+    ("GET", "/api/v1/settings/collection"): "getCollectionSettings",
+    ("PUT", "/api/v1/settings/collection/{platform}"): "updateCollectionSettings",
+    ("POST", "/api/v1/jobs/analysis/{job_id}/resume"): "resumeCollectionAnalysisJob",
     ("PATCH", "/api/v1/settings/reanalysis"): "updateReanalysisSettings",
     (
         "GET",

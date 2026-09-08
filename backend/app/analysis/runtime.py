@@ -149,6 +149,12 @@ class ProductionAnalysisRuntime:
         self._session_factory = session_factory
         self._secret_provider = secret_provider
 
+    def _guard_creator_collection(self):
+        from app.repositories.collection_settings import guard_collection
+
+        with self._session_factory() as session:
+            guard_collection(session, "youtube")
+
     @contextmanager
     def pipeline_for(self, target_type: TargetType):
         secrets_by_service: dict[str, str] = {}
@@ -205,6 +211,7 @@ class ProductionAnalysisRuntime:
                         else None
                     )
                     yield CreatorMapReducePipeline(
+                        acquisition_guard=self._guard_creator_collection,
                         service=CreatorAnalysisService(
                             session_factory=self._session_factory
                         ),

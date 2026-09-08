@@ -138,6 +138,9 @@ class ProfilesRepository:
         )
 
     def list_due_profiles(self, *, now: datetime, limit: int) -> list[DueProfile]:
+        from app.repositories.collection_settings import collection_enabled
+
+        youtube_enabled = collection_enabled(self._session, "youtube")
         active_game = (
             select(AnalysisJob.id)
             .where(
@@ -178,6 +181,7 @@ class ProfilesRepository:
             ).where(
                 CreatorProfile.next_analysis_at.is_not(None),
                 CreatorProfile.platform == "youtube",
+                literal(youtube_enabled),
                 CreatorProfile.youtube_channel_id.is_not(None),
                 CreatorProfile.next_analysis_at <= now,
                 ~active_creator,

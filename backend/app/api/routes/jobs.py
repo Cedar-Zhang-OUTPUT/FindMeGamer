@@ -37,7 +37,7 @@ from app.core.idempotency import (
     request_hash,
     validate_idempotency_key,
 )
-from app.db.models.enums import JobStatus
+from app.db.models.enums import JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
 from app.db.models.jobs import acquire_job_change_lock
@@ -184,6 +184,9 @@ def project_analysis_job(
         if error.code == "analysis_job_result_invalid":
             raise _invalid_job_result() from None
         raise
+    from app.repositories.collection_settings import analysis_waiting_state
+
+    waiting_reason, resume_available = analysis_waiting_state(database_session, job)
     return AnalysisJobResponse(
         id=job.id,
         target_type=job.target_type,
@@ -202,6 +205,8 @@ def project_analysis_job(
         updated_at=job.updated_at,
         started_at=job.started_at,
         completed_at=job.completed_at,
+        waiting_reason=waiting_reason,
+        resume_available=resume_available,
     )
 
 
@@ -314,6 +319,8 @@ def _dispatch_committed_job(
     dispatcher: JobDispatcher,
     session_factory: SessionFactory,
     failure_clock: FailureClock,
+    allow_running: bool = False,
+    fresh_resume: bool = False,
 ) -> JSONResponse:
     body = committed.body
     if body.get("outcome") != "job":
@@ -337,6 +344,18 @@ def _dispatch_committed_job(
                 code="analysis_job_result_invalid",
                 message="The Analysis Job result is invalid.",
             )
+        if allow_running and persisted.status in (JobStatus.QUEUED, JobStatus.RUNNING):
+            if not fresh_resume and not persisted.collection_paused:
+                current = project_analysis_job(database_session, persisted).model_dump(
+                    mode="json"
+                )
+                database_session.commit()
+                return _json_response(CommittedResponse(committed.status_code, current))
+            from app.repositories.collection_settings import require_collection
+
+            require_collection(database_session, "youtube")
+            persisted.collection_paused = False
+            database_session.flush()
         current_body = project_analysis_job(database_session, persisted).model_dump(
             mode="json"
         )
@@ -345,7 +364,9 @@ def _dispatch_committed_job(
             job_id=job_id,
             response_body=current_body,
         )
-        if persisted.status is not JobStatus.QUEUED:
+        if persisted.status is not JobStatus.QUEUED and not (
+            allow_running and persisted.status is JobStatus.RUNNING
+        ):
             database_session.commit()
             return _json_response(
                 CommittedResponse(committed.status_code, current_body)
@@ -356,6 +377,21 @@ def _dispatch_committed_job(
         dispatcher.dispatch(job_id)
         return _json_response(committed)
     except Exception:
+        if allow_running:
+            with session_factory() as paused_session:
+                paused = JobsRepository(paused_session).get_job_for_update(job_id)
+                if paused is not None and paused.status in (
+                    JobStatus.QUEUED,
+                    JobStatus.RUNNING,
+                ):
+                    paused.collection_paused = True
+                paused_session.commit()
+            raise APIError(
+                status_code=503,
+                code="analysis_queue_unavailable",
+                message="Analysis could not be queued. Please resume again.",
+                retryable=True,
+            ) from None
         from app.workers.analysis_tasks import (
             QUEUE_FAILURE_MESSAGE,
             TerminalFailure,
@@ -709,6 +745,12 @@ def create_router(
         idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
     ) -> JSONResponse:
         key = _validated_idempotency_key(idempotency_key)
+        if payload.target_type is TargetType.CREATOR:
+            from app.repositories.collection_settings import require_collection
+
+            with session_factory() as collection_session:
+                require_collection(collection_session, "youtube")
+                collection_session.commit()
         try:
             target = resolve_target(payload.target_type, payload.url, resolver)
         except InvalidTarget:
@@ -872,6 +914,72 @@ def create_router(
             dispatcher=effective_dispatcher,
             session_factory=session_factory,
             failure_clock=failure_clock,
+        )
+
+    @router.post(
+        "/analysis/{job_id}/resume",
+        response_model=AnalysisJobResponse,
+        operation_id="resumeCollectionAnalysisJob",
+    )
+    def resume_collection_job(
+        job_id: UUID, idempotency_key: Annotated[str, Header(alias="Idempotency-Key")]
+    ):
+        key = _validated_idempotency_key(idempotency_key)
+        path = f"/api/v1/jobs/analysis/{job_id}/resume"
+        digest = request_hash(
+            method="POST", path=path, canonical_request={"job_id": str(job_id)}
+        )
+        fresh_resume = False
+
+        def build_result(repository):
+            nonlocal fresh_resume
+            from app.repositories.collection_settings import require_collection
+
+            job = repository.get_job_for_update(job_id)
+            if job is None:
+                raise APIError(
+                    status_code=404,
+                    code="analysis_job_not_found",
+                    message="The Analysis Job was not found.",
+                )
+            if (
+                job.target_type is not TargetType.CREATOR
+                or not job.collection_paused
+                or job.status not in (JobStatus.QUEUED, JobStatus.RUNNING)
+            ):
+                raise APIError(
+                    status_code=409,
+                    code="analysis_not_paused",
+                    message="This Analysis Job is not paused for collection.",
+                )
+            require_collection(repository._session, "youtube")
+            job.collection_paused = False
+            fresh_resume = True
+            repository._session.flush()
+            target = CanonicalTarget(
+                target_type=job.target_type,
+                canonical_id=job.canonical_target_id,
+                canonical_url=job.canonical_url,
+            )
+            return JobCreationResult(job=job), target
+
+        committed = _execute_idempotent(
+            session_factory=session_factory,
+            key=key,
+            digest=digest,
+            method="POST",
+            path=path,
+            build_result=build_result,
+            now=idempotency_clock(),
+        )
+        return _dispatch_committed_job(
+            committed,
+            key=key,
+            dispatcher=effective_dispatcher,
+            session_factory=session_factory,
+            failure_clock=failure_clock,
+            allow_running=True,
+            fresh_resume=fresh_resume,
         )
 
     return router

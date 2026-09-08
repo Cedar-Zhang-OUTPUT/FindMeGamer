@@ -276,6 +276,11 @@
             ],
             "title": "Profile Id"
           },
+          "resume_available": {
+            "default": false,
+            "title": "Resume Available",
+            "type": "boolean"
+          },
           "retryable": {
             "title": "Retryable",
             "type": "boolean"
@@ -317,6 +322,21 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "waiting_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "collection_disabled",
+                  "explicit_resume_required"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiting Reason"
           }
         },
         "required": [
@@ -684,6 +704,11 @@
             "title": "Resource Id",
             "type": "string"
           },
+          "resume_available": {
+            "default": false,
+            "title": "Resume Available",
+            "type": "boolean"
+          },
           "retryable": {
             "title": "Retryable",
             "type": "boolean"
@@ -725,6 +750,21 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "waiting_reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "collection_disabled",
+                  "explicit_resume_required"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waiting Reason"
           }
         },
         "required": [
@@ -943,6 +983,81 @@
           "completed_at"
         ],
         "title": "ChangedMatchJobResponse",
+        "type": "object"
+      },
+      "CollectionPlatformState": {
+        "properties": {
+          "availability": {
+            "enum": [
+              "disabled",
+              "not_implemented",
+              "missing_connection",
+              "configured_unverified"
+            ],
+            "title": "Availability",
+            "type": "string"
+          },
+          "credentials_configured": {
+            "title": "Credentials Configured",
+            "type": "boolean"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "implemented": {
+            "title": "Implemented",
+            "type": "boolean"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "enabled",
+          "implemented",
+          "credentials_configured",
+          "availability"
+        ],
+        "title": "CollectionPlatformState",
+        "type": "object"
+      },
+      "CollectionSettingUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "CollectionSettingUpdate",
+        "type": "object"
+      },
+      "CollectionSettingsResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CollectionPlatformState"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CollectionSettingsResponse",
         "type": "object"
       },
       "ConnectionSecretUpdate": {
@@ -9153,6 +9268,63 @@
         ]
       }
     },
+    "/api/v1/jobs/analysis/{job_id}/resume": {
+      "post": {
+        "operationId": "resumeCollectionAnalysisJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resume Collection Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
     "/api/v1/jobs/analysis/{job_id}/retry": {
       "post": {
         "operationId": "retryAnalysisJob",
@@ -10781,6 +10953,89 @@
         "summary": "Session",
         "tags": [
           "session"
+        ]
+      }
+    },
+    "/api/v1/settings/collection": {
+      "get": {
+        "operationId": "getCollectionSettings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Read Collection",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/collection/{platform}": {
+      "put": {
+        "operationId": "updateCollectionSettings",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "platform",
+            "required": true,
+            "schema": {
+              "title": "Platform",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectionSettingUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectionSettingsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Set Collection",
+        "tags": [
+          "settings"
         ]
       }
     },

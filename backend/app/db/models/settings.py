@@ -58,6 +58,9 @@ class SharedSettings(TimestampMixin, Base):
     service_connection_state: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
     )
+    collection_enabled: Mapped[dict[str, bool]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
 
 
 class ServiceSecret(TimestampMixin, Base):

@@ -234,6 +234,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
         checkpoints: CreatorCheckpointStore,
         max_parallel_calls: int = MAX_PARALLEL_CALLS,
         email_research: CreatorEmailResearchGateway | None = None,
+        acquisition_guard: Callable[[], None] | None = None,
     ) -> None:
         if (
             type(max_parallel_calls) is not int
@@ -250,6 +251,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
         )
         self._checkpoints = checkpoints
         self._max_parallel_calls = max_parallel_calls
+        self._acquisition_guard = acquisition_guard or (lambda: None)
 
     def run(self, job_id: UUID) -> UUID:
         lease = self._service.start(job_id)
@@ -305,6 +307,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
             self._require_source_identity(source, channel_id, canonical_url)
             return source
 
+        self._acquisition_guard()
         source = self._youtube.fetch_creator(channel_id, video_limit=50)
         self._require_source_identity(source, channel_id, canonical_url)
         self._store_raw_source(job_id, source)
@@ -374,6 +377,8 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
         else:
             values[CONTACT_NODE_KEY] = contact
 
+        if VISUAL_NODE_KEY in calls or CONTACT_NODE_KEY in calls:
+            self._acquisition_guard()
         values.update(self._run_parallel(job_id, calls))
         digests = tuple(
             cast(

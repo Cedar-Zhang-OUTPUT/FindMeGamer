@@ -260,8 +260,21 @@ class AnalysisJobExecutor:
         target_type = self._claim(job_id)
         if target_type is None:
             return
-        with self._pipeline_factory(target_type) as pipeline:
-            pipeline.run(job_id)
+        from app.repositories.collection_settings import CollectionPaused
+
+        try:
+            with self._pipeline_factory(target_type) as pipeline:
+                pipeline.run(job_id)
+        except CollectionPaused:
+            with self._session_factory() as session:
+                acquire_job_change_lock(session)
+                job = session.get(AnalysisJob, job_id)
+                if job is not None and job.status in (
+                    JobStatus.QUEUED,
+                    JobStatus.RUNNING,
+                ):
+                    job.collection_paused = True
+                session.commit()
 
     def fail(self, job_id: UUID, failure: TerminalFailure) -> bool:
         return write_terminal_failure(
@@ -297,6 +310,15 @@ class AnalysisJobExecutor:
                 if job.target_type not in (TargetType.GAME, TargetType.CREATOR):
                     raise PermanentIntegrationError("analysis_job_target_invalid")
                 _require_valid_job_state(job)
+                if job.target_type is TargetType.CREATOR:
+                    from app.repositories.collection_settings import collection_enabled
+
+                    if job.collection_paused or not collection_enabled(
+                        session, "youtube"
+                    ):
+                        job.collection_paused = True
+                        session.commit()
+                        return None
                 if job.status is JobStatus.QUEUED:
                     now = _aware_utc(self._clock)
                     job.status = JobStatus.RUNNING

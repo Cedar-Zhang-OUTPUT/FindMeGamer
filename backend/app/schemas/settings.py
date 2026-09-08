@@ -1,7 +1,28 @@
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
+
+from app.schemas.discovery import Platform
+
+
+class CollectionSettingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: StrictBool
+
+
+class CollectionPlatformState(BaseModel):
+    platform: Platform
+    enabled: bool
+    implemented: bool
+    credentials_configured: bool
+    availability: Literal[
+        "disabled", "not_implemented", "missing_connection", "configured_unverified"
+    ]
+
+
+class CollectionSettingsResponse(BaseModel):
+    items: list[CollectionPlatformState]
 
 
 class ReanalysisSettingsUpdate(BaseModel):

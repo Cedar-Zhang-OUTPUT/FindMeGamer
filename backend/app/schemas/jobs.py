@@ -50,6 +50,10 @@ class AnalysisJobResponse(BaseModel):
     updated_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
+    waiting_reason: (
+        Literal["collection_disabled", "explicit_resume_required"] | None
+    ) = None
+    resume_available: bool = False
 
     @model_validator(mode="after")
     def require_safe_public_state(self) -> "AnalysisJobResponse":

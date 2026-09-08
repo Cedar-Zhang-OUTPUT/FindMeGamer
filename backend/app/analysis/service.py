@@ -400,6 +400,9 @@ class CreatorAnalysisService:
                 )
             if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING):
                 raise PermanentIntegrationError("analysis_job_state_invalid")
+            from app.repositories.collection_settings import guard_collection
+
+            guard_collection(session, "youtube")
             _require_valid_job_state(job)
             if job.status is JobStatus.QUEUED:
                 now = self._aware_now()
