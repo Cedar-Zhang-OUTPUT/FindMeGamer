@@ -101,3 +101,27 @@ Actual HTTP success smoke passed: two pages per platform, six creators, eight wo
 The first failure-smoke attempt did not observe the requested planning fault: its planning endpoint returned HTTP 200 and the persisted plan was ready on attempt 1. A subsequent run observed HTTP 503, and all four failure/recovery scenarios passed with the accepted failure codes. This is a test-only control-visibility limitation, not a passing assertion from the first attempt or evidence of a production regression. No application code was changed to mask it. When injecting faults, check the fixed-label fixture events to confirm the requested fault actually reached the request before attributing an unexpected success to the application. Successful failure results remain in this instance's `failure-report.json`.
 
 At handoff the dedicated queue is empty, planning/batch/evaluation active counts are zero, and all controls are `none`. The frontend task owns this new instance's control window after formal handoff. Keep the three earlier environments and their data intact. This is not a provider connection-probe, SMTP, final package, or real-service acceptance environment.
+
+## Prepared drafting model boundary (not yet a running outreach instance)
+
+The local fixture source now additionally recognizes accepted Outreach A's exact
+`SlotValues` JSON schema, Flash model, three-message gateway envelope and 2048 output
+budget. It copies the three supplied bound names/reference unchanged and derives the
+fourth value only from the supplied synthetic evidence excerpt with a final period;
+verification notes must be present. It does not generate a full mail, new sources or
+sender confirmations. Malformed contracts fail closed; fixed `drafting` event labels
+contain no payload or credentials.
+
+`--model-fail drafting` and `--hold drafting` prepare explicit per-stage failure/hold
+tests; existing source/planning/evaluation controls remain compatible. No new accepted
+revision mapping, private instance, database upgrade, SMTP transport or worker restart
+was added with this change. In particular, port65164 remains pinned to0015 and cannot
+serve Outreach A's new routes. Create a separate accepted A+B instance only after B
+acceptance and a new handoff, keeping the current frontend control window intact.
+
+TDD first produced ten failing assertions across the 26-test suite; implementation
+then passed all26 (15 prior +11 new) in8.444s. The coordinator read all three changed
+files, checked the accepted gateway/schema seam and repeated all26 successfully in
+8.434s. One bounded review, no second broad audit; no Docker/real provider/SMTP/UI
+scenario was run for this fixture-source increment. RED/GREEN logs are retained in
+`/tmp/fmg-draft-fixture-tdd.kkypwV/`.

@@ -268,12 +268,12 @@ def main(arguments=None):
     )
     parser.add_argument(
         "--model-fail",
-        choices=["none", "all", "planning", "screening", "deep", "ranking"],
+        choices=["none", "all", "planning", "screening", "deep", "ranking", "drafting"],
         default="none",
     )
     parser.add_argument(
         "--hold",
-        choices=["none", "youtube", "x", "planning", "screening", "deep", "ranking"],
+        choices=["none", "youtube", "x", "planning", "screening", "deep", "ranking", "drafting"],
         default="none",
     )
     args = parser.parse_args(arguments)

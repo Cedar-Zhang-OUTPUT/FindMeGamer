@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
@@ -21,6 +22,22 @@ SCHEMAS = {
     "EvaluationScreenOutput": ("screening", "deepseek-v4-flash"),
     "EvaluationMatchBrief": ("deep", "deepseek-v4-pro"),
     "EvaluationRankOutput": ("ranking", "deepseek-v4-pro"),
+    "SlotValues": ("drafting", "deepseek-v4-flash"),
+}
+DRAFT_SCHEMA = {
+    "title": "SlotValues",
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["firstName", "channelName", "reference", "observation"],
+    "properties": {
+        name: {"type": "string", "minLength": 1, "maxLength": 600, "title": title}
+        for name, title in (
+            ("firstName", "Firstname"),
+            ("channelName", "Channelname"),
+            ("reference", "Reference"),
+            ("observation", "Observation"),
+        )
+    },
 }
 
 
@@ -40,8 +57,8 @@ def destination_allowed(url):
 def write_control(directory, values):
     allowed = {
         "source_fail": {"none", "youtube", "x"},
-        "model_fail": {"none", "all", "planning", "screening", "deep", "ranking"},
-        "hold": {"none", "youtube", "x", "planning", "screening", "deep", "ranking"},
+        "model_fail": {"none", "all", "planning", "screening", "deep", "ranking", "drafting"},
+        "hold": {"none", "youtube", "x", "planning", "screening", "deep", "ranking", "drafting"},
     }
     if set(values) != set(allowed) or any(
         values[key] not in options for key, options in allowed.items()
@@ -77,6 +94,38 @@ def event(directory, endpoint, status):
 
 
 def model_output(title, data):
+    if title == "SlotValues":
+        if not isinstance(data, dict) or set(data) != {
+            "firstName", "channelName", "reference", "recorded_observation"
+        }:
+            raise ValueError("Unsupported drafting payload")
+        recorded = data["recorded_observation"]
+        if (
+            not isinstance(recorded, dict)
+            or set(recorded) != {"evidence_excerpt", "verification_notes"}
+            or any(not isinstance(value, str) or not value.strip() for value in recorded.values())
+        ):
+            raise ValueError("Recorded observation required")
+        # Only punctuation is normalized; notes cannot invent an observation.
+        clause = recorded["evidence_excerpt"].strip().rstrip(".").rstrip()
+        if not clause:
+            raise ValueError("Recorded observation required")
+        values = {key: data[key] for key in ("firstName", "channelName", "reference")}
+        values["observation"] = clause + "."
+        for value in values.values():
+            if (
+                not isinstance(value, str)
+                or not 1 <= len(value) <= 600
+                or value != value.strip()
+                or re.search(r"[\x00-\x1f\x7f<>{}]", value)
+                or re.search(
+                    r"\[(?:first name|channel name|reference game\s*/\s*video|unfilled[^\]]*|specific observation[^\]]*)\]",
+                    value,
+                    re.IGNORECASE,
+                )
+            ):
+                raise ValueError("Unsupported drafting slot")
+        return values
     if title == "SearchPlanOutput":
         platforms = data["conditions"]["platforms"]
         if not platforms or not set(platforms).issubset({"youtube", "x"}):
@@ -305,10 +354,30 @@ class Handler(BaseHTTPRequestHandler):
                 "max_tokens",
             } or request["response_format"] != {"type": "json_object"}:
                 raise ValueError()
-            schema_text = request["messages"][0]["content"].split("JSON Schema: ")[-1]
-            title = json.loads(schema_text)["title"]
+            schema_text = request["messages"][0]["content"]
+            if not isinstance(schema_text, str):
+                raise ValueError()
+            schema = json.loads(schema_text.split("JSON Schema: ")[-1])
+            title = schema["title"]
             label, model = SCHEMAS[title]
             if request["model"] != model or request["messages"][-1]["role"] != "user":
+                raise ValueError()
+            if title == "SlotValues" and (
+                schema != DRAFT_SCHEMA
+                or request.get("thinking") != {"type": "disabled"}
+                or type(request.get("max_tokens")) is not int
+                or request["max_tokens"] != 2048
+                or not isinstance(request["messages"], list)
+                or len(request["messages"]) != 3
+                or any(
+                    not isinstance(message, dict)
+                    or set(message) != {"role", "content"}
+                    or message["role"] != role
+                    or not isinstance(message["content"], str)
+                    or not message["content"].strip()
+                    for message, role in zip(request["messages"], ("system", "system", "user"))
+                )
+            ):
                 raise ValueError()
             data = json.loads(request["messages"][-1]["content"])
             body = model_output(title, data)

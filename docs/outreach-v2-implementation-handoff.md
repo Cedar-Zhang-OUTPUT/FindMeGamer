@@ -76,3 +76,20 @@ AI 输出仅四个结构化槽位；引用关联由服务器绑定到已选、�
 | P9 同名单/隔离 | 人工接受/婉拒必须附来源和时间；同一 Creator 的两 Activity 独立；跟进四状态、合作八状态可读写，返回保持列表位置/筛选；继续发现新成员不改旧发送快照，新批次有独立历史。 |
 
 先由后端按 A→B→C 交付 typed API/任务/数据库 fixture 验收，前端分段接入最终 packaged E2E。此交接没有执行上述测试；真实 SMTP TLS、外部送达、自动收件同步、Release/部署均未被验证或执行。
+
+## 6. C 单元的原文枚举与连续派工边界
+
+2026-09-08 总管再次用飞书 user 身份精读原 PRD P9 与 P5.1，实际 revision 仍为 **751**；这不是从旧原型的示例状态倒推。A已由B12验收接受，B正在实施。本节预备C，不向B追加界面/回复模型审查。
+
+| 归属 | 原文全部业务选项 | 英文显示建议与约束 |
+| --- | --- | --- |
+| P9发送筛选 | 未发送 / 排队中 / 发送中 / 已发送 / 发送失败 | Not sent / Queued / Sending / Sent / Failed；另按已确认SMTP正常断线边界准确显示 Unknown outcome / Needs verification，不能塞进可普通Retry的Failed。Sent只表示SMTP accepted，不声称delivered。 |
+| P9邀请筛选 | 未邀请 / 待回应 / 已接受 / 已婉拒 | Not invited / Awaiting response / Accepted / Declined。接受与婉拒来自本活动明确回应或有来源/时间的人工记录，不来自点击、扫描、模型或其他活动。 |
+| P5.1、P9跟进 | 未跟进 / 待跟进 / 已跟进 / 无需跟进 | Not followed up / Follow-up needed / Followed up / No follow-up needed，默认未跟进；详情只编辑当前活动，列表才额外有All。 |
+| P5.1合作进展 | 未开始 / 沟通中 / 已确认合作 / 制作中 / 待发布 / 已发布 / 已结算 / 已结束 | Not started / In discussion / Collaboration confirmed / In production / Awaiting publication / Published / Settled / Closed；默认未开始，手动更新，不从接受自动推进其他业务状态。 |
+
+统一Creator详情只加“Works & profile / Invitations & collaboration”同页标签。Library进入默认全部真实活动，不创建活动；Match/Outreach进入默认来源活动，动态活动选项显示真实名称和邀请日期。无记录时只呈现真实空态。保存与返回保留原名单位置、筛选与选择；不新增独立合作工作区。
+
+最小交付仍是同Activity的选择/冻结成员/最终Delivery可追溯读投影、明确人工回应的来源和时间、四种跟进及八种合作状态/备注的有版本写入、Creator按活动读回。未发送或明确排除的原N成员不得从P9悄然消失；一次选择取消不删除已发历史。继续发现只追加当前query，后续选择开新批次，不把旧发送内容/人工回应覆盖。不同Activity同账号的合作与回应独立。
+
+普通邀请防重复沿用B已明确边界：同Activity+platform+account_id已有queued/sending/sent/unknown时，不因新composition/request_id而再次普通邀请；只对明确failed显式原项重试或修正资料重新资格/确认，保留失败历史并防两路径同时发送。C不增加自动跟进邮件、重发已sent或自动收件箱同步。B安全提交、既定测试与一次有限审查完成后，可直接进入本C单元，不等GitHub、Twitch或真实SMTP；C后继续Steam/Analyze交接中尚缺的完整链路。
