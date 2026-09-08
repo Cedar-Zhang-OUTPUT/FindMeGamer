@@ -11,6 +11,7 @@
 - **范围变更与过程记录**：[总管交接文档](prd-review-2026-09-08.md)。用户随后明确的范围优先于原 PRD；较早的等待、环境版本和“尚未实现”文字不能覆盖后续已接受记录。
 - **状态**：`accepted`＝该行明确限定的增量已接受；`in-progress`＝已派发、尚未结项；`planned`＝完整 Demo 仍需交付的后续单元；`approved change`＝用户已改定需求，不等于实现完成。一个页面可同时有已接受基础和待交付行为，分别列行。
 - **执行归属**：后端＝“FindMeGamer 后端开发”；前端＝“FindMeGamer 前端优化”；总管＝集成、固定环境与有限验收。下面的“下一单元”是工作分解，不将所有缺项追加入正在验收的增量。
+- **最新后续增量**：F5 渠道开关源码与真实 HTTP 已接受并合入 `08c7d20`，最终包门禁仍未通过；前端现做 P4/P12 完整筛选/排序和命名集合。后端命名集合 `9fe851e`（B10）及语言 code/名称比较修复 `a852307`（B11）均已验收，后端正在 Outreach A。新 `65164` / `a852307` / `0015` 固定环境已交前端独占操作，三个旧实例保持。下表较早的在制状态以此条及后续验收记录为准。
 
 ## 可引用的实际验收记录
 
@@ -27,10 +28,13 @@
 | B7 | Activity preparation `8cabb11`；[名单与准备批次](backend-v2-outreach-preparation.md) | 执行方全量 2,125 passed，一次有限独立审查无阻塞；总管固定归档独立复跑 31 项业务/迁移（15.32 秒）与 3 项相关 OpenAPI 契约（4.54 秒）全部通过。0012 历史 Activity/query/evaluation 升级0013保留。9个认证操作、缺项成员和初始快照保留；尚无模板/最终资格/SMTP发送。 |
 | B8 | Collection switches `b2b15f4`；[共享渠道开关](backend-v2-collection-switches.md) | 全量2,140通过、3个旧writer活跃迁移测试明确deferred、0失败，一次有限独立审查无阻塞。总管固定归档独立18项通过（2.62秒），含0013→0014保留、独立渠道、在途保存、显式恢复及source checkpoint。仅后端，不代表新Settings界面或真实提供商验收。 |
 | B9 | P4/P12 read queries `8cf755efc539f34e4abc8a885652fbcbe1ae8d85`；[读查询契约](backend-v2-query-options.md) | 执行方 2,152 passed、3 个已批准旧 live-writer 迁移用例 skipped、0 failed；总管核对固定归档 `/tmp/fmg-query-8cf755e.8Ybhcu` 的 12 项查询测试（4.04 秒）及 3 项 OpenAPI 测试（4.03 秒），全部通过并正式接受。数据库仍为 0014；临时验收资源已清理。覆盖全体结果先筛选/排序后分页及 Library 摘要；不含命名候选集合、前端 UI 或真实提供商。 |
+| B10 | Named sets `9fe851e`；[命名集合契约](backend-v2-saved-candidate-sets.md) | 执行方2160 passed、3既定deferred、0failed与一次有限审查；总管固定归档8业务/迁移通过（3.45秒）和3OpenAPI通过（8.22秒），DB0015。新真实HTTP另证持久request_id重放、明确三人集合恢复、全量排序后分页、原query/游标不变、零额外采集。恢复不是人选确认或发信。 |
+| B11 | Language comparison `a852307`；[语言比较接缝](backend-v2-language-filters.md) | 24新cases、62相关测试、全量2184 passed/3既定deferred/0failed与一次有限审查。总管a852固定实际HTTP证en/English/中文label均匹配同一手填英语Creator，Worker真实发现过滤仍保留该账号；source/manual原值不因比较改写。无API或迁移变化，仍0015。 |
 | F1 | Game `8cbd937`；[Game 前端](../desktop/docs/game-v2-unit.md) | 213 项测试、类型检查、构建；4 条 packaged E2E。真实隔离 API/数据库验证手建、保存、冲突、丢响应重试、返回/凭据恢复。 |
 | F2 | Settings `a418081`；[Settings 前端](../desktop/docs/settings-unit.md) | 312 项测试、类型检查、构建；5 条 packaged E2E；12 项 fixture 测试。真实探测器配 HTTP fixtures；SMTP 为无 socket 捕获，保存/连接测试零封、明确确认后捕获一封。 |
 | F3 | Creator `3abf262`，已集成至 `cad5565`；[Creator 前端](../desktop/docs/creator-v2-unit.md) | 总管在交付树和集成树新跑 458 项测试、类型检查、构建均通过；前端最终 6 条 packaged E2E 通过。含真实隔离 API 写入、多邮箱、作品、身份重绑/历史只读以及 Game/Settings 回归。 |
 | F4（仅源码） | Match `149bc69`；[Match前端交接](../desktop/docs/match-v2-unit.md) | 44文件仅desktop；执行方593测试/typecheck/build通过，总管固定归档独立593项/35文件通过（Vitest13.45秒）、typecheck/build通过。两条新packaged E2E为0完成、旧六条此单元未复跑；保留待授权包早于最终两项修复，不等于该提交产物。最终包/E2E/视觉仍待验收，源码可继续集成开发。 |
+| F5（源码/HTTP） | Collection `216f1dc`，已仅集成为 `08c7d20`；[渠道前端交接](../desktop/docs/collection-switches-unit.md) | 执行方631测试、typecheck/build及一次有限审查通过；总管固定归档独立631项/41文件通过（18.78秒），typecheck/build通过，32文件均desktop。真实严格客户端在59414/0014执行GET/PUT 1/1通过，恢复原策略，已有Match与凭据不变、上游事件零增长。该环境控制窗口已释放但保持运行。旧包仍在Keychain读取处，最终F4/F5准确版本包与实际GUI/E2E未验收。 |
 | L1 | [有界真实发现](discovery-smoke.md) | YouTube：一页 5 个作品，经 search/channels 各一次 HTTP 200、真实 Celery、数据库和 Library 读回，得到 4 个唯一账号；无追加/重试，实际停止原因 `target_reached`。X 新持久化流程当次零请求：指定 Keychain 读取未返回，不是鉴权/余额失败。 |
 
 ## 页面和功能追溯

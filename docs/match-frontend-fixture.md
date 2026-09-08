@@ -83,3 +83,21 @@ Only explicitly accepted hashes are supported, not branches or `HEAD`. An existi
 The manager extension was verified with RED→GREEN tests: 14 harness tests pass. One bounded independent read-only review found no blocker. Both actual HTTP success/failure smokes passed against the new instance. An additional real API/worker check confirmed shared GET/PUT persistence without clearing credentials, zero YouTube requests while disabled and two X pages yielding three retained creators, no automatic continuation when re-enabled, explicit Continue adding YouTube to reach six without losing those three, and an enabled Twitch preset remaining `not_implemented`. The test restored YouTube/Twitch policy values; fault controls are at their defaults. The verifier is retained at `/tmp/fmg-collection-b2b15f4.ECWBeS/shared_http_check.py`; it only targets this synthetic instance.
 
 This instance supports the accepted collection settings and persisted Match flow, not successful provider connection probes or actual SMTP delivery. Continue using the separate old Settings fixture for its connection/capture tests. Neither these checks nor the test-only transports satisfy final packaged GUI/Keychain acceptance.
+
+## Separate full-query and named-set instance
+
+The next frontend read-query unit uses another independent instance. No earlier instance was replaced or upgraded.
+
+- API origin: `http://127.0.0.1:65164`.
+- Backend: `a852307d6908e671ae1998c9741f19ffe65f5048`; actual database `20260908_0015`.
+- Project: `fmg-match-frontend-50b33aac62cf`; queue: `match-frontend-50b33aac62cf`.
+- Private directory: `/var/folders/p4/5cgpbz2n2hj98xdvs3_b1hlc0000gn/T/fmg-match-frontend-mjpzjv70/private`.
+- Read the separate `client.json` in that directory inside the test process; never print it. Seed Game/reference IDs and synthetic credentials are not shared with earlier instances.
+
+This backend includes collection switches, the full-set query contract, named subsets (`9fe851e`), and comparison-only language aliases. The manager only added this accepted hash/migration pair. A new lifecycle test first failed on the missing allowlist entry, then all 15 harness tests passed (3.278 seconds); one bounded read-only review found no blocker. Old version/owner/credential checks remain unchanged.
+
+Actual HTTP success smoke passed: two pages per platform, six creators, eight works, real planning/screening/deep/ranking worker stages against strict local synthetic HTTP. An additional check at `/tmp/fmg-query-http-a852307.fSEi1a/check.py` verified durable saved-set replay with a new HTTP key, three-member membership and full-subset sorting before paging, read-only restore with unchanged query and zero extra events, all five evidence filters, and `en`/`English`/localized label Library queries. A fresh real worker discovery also retained a manually labeled English creator under the `en` filter. The original manual language layer was restored; a prior evaluation can legitimately be stale after this edit/recollection, so a new UI E2E should create its own Activity/evaluation rather than assume the old smoke evaluation remains current.
+
+The first failure-smoke attempt did not observe the requested planning fault: its planning endpoint returned HTTP 200 and the persisted plan was ready on attempt 1. A subsequent run observed HTTP 503, and all four failure/recovery scenarios passed with the accepted failure codes. This is a test-only control-visibility limitation, not a passing assertion from the first attempt or evidence of a production regression. No application code was changed to mask it. When injecting faults, check the fixed-label fixture events to confirm the requested fault actually reached the request before attributing an unexpected success to the application. Successful failure results remain in this instance's `failure-report.json`.
+
+At handoff the dedicated queue is empty, planning/batch/evaluation active counts are zero, and all controls are `none`. The frontend task owns this new instance's control window after formal handoff. Keep the three earlier environments and their data intact. This is not a provider connection-probe, SMTP, final package, or real-service acceptance environment.
