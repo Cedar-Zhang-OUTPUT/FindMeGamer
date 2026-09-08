@@ -18,6 +18,10 @@ EXPORTER = BACKEND_ROOT / "scripts" / "export_openapi.py"
 COMMITTED_SCHEMA = BACKEND_ROOT / "openapi.json"
 
 EXPECTED_OPERATIONS = {
+    ("POST", "/api/v2/discovery/queries/{query_id}/saved-sets"): "saveCandidateSetV2",
+    ("GET", "/api/v2/activities/{activity_id}/saved-sets"): "listCandidateSetsV2",
+    ("GET", "/api/v2/discovery/saved-sets/{set_id}"): "getCandidateSetV2",
+    ("GET", "/api/v2/discovery/saved-sets/{set_id}/results"): "getCandidateSetResultsV2",
     ("GET", "/api/v2/library/creators"): "listLibraryCreatorsV2",
     ("POST", "/api/v2/library/creators"): "createLibraryCreatorV2",
     ("GET", "/api/v2/library/creators/{creator_id}"): "getLibraryCreatorV2",

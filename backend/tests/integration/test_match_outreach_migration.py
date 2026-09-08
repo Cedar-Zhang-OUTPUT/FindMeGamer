@@ -298,7 +298,7 @@ EXPECTED_CHECKS = {
 def test_match_and_outreach_revision_is_the_single_linear_head(alembic_config) -> None:
     script = ScriptDirectory.from_config(alembic_config)
 
-    assert script.get_heads() == ["20260908_0014"]
+    assert script.get_heads() == ["20260908_0015"]
     revision = script.get_revision("20260902_0005")
     assert revision is not None
     assert revision.down_revision == "20260902_0004"

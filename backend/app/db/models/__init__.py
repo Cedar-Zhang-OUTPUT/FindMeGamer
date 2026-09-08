@@ -1,4 +1,5 @@
 from app.db.models.discovery_plan import DiscoveryPlan
+from app.db.models.saved_candidate_set import SavedCandidateSet
 from app.db.models.discovery_evaluation import EvaluationRun, EvaluationItem, EvaluationStep
 from app.db.models.discovery import (
     Activity,
@@ -33,6 +34,7 @@ from app.db.models.profiles import (
 from app.db.models.settings import ServiceSecret, SharedSettings
 
 __all__ = [
+    "SavedCandidateSet",
     "ActivitySelection", "RecipientBatch", "RecipientSnapshot",
     "EvaluationRun", "EvaluationItem", "EvaluationStep",
     "DiscoveryPlan",

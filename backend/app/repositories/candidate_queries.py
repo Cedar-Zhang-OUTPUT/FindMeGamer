@@ -63,10 +63,15 @@ def relevance_values(session, query_id):
     }
 
 
-def candidate_page(session, query, *, evidence, sort, limit, offset):
-    candidates = session.scalars(
-        select(DiscoveryCandidate).where(DiscoveryCandidate.query_id == query.id)
-    ).all()
+def candidate_page(
+    session, query, *, evidence, sort, limit, offset, candidate_ids=None
+):
+    statement = select(DiscoveryCandidate).where(
+        DiscoveryCandidate.query_id == query.id
+    )
+    if candidate_ids is not None:
+        statement = statement.where(DiscoveryCandidate.id.in_(candidate_ids))
+    candidates = session.scalars(statement).all()
     creators = {
         c.id: c
         for c in session.scalars(
