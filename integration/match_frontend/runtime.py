@@ -8,7 +8,8 @@ import sys
 
 from fixture import destination_allowed, start_server
 
-OUTREACH_REVISIONS = {"ece2e9d9558dfe057dc40ad58bd98a86e3149dd5"}
+ANALYZE_REVISION = "5706ad76f924991b80ee2a7fb6806528366be5ce"
+OUTREACH_REVISIONS = {"ece2e9d9558dfe057dc40ad58bd98a86e3149dd5", ANALYZE_REVISION}
 
 
 def install_smtp_capture(private, state_directory):
@@ -27,9 +28,18 @@ def install_smtp_capture(private, state_directory):
 
 
 def configure():
+    global destination_allowed, start_server
     from app.core.security import hash_workspace_key
 
     private = json.loads(Path("/private/client.json").read_text())
+    if private["backend_revision"] == ANALYZE_REVISION:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("analyze_runtime", "/analyze-harness/runtime.py")
+        extension = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(extension)
+        destination_allowed, start_server = extension.install()
+        os.environ["STEAM_STORE_BASE_URL"] = "http://127.0.0.1:18081/steam"
     os.environ["WORKSPACE_ACCESS_KEY_HASH"] = hash_workspace_key(
         private["workspace_key"]
     )

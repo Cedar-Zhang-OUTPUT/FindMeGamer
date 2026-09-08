@@ -44,6 +44,7 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
     volumes: &mounts
       - ${FMG_MATCH_HARNESS}:/harness:ro
+      - ${FMG_MATCH_HARNESS}/../analyze_frontend:/analyze-harness:ro
       - ${FMG_MATCH_PRIVATE}/client.json:/private/client.json:ro
       - ${FMG_MATCH_PRIVATE}/master.key:/private/master.key:ro
       - ${FMG_MATCH_PRIVATE}/state:/state
