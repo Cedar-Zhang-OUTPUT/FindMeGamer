@@ -1,0 +1,161 @@
+// @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
+import { fireEvent, render, screen, cleanup, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { DraftEditor, type DraftEditorProps } from '../src/renderer/components/match/DraftEditor';
+import { draftFixture, draftValues, builtinTemplate } from './drafts-fixtures';
+
+afterEach(cleanup);
+function props(patch: Partial<DraftEditorProps> = {}): DraftEditorProps {
+  return { draft: draftFixture({ status: 'succeeded', values: { ...draftValues }, rendered: { subject: 'Saved subject', html: '<p>Saved mail</p>', text: 'Saved mail', fixed_hash: builtinTemplate.fixed_hash } }),
+    busy: false, current: true, onSave: vi.fn(async () => true), onRefresh: vi.fn(), onRetry: vi.fn(), onOpenSource: vi.fn(), onDirtyChange: vi.fn(), ...patch };
+}
+const change = (label: string, value: string) => fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value } });
+
+describe('source-bound draft editor', () => {
+  it('shows the saved email sandbox and four bound fields without authorizing any write on mount', () => {
+    const p = props(); render(<DraftEditor {...p} />);
+    expect(screen.getByRole('textbox', { name: 'Public name' })).toHaveValue('Ari');
+    expect(screen.getByRole('textbox', { name: 'Channel name' })).toHaveValue('Fixture Channel');
+    expect(screen.getByRole('textbox', { name: 'Referenced work' })).toHaveValue('Fixture Story');
+    expect(screen.getByRole('textbox', { name: 'Observation' })).toHaveValue('connected the two scenes.');
+    expect(screen.getByTitle('Saved email preview')).toHaveAttribute('sandbox', '');
+    expect(screen.getByTitle('Saved email preview')).toHaveAttribute('srcdoc', expect.stringContaining('Saved mail'));
+    expect(p.onSave).not.toHaveBeenCalled(); expect(p.onRefresh).not.toHaveBeenCalled(); expect(p.onRetry).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /^send$/i })).not.toBeInTheDocument();
+  });
+
+  it('permits manual save without email and preserves legitimate brackets in the observation', async () => {
+    const p = props(); render(<DraftEditor {...p} />);
+    change('Observation', 'noticed the [optional] path.');
+    expect(screen.getByText('Saved preview')).toBeInTheDocument();
+    expect(screen.getByTitle('Saved email preview')).toHaveAttribute('srcdoc', expect.stringContaining('Saved mail'));
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(p.onSave).toHaveBeenCalledWith({ ...draftValues, observation: 'noticed the [optional] path.' });
+    expect(p.onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('pre-fills the three recorded sources for a draft without generated values', async () => {
+    const p = props({ draft: draftFixture() }); render(<DraftEditor {...p} />);
+    expect(screen.getByRole('textbox', { name: 'Public name' })).toHaveValue('Ari');
+    expect(screen.getByRole('textbox', { name: 'Observation' })).toHaveValue('');
+    expect(screen.queryByTitle('Saved email preview')).not.toBeInTheDocument();
+    change('Observation', 'connected the scenes.');
+    await userEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(p.onSave).toHaveBeenCalledWith({ ...draftValues, observation: 'connected the scenes.' });
+  });
+
+  it.each(['Channel name', 'Referenced work'])('blocks invented %s while keeping a source-repair entry available', label => {
+    render(<DraftEditor {...props()} />); change(label, 'Invented replacement');
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: `Edit ${label.toLowerCase()} source` })).toBeEnabled();
+  });
+
+  it('does not carry model-charge acknowledgement into a newer failed attempt', async () => {
+    const p = props({ draft: draftFixture({ status: 'failed', error_code: 'draft_outcome_unknown' }) });
+    const view = render(<DraftEditor {...p} />);
+    await userEvent.click(screen.getByRole('checkbox', { name: /another model call may incur a charge/i }));
+    expect(screen.getByRole('button', { name: 'Retry generation' })).toBeEnabled();
+    view.rerender(<DraftEditor {...p} draft={{ ...p.draft, revision: 1 }} />);
+    expect(screen.getByRole('button', { name: 'Retry generation' })).toBeDisabled();
+  });
+
+  it.each(['Invented name', ''])('blocks first-name value %j that does not match its recorded source', value => {
+    render(<DraftEditor {...props()} />); change('Public name', value);
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(screen.getByText(/must match the recorded public name/i)).toBeInTheDocument();
+  });
+
+  it.each(['Missing period', '<b>Injected.</b>', '[specific observation].', 'Line\nbreak.', 'x'.repeat(601) + '.'])('blocks invalid observation %j', value => {
+    render(<DraftEditor {...props()} />); change('Observation', value);
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+  });
+
+  it('opens each real source editor and blocks missing observation evidence despite filled values', async () => {
+    const p = props({ draft: draftFixture({ status: 'needs_repair', values: draftValues, missing_fields: ['observation_evidence_missing', 'email_not_selected'] }) });
+    render(<DraftEditor {...p} />); change('Observation', 'Different detail.');
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit public name source' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit referenced work source' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Edit contact source' }));
+    expect(p.onOpenSource).toHaveBeenNthCalledWith(1, 'overview'); expect(p.onOpenSource).toHaveBeenNthCalledWith(2, 'works'); expect(p.onOpenSource).toHaveBeenNthCalledWith(3, 'contacts');
+  });
+
+  it('retains edits across hidden detours and polling; explicit loading is required after revision or context changes', async () => {
+    const p = props(); const view = render(<DraftEditor {...p} />); change('Observation', 'My unsaved detail.');
+    view.rerender(<DraftEditor {...p} current={false} />);
+    expect(screen.getByRole('textbox', { name: 'Observation' })).toHaveValue('My unsaved detail.');
+    const updated = { ...p.draft, revision: 1, context_token: 'b'.repeat(64), values: { ...draftValues, observation: 'New saved detail.' } };
+    view.rerender(<DraftEditor {...p} draft={updated} />);
+    expect(screen.getByRole('textbox', { name: 'Observation' })).toHaveValue('My unsaved detail.');
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
+    expect(screen.getByText(/draft changed while you were editing/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Load current values' }));
+    expect(screen.getByRole('textbox', { name: 'Observation' })).toHaveValue('New saved detail.');
+    expect(p.onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('retains one person’s dirty values when the selected person changes and returns', () => {
+    const p = props(), view = render(<DraftEditor {...p} />); change('Observation', 'First person edit.');
+    view.rerender(<DraftEditor {...p} draft={{ ...p.draft, id: 'other-person' }} />);
+    expect(screen.getByRole('textbox', { name: 'Observation' })).toHaveValue(draftValues.observation);
+    view.rerender(<DraftEditor {...p} />);
+    expect(screen.getByRole('textbox', { name: 'Observation' })).toHaveValue('First person edit.');
+  });
+
+  it('preserves failed saves and suppresses a double submit during an unresolved save', async () => {
+    let finish!: (saved: boolean) => void;
+    const p = props({ onSave: vi.fn(() => new Promise<boolean>(resolve => { finish = resolve; })) });
+    render(<DraftEditor {...p} />); change('Observation', 'Keep this change.');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' })); fireEvent.click(screen.getByRole('button', { name: 'Saving changes…' }));
+    expect(p.onSave).toHaveBeenCalledTimes(1); finish(false);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled());
+    expect(screen.getByRole('textbox', { name: 'Observation' })).toHaveValue('Keep this change.');
+    expect(screen.getByRole('alert')).toHaveTextContent(/not saved/i);
+  });
+
+  it('requires explicit refresh confirmation about clearing values and human confirmations', async () => {
+    const p = props({ draft: { ...props().draft, source_changed: true } }); render(<DraftEditor {...p} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh sources' }));
+    expect(p.onRefresh).not.toHaveBeenCalled(); expect(screen.getByText(/clears the four values and sender confirmations/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Keep current draft' })); expect(p.onRefresh).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh sources' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh and clear values' })); expect(p.onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires possible repeated model-charge acknowledgement for an unknown failed generation', async () => {
+    const p = props({ draft: draftFixture({ status: 'failed', error_code: 'draft_outcome_unknown' }) }); render(<DraftEditor {...p} />);
+    expect(screen.getByRole('button', { name: 'Retry generation' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('checkbox', { name: /another model call may incur a charge/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Retry generation' })); expect(p.onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['pending', 'running', 'needs_repair', 'succeeded'] as const)('never offers retry for %s state', status => {
+    render(<DraftEditor {...props({ draft: draftFixture({ status, error_code: 'draft_outcome_unknown' }) })} />);
+    expect(screen.queryByRole('button', { name: 'Retry generation' })).not.toBeInTheDocument();
+  });
+
+  it('gates writes while inactive or busy and reports sender facts only as a read-only state', () => {
+    const p = props({ current: false, draft: { ...props().draft, sender_facts_valid: true } }); const view = render(<DraftEditor {...p} />);
+    expect(screen.getByRole('textbox', { name: 'Observation' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Refresh sources' })).toBeDisabled();
+    expect(screen.getByText('Confirmations saved')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    view.rerender(<DraftEditor {...p} current busy />); expect(screen.getByRole('button', { name: 'Refresh sources' })).toBeDisabled();
+  });
+});
+
+it('does not flag untouched queued fields or repeat guidance before the user edits',()=>{
+  render(<DraftEditor {...props({draft:draftFixture()})}/>);
+  expect(screen.queryByText(/Use filled single-line text/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/preview will appear/)).not.toBeInTheDocument();
+});
+it('clears only the explicitly refreshed person’s local edits after an acknowledged refresh',async()=>{
+  const p=props({onRefresh:vi.fn(async()=>true)}),view=render(<DraftEditor {...p}/>);
+  change('Observation','Unsaved before refresh.');
+  await userEvent.click(screen.getByRole('button',{name:'Refresh sources'}));
+  await userEvent.click(screen.getByRole('button',{name:'Refresh and clear values'}));
+  view.rerender(<DraftEditor {...p} draft={{...p.draft,revision:1,values:null,rendered:null,status:'pending'}}/>);
+  expect(screen.getByRole('textbox',{name:'Observation'})).toHaveValue('');expect(p.onDirtyChange).toHaveBeenLastCalledWith(false);
+});

@@ -1,0 +1,11 @@
+.sender-facts-editor { min-width: 0; border-top: 1px solid var(--border, #d8cfc1); padding-block: .8rem; }
+.sender-facts-editor > summary { cursor: pointer; font-weight: 600; }
+.sender-facts-content { display: grid; gap: .8rem; padding-top: .6rem; min-width: 0; }
+.sender-facts-content p { margin: 0; }
+.sender-facts-content fieldset { min-width: 0; border: 0; padding: 0; margin: 0; display: grid; gap: .5rem; }
+.sender-facts-content legend { font-weight: 600; margin-bottom: .4rem; }
+.sender-facts-content label { display: flex; gap: .5rem; align-items: start; overflow-wrap: anywhere; }
+.sender-facts-content input[type="checkbox"] { flex: 0 0 auto; margin-top: .2rem; }
+.sender-facts-members { padding: 0; margin: 0; list-style: none; max-height: 12rem; overflow-y: auto; display: grid; gap: .4rem; }
+.sender-facts-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.sender-facts-content button { max-width: 100%; white-space: normal; justify-self: start; }

@@ -10,6 +10,7 @@ import { SettingsClient } from './settings-client';
 import { MatchClient } from './match-client';
 import { SavedSetClient } from './saved-set-client';
 import { OutreachClient } from './outreach-client';
+import { DraftsClient } from './drafts-client';
 import { PreferencesStore } from './preferences-store';
 import { UpdateChecker } from './update-checker';
 import { APP_URL, CONTENT_POLICY, externalUrl, isTrustedFrame, resourcePath } from './policies';
@@ -36,6 +37,7 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   const match = new MatchClient(input => gateway.matchRequest(input));
   const savedSets = new SavedSetClient(input => gateway.savedSetRequest(input));
   const outreach = new OutreachClient(input => gateway.outreachRequest(input));
+  const drafts = new DraftsClient(input => gateway.draftsRequest(input));
   const preferences = new PreferencesStore(options.userDataDirectory ?? app.getPath('userData'));
   // A separate ephemeral session follows the system proxy without workspace headers.
   const updateNetwork = session.fromPartition('updates-network');
@@ -113,6 +115,17 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('outreach:batches',input=>outreach.batches(input));
   handle('outreach:batch',input=>outreach.batch(input));
   handle('outreach:freeze',input=>outreach.freeze(input));
+  handle('drafts:templates', input => drafts.templates(input));
+  handle('drafts:template', input => drafts.template(input));
+  handle('drafts:register-canonical', input => drafts.registerCanonical(input));
+  handle('drafts:create-template', input => drafts.createTemplate(input));
+  handle('drafts:compositions', input => drafts.compositions(input));
+  handle('drafts:composition', input => drafts.composition(input));
+  handle('drafts:create-composition', input => drafts.createComposition(input));
+  handle('drafts:edit', input => drafts.edit(input));
+  handle('drafts:refresh', input => drafts.refresh(input));
+  handle('drafts:retry', input => drafts.retry(input));
+  handle('drafts:sender-facts', input => drafts.senderFacts(input));
   handle('saved-sets:list',input=>savedSets.list(input));
   handle('saved-sets:detail',input=>savedSets.detail(input));
   handle('saved-sets:results',input=>savedSets.results(input));

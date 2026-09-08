@@ -2,6 +2,19 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopBridge } from '../shared/bridge';
 
 const bridge: DesktopBridge = {
+  drafts: {
+    templates: input => ipcRenderer.invoke('drafts:templates', input),
+    template: id => ipcRenderer.invoke('drafts:template', id),
+    registerCanonical: input => ipcRenderer.invoke('drafts:register-canonical', input),
+    createTemplate: input => ipcRenderer.invoke('drafts:create-template', input),
+    compositions: input => ipcRenderer.invoke('drafts:compositions', input),
+    composition: id => ipcRenderer.invoke('drafts:composition', id),
+    createComposition: input => ipcRenderer.invoke('drafts:create-composition', input),
+    edit: input => ipcRenderer.invoke('drafts:edit', input),
+    refresh: input => ipcRenderer.invoke('drafts:refresh', input),
+    retry: input => ipcRenderer.invoke('drafts:retry', input),
+    senderFacts: input => ipcRenderer.invoke('drafts:sender-facts', input),
+  },
   outreach: {
     selections:input=>ipcRenderer.invoke('outreach:selections',input),
     selection:input=>ipcRenderer.invoke('outreach:selection',input),

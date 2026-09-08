@@ -1,0 +1,140 @@
+import { test } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { readFile, writeFile, stat } from 'node:fs/promises';
+import { MatchClient } from '../src/main/match-client';
+import { authenticatedMatchRequest } from '../src/main/match-transport';
+import { CreatorClient } from '../src/main/creator-client';
+import { authenticatedCreatorRequest } from '../src/main/creator-transport';
+import { OutreachClient } from '../src/main/outreach-client';
+import { authenticatedOutreachRequest } from '../src/main/outreach-transport';
+import { DraftsClient } from '../src/main/drafts-client';
+import { authenticatedDraftsRequest } from '../src/main/drafts-transport';
+import type { Fetcher } from '../src/main/transport';
+import type { DraftView } from '../src/shared/drafts';
+import type { Preparation } from '../src/shared/outreach';
+import { defaultConditions } from '../src/renderer/components/match/discoveryConditionState';
+
+// Explicit exclusive lease only. Production clients → local fixture API → actual
+// worker → strict synthetic model HTTP → durable reads. No browser/native/SMTP.
+test.use({ trace: 'off', screenshot: 'off', video: 'off' });
+const PRIVATE = '/var/folders/p4/5cgpbz2n2hj98xdvs3_b1hlc0000gn/T/fmg-match-frontend-ixcaiiq1/private';
+const ORIGIN = 'http://127.0.0.1:62611';
+const PIN = 'ece2e9d9558dfe057dc40ad58bd98a86e3149dd5';
+const check = (v: unknown, code: string): void => { if (!v) throw new Error(code); };
+const revision = (d: DraftView) => ({ expected_revision: d.revision, context_token: d.context_token });
+
+test('F8 source-bound production adapters preserve full N through actual fixture worker', async () => {
+  test.skip(process.env.FMG_F8_EXCLUSIVE_FIXTURE !== '62611', 'Requires coordinator exclusive fixture lease.');
+  test.setTimeout(180_000);
+  check((await stat(PRIVATE + '/client.json')).mode % 512 === 384, 'fixture_permissions');
+  const config = JSON.parse(await readFile(PRIVATE + '/client.json', 'utf8'));
+  check(config.base_url === ORIGIN && config.backend_revision === PIN && config.migration === '20260908_0017', 'fixture_pin');
+  const controlPath = PRIVATE + '/state/control.json', controls = await readFile(controlPath);
+  check(JSON.stringify(JSON.parse(controls.toString())) === JSON.stringify({ source_fail: 'none', model_fail: 'none', hold: 'none' }), 'fixture_not_idle');
+  const eventsBefore = (await readFile(PRIVATE + '/state/events.jsonl', 'utf8')).split('\n').filter(Boolean).length;
+  const smtpBefore = await readFile(PRIVATE + '/state/smtp-events.jsonl');
+  const runId = randomUUID(), reportPath = PRIVATE + `/f8-drafts-${runId}.json`;
+  const report: Record<string, unknown> = { run_id: runId, backend_revision: PIN, migration: config.migration, status: 'running', stage: 'setup', checks: [], counts: {} };
+  const counts: Record<string, number> = {}; const allowedActivities = new Set<string>(), allowedCreators = new Set<string>(), allowedCompositions = new Set<string>(), allowedDrafts = new Set<string>();
+  const fetcher: Fetcher = async (url, init) => {
+    const u = new URL(url), method = init.method ?? 'GET';
+    check(u.origin === ORIGIN && !/smtp|send-batches|qualification|preview/.test(u.pathname), 'http_scope');
+    check(/^\/api\/v2\/(activities|discovery\/|outreach\/(template-versions|compositions|drafts)|library\/creators)/.test(u.pathname), 'http_route');
+    if (u.pathname.startsWith('/api/v2/library/creators')) check(method === 'GET', 'creator_read_only');
+    const activityScope = /^\/api\/v2\/activities\/([^/]+)/.exec(u.pathname), creatorScope = /^\/api\/v2\/library\/creators\/([^/]+)/.exec(u.pathname), compositionScope = /^\/api\/v2\/outreach\/compositions\/([^/]+)/.exec(u.pathname), draftScope = /^\/api\/v2\/outreach\/drafts\/([^/]+)/.exec(u.pathname);
+    if (activityScope) check(allowedActivities.has(activityScope[1]), 'activity_scope');
+    if (creatorScope) check(allowedCreators.has(creatorScope[1]), 'creator_scope');
+    if (compositionScope) check(allowedCompositions.has(compositionScope[1]), 'composition_scope');
+    if (draftScope) check(allowedDrafts.has(draftScope[1]), 'draft_scope');
+    counts[`${method} ${u.pathname.replace(/[a-f0-9]{8}-[a-f0-9-]{27}/gi, ':id')}`] = (counts[`${method} ${u.pathname.replace(/[a-f0-9]{8}-[a-f0-9-]{27}/gi, ':id')}`] ?? 0) + 1;
+    return fetch(u, { ...init, signal: AbortSignal.any([AbortSignal.timeout(20_000), ...(init.signal ? [init.signal] : [])]) });
+  };
+  const connection = { serviceUrl: ORIGIN, key: config.workspace_key };
+  const match = new MatchClient(r => authenticatedMatchRequest(fetcher, connection, r));
+  const creators = new CreatorClient(r => authenticatedCreatorRequest(fetcher, connection, r));
+  const outreach = new OutreachClient(r => authenticatedOutreachRequest(fetcher, connection, r));
+  const drafts = new DraftsClient(r => authenticatedDraftsRequest(fetcher, connection, r));
+  async function checkpoint(stage: string) { report.stage = stage; report.counts = counts; await writeFile(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 }); }
+  async function until<T>(read: () => Promise<T>, done: (v: T) => boolean): Promise<T> { const deadline = Date.now() + 45_000; while (true) { const v = await read(); if (done(v)) return v; if (Date.now() > deadline) throw new Error('bounded_poll_timeout'); await new Promise(r => setTimeout(r, 600)); } }
+  try {
+    await checkpoint('create_activity');
+    const resumeActivity = process.env.FMG_F8_RESUME_ACTIVITY;
+    if (resumeActivity) check(resumeActivity === '3d1eba1d-224e-4f2a-916f-ac4cbc7350e7', 'resume_scope');
+    if (resumeActivity) allowedActivities.add(resumeActivity);
+    const activity = resumeActivity ? await match.activity(resumeActivity) : await match.createActivity({ data: { name: `F8 desktop adapter ${runId.slice(0, 8)}`, game_id: config.game_id, reference_work_ids: config.reference_work_ids }, idempotencyKey: randomUUID() });
+    allowedActivities.add(activity.id); report.activity_id = activity.id;
+    const sourceBefore = JSON.stringify(activity.source_snapshot);
+    await checkpoint('discover');
+    const accepted = resumeActivity ? null : await match.createPlan({ activityId: activity.id, data: { ...defaultConditions(), batch_target: 3, result_limit: 3 }, idempotencyKey: randomUUID() });
+    const plan = accepted ? await until(() => match.plan(accepted.plan_id), v => ['ready', 'failed'].includes(v.status)) : { query_id: '1ca8a52a-66fe-4df7-b3b9-5f6e79805634', status: 'ready' }; check(plan.query_id && plan.status === 'ready', 'plan_not_ready');
+    report.query_id = plan.query_id;
+    await until(() => match.query(plan.query_id!), v => !['queued', 'running'].includes(v.status) && !v.batches.some(b => ['queued', 'running'].includes(b.status)));
+    const candidates = (await match.candidates({ queryId: plan.query_id!, offset: 0, limit: 100, sort: 'relevance', evidence: 'all' })).items;
+    check(candidates.length >= 3, 'three_candidates_required');
+    await match.stop({ queryId: plan.query_id!, idempotencyKey: randomUUID() });
+    await checkpoint('prepare_own_selections');
+    const prepared: Preparation[] = [], evidenceWorkIds: string[] = [];
+    for (const candidate of [...candidates].sort((a, b) => a.account_id.localeCompare(b.account_id)).slice(0, 3)) {
+      const selected = await outreach.add({ activityId: activity.id, data: { candidate_id: candidate.id }, idempotencyKey: randomUUID() });
+      allowedCreators.add(selected.creator_id); const creator = await creators.detail(selected.creator_id);
+      const works = await creators.works({ creatorId: selected.creator_id, offset: 0, limit: 100 });
+      const evidence = works.items.find(w => w.source_url && w.evidence_excerpt && w.verification_notes && (w.content_title || w.work_name));
+      check(creator.public_name && (prepared.length === 2 || evidence), 'existing_synthetic_source_required_no_creator_mutation');
+      evidenceWorkIds.push(evidence?.id ?? '');
+      prepared.push(await outreach.update({ activityId: activity.id, id: selected.id, data: { expected_revision: selected.revision, context_token: selected.context_token, contact_id: null, work_ids: prepared.length === 0 && evidence ? [evidence.id] : [], confirm_public_name: true }, idempotencyKey: randomUUID() }));
+    }
+    report.selection_ids = prepared.map(v => v.id);
+    const batch = await outreach.freeze({ activityId: activity.id, data: { request_id: randomUUID(), recipients: prepared.map(v => ({ selection_id: v.id, expected_revision: v.revision, context_token: v.context_token })) }, idempotencyKey: randomUUID() });
+    report.recipient_batch_id = batch.id; const snapshots = JSON.stringify(batch.recipients.map(v => ({ id: v.id, snapshot: v.snapshot })));
+    await checkpoint('template_versions');
+    const before = await drafts.templates({ gameId: config.game_id });
+    const canonical = await drafts.registerCanonical({ gameId: config.game_id, idempotencyKey: randomUUID() }); report.canonical_template_id = canonical.id;
+    check(canonical.fixed_hash === '0aaf8eef8f697b8a79307820380960c1efa492d68583b47648b01a81ab1e9b93', 'canonical_hash');
+    const customData = { game_id: config.game_id, request_id: randomUUID(), name: `F8 synthetic ${runId.slice(0, 8)}`, subject: 'Synthetic outreach fixture', fixed_fragments: ['<p>Hi ', ', I follow ', ' and enjoyed ', '. I liked how you ', '</p>'] };
+    const custom = await drafts.createTemplate({ data: customData, idempotencyKey: randomUUID() }); report.custom_template_id = custom.id;
+    check((await drafts.template(custom.id)).fixed_hash === custom.fixed_hash, 'custom_durable');
+    check((await drafts.templates({ gameId: config.game_id })).items.length === before.items.length + 1 + (before.items.some(v => v.id === canonical.id) ? 0 : 1), 'version_count');
+    await checkpoint('composition_worker');
+    const body = { request_id: randomUUID(), recipient_batch_id: batch.id, template_version_id: canonical.id }, key = randomUUID();
+    let composition = await drafts.createComposition({ activityId: activity.id, data: body, idempotencyKey: key });
+    allowedCompositions.add(composition.id); composition.drafts.forEach(d => allowedDrafts.add(d.id)); report.composition_id = composition.id;
+    composition = await until(() => drafts.composition(composition.id), c => c.drafts[0].status === 'succeeded' || c.drafts[0].status === 'failed');
+    check(composition.recipient_count === 3 && composition.drafts[0].status === 'succeeded' && composition.drafts.slice(1).every(d => d.status === 'needs_repair'), 'full_n_initial');
+    check(composition.drafts[0].missing_fields.includes('email_not_selected'), 'missing_contact_generation');
+    check((await drafts.createComposition({ activityId: activity.id, data: body, idempotencyKey: key })).id === composition.id, 'same_creation_replay');
+    check((await drafts.compositions({ activityId: activity.id, limit: 100 })).total === 1, 'one_composition');
+    await checkpoint('targeted_failure_retry');
+    const second = await outreach.selection({ activityId: activity.id, id: prepared[1].id });
+    await outreach.update({ activityId: activity.id, id: second.id, data: { expected_revision: second.revision, context_token: second.context_token, work_ids: [evidenceWorkIds[1]] }, idempotencyKey: randomUUID() });
+    await writeFile(controlPath, JSON.stringify({ source_fail: 'none', model_fail: 'drafting', hold: 'none' }));
+    let changed = (await drafts.composition(composition.id)).drafts[1]; check(changed.source_changed, 'second_source_changed');
+    await drafts.refresh({ id: changed.id, data: revision(changed) });
+    composition = await until(() => drafts.composition(composition.id), c => c.drafts[1].status === 'failed');
+    check(composition.drafts[0].status === 'succeeded', 'first_success_retained');
+    await writeFile(controlPath, controls);
+    await drafts.retry({ id: composition.drafts[1].id, data: revision(composition.drafts[1]) });
+    composition = await until(() => drafts.composition(composition.id), c => c.drafts[1].status === 'succeeded');
+    await checkpoint('manual_and_facts');
+    const first = composition.drafts[0], values = { ...first.values!, observation: 'explained the synthetic scene clearly.' };
+    const edited = await drafts.edit({ id: first.id, data: { ...revision(first), values } }); check(edited.values?.observation === values.observation && !edited.sender_facts_valid, 'manual_four_values');
+    composition = await drafts.composition(composition.id);
+    composition = await drafts.senderFacts({ compositionId: composition.id, data: { members: composition.drafts.slice(0, 2).map(d => ({ draft_id: d.id, ...revision(d) })), following: true, enjoyed: true, liked: true } });
+    check(composition.drafts.slice(0, 2).every(d => d.sender_facts.following === true) && !composition.drafts[2].sender_facts_valid && composition.send_ready === false, 'explicit_subset_facts');
+    const selection = await outreach.selection({ activityId: activity.id, id: prepared[0].id });
+    await outreach.update({ activityId: activity.id, id: selection.id, data: { expected_revision: selection.revision, context_token: selection.context_token, work_ids: [] }, idempotencyKey: randomUUID() });
+    changed = (await drafts.composition(composition.id)).drafts[0]; check(changed.source_changed && changed.values !== null && !changed.sender_facts_valid, 'old_values_retained_before_refresh');
+    const refreshed = await drafts.refresh({ id: changed.id, data: revision(changed) }); check(refreshed.values === null && Object.keys(refreshed.sender_facts).length === 0 && refreshed.status === 'needs_repair', 'refresh_clears');
+    await checkpoint('durable_immutable_read');
+    const final = await drafts.composition(composition.id), batchAfter = await outreach.batch({ activityId: activity.id, id: batch.id });
+    check(final.drafts.map(d => d.recipient_snapshot_id).join('|') === batch.recipients.map(v => v.id).join('|') && final.drafts.every(d => d.send_ready === false), 'all_n_original_order');
+    check(JSON.stringify(batchAfter.recipients.map(v => ({ id: v.id, snapshot: v.snapshot }))) === snapshots && JSON.stringify((await match.activity(activity.id)).source_snapshot) === sourceBefore, 'immutable_original_context');
+    const events = (await readFile(PRIVATE + '/state/events.jsonl', 'utf8')).split('\n').filter(Boolean).slice(eventsBefore).map(v => JSON.parse(v));
+    report.model_http = events.reduce((a: Record<string, number>, e) => { const key = `${e.endpoint}:${e.status}`; a[key] = (a[key] ?? 0) + 1; return a; }, {});
+    check(events.some(e => e.endpoint === 'drafting' && e.status === 200) && events.some(e => e.endpoint === 'drafting' && e.status === 503), 'actual_model_http');
+    check(smtpBefore.equals(await readFile(PRIVATE + '/state/smtp-events.jsonl')), 'no_smtp_effects');
+    report.status = 'passed'; report.final_statuses = final.drafts.map(d => d.status); report.checks = ['canonical_and_custom_versions', 'full_n_missing_sources_and_contact', 'actual_worker_model_http', 'targeted_retry_preserves_success', 'manual_four_values', 'explicit_subset_facts', 'refresh_clears_values_facts', 'immutable_activity_batch', 'no_smtp']; await checkpoint('complete');
+  } catch (error) {
+    report.status = 'failed'; report.error = error && typeof error === 'object' && 'code' in error ? String(error.code) : error instanceof Error && /^[a-z0-9_]+$/.test(error.message) ? error.message : 'suppressed_unexpected_error';
+    await checkpoint(String(report.stage)); throw new Error(`F8 fixture verification failed at ${report.stage}: ${report.error}; private ledger retained.`);
+  } finally { await writeFile(controlPath, controls); report.controls_restored = controls.equals(await readFile(controlPath)); await writeFile(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 }); console.log(JSON.stringify({ f8_status: report.status, stage: report.stage, controls_restored: report.controls_restored, ledger: reportPath })); }
+});

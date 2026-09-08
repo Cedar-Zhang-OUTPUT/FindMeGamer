@@ -124,6 +124,14 @@ function source(value: unknown, kind: Kind, complete = false): Record<string, un
   if (Object.hasOwn(raw, 'validation_state')) result.validation_state = text(raw.validation_state, 'response', 255, 1);
   return result;
 }
+function workSource(value: unknown): Record<string, unknown> {
+  const raw = object(value, 'response');
+  const { text: recordedText, ...editableFields } = raw;
+  const result = source(editableFields, 'work');
+  // Imported PublicJSONObject retains source evidence, not an editable WorkField.
+  if (Object.hasOwn(raw, 'text')) result.text = text(recordedText, 'response', 20_000);
+  return result;
+}
 export type BodyKind = 'creatorCreate' | 'creatorPatch' | 'identity' | 'contactCreate' | 'contactPatch' | 'workCreate' | 'workPatch';
 export function body(value: unknown, operation: BodyKind): Record<string, unknown> {
   const raw = object(value, 'input');
@@ -217,7 +225,7 @@ export function decodeWork(value: unknown, creatorId: string, expectedId?: strin
     source_platform: platform(raw.source_platform, 'response'), origin: enumValue(raw.origin, ['source', 'manual'], 'response'),
     revision: integer(raw.revision, 'response'), identity_revision: integer(raw.identity_revision, 'response'), is_current_identity: bool(raw.is_current_identity, 'response'),
     source_content_id: optionalText(raw.source_content_id, 'response', 255), source_collected_at: timestamp(raw.source_collected_at, 'response'),
-    source_fields: source(raw.source_fields, 'work'), manual_overrides: source(raw.manual_overrides, 'work') } as WorkDetail;
+    source_fields: workSource(raw.source_fields), manual_overrides: source(raw.manual_overrides, 'work') } as WorkDetail;
 }
 export function decodePage<T extends { id: string }>(value: unknown, decode: (item: unknown) => T): { items: T[]; total: number; limit: number; offset: number } {
   const raw = object(value, 'response'); keys(raw, ['items', 'total', 'limit', 'offset'], 'response');

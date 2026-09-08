@@ -5,6 +5,13 @@ const path = `/api/v2/library/creators/${CREATOR_ID}`;
 const key = 'creator-save-123';
 
 describe('Creator client contract', () => {
+  it('retains bounded imported work text only as read-only source metadata', async () => {
+    const work = { ...workFixture(), source_fields: { ...workFixture().source_fields, text: 'Synthetic recorded source text' } };
+    const request = vi.fn().mockResolvedValue({ items: [work], total: 1, offset: 0, limit: 50 });
+    expect((await new CreatorClient(request).works({ creatorId: CREATOR_ID })).items[0].source_fields.text).toBe(work.source_fields.text);
+    for (const text of [42, 'x'.repeat(20_001)]) { request.mockResolvedValue({ items: [{ ...work, source_fields: { text } }], total: 1, offset: 0, limit: 50 }); await expect(new CreatorClient(request).works({ creatorId: CREATOR_ID })).rejects.toMatchObject({ code: 'invalid_response' }); }
+    request.mockClear(); await expect(new CreatorClient(request).updateWork({ creatorId: CREATOR_ID, workId: WORK_ID, data: { expected_revision: 1, text: 'Cannot write source text' } as never })).rejects.toMatchObject({ code: 'request_invalid' }); expect(request).not.toHaveBeenCalled();
+  });
   it('projects a partial contact PATCH exactly and returns the full Creator', async () => {
     const result = { ...creatorFixture(), revision: 4 };
     const request = vi.fn().mockResolvedValue(result);

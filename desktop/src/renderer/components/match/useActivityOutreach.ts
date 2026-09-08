@@ -87,6 +87,7 @@ export function useActivityOutreach({api,activityId,active,queryId,candidates,ca
   }
   function openSelected(){setPanel('selected');setSelectedId(null);setChosenIds(session.items.length<=600?session.items.map(p=>p.id):[]);}
   async function openBatch(id:string){const value=await loadBatch(id);if(value){setBatchMode('history');setPanel('batch');setSelectedId(null);}}
+  async function openCurrentBatch(id:string,personId:string){const value=await loadBatch(id);if(!value)return false;setBatchMode('current');setPanel('batch');setSelectedId(value.recipients.some(row=>row.selection_id===personId)?personId:null);return true;}
   async function updatePerson(id:string,data:SelectionUpdate){
     if(unavailableNow)return false;afterWrite.current={kind:'ordinary'};
     const person=(panel==='batch'?batch?.recipients.map(item=>item.preparation):session.items)?.find(item=>item.id===id);
@@ -144,7 +145,7 @@ export function useActivityOutreach({api,activityId,active,queryId,candidates,ca
     }catch(error){if(alive.current&&token===version.current)setProblem(outreachReadError(error));}finally{if(alive.current)setReadBusy(false);}
   }
   return {session,operation,stopOperation,panel,setPanel,batch,batchCurrent,batchMode,selectedId,setSelectedId,chosenIds,setChosenIds,dirty,setDirty,historyEpoch,pendingCount,
-    busy,locked,problem,notice,credentialsChanged,refresh,toggle,selectLoaded,changeOptions,changeProjection,prepare,openSelected,openBatch,updatePerson,remove,reconcile,checkStop,
+    busy,locked,problem,notice,credentialsChanged,refresh,toggle,selectLoaded,changeOptions,changeProjection,prepare,openSelected,openBatch,openCurrentBatch,updatePerson,remove,reconcile,checkStop,
     retryStop:()=>submitStop(true),retry:()=>operation.retry().then(complete),isSelected:(candidate:CandidateView)=>Boolean(candidateSelection(candidate,session.items)),
     cancelPending:()=>{if(!busy&&!locked){pendingFreeze.current=null;setPendingCount(0);}},
   };

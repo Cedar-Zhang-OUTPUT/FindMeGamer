@@ -6,6 +6,7 @@ import type { CreatorAPI } from './creators';
 import type { MatchAPI } from './match';
 import type { SavedSetsAPI } from './savedSets';
 import type { OutreachAPI } from './outreach';
+import type { DraftsAPI } from './drafts';
 
 export interface ConnectionStatus {
   serviceUrl: string;
@@ -19,6 +20,7 @@ export interface ConnectionCheck { authenticated: true; proxy: 'system'; route: 
 
 /** Business methods only. No generic request, filesystem, shell, or IPC channel access. */
 export interface DesktopBridge {
+  drafts: DraftsAPI;
   outreach: OutreachAPI;
   savedSets: SavedSetsAPI;
   match: MatchAPI;

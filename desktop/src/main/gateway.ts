@@ -7,6 +7,7 @@ import { authenticatedCreatorRequest, validateCreatorRequest, type CreatorReques
 import { authenticatedMatchRequest, validateMatchRequest, type MatchRequest } from './match-transport';
 import { authenticatedSavedSetRequest, validateSavedSetRequest, type SavedSetRequest } from './saved-set-transport';
 import { authenticatedOutreachRequest, validateOutreachRequest, type OutreachRequest } from './outreach-transport';
+import { authenticatedDraftsRequest, validateDraftsRequest, type DraftsRequest } from './drafts-transport';
 
 interface Store {
   status(): Promise<ConnectionStatus>;
@@ -133,6 +134,17 @@ export class WorkspaceGateway {
       this.assertGeneration(generation,!isWrite);
       return authenticatedOutreachRequest(this.fetcher,connection,request);
     },{isWrite});
+  }
+  async draftsRequest(input: DraftsRequest): Promise<unknown> {
+    const request = validateDraftsRequest(input), isWrite = request.method !== 'GET';
+    return this.runCurrent(async () => {
+      const generation = this.generation; let connection: Connection | null;
+      try { connection = await this.store.getConnection(); }
+      catch { throw new PublicFailure('secure_storage_unavailable', 'Could not read your workspace key. Check Keychain access or reconnect in Settings.'); }
+      if (!connection) throw new PublicFailure('not_connected', 'Connect your workspace in Settings.');
+      this.assertGeneration(generation, !isWrite);
+      return authenticatedDraftsRequest(this.fetcher, connection, request);
+    }, { isWrite });
   }
   private assertGeneration(generation: number, retryable = true) {
     if (generation !== this.generation) throw new PublicFailure('connection_changed', retryable

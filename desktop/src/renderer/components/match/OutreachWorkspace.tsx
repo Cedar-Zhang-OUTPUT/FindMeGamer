@@ -40,7 +40,7 @@ export function OutreachNotice({controller:c,onRepair}:{controller:Controller;on
     {onRepair&&state.error&&<button className="text-button" onClick={onRepair}>Open Settings</button>}
   </div>;
 }
-export function OutreachWorkspace({api,controller:c,active,onRequest,onOpenCreator,evaluationChoices=[]}:{api:DesktopBridge;controller:Controller;active:boolean;onRequest:(action:()=>void)=>void;onOpenCreator:(id:string,section?:'overview'|'contacts'|'works')=>void;evaluationChoices?:Array<{id:string;label:string}>}){
+export function OutreachWorkspace({api,controller:c,active,onRequest,onOpenCreator,onChooseTemplate,evaluationChoices=[]}:{api:DesktopBridge;controller:Controller;active:boolean;onRequest:(action:()=>void)=>void;onOpenCreator:(id:string,section?:'overview'|'contacts'|'works')=>void;onChooseTemplate?:()=>void;evaluationChoices?:Array<{id:string;label:string}>}){
   const selected=c.panel==='selected',history=c.batchMode==='history';
   const people=selected?c.session.items:c.batch?.recipients.map(item=>history?item.snapshot:item.preparation)??[];
   const currentPerson=people.find(item=>item.id===c.selectedId),retainedPerson=useRef<Preparation|null>(null);
@@ -52,6 +52,7 @@ export function OutreachWorkspace({api,controller:c,active,onRequest,onOpenCreat
   return <section className="outreach-workspace" aria-label={selected?'Selected people':'Outreach preparation'}>
     <header className="outreach-heading"><button className="text-button" onClick={()=>onRequest(()=>{c.setPanel('candidates');c.setSelectedId(null);})}>Back to candidates</button><div><h2>{selected?`Selected · ${people.length}`:`Preparation · ${c.batch?.recipient_count??0}`}</h2>{!selected&&<span className="status-badge">{history?'History · read only':'Not ready to send'}</span>}</div>
       {selected&&<div className="outreach-prepare-action"><button className="button primary" disabled={disabled||c.dirty||!chosen.length||chosen.length>600} onClick={()=>void c.prepare(chosen)}>Prepare {chosen.length}</button><span>Stops discovery · no email sent</span></div>}
+      {!selected&&!history&&onChooseTemplate&&<button className="button primary" disabled={disabled||c.dirty||!people.length} onClick={onChooseTemplate}>Choose template</button>}
     </header>
     {selected&&c.session.error&&<ErrorNotice error={c.session.error} onRetry={()=>void c.refresh()}/>}
     {selected&&c.session.loading&&<Loading label="Loading selected people…"/>}
