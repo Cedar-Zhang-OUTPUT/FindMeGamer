@@ -13,9 +13,28 @@ import {activityFixture,candidateFixture,matchAPIMock} from './match-api-mock';
 import {creatorAPIMock} from './creator-api-mock';
 import {creatorFixture} from './creator-fixtures';
 import {gameFixture} from './game-fixtures';
+import {preparationFixture} from './outreach-fixtures';
+import {settingsBridgeMock} from './settings-fixtures';
 afterEach(cleanup);
 const ok=<T,>(data:T):Result<T>=>({ok:true,data});
-function setup(){return {match:matchAPIMock(),creators:creatorAPIMock(),games:{list:vi.fn(async()=>ok({items:[gameFixture('A game')],total:1,limit:20,offset:0})),detail:vi.fn(async()=>ok(gameFixture('A game')))},openExternal:vi.fn(async()=>ok(undefined))} as unknown as DesktopBridge;}
+function setup(){return {...settingsBridgeMock(),match:matchAPIMock(),creators:creatorAPIMock(),games:{list:vi.fn(async()=>ok({items:[gameFixture('A game')],total:1,limit:20,offset:0})),detail:vi.fn(async()=>ok(gameFixture('A game')))},openExternal:vi.fn(async()=>ok(undefined))} as unknown as DesktopBridge;}
+it('retains the preparation navigation guard during Creator inspection and returns without discarding the draft',async()=>{
+  const api=setup(),user=userEvent.setup(),person=preparationFixture({activity_id:activityFixture().id});
+  vi.mocked(api.outreach.selections).mockResolvedValue(ok({items:[person],total:1,offset:0,limit:200}));
+  let guard:NavigationGuard|null=null;const register=(value:NavigationGuard|null)=>{guard=value;};
+  render(<MatchWorkspace api={api} active onNavigationGuardChange={register}/>);
+  await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));
+  await user.click(await screen.findByRole('button',{name:'Selected · 1'}));
+  await user.click(await screen.findByRole('button',{name:'Edit Creator fixture'}));
+  const editor=screen.getByRole('region',{name:'Preparation editor'});
+  await user.click(within(editor).getByRole('radio',{name:'None'}));
+  await user.click(within(editor).getByRole('button',{name:'View creator'}));
+  await screen.findByRole('button',{name:'Edit profile'});
+  expect(guard).not.toBeNull();const leave=vi.fn();act(()=>{(guard as NavigationGuard|null)?.(leave);});
+  const dialog=await screen.findByRole('dialog',{name:'Unsaved Match changes'});await user.click(within(dialog).getByRole('button',{name:'Keep working'}));expect(leave).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button',{name:'Back to activity'}));
+  expect(await screen.findByRole('radio',{name:'None'})).toBeChecked();expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
 async function openCandidate(user:ReturnType<typeof userEvent.setup>,expandDetails=false){
   await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));
   const card=within(await screen.findByRole('article',{name:'Creator 1'}));

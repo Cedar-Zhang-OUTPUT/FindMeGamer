@@ -5,6 +5,7 @@ import './matchResults.css';
 
 type CreatorSection = 'overview' | 'contacts' | 'works';
 type OpenCreator = (id: string, section?: CreatorSection) => void;
+export interface CandidateOutreachControl {isSelected:(candidate:CandidateView)=>boolean;disabled:boolean;onToggle:(candidate:CandidateView)=>void}
 
 interface CandidateResultsProps {
   candidates: CandidateView[];
@@ -15,6 +16,7 @@ interface CandidateResultsProps {
   onLoadMore: () => void;
   onOpenCreator: OpenCreator;
   selection?: { ids: readonly string[]; disabled: boolean; onToggle:(id:string)=>void };
+  outreach?:CandidateOutreachControl;
 }
 
 interface EvaluationResultsProps {
@@ -147,7 +149,7 @@ function CandidateEvidence({ candidate, sort }: { candidate: CandidateView; sort
   </div>;
 }
 
-function CandidateCard({ candidate, onOpenCreator, sort, selection }: { candidate: CandidateView; onOpenCreator: OpenCreator; sort?: CandidateSort; selection?:CandidateResultsProps['selection'] }) {
+function CandidateCard({ candidate, onOpenCreator, sort, selection, outreach }: { candidate: CandidateView; onOpenCreator: OpenCreator; sort?: CandidateSort; selection?:CandidateResultsProps['selection'];outreach?:CandidateOutreachControl }) {
   const account = candidate.account;
   const name = snapshotName(candidate);
   const handle = textValue(account.handle);
@@ -157,6 +159,7 @@ function CandidateCard({ candidate, onOpenCreator, sort, selection }: { candidat
 
   return <article className="match-card match-candidate-card" aria-label={name}>
     {selection&&<label className="saved-list-mark"><input type="checkbox" aria-label={`Include ${name} in saved list`} checked={selection.ids.includes(candidate.id)} disabled={selection.disabled||(!selection.ids.includes(candidate.id)&&selection.ids.length>=600)} onChange={()=>selection.onToggle(candidate.id)}/>Mark for list</label>}
+    {!selection&&outreach&&<label className="saved-list-mark"><input type="checkbox" aria-label={`Select ${name} for outreach`} checked={outreach.isSelected(candidate)} disabled={outreach.disabled||candidate.identity_changed} onChange={()=>outreach.onToggle(candidate)}/>Selected for outreach</label>}
     <header className="match-card-header">
       <Artwork url={avatar} name={name} kind="creators"/>
       <div className="match-card-title"><h3>{name}</h3>{handle && handle !== name ? <p>{handle}</p> : null}</div>
@@ -182,11 +185,11 @@ function ResultsFooter({ kind, shown, total, loading, onLoadMore }: { kind: 'can
   </footer>;
 }
 
-export function CandidateResults({ candidates, total, loading, stale = false, sort, onLoadMore, onOpenCreator, selection }: CandidateResultsProps) {
+export function CandidateResults({ candidates, total, loading, stale = false, sort, onLoadMore, onOpenCreator, selection,outreach }: CandidateResultsProps) {
   if (candidates.length === 0) return loading ? <Loading label="Loading candidates…"/> : <EmptyState title="No candidates found" icon="match"/>;
   return <section className="match-results" aria-label="Candidate results">
     {stale ? <p className="match-stale-results" role="status">Showing {candidates.length} previous candidate result{candidates.length === 1 ? '' : 's'} while the new filter loads.</p> : null}
-    <ul className="match-result-list">{candidates.map(candidate => <li key={candidate.id}><CandidateCard candidate={candidate} sort={sort} onOpenCreator={onOpenCreator} selection={selection}/></li>)}</ul>
+    <ul className="match-result-list">{candidates.map(candidate => <li key={candidate.id}><CandidateCard candidate={candidate} sort={sort} onOpenCreator={onOpenCreator} selection={selection} outreach={outreach}/></li>)}</ul>
     {stale ? null : <ResultsFooter kind="candidates" shown={candidates.length} total={total} loading={loading} onLoadMore={onLoadMore}/>}
   </section>;
 }

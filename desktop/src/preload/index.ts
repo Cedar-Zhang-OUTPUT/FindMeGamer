@@ -2,6 +2,17 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopBridge } from '../shared/bridge';
 
 const bridge: DesktopBridge = {
+  outreach: {
+    selections:input=>ipcRenderer.invoke('outreach:selections',input),
+    selection:input=>ipcRenderer.invoke('outreach:selection',input),
+    add:input=>ipcRenderer.invoke('outreach:add',input),
+    bulk:input=>ipcRenderer.invoke('outreach:bulk',input),
+    update:input=>ipcRenderer.invoke('outreach:update',input),
+    cancel:input=>ipcRenderer.invoke('outreach:cancel',input),
+    batches:input=>ipcRenderer.invoke('outreach:batches',input),
+    batch:input=>ipcRenderer.invoke('outreach:batch',input),
+    freeze:input=>ipcRenderer.invoke('outreach:freeze',input),
+  },
   savedSets: {
     list:input=>ipcRenderer.invoke('saved-sets:list',input),
     detail:id=>ipcRenderer.invoke('saved-sets:detail',id),

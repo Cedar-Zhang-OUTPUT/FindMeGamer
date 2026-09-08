@@ -13,6 +13,8 @@ import { MatchClient } from '../src/main/match-client';
 import { authenticatedMatchRequest } from '../src/main/match-transport';
 import { SavedSetClient } from '../src/main/saved-set-client';
 import { authenticatedSavedSetRequest } from '../src/main/saved-set-transport';
+import { OutreachClient } from '../src/main/outreach-client';
+import { authenticatedOutreachRequest } from '../src/main/outreach-transport';
 import { SettingsClient } from '../src/main/settings-client';
 import { authenticatedSettingsRequest } from '../src/main/settings-transport';
 import { authenticatedGameRequest, authenticatedGet, publicResult, type Connection, type Fetcher } from '../src/main/transport';
@@ -154,6 +156,7 @@ test('built React query UI uses real production clients against the pinned HTTP 
   const games = new GameClient(input => authenticatedGameRequest(fetcher, connection, input));
   const match = new MatchClient(input => authenticatedMatchRequest(fetcher, connection, input));
   const savedSets = new SavedSetClient(input => authenticatedSavedSetRequest(fetcher, connection, input));
+  const outreach = new OutreachClient(input => authenticatedOutreachRequest(fetcher, connection, input));
   const settings = new SettingsClient(input => authenticatedSettingsRequest(fetcher, connection, input));
   const library = new LibraryClient((route, query) => authenticatedGet(fetcher, connection, route, query));
 
@@ -275,6 +278,9 @@ test('built React query UI uses real production clients against the pinned HTTP 
     'savedSets.detail': input => savedSets.detail(input),
     'savedSets.results': input => savedSets.results(input),
     'savedSets.create': input => savedSets.create(input),
+    // F7 shows the authoritative selection count; this regression remains read-only for outreach.
+    'outreach.selections': input => outreach.selections(input),
+    ...Object.fromEntries(['selection','add','bulk','update','cancel','batches','batch','freeze'].map(method=>[`outreach.${method}`,()=>rejected(`outreach.${method}`)])),
     'openExternal': async () => undefined,
   };
 
@@ -324,6 +330,7 @@ test('built React query UI uses real production clients against the pinned HTTP 
         settings: group('settings', ['collection', 'setCollection', 'connection', 'replaceConnection', 'testConnection', 'reanalysis', 'saveReanalysis', 'smtp', 'saveSMTP', 'testSMTP', 'sendTestEmail']),
         match: group('match', ['activities', 'createActivity', 'activity', 'plans', 'createPlan', 'plan', 'retryPlan', 'query', 'candidates', 'stop', 'continueDiscovery', 'evaluations', 'evaluate', 'evaluation', 'evaluationResults', 'retryEvaluation']),
         savedSets: group('savedSets', ['list', 'detail', 'results', 'create']),
+        outreach: group('outreach', ['selections', 'selection', 'add', 'bulk', 'update', 'cancel', 'batches', 'batch', 'freeze']),
         openExternal: (url: string) => invoke('openExternal', url),
       } });
     });
@@ -491,7 +498,9 @@ test('built React query UI uses real production clients against the pinned HTTP 
     expect(savedSetCreate.test(writes[0].path)).toBe(true);
     expect(unexpectedRequests).toEqual([]);
     expect(unexpectedBridgeCalls).toEqual([]);
-    expect(records.some(record => /selection|outreach|smtp/i.test(record.path))).toBe(false);
+    expect(records.some(record => /smtp/i.test(record.path))).toBe(false);
+    expect(records.some(record => record.method!=='GET'&&/selection|outreach|recipient-batches/i.test(record.path))).toBe(false);
+    expect(records.some(record => record.method==='GET'&&record.path===`/api/v2/activities/${selected.id}/selections`)).toBe(true);
     // Remote artwork is intentionally blocked in this integration harness; the
     // production Artwork fallback must keep the public UI usable without it.
     testInfo.annotations.push({ type: 'external browser requests blocked', description: String(blockedBrowserRequests) });

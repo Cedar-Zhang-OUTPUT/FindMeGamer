@@ -1,0 +1,107 @@
+// @vitest-environment jsdom
+import '@testing-library/jest-dom/vitest';
+import {act,cleanup,render,screen,waitFor,within} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {afterEach,expect,it,vi} from 'vitest';
+import {MatchActivity} from '../src/renderer/components/match/MatchActivity';
+import type {DesktopBridge} from '../src/shared/bridge';
+import type {NavigationGuard} from '../src/shared/games';
+import {settingsBridgeMock,ok} from './settings-fixtures';
+import {activityFixture,candidateFixture,queryFixture} from './match-api-mock';
+import {preparationFixture,recipientBatchFixture,SELECTION_ID} from './outreach-fixtures';
+import type {Preparation} from '../src/shared/outreach';
+afterEach(cleanup);
+function setup(initial:Preparation[]=[]){
+  const api={...settingsBridgeMock(),openExternal:vi.fn()} as unknown as DesktopBridge;
+  const candidate=candidateFixture(1);
+  const person=preparationFixture({activity_id:activityFixture().id,creator_id:candidate.creator_id,candidate_id:candidate.id,name:'Creator 1',identity:{platform:'youtube',account_id:candidate.account_id,revision:1},selected_contact:null,contact_status:'not_selected',evaluation:null,evaluation_run_id:null,works:[],public_name_confirmed:false,missing_fields:['email_not_selected','evidence_missing']});
+  let people=initial;
+  vi.mocked(api.outreach.selections).mockImplementation(async()=>ok({items:people,total:people.length,offset:0,limit:200}));
+  vi.mocked(api.outreach.add).mockImplementation(async()=>{people=[person];return ok(person);});
+  const batch=recipientBatchFixture({activity_id:activityFixture().id,recipients:[{id:'frozen-person',selection_id:person.id,snapshot:{...person,contact_options:[]},preparation:person,source_changed:false,current_missing_fields:person.missing_fields}]});
+  vi.mocked(api.outreach.freeze).mockImplementation(async input=>ok({...batch,request_id:input.data.request_id}));
+  vi.mocked(api.outreach.batch).mockResolvedValue(ok(batch));
+  let guard:NavigationGuard|null=null;
+  render(<MatchActivity api={api} activityId={activityFixture().id} active onBack={()=>{}} onOpenCreator={()=>{}} onNavigationGuardChange={value=>{guard=value;}}/>);
+  return {api,person,batch,user:userEvent.setup(),getGuard:()=>guard};
+}
+it('selects explicitly, then prepares every chosen person after stopping discovery, including incomplete people',async()=>{
+  const {api,user}=setup();
+  await user.click(await screen.findByRole('checkbox',{name:'Select Creator 1 for outreach'}));
+  await user.click(await screen.findByRole('button',{name:'Selected · 1'}));
+  await user.click(await screen.findByRole('button',{name:'Prepare 1'}));
+  expect(api.match.stop).toHaveBeenCalledWith({queryId:queryFixture().id,idempotencyKey:expect.any(String)});
+  await waitFor(()=>expect(api.outreach.freeze).toHaveBeenCalledOnce());
+  expect(await screen.findByRole('heading',{name:'Preparation · 1'})).toBeVisible();
+  expect(screen.getByRole('button',{name:/Edit Creator 1/})).toBeVisible();
+  expect(screen.queryByRole('button',{name:/^Send/})).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button',{name:/Edit Creator 1/}));
+  expect(await screen.findByRole('radio',{name:/None/})).toBeChecked();
+  expect(api.outreach.update).not.toHaveBeenCalled();
+});
+it('read-only preparation history restores all people without a new selection or freeze',async()=>{
+  const {api,batch,user}=setup();
+  vi.mocked(api.outreach.batches).mockResolvedValue(ok({items:[batch],total:1,offset:0,limit:50}));
+  await user.click(await screen.findByText('Preparation history'));
+  await user.click(await screen.findByRole('button',{name:/Open preparation/}));
+  expect(await screen.findByRole('heading',{name:'Preparation · 1'})).toBeVisible();
+  expect(screen.queryByRole('button',{name:/Edit Creator/})).not.toBeInTheDocument();
+  expect(screen.getByText('Original snapshot')).toBeVisible();
+  expect(api.outreach.add).not.toHaveBeenCalled();expect(api.outreach.update).not.toHaveBeenCalled();expect(api.outreach.freeze).not.toHaveBeenCalled();
+  expect(api.match.stop).not.toHaveBeenCalled();
+});
+it('opens a historical person after the completed batch read without a spurious unsaved-changes prompt',async()=>{
+  const {api,batch,user}=setup();
+  vi.mocked(api.outreach.batches).mockResolvedValue(ok({items:[batch],total:1,offset:0,limit:50}));
+  vi.mocked(api.outreach.batch).mockResolvedValueOnce(ok(batch)).mockImplementation(()=>new Promise(()=>{}));
+  await user.click(await screen.findByText('Preparation history'));
+  await user.click(await screen.findByRole('button',{name:/Open preparation/}));
+  await user.click(await screen.findByRole('button',{name:'View Creator 1'}));
+  expect(screen.queryByRole('dialog',{name:'Unsaved Match changes'})).not.toBeInTheDocument();
+  expect(screen.getByRole('region',{name:'Original preparation snapshot'})).toBeVisible();
+  expect(api.outreach.batch).toHaveBeenCalledOnce();
+});
+it('guards an uncertain freeze and retries the same ordered batch request without stopping again',async()=>{
+  const {api,user}=setup();
+  vi.mocked(api.outreach.freeze).mockResolvedValueOnce({ok:false,error:{code:'outreach_outcome_unknown',message:'Save not confirmed',retryable:false}});
+  await user.click(await screen.findByRole('checkbox',{name:'Select Creator 1 for outreach'}));
+  await user.click(await screen.findByRole('button',{name:'Selected · 1'}));
+  await user.click(await screen.findByRole('button',{name:'Prepare 1'}));
+  await screen.findByRole('region',{name:'Unconfirmed outreach request'});
+  await user.click(screen.getByRole('button',{name:'Activities'}));
+  expect(within(screen.getByRole('dialog')).getByRole('button',{name:'Discard changes'})).toBeDisabled();
+  await user.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Keep working'}));
+  await user.click(screen.getByRole('button',{name:'Retry same save'}));
+  expect(await screen.findByRole('heading',{name:'Preparation · 1'})).toBeVisible();
+  expect(api.match.stop).toHaveBeenCalledOnce();expect(vi.mocked(api.outreach.freeze).mock.calls[0]).toEqual(vi.mocked(api.outreach.freeze).mock.calls[1]);
+});
+it('keeps the observed person draft during credential recovery and requires a fresh read before enabling edits',async()=>{
+  const person=preparationFixture({activity_id:activityFixture().id});
+  const {api,user,getGuard}=setup([person]);
+  vi.mocked(api.outreach.update).mockResolvedValueOnce({ok:false,error:{code:'workspace_key_invalid',message:'Repair connection',retryable:false}});
+  await user.click(await screen.findByRole('button',{name:'Selected · 1'}));
+  await user.click(screen.getByRole('button',{name:'Edit Creator fixture'}));
+  await user.click(screen.getByRole('radio',{name:'None'}));await user.click(screen.getByRole('button',{name:'Save changes'}));
+  await screen.findByText('Repair connection');expect(getGuard()?.recovery).toBeDefined();
+  act(()=>getGuard()?.recovery?.credentialsChanged());
+  expect(screen.getByRole('region',{name:'Preparation editor'})).toBeVisible();
+  expect(screen.getByRole('radio',{name:'None'})).toBeChecked();expect(screen.getByRole('button',{name:'Save changes'})).toBeDisabled();
+  await user.click(screen.getByRole('button',{name:'Refresh preparation'}));
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Save changes'})).toBeEnabled());
+  expect(screen.getByRole('radio',{name:'None'})).toBeChecked();expect(api.outreach.update).toHaveBeenCalledOnce();
+});
+it('keeps an explicitly edited person visible when a refresh no longer returns that active selection',async()=>{
+  const person=preparationFixture({activity_id:activityFixture().id});const {api,user}=setup([person]);
+  await user.click(await screen.findByRole('button',{name:'Selected · 1'}));await user.click(screen.getByRole('button',{name:'Edit Creator fixture'}));
+  await user.click(screen.getByRole('radio',{name:'None'}));
+  vi.mocked(api.outreach.selections).mockResolvedValueOnce(ok({items:[],total:0,offset:0,limit:200}));
+  await user.click(screen.getByRole('button',{name:'Refresh activity'}));
+  await screen.findByRole('heading',{name:'Selected · 0'});
+  expect(screen.getByRole('radio',{name:'None'})).toBeChecked();expect(screen.getByRole('button',{name:'Save changes'})).toBeDisabled();
+  await user.click(screen.getByRole('button',{name:'Choose creators'}));
+  const dialog=screen.getByRole('dialog',{name:'Unsaved Match changes'});
+  await user.click(within(dialog).getByRole('button',{name:'Keep working'}));
+  expect(screen.getByRole('radio',{name:'None'})).toBeChecked();
+  await user.click(screen.getByRole('button',{name:'Cancel changes'}));
+  expect(screen.queryByRole('region',{name:'Preparation editor'})).not.toBeInTheDocument();expect(api.outreach.update).not.toHaveBeenCalled();
+});

@@ -29,13 +29,23 @@ export function MatchWorkspace({api,active,onNavigationGuardChange,onConnectionR
   const overlay=route.kind==='activity'?route.creator:null;
   const owner:Owner=route.kind==='new'?'new':route.kind==='activity'?overlay?overlay.kind==='editor'||overlay.kind==='identity'?'creator':'none':'activity':'none';
   const ownerRef=useRef(owner);ownerRef.current=owner;
+  const retainsActivity=useRef(route.kind==='activity');retainsActivity.current=route.kind==='activity';
   const publish=useRef(onNavigationGuardChange);publish.current=onNavigationGuardChange;
-  // Hidden children retain their guards without replacing the visible task's guard.
-  const register=useCallback((source:Owner,guard:NavigationGuard|null)=>{guards.current[source]=guard;if(ownerRef.current===source)publish.current?.(guard);},[]);
+  // Creator inspection is a detour: its parent draft still owns exit safety.
+  const publishGuard=useCallback(()=>{
+    const visible=guards.current[ownerRef.current],retained=retainsActivity.current?guards.current.activity:null;
+    const parent=retained!==visible?retained:null;
+    if(!visible){publish.current?.(parent);return;}
+    if(!parent){publish.current?.(visible);return;}
+    const combined:NavigationGuard=proceed=>visible(()=>parent(proceed));
+    if(visible.recovery||parent.recovery)combined.recovery={credentialsChanged:()=>{visible.recovery?.credentialsChanged();parent.recovery?.credentialsChanged();}};
+    publish.current?.(combined);
+  },[]);
+  const register=useCallback((source:Owner,guard:NavigationGuard|null)=>{guards.current[source]=guard;if(ownerRef.current===source||source==='activity'&&retainsActivity.current)publishGuard();},[publishGuard]);
   const activityGuard=useCallback((guard:NavigationGuard|null)=>register('activity',guard),[register]);
   const newGuard=useCallback((guard:NavigationGuard|null)=>register('new',guard),[register]);
   const creatorGuard=useCallback((guard:NavigationGuard|null)=>register('creator',guard),[register]);
-  useLayoutEffect(()=>{publish.current?.(guards.current[owner]);},[owner,onNavigationGuardChange]);
+  useLayoutEffect(()=>{publishGuard();},[owner,route.kind,onNavigationGuardChange,publishGuard]);
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;pageGeneration.current++;creatorGeneration.current++;publish.current?.(null);if(restoreFrame.current!==null)cancelAnimationFrame(restoreFrame.current);};},[]);
   const pageRef=useRef(page);pageRef.current=page;
   const load=useCallback(async(offset:number)=>{

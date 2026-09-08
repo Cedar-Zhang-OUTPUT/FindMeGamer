@@ -49,7 +49,7 @@ it('applies candidate controls in Match and disables evaluation while old member
   vi.mocked(match.candidates).mockImplementation(input => input.evidence === 'none'
     ? new Promise(resolve => { finish = resolve; })
     : Promise.resolve({ ok: true, data: { items: [candidateFixture(1)], total: 1, limit: 100, offset: 0 } }));
-  const api = { match, settings: settingsBridgeMock().settings } as DesktopBridge;
+  const api = { ...settingsBridgeMock(), match } as unknown as DesktopBridge;
   const user = userEvent.setup();
   render(<MatchActivity api={api} activityId={activityFixture().id} active onBack={() => {}} onOpenCreator={() => {}}/>);
   const evaluate = await screen.findByRole('button', { name: 'Evaluate 1 loaded' });

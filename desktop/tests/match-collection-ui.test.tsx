@@ -7,6 +7,7 @@ import type {DesktopBridge} from '../src/shared/bridge';
 import type {CollectionSettings} from '../src/shared/settings';
 import {MatchActivity} from '../src/renderer/components/match/MatchActivity';
 import {activityFixture,matchAPIMock,queryFixture} from './match-api-mock';
+import {settingsBridgeMock} from './settings-fixtures';
 afterEach(cleanup);
 const settings=(enabled=false):CollectionSettings=>({items:[
   {platform:'youtube',enabled,implemented:true,credentials_configured:true,availability:enabled?'configured_unverified':'disabled'},
@@ -16,7 +17,7 @@ const settings=(enabled=false):CollectionSettings=>({items:[
 ]});
 function start(query=queryFixture()){
   const match=matchAPIMock();vi.mocked(match.query).mockResolvedValue({ok:true,data:query});
-  const collection=vi.fn(async()=>({ok:true as const,data:settings()}));const api={match,settings:{collection}} as unknown as DesktopBridge;const onCollectionSettings=vi.fn();
+  const collection=vi.fn(async()=>({ok:true as const,data:settings()}));const api={...settingsBridgeMock(),match,settings:{collection}} as unknown as DesktopBridge;const onCollectionSettings=vi.fn();
   render(<MatchActivity api={api} activityId={activityFixture().id} active onBack={()=>{}} onOpenCreator={()=>{}} onCollectionSettings={onCollectionSettings}/>);
   return {api,collection,onCollectionSettings,user:userEvent.setup()};
 }

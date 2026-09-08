@@ -8,7 +8,7 @@ import {MatchActivity} from '../src/renderer/components/match/MatchActivity';
 import {activityFixture,matchAPIMock,queryFixture,candidateFixture} from './match-api-mock';
 import {settingsBridgeMock} from './settings-fixtures';
 afterEach(cleanup);
-function setup(match=matchAPIMock()){const api={match,settings:settingsBridgeMock().settings} as DesktopBridge;render(<MatchActivity api={api} activityId={activityFixture().id} active onBack={()=>{}} onOpenCreator={()=>{}}/>);return {api,user:userEvent.setup()};}
+function setup(match=matchAPIMock()){const api={...settingsBridgeMock(),match} as unknown as DesktopBridge;render(<MatchActivity api={api} activityId={activityFixture().id} active onBack={()=>{}} onOpenCreator={()=>{}}/>);return {api,user:userEvent.setup()};}
 it('requires an explicit evaluation and freezes only loaded eligible candidates',async()=>{
   const match=matchAPIMock();vi.mocked(match.candidates).mockResolvedValue({ok:true,data:{items:[candidateFixture(1),{...candidateFixture(2),identity_changed:true}],total:5,limit:100,offset:0}});
   const {user}=setup(match);const evaluate=await screen.findByRole('button',{name:'Evaluate 1 loaded'});

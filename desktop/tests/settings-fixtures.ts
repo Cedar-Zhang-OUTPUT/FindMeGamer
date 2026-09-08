@@ -6,6 +6,7 @@ import { creatorAPIMock } from './creator-api-mock';
 import { creatorFixture } from './creator-fixtures';
 import { matchAPIMock } from './match-api-mock';
 import { collectionSettingsFixture } from './collection-fixtures';
+import { outreachAPIMock } from './outreach-api-mock';
 
 export const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 export const emptySMTP: SMTPStatus = { configured: false, host: null, port: null, encryption: null, username: null, fromName: null, replyTo: null, emailsPerMinute: 10, lastTestStatus: null, lastTestedAt: null };
@@ -29,7 +30,7 @@ export function settingsBridgeMock() {
   const creators = creatorAPIMock();
   vi.mocked(creators.list).mockResolvedValue(ok({items:[creatorFixture('Pixel Harbor','Pixel Harbor')],total:1,limit:50,offset:0}));
   vi.mocked(creators.detail).mockImplementation(async id => ok(creatorFixture(id,id)));
-  return { savedSets:{list:vi.fn(async()=>ok({items:[],total:0,offset:0,limit:50})),detail:vi.fn(),results:vi.fn(),create:vi.fn()}, match:matchAPIMock(), creators, settings, preferences: {
+  return { outreach:outreachAPIMock(),savedSets:{list:vi.fn(async()=>ok({items:[],total:0,offset:0,limit:50})),detail:vi.fn(),results:vi.fn(),create:vi.fn()}, match:matchAPIMock(), creators, settings, preferences: {
     read: vi.fn(async () => ok(preferences)),
     update: vi.fn(async (input: Partial<Preferences>) => ok(preferences = {...preferences,...input})),
     restoreAppearance: vi.fn(async () => ok(preferences = {...preferences,appearance:'system',fontSize:'default'})),

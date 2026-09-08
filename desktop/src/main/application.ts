@@ -9,6 +9,7 @@ import { CreatorClient } from './creator-client';
 import { SettingsClient } from './settings-client';
 import { MatchClient } from './match-client';
 import { SavedSetClient } from './saved-set-client';
+import { OutreachClient } from './outreach-client';
 import { PreferencesStore } from './preferences-store';
 import { UpdateChecker } from './update-checker';
 import { APP_URL, CONTENT_POLICY, externalUrl, isTrustedFrame, resourcePath } from './policies';
@@ -34,6 +35,7 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   const settings = new SettingsClient(input => gateway.settingsRequest(input));
   const match = new MatchClient(input => gateway.matchRequest(input));
   const savedSets = new SavedSetClient(input => gateway.savedSetRequest(input));
+  const outreach = new OutreachClient(input => gateway.outreachRequest(input));
   const preferences = new PreferencesStore(options.userDataDirectory ?? app.getPath('userData'));
   // A separate ephemeral session follows the system proxy without workspace headers.
   const updateNetwork = session.fromPartition('updates-network');
@@ -102,6 +104,15 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('games:create', input => games.create(input));
   handle('games:update', input => games.update(input));
   handle('creators:list',input=>creators.list(input));
+  handle('outreach:selections',input=>outreach.selections(input));
+  handle('outreach:selection',input=>outreach.selection(input));
+  handle('outreach:add',input=>outreach.add(input));
+  handle('outreach:bulk',input=>outreach.bulk(input));
+  handle('outreach:update',input=>outreach.update(input));
+  handle('outreach:cancel',input=>outreach.cancel(input));
+  handle('outreach:batches',input=>outreach.batches(input));
+  handle('outreach:batch',input=>outreach.batch(input));
+  handle('outreach:freeze',input=>outreach.freeze(input));
   handle('saved-sets:list',input=>savedSets.list(input));
   handle('saved-sets:detail',input=>savedSets.detail(input));
   handle('saved-sets:results',input=>savedSets.results(input));

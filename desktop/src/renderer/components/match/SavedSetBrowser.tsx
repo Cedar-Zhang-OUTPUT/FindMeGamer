@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PublicError } from '../../../shared/bridge';
-import type { CandidateEvidenceFilter, CandidateQueryOptions, CandidateSort, CandidateView } from '../../../shared/match';
+import type { CandidateEvidenceFilter, CandidateListInput, CandidateQueryOptions, CandidateSort, CandidateView } from '../../../shared/match';
 import type { SavedSetPage, SavedSetsAPI, SavedSetView } from '../../../shared/savedSets';
 import { ErrorNotice, Icon, Loading } from '../Primitives';
-import { CandidateResults } from './MatchResults';
+import { CandidateResults, type CandidateOutreachControl } from './MatchResults';
+import { membershipChanged, readCandidateMembership } from './outreachProjection';
 import './savedSetBrowser.css';
 
 type Options = Required<CandidateQueryOptions>;
@@ -57,10 +58,24 @@ export function SavedSetPicker({ api, activityId, active, refreshToken, disabled
 
 type FailedRead = { kind: 'metadata' | 'prefix'; options: Options; capacity: number } | { kind: 'more'; options: Options; offset: number };
 
-export function SavedSetResults({ api, id, activityId, active, onMetadata, onOriginal, onOpenCreator }: {
+export interface SavedSetQueryChange {
+  next: Required<CandidateQueryOptions>;
+  previous: Required<CandidateQueryOptions>;
+  visible: CandidateView[];
+  current: boolean;
+  read: () => Promise<CandidateView[]>;
+  apply: () => void;
+}
+
+export interface SavedSetResultsProps {
   api: SavedSetsAPI; id: string; activityId: string; active: boolean; onMetadata: (set: SavedSetView) => void;
   onOriginal: () => void; onOpenCreator: (id: string, section?: 'overview' | 'contacts' | 'works') => void;
-}) {
+  outreach?: CandidateOutreachControl;
+  onSelectLoaded?: (candidates: CandidateView[]) => void;
+  onQueryChange?: (change: SavedSetQueryChange) => void | Promise<void>;
+}
+
+export function SavedSetResults({ api, id, activityId, active, onMetadata, onOriginal, onOpenCreator, outreach, onSelectLoaded, onQueryChange }: SavedSetResultsProps) {
   const [metadata, setMetadata] = useState<SavedSetView | null>(null);
   const [options, setOptions] = useState<Options>(DEFAULT_OPTIONS);
   const [candidates, setCandidates] = useState<CandidateView[]>([]);
@@ -68,8 +83,11 @@ export function SavedSetResults({ api, id, activityId, active, onMetadata, onOri
   const [loading, setLoading] = useState(false), [current, setCurrent] = useState(false);
   const [error, setError] = useState<PublicError | null>(null);
   const [failed, setFailed] = useState<FailedRead | null>(null);
-  const generation = useRef(0), keyRef = useRef('');
+  const generation = useRef(0), projectionEpoch = useRef(0), keyRef = useRef(''), loadedKeyRef = useRef(''), renderedKeyRef = useRef(''), activeRef = useRef(active);
   const onMetadataRef = useRef(onMetadata), optionsRef = useRef(options), capacityRef = useRef(capacity), candidatesRef = useRef(candidates);
+  const renderedKey = `${activityId}:${id}`;
+  renderedKeyRef.current = renderedKey;
+  activeRef.current = active;
   onMetadataRef.current = onMetadata; optionsRef.current = options; capacityRef.current = capacity; candidatesRef.current = candidates;
 
   const failRead = useCallback((token: number, issue: PublicError, retry: FailedRead) => {
@@ -95,8 +113,9 @@ export function SavedSetResults({ api, id, activityId, active, onMetadata, onOri
     }
     if (token !== generation.current) return;
     setCandidates(items); candidatesRef.current = items; setTotal(filteredTotal); setCapacity(nextCapacity); capacityRef.current = nextCapacity;
-    setOptions(next); optionsRef.current = next; setCurrent(true); setLoading(false); setError(null); setFailed(null);
-  }, [api, failRead, id]);
+    setOptions(next); optionsRef.current = next; loadedKeyRef.current = `${activityId}:${id}`;
+    setCurrent(true); setLoading(false); setError(null); setFailed(null);
+  }, [activityId, api, failRead, id]);
 
   const loadResults = useCallback((next: Options, nextCapacity: number) => {
     const token = ++generation.current;
@@ -110,7 +129,7 @@ export function SavedSetResults({ api, id, activityId, active, onMetadata, onOri
     const token = ++generation.current;
     if (switched) {
       setMetadata(null); setOptions(next); optionsRef.current = next; setCandidates([]); candidatesRef.current = [];
-      setTotal(0); setCapacity(nextCapacity); capacityRef.current = nextCapacity;
+      setTotal(0); setCapacity(nextCapacity); capacityRef.current = nextCapacity; loadedKeyRef.current = '';
     }
     setLoading(true); setCurrent(false); setError(null); setFailed(null);
     let result;
@@ -135,8 +154,9 @@ export function SavedSetResults({ api, id, activityId, active, onMetadata, onOri
     const combined = [...candidatesRef.current, ...result.data.items];
     setCandidates(combined); candidatesRef.current = combined; setTotal(result.data.total);
     const nextCapacity = Math.min(600, Math.max(capacityRef.current, offset + 100));
-    setCapacity(nextCapacity); capacityRef.current = nextCapacity; setCurrent(true); setLoading(false); setError(null); setFailed(null);
-  }, [api, failRead, id]);
+    setCapacity(nextCapacity); capacityRef.current = nextCapacity; loadedKeyRef.current = `${activityId}:${id}`;
+    setCurrent(true); setLoading(false); setError(null); setFailed(null);
+  }, [activityId, api, failRead, id]);
 
   useEffect(() => {
     const key = `${activityId}:${id}`, switched = keyRef.current !== key;
@@ -147,8 +167,40 @@ export function SavedSetResults({ api, id, activityId, active, onMetadata, onOri
   }, [active, activityId, id, loadSet]);
 
   function choose(next: Options) {
+    projectionEpoch.current++;
     setOptions(next); optionsRef.current = next; setCapacity(100); capacityRef.current = 100;
     loadResults(next, 100);
+  }
+  function chooseEvidence(evidence: CandidateEvidenceFilter) {
+    const next = { ...optionsRef.current, evidence };
+    if (!onQueryChange) { choose(next); return; }
+    const key = renderedKey, token = generation.current, epoch = ++projectionEpoch.current;
+    const projectionCurrent = current && active && loadedKeyRef.current === key;
+    if (!projectionCurrent || outreach?.disabled) return;
+    const valid = () => activeRef.current && renderedKeyRef.current === key && loadedKeyRef.current === key
+      && token === generation.current && epoch === projectionEpoch.current;
+    const candidatesAPI = {
+      candidates: (input: CandidateListInput) => api.results({
+        id,
+        evidence: input.evidence,
+        sort: input.sort,
+        offset: input.offset,
+        limit: input.limit,
+      }),
+    };
+    void onQueryChange({
+      next,
+      previous: optionsRef.current,
+      visible: candidatesRef.current,
+      current: true,
+      read: async () => {
+        if (!valid()) throw membershipChanged;
+        const matching = await readCandidateMembership(candidatesAPI, id, next);
+        if (!valid()) throw membershipChanged;
+        return matching;
+      },
+      apply: () => { if (valid()) choose(next); },
+    });
   }
   function retry() {
     if (!failed) return;
@@ -158,11 +210,13 @@ export function SavedSetResults({ api, id, activityId, active, onMetadata, onOri
   }
   const previous = `${candidates.length} previous saved result${candidates.length === 1 ? '' : 's'}`;
   const status = current ? `${total} matching` : loading ? `Refreshing · ${previous}` : `Results unavailable · ${previous}`;
+  const actionCurrent = current && active && loadedKeyRef.current === renderedKey;
+  const candidateOutreach = actionCurrent ? outreach : undefined;
   return <section className="saved-set-results" aria-label="Saved list results">
     <header className="saved-set-results-header"><div><h2>{metadata?.name ?? 'Saved list'}</h2>{metadata ? <span>{metadata.count} saved</span> : null}</div><div><button type="button" className="button secondary" disabled={!metadata} onClick={onOriginal}>Original search</button><button type="button" className="icon-button" aria-label="Refresh saved list" title="Refresh saved list" disabled={loading} onClick={() => void loadSet(false)}><Icon name="refresh"/></button></div></header>
-    {metadata ? <div className="saved-set-query-controls" aria-label="Saved result filters and order"><div><label>Evidence<select aria-label="Evidence" value={options.evidence} onChange={event => choose({ ...options, evidence: event.target.value as CandidateEvidenceFilter })}><option value="all">All evidence</option><option value="current_game">Current game</option><option value="reference_game">Reference games</option><option value="related_content">Other recorded content</option><option value="none">Evidence unknown</option></select></label><label>Order<select aria-label="Order" value={options.sort} onChange={event => choose({ ...options, sort: event.target.value as CandidateSort })}><option value="relevance">Relevance</option><option value="followers">Followers</option><option value="recent_publish">Recently published</option><option value="recent_added">Recently added</option></select></label></div><span role="status">{status}</span></div> : null}
+    {metadata ? <div className="saved-set-query-controls" aria-label="Saved result filters and order"><div><label>Evidence<select aria-label="Evidence" value={options.evidence} disabled={Boolean(onQueryChange) && (!actionCurrent || Boolean(outreach?.disabled))} onChange={event => chooseEvidence(event.target.value as CandidateEvidenceFilter)}><option value="all">All evidence</option><option value="current_game">Current game</option><option value="reference_game">Reference games</option><option value="related_content">Other recorded content</option><option value="none">Evidence unknown</option></select></label><label>Order<select aria-label="Order" value={options.sort} onChange={event => choose({ ...optionsRef.current, sort: event.target.value as CandidateSort })}><option value="relevance">Relevance</option><option value="followers">Followers</option><option value="recent_publish">Recently published</option><option value="recent_added">Recently added</option></select></label>{onSelectLoaded ? <button type="button" className="text-button" disabled={!actionCurrent || Boolean(outreach?.disabled) || candidates.length === 0} onClick={() => { if (actionCurrent && !outreach?.disabled) onSelectLoaded(candidatesRef.current); }}>Select loaded</button> : null}</div><span role="status">{status}</span></div> : null}
     {!current && candidates.length ? <p className="saved-set-previous" role="status">Showing {previous}.</p> : null}
-    {metadata && (candidates.length || loading || !error) ? <CandidateResults candidates={candidates} total={current ? total : candidates.length} loading={current ? loading : candidates.length === 0 && loading} sort={options.sort} onLoadMore={() => void loadMoreAt(candidatesRef.current.length, optionsRef.current)} onOpenCreator={onOpenCreator}/> : null}
+    {metadata && (candidates.length || loading || !error) ? <CandidateResults candidates={candidates} total={current ? total : candidates.length} loading={current ? loading : candidates.length === 0 && loading} sort={options.sort} onLoadMore={() => void loadMoreAt(candidatesRef.current.length, optionsRef.current)} onOpenCreator={onOpenCreator} outreach={candidateOutreach}/> : null}
     {error ? <ErrorNotice error={error} onRetry={error.retryable ? retry : undefined}/> : null}
   </section>;
 }
