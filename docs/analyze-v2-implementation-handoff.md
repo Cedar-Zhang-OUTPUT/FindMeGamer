@@ -75,3 +75,9 @@ Creator 分析目标同样取 `source_identity`，可编辑的顶层 `profile_ur
 - 桌面：扩展 `desktop/tests/game-fixtures.ts`、`creator-fixtures.ts`、`games-renderer.test.tsx`、`game-client.test.ts`；增加 Submit/Enter、粘贴不请求、失败手填、任务抽屉恢复/重试和成功回写 Library 的 typed fixture。
 - 后端端到端模板可借 `test_analyze_vertical_slice.py` 的离线 resolver/AfterCommitDispatcher；`integration/compose.frontend.yaml` 只有静态 Library fixture、无 worker且提供商指向关闭端口，不足以验证 Analyze 完成闭环。
 - 实施时另建独立 fixture 展示上述成功/失败过程；本准备任务未启动服务、未执行测试，未触碰 18090 或已交给前端的 53251 项目。
+
+## 6. 新查询联调观察：自动资料的语言投影
+
+这是后续 Analyze/来源发布单元的接线核验项，不加入正在开发的 Outreach A，也不重开已接受的语言别名比较修复。`a852307` 的别名比较只处理已有语言值；当前 `CreatorLibraryRepository.source_fields` 仅从 `current_facts.languages` 取值，而 YouTube `CreatorAnalysisService._current_facts` 与 discovery 的账号元数据发布均未填此字段。X 作品已有 `source_fields.language`，发现过滤可以据此次内容语言工作，但 Library 的 Creator 语言列表不会自动因此获得值。新 fixture 六名自动导入账号的 Creator 语言都是空值，手工写入后 en/English 比较则正常。
+
+完成 Analyze→新版 Library 时，应验证有明确内容语言来源的已抓取/已分析账号确实能在详情和语言筛选中使用该信息，同时保持人工覆盖优先、当前账号身份限制和未知值语义。不要把 `audience_inference.primary_language` 的 AI 受众推测直接写成已核实的内容语言事实；如需展示推断须保留其推断性质与来源。不新增语言识别服务，不把没有可靠语言依据的账号硬标英文。对应正常夹具应包含自动来源有语言/无语言、人工覆盖及身份变化，而不是仅用手建三个语言样本声称自动来源接线已验收。

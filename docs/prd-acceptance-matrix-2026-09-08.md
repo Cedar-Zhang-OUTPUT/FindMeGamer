@@ -7,11 +7,11 @@
 - **原始来源已现场核实**：[飞书 PRD](https://k1mai98sti.feishu.cn/docx/MOoWdOYNvoogWnxF7jYcGgGinrh)，`revision_id=751`。本次以用户身份只读获取目录，并逐节读取 P1.1、P1.2、P2.1、P3、P4、P5.1、P6、P7、P9、P12.1、P12.2、P15、第三章模板和第四章验收；以下锚点来自该版本的真实 block ID。
 - **已接受代码基线**：`cad55656a9a15ef183c6e0ba4ba608bd61a7a1b5`。本次实现核对使用 `git show` 固定读取；其 `desktop/` 与已接受前端 `3abf262` 一致。文件链接便于定位，内容结论以此 commit 为准，不能把当前工作区的在制修改计为验收通过。
 - **追加验收**：名单/准备批次 `8cabb11`（B7）、共享采集开关 `b2b15f4`（B8）及 P4/P12 后端读查询 `8cf755e`（B9）已接受；这些明确增量覆盖初始 `cad5565` 基线的对应状态。测试夹具 `4bb9d78` 是验收设施，不是业务功能交付。
-- **最新前端与在制单元**：Match 客户端 `149bc69` 已固定快照通过源码验收（F4），但最终打包 E2E 仍待钥匙串授权，不是整单元已完成。Settings 渠道开关 UI `in-progress`，已接手独立 `59414` / `b2b15f4` / `0014` 的测试控制；旧 `53251` / `0012` 保留，`18090` 不动。P4/P12 新读查询前端尚未交付；命名候选集合后端正在完整回归/单次独立审查，未计为接受。
+- **最新前端与在制单元**：F4 Match、F5 共享采集开关及F6 P4/P12 完整查询/命名集合源码已接受。F6 `af3ad07` 经总管固定归档803项/typecheck/build通过，仅cherry-pick为 `63699ad`，desktop树逐字一致；执行方真实HTTP通过，headless/原生包门禁分别仍待实测。F7人选/单邮箱/冻结N已开始。`65164` / `a852307` / `0015` 由前端独占控制；三个旧环境保持，不随业务提交升级。
 - **范围变更与过程记录**：[总管交接文档](prd-review-2026-09-08.md)。用户随后明确的范围优先于原 PRD；较早的等待、环境版本和“尚未实现”文字不能覆盖后续已接受记录。
 - **状态**：`accepted`＝该行明确限定的增量已接受；`in-progress`＝已派发、尚未结项；`planned`＝完整 Demo 仍需交付的后续单元；`approved change`＝用户已改定需求，不等于实现完成。一个页面可同时有已接受基础和待交付行为，分别列行。
 - **执行归属**：后端＝“FindMeGamer 后端开发”；前端＝“FindMeGamer 前端优化”；总管＝集成、固定环境与有限验收。下面的“下一单元”是工作分解，不将所有缺项追加入正在验收的增量。
-- **最新后续增量**：F5 渠道开关源码与真实 HTTP 已接受并合入 `08c7d20`，最终包门禁仍未通过；前端现做 P4/P12 完整筛选/排序和命名集合。后端命名集合 `9fe851e`（B10）及语言 code/名称比较修复 `a852307`（B11）均已验收，后端正在 Outreach A。新 `65164` / `a852307` / `0015` 固定环境已交前端独占操作，三个旧实例保持。下表较早的在制状态以此条及后续验收记录为准。
+- **最新后续增量**：B10 命名集合、B11 语言比较及 B12 Outreach A 模板/四槽草稿/依据均正式接受；后端现做 Outreach B 资格/最终发送，尚未接受。F5 源码与真实HTTP已接受并合入 `08c7d20`；F6源码/HTTP已接受，F7实施中。以下页面行保留初次核验时的差距描述，遇到较早“planned/in-progress”应以本条及具体增量记录为准，不把源码/局部HTTP接受等同完整页面/原生包交付。
 
 ## 可引用的实际验收记录
 
@@ -30,11 +30,13 @@
 | B9 | P4/P12 read queries `8cf755efc539f34e4abc8a885652fbcbe1ae8d85`；[读查询契约](backend-v2-query-options.md) | 执行方 2,152 passed、3 个已批准旧 live-writer 迁移用例 skipped、0 failed；总管核对固定归档 `/tmp/fmg-query-8cf755e.8Ybhcu` 的 12 项查询测试（4.04 秒）及 3 项 OpenAPI 测试（4.03 秒），全部通过并正式接受。数据库仍为 0014；临时验收资源已清理。覆盖全体结果先筛选/排序后分页及 Library 摘要；不含命名候选集合、前端 UI 或真实提供商。 |
 | B10 | Named sets `9fe851e`；[命名集合契约](backend-v2-saved-candidate-sets.md) | 执行方2160 passed、3既定deferred、0failed与一次有限审查；总管固定归档8业务/迁移通过（3.45秒）和3OpenAPI通过（8.22秒），DB0015。新真实HTTP另证持久request_id重放、明确三人集合恢复、全量排序后分页、原query/游标不变、零额外采集。恢复不是人选确认或发信。 |
 | B11 | Language comparison `a852307`；[语言比较接缝](backend-v2-language-filters.md) | 24新cases、62相关测试、全量2184 passed/3既定deferred/0failed与一次有限审查。总管a852固定实际HTTP证en/English/中文label均匹配同一手填英语Creator，Worker真实发现过滤仍保留该账号；source/manual原值不因比较改写。无API或迁移变化，仍0015。 |
+| B12 | Outreach A `5ffd7c4`；[模板与草稿契约](backend-v2-outreach-drafts.md) | 执行方最终2236 passed/3既定deferred/0failed（208.52秒），52新测试、一次有限审查后最小修复。总管固定归档独立52项通过（21.78秒）+3OpenAPI通过（4.86秒），实际DB0016，已读取原始日志。11个typed接口、不可变模板、固定四槽/来源/草稿刷新、单成员重试、明确sender facts与完整N；仍全部send_ready=false，无资格/SMTP发送。原生前端P6尚未接入。 |
 | F1 | Game `8cbd937`；[Game 前端](../desktop/docs/game-v2-unit.md) | 213 项测试、类型检查、构建；4 条 packaged E2E。真实隔离 API/数据库验证手建、保存、冲突、丢响应重试、返回/凭据恢复。 |
 | F2 | Settings `a418081`；[Settings 前端](../desktop/docs/settings-unit.md) | 312 项测试、类型检查、构建；5 条 packaged E2E；12 项 fixture 测试。真实探测器配 HTTP fixtures；SMTP 为无 socket 捕获，保存/连接测试零封、明确确认后捕获一封。 |
 | F3 | Creator `3abf262`，已集成至 `cad5565`；[Creator 前端](../desktop/docs/creator-v2-unit.md) | 总管在交付树和集成树新跑 458 项测试、类型检查、构建均通过；前端最终 6 条 packaged E2E 通过。含真实隔离 API 写入、多邮箱、作品、身份重绑/历史只读以及 Game/Settings 回归。 |
 | F4（仅源码） | Match `149bc69`；[Match前端交接](../desktop/docs/match-v2-unit.md) | 44文件仅desktop；执行方593测试/typecheck/build通过，总管固定归档独立593项/35文件通过（Vitest13.45秒）、typecheck/build通过。两条新packaged E2E为0完成、旧六条此单元未复跑；保留待授权包早于最终两项修复，不等于该提交产物。最终包/E2E/视觉仍待验收，源码可继续集成开发。 |
 | F5（源码/HTTP） | Collection `216f1dc`，已仅集成为 `08c7d20`；[渠道前端交接](../desktop/docs/collection-switches-unit.md) | 执行方631测试、typecheck/build及一次有限审查通过；总管固定归档独立631项/41文件通过（18.78秒），typecheck/build通过，32文件均desktop。真实严格客户端在59414/0014执行GET/PUT 1/1通过，恢复原策略，已有Match与凭据不变、上游事件零增长。该环境控制窗口已释放但保持运行。旧包仍在Keychain读取处，最终F4/F5准确版本包与实际GUI/E2E未验收。 |
+| F6（源码/HTTP） | Queries/saved sets `af3ad07`，仅集成为 `63699ad`；[查询前端交接](../desktop/docs/query-lists-unit.md) | 58文件均desktop；作者803测试/一次有限review闭环、真实65164 HTTP1/1通过。总管固定归档独立803passed/57文件（20.63秒）、typecheck1.39秒/build1.58秒（81modules）通过，原始日志已读取，desktop树与交付一致。headless最初因浏览器缺失未进入testbody，后续补跑中；原生包/Keychain/GUI仍未接受。 |
 | L1 | [有界真实发现](discovery-smoke.md) | YouTube：一页 5 个作品，经 search/channels 各一次 HTTP 200、真实 Celery、数据库和 Library 读回，得到 4 个唯一账号；无追加/重试，实际停止原因 `target_reached`。X 新持久化流程当次零请求：指定 Keychain 读取未返回，不是鉴权/余额失败。 |
 
 ## 页面和功能追溯
@@ -76,8 +78,8 @@
 
 ## 剩余工作顺序与结项条件
 
-1. **完成当前独立单元与尚未通过的门禁。** 后端 B7 名单准备、B8 渠道开关和 B9 读查询已接受；命名候选集合仍在完整回归/单次审查中。前端 Settings 开关 UI 正在开发，独立 `59414` / `b2b15f4` / `0014` 控制已交接前端；旧 `53251` / `0012` 保留，`18090` 不动。F4 Match 源码已接受，最终包/Keychain/E2E 门禁仍待完成，环境 smoke 不替代桌面验收。
-2. **接完已交付契约并补齐必要入口。** 前端接 P4/P12 的 B9 筛选/排序/摘要及明确默认、B7 选择跨追加/分页/筛选/返回语义；命名名单待后端结项后接入。Steam 自动解析/手填、必要 Analyze/证据获取入口仍须独立交付，不因读查询接受而删除，也不将前端尚未完成计为全页通过。
+1. **完成当前独立单元与尚未通过的门禁。** 后端B7–B12已接受，Outreach B在制。前端F6源码/HTTP接受，headless补验与F7人选准备并行；现有65164由前端独占，三个旧环境不动。缺固定版本测试Chromium可正常安装补跑headless，但它不替代最终原生包/Keychain/E2E门禁，也不能把浏览器启动前失败当视觉通过。
+2. **接完已交付契约并补齐必要入口。** 前端F7接B7选择跨追加/分页/筛选/返回与冻结N，随后另接B12/P6草稿。Steam 自动解析/手填、必要 Analyze/证据获取入口（含X完整分析及明确语言来源投影）仍须独立交付，不因读查询接受而删除，也不将前端尚未完成计为全页通过。
 3. **完成准备→生成→预览→发送。** 严格 revision 69 四槽位、可追溯依据/发件人事实确认、缺项保留及重算、草稿失效、实际地址/内容最终冻结、幂等/明确失败恢复。先以隔离 SMTP capture 完成正常和异常流程，真实外发仅在获得指定发件账户/测试收件人授权后验证；未发真实邮件须明确写入结项限制。
 4. **完成同一名单跟进与整条 Demo。** P9 人工回复来源/时间、活动隔离和合作/跟进状态；继续发现→新批次，历史快照/旧链接不变。最终 packaged E2E 应从 Library/Steam 两入口覆盖 P2→P3→P4→P6→P7→P9，并验证常见断线、取消后到达结果、返回、补证和重试。复用旧基础设施必须验证新版接线，不沿用旧测试数量代替。
 
