@@ -9,6 +9,7 @@ from app.core.errors import APIError
 from app.db.models.enums import JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob
 from app.db.models.outreach import Delivery, DeliverySendState
+from app.db.models.activity_sending import ActivityDelivery
 from app.db.models.profiles import (
     CreatorContact,
     CreatorIdentityBinding,
@@ -70,6 +71,18 @@ def rebind_creator(
                 Delivery.send_state.in_(
                     [DeliverySendState.QUEUED, DeliverySendState.SENDING]
                 ),
+            )
+            .limit(1)
+        )
+        is not None
+        or session.scalar(
+            select(ActivityDelivery.id)
+            .where(
+                ActivityDelivery.state.in_(["queued", "sending"]),
+                ActivityDelivery.snapshot["identity"]["platform"].astext
+                == creator.platform,
+                ActivityDelivery.snapshot["identity"]["account_id"].astext
+                == old_account,
             )
             .limit(1)
         )

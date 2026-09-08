@@ -71,3 +71,4 @@ __all__ = [
 ]
 
 from app.db.models.activity_outreach import ActivitySelection, RecipientBatch, RecipientSnapshot
+from app.db.models.activity_collaboration import ActivityCollaboration, ActivityResponse

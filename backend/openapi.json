@@ -77,6 +77,188 @@
         "title": "ActivityDetail",
         "type": "object"
       },
+      "ActivityInvitation": {
+        "properties": {
+          "activity_id": {
+            "format": "uuid",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "activity_name": {
+            "title": "Activity Name",
+            "type": "string"
+          },
+          "cooperation_state": {
+            "enum": [
+              "not_started",
+              "in_discussion",
+              "collaboration_confirmed",
+              "in_production",
+              "awaiting_publication",
+              "published",
+              "settled",
+              "closed"
+            ],
+            "title": "Cooperation State",
+            "type": "string"
+          },
+          "creator_id": {
+            "format": "uuid",
+            "title": "Creator Id",
+            "type": "string"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "follow_up_state": {
+            "enum": [
+              "not_followed_up",
+              "follow_up_needed",
+              "followed_up",
+              "no_follow_up_needed"
+            ],
+            "title": "Follow Up State",
+            "type": "string"
+          },
+          "identity": {
+            "additionalProperties": true,
+            "title": "Identity",
+            "type": "object"
+          },
+          "invitation_state": {
+            "enum": [
+              "not_invited",
+              "awaiting_response",
+              "accepted",
+              "declined"
+            ],
+            "title": "Invitation State",
+            "type": "string"
+          },
+          "invited_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invited At"
+          },
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/RecipientMembership"
+            },
+            "title": "Memberships",
+            "type": "array"
+          },
+          "notes": {
+            "title": "Notes",
+            "type": "string"
+          },
+          "responses": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityResponseView"
+            },
+            "title": "Responses",
+            "type": "array"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "selected": {
+            "title": "Selected",
+            "type": "boolean"
+          },
+          "selection_id": {
+            "format": "uuid",
+            "title": "Selection Id",
+            "type": "string"
+          },
+          "send_history": {
+            "items": {
+              "$ref": "#/components/schemas/InvitationSendHistory"
+            },
+            "title": "Send History",
+            "type": "array"
+          },
+          "sending_state": {
+            "enum": [
+              "not_sent",
+              "queued",
+              "sending",
+              "sent",
+              "failed",
+              "unknown"
+            ],
+            "title": "Sending State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "selection_id",
+          "creator_id",
+          "activity_id",
+          "activity_name",
+          "selected",
+          "identity",
+          "display_name",
+          "revision",
+          "sending_state",
+          "invitation_state",
+          "follow_up_state",
+          "cooperation_state",
+          "notes",
+          "invited_at",
+          "responses",
+          "memberships",
+          "send_history"
+        ],
+        "title": "ActivityInvitation",
+        "type": "object"
+      },
+      "ActivityInvitationPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityInvitation"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "ActivityInvitationPage",
+        "type": "object"
+      },
       "ActivityPage": {
         "properties": {
           "items": {
@@ -106,6 +288,51 @@
           "offset"
         ],
         "title": "ActivityPage",
+        "type": "object"
+      },
+      "ActivityResponseView": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "accepted",
+              "declined"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "responded_at": {
+            "format": "date-time",
+            "title": "Responded At",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "source_note": {
+            "title": "Source Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "outcome",
+          "source_note",
+          "responded_at",
+          "recorded_at"
+        ],
+        "title": "ActivityResponseView",
         "type": "object"
       },
       "ActivityView": {
@@ -1067,6 +1294,71 @@
           "completed_at"
         ],
         "title": "ChangedMatchJobResponse",
+        "type": "object"
+      },
+      "CollaborationUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "cooperation_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_started",
+                  "in_discussion",
+                  "collaboration_confirmed",
+                  "in_production",
+                  "awaiting_publication",
+                  "published",
+                  "settled",
+                  "closed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooperation State"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "follow_up_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_followed_up",
+                  "follow_up_needed",
+                  "followed_up",
+                  "no_follow_up_needed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Follow Up State"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "maxLength": 10000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notes"
+          }
+        },
+        "required": [
+          "expected_revision"
+        ],
+        "title": "CollaborationUpdate",
         "type": "object"
       },
       "CollectionPlatformState": {
@@ -5018,6 +5310,77 @@
         "title": "IdentityUpdate",
         "type": "object"
       },
+      "InvitationSendHistory": {
+        "properties": {
+          "composition_id": {
+            "format": "uuid",
+            "title": "Composition Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "draft_id": {
+            "format": "uuid",
+            "title": "Draft Id",
+            "type": "string"
+          },
+          "exclusion_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exclusion Reason"
+          },
+          "qualification_status": {
+            "enum": [
+              "eligible",
+              "needs_repair",
+              "excluded"
+            ],
+            "title": "Qualification Status",
+            "type": "string"
+          },
+          "recipient_snapshot_id": {
+            "format": "uuid",
+            "title": "Recipient Snapshot Id",
+            "type": "string"
+          },
+          "send_batch_id": {
+            "format": "uuid",
+            "title": "Send Batch Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "send_batch_id",
+          "composition_id",
+          "draft_id",
+          "recipient_snapshot_id",
+          "created_at",
+          "qualification_status",
+          "exclusion_reason",
+          "delivery"
+        ],
+        "title": "InvitationSendHistory",
+        "type": "object"
+      },
       "JobMode": {
         "enum": [
           "create",
@@ -5103,6 +5466,43 @@
           "status"
         ],
         "title": "KnownEvaluationEvidence",
+        "type": "object"
+      },
+      "ManualActivityResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "outcome": {
+            "enum": [
+              "accepted",
+              "declined"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "responded_at": {
+            "format": "date-time",
+            "title": "Responded At",
+            "type": "string"
+          },
+          "source_note": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Source Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "outcome",
+          "source_note",
+          "responded_at"
+        ],
+        "title": "ManualActivityResponse",
         "type": "object"
       },
       "MatchBrief": {
@@ -8724,6 +9124,43 @@
           "context_token"
         ],
         "title": "RecipientChoice",
+        "type": "object"
+      },
+      "RecipientMembership": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "input_order": {
+            "title": "Input Order",
+            "type": "integer"
+          },
+          "recipient_batch_id": {
+            "format": "uuid",
+            "title": "Recipient Batch Id",
+            "type": "string"
+          },
+          "recipient_snapshot_id": {
+            "format": "uuid",
+            "title": "Recipient Snapshot Id",
+            "type": "string"
+          },
+          "snapshot": {
+            "additionalProperties": true,
+            "title": "Snapshot",
+            "type": "object"
+          }
+        },
+        "required": [
+          "recipient_batch_id",
+          "recipient_snapshot_id",
+          "input_order",
+          "created_at",
+          "snapshot"
+        ],
+        "title": "RecipientMembership",
         "type": "object"
       },
       "ReferenceWork": {
@@ -13188,6 +13625,357 @@
         ]
       }
     },
+    "/api/v2/activities/{activity_id}/invitations": {
+      "get": {
+        "operationId": "listActivityInvitationsV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sending_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "not_sent",
+                    "queued",
+                    "sending",
+                    "sent",
+                    "failed",
+                    "unknown"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sending State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "invitation_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "not_invited",
+                    "awaiting_response",
+                    "accepted",
+                    "declined"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Invitation State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "follow_up_state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "not_followed_up",
+                    "follow_up_needed",
+                    "followed_up",
+                    "no_follow_up_needed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Follow Up State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityInvitationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listing",
+        "tags": [
+          "activity-collaboration"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/invitations/{selection_id}": {
+      "get": {
+        "operationId": "getActivityInvitationV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "selection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Selection Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityInvitation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get",
+        "tags": [
+          "activity-collaboration"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/invitations/{selection_id}/responses": {
+      "post": {
+        "operationId": "recordActivityResponseV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "selection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Selection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualActivityResponse"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityInvitation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Record Response",
+        "tags": [
+          "activity-collaboration"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/invitations/{selection_id}/update": {
+      "post": {
+        "operationId": "updateActivityCollaborationV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "selection_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Selection Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollaborationUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityInvitation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update",
+        "tags": [
+          "activity-collaboration"
+        ]
+      }
+    },
     "/api/v2/activities/{activity_id}/queries": {
       "post": {
         "operationId": "createDiscoveryQueryV2",
@@ -15457,6 +16245,94 @@
         "summary": "Rebind Identity",
         "tags": [
           "library-v2"
+        ]
+      }
+    },
+    "/api/v2/library/creators/{creator_id}/invitations": {
+      "get": {
+        "operationId": "listCreatorInvitationsV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "creator_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Creator Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "activity_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Activity Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityInvitationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Creator History",
+        "tags": [
+          "activity-collaboration"
         ]
       }
     },

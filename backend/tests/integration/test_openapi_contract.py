@@ -19,6 +19,26 @@ COMMITTED_SCHEMA = BACKEND_ROOT / "openapi.json"
 
 EXPECTED_OPERATIONS = {
     (
+        "GET",
+        "/api/v2/activities/{activity_id}/invitations",
+    ): "listActivityInvitationsV2",
+    (
+        "GET",
+        "/api/v2/activities/{activity_id}/invitations/{selection_id}",
+    ): "getActivityInvitationV2",
+    (
+        "GET",
+        "/api/v2/library/creators/{creator_id}/invitations",
+    ): "listCreatorInvitationsV2",
+    (
+        "POST",
+        "/api/v2/activities/{activity_id}/invitations/{selection_id}/update",
+    ): "updateActivityCollaborationV2",
+    (
+        "POST",
+        "/api/v2/activities/{activity_id}/invitations/{selection_id}/responses",
+    ): "recordActivityResponseV2",
+    (
         "POST",
         "/api/v2/outreach/compositions/{composition_id}/qualification",
     ): "qualifyActivityOutreachV2",
