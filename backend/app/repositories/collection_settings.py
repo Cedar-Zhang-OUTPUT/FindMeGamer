@@ -1,6 +1,7 @@
 """Administrative policy is independent of credentials and provider outcomes."""
 
 from sqlalchemy import select
+from app.analysis.targets import creator_platform
 
 from app.core.errors import APIError
 from app.db.models.settings import SharedSettings
@@ -81,7 +82,7 @@ def require_collection(session, platform):
 def analysis_waiting_state(session, job):
     if job.target_type != "creator" or job.status not in ("queued", "running"):
         return None, False
-    enabled = collection_enabled(session, "youtube")
+    enabled = collection_enabled(session, creator_platform(job.canonical_target_id))
     if job.collection_paused:
         return (
             "explicit_resume_required" if enabled else "collection_disabled"

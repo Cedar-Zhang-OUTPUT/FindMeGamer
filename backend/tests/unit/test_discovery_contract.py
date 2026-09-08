@@ -24,7 +24,7 @@ def test_discovery_limits_follow_provider_pages_and_do_not_claim_analysis():
         DiscoveryRequest(platform="x", query="game", page_size=9)
     capabilities = {item.platform: item for item in platform_capabilities()}
     assert capabilities["x"].metadata_discovery_available
-    assert not capabilities["x"].analysis_available
+    assert capabilities["x"].analysis_available
     assert not capabilities["twitch"].metadata_discovery_available
     assert not capabilities["instagram"].metadata_discovery_available
 

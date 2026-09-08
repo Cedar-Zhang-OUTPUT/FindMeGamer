@@ -45,6 +45,10 @@ def rebind_creator(
         youtube_ids.add(old_account)
     if platform == "youtube" and account_id:
         youtube_ids.add(account_id)
+    if creator.platform == "x" and old_account:
+        youtube_ids.add(f"x:{old_account}")
+    if platform == "x" and account_id:
+        youtube_ids.add(f"x:{account_id}")
     if (
         youtube_ids
         and session.scalar(

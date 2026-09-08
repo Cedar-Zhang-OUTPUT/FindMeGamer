@@ -5,7 +5,13 @@ from uuid import UUID
 from sqlalchemy import or_, select, tuple_
 from sqlalchemy.orm import Session, load_only
 
-from app.analysis.targets import CanonicalTarget, InvalidTarget, canonicalize_target
+from app.analysis.targets import (
+    CanonicalTarget,
+    InvalidTarget,
+    canonicalize_target,
+    creator_platform,
+    creator_account_id,
+)
 from app.db.models.enums import JobMode, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import (
@@ -61,6 +67,34 @@ def require_valid_succeeded_job_result(
             if succeeded_profile is _PROFILE_NOT_PROVIDED
             else succeeded_profile
         )
+        if creator_platform(job.canonical_target_id) == "x":
+            account = creator_account_id(job.canonical_target_id)
+            valid_target = _is_canonical_identity(
+                TargetType.CREATOR, job.canonical_target_id, job.canonical_url
+            )
+            valid_current = bool(
+                profile is not None
+                and profile.platform == "x"
+                and profile.platform_account_id == account
+                and profile.canonical_url == job.canonical_url
+            )
+            valid_history = bool(
+                profile is not None
+                and session.scalar(
+                    select(CreatorIdentityBinding.creator_id)
+                    .where(
+                        CreatorIdentityBinding.creator_id == job.profile_id,
+                        CreatorIdentityBinding.revision < profile.identity_revision,
+                        CreatorIdentityBinding.platform == "x",
+                        CreatorIdentityBinding.account_id == account,
+                        CreatorIdentityBinding.canonical_url == job.canonical_url,
+                    )
+                    .limit(1)
+                )
+            )
+            if valid_target and (valid_current or valid_history):
+                return
+            raise PermanentIntegrationError("analysis_job_result_invalid")
         valid = bool(
             profile is not None
             and _is_canonical_identity(
@@ -288,8 +322,15 @@ class JobsRepository:
             else:
                 profile_id = self._session.scalar(
                     select(CreatorProfile.id).where(
-                        CreatorProfile.youtube_channel_id == target.canonical_id,
-                        CreatorProfile.platform == "youtube",
+                        (
+                            CreatorProfile.platform_account_id
+                            == creator_account_id(target.canonical_id)
+                            if creator_platform(target.canonical_id) == "x"
+                            else CreatorProfile.youtube_channel_id
+                            == target.canonical_id
+                        ),
+                        CreatorProfile.platform
+                        == creator_platform(target.canonical_id),
                         or_(
                             CreatorProfile.manual_revision == 0,
                             CreatorProfile.last_analyzed_at.is_not(None),
@@ -304,7 +345,7 @@ class JobsRepository:
         if target.target_type is TargetType.CREATOR:
             from app.repositories.collection_settings import require_collection
 
-            require_collection(self._session, "youtube")
+            require_collection(self._session, creator_platform(target.canonical_id))
         job = AnalysisJob(
             target_type=target.target_type,
             canonical_target_id=target.canonical_id,
@@ -331,7 +372,7 @@ class JobsRepository:
             return JobCreationResult(job=active)
         from app.repositories.collection_settings import require_collection
 
-        require_collection(self._session, "youtube")
+        require_collection(self._session, creator_platform(target.canonical_id))
         job = AnalysisJob(
             target_type=TargetType.CREATOR,
             canonical_target_id=target.canonical_id,
@@ -361,7 +402,7 @@ class JobsRepository:
         if target.target_type is TargetType.CREATOR:
             from app.repositories.collection_settings import require_collection
 
-            require_collection(self._session, "youtube")
+            require_collection(self._session, creator_platform(target.canonical_id))
         job = AnalysisJob(
             target_type=source.target_type,
             canonical_target_id=source.canonical_target_id,

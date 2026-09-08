@@ -141,6 +141,7 @@ class ProfilesRepository:
         from app.repositories.collection_settings import collection_enabled
 
         youtube_enabled = collection_enabled(self._session, "youtube")
+        x_enabled = collection_enabled(self._session, "x")
         active_game = (
             select(AnalysisJob.id)
             .where(
@@ -155,6 +156,16 @@ class ProfilesRepository:
             .where(
                 AnalysisJob.target_type == TargetType.CREATOR,
                 AnalysisJob.canonical_target_id == CreatorProfile.youtube_channel_id,
+                AnalysisJob.status.in_((JobStatus.QUEUED, JobStatus.RUNNING)),
+            )
+            .exists()
+        )
+        active_x = (
+            select(AnalysisJob.id)
+            .where(
+                AnalysisJob.target_type == TargetType.CREATOR,
+                AnalysisJob.canonical_target_id
+                == literal("x:") + CreatorProfile.platform_account_id,
                 AnalysisJob.status.in_((JobStatus.QUEUED, JobStatus.RUNNING)),
             )
             .exists()
@@ -185,6 +196,22 @@ class ProfilesRepository:
                 CreatorProfile.youtube_channel_id.is_not(None),
                 CreatorProfile.next_analysis_at <= now,
                 ~active_creator,
+            ),
+            select(
+                CreatorProfile.next_analysis_at.label("next_analysis_at"),
+                literal(TargetType.CREATOR.value).label("target_type"),
+                CreatorProfile.id.label("profile_id"),
+                (literal("x:") + CreatorProfile.platform_account_id).label(
+                    "canonical_target_id"
+                ),
+                CreatorProfile.canonical_url.label("canonical_url"),
+            ).where(
+                CreatorProfile.platform == "x",
+                literal(x_enabled),
+                CreatorProfile.platform_account_id.is_not(None),
+                CreatorProfile.next_analysis_at.is_not(None),
+                CreatorProfile.next_analysis_at <= now,
+                ~active_x,
             ),
         ).subquery()
         rows = self._session.execute(
@@ -232,7 +259,30 @@ class ProfilesRepository:
             .values(source_status=CreatorProfile.source_status.op("||")(stale_patch))
             .execution_options(synchronize_session=False)
         )
-        return result.rowcount
+        x_result = self._session.execute(
+            update(CreatorProfile)
+            .where(
+                CreatorProfile.platform == "x",
+                CreatorProfile.platform_account_id.is_not(None),
+                CreatorProfile.last_analyzed_at.is_not(None),
+                CreatorProfile.last_analyzed_at < cutoff,
+                (
+                    func.lower(
+                        CreatorProfile.source_status["x"].astext
+                    ).is_distinct_from("stale")
+                    | func.lower(
+                        CreatorProfile.source_status["freshness"].astext
+                    ).is_distinct_from("stale")
+                ),
+            )
+            .values(
+                source_status=CreatorProfile.source_status.op("||")(
+                    cast({"x": "stale", "freshness": "stale"}, JSONB)
+                )
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount + x_result.rowcount
 
     def set_game_favorite(
         self, profile_id: UUID, *, favorite: bool

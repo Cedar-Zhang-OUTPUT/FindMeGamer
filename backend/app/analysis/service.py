@@ -375,9 +375,11 @@ class CreatorAnalysisService:
         *,
         session_factory: SessionFactory,
         clock: Callable[[], datetime] | None = None,
+        platform: str = "youtube",
     ) -> None:
         self._session_factory = session_factory
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._platform = platform
 
     def start(self, job_id: UUID) -> CreatorJobLease:
         with self._session_factory() as session, session.begin():
@@ -403,7 +405,7 @@ class CreatorAnalysisService:
                 raise PermanentIntegrationError("analysis_job_state_invalid")
             from app.repositories.collection_settings import guard_collection
 
-            guard_collection(session, "youtube")
+            guard_collection(session, self._platform)
             _require_valid_job_state(job)
             if job.status is JobStatus.QUEUED:
                 now = self._aware_now()

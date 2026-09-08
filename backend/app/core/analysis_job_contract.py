@@ -73,6 +73,12 @@ INTEGRATION_ERROR_CODES = frozenset(
         "youtube_target_invalid",
         "youtube_unavailable",
         "youtube_video_limit_invalid",
+        "x_account_id_invalid",
+        "x_account_not_found",
+        "x_request_rejected",
+        "x_response_invalid",
+        "x_source_identity_mismatch",
+        "x_unavailable",
     }
 )
 RETRYABLE_INTEGRATION_ERROR_CODES = frozenset(
@@ -86,6 +92,7 @@ RETRYABLE_INTEGRATION_ERROR_CODES = frozenset(
         "steam_unavailable",
         "youtube_quota_unavailable",
         "youtube_unavailable",
+        "x_unavailable",
     }
 )
 

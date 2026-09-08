@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from app.analysis.creator_checkpoints import CreatorAnalysisCheckpointStore
 from app.analysis.creator_map_reduce_pipeline import CreatorMapReducePipeline
+from app.analysis.x_pipeline import XCreatorAnalysisPipeline
+from app.integrations.x_creator import XCreatorGateway
 from app.analysis.game_pipeline import GameAnalysisPipeline
 from app.analysis.service import CreatorAnalysisService, GameAnalysisService
 from app.analysis.targets import (
@@ -93,7 +95,7 @@ class ProductionSecretProvider:
             not required
             or len(required) != len(set(required))
             or any(
-                service not in {"youtube", "deepseek", "google_ai"}
+                service not in {"youtube", "x", "deepseek", "google_ai"}
                 for service in required
             )
         ):
@@ -154,6 +156,37 @@ class ProductionAnalysisRuntime:
 
         with self._session_factory() as session:
             guard_collection(session, "youtube")
+
+    @contextmanager
+    def x_pipeline(self):
+        secrets_by_service = {}
+        try:
+            with _owned_resources() as stack:
+                secrets_by_service = self._secret_provider.load(("x", "deepseek"))
+                x = stack.enter_context(
+                    XCreatorGateway(
+                        bearer_token=secrets_by_service["x"],
+                        base_url=self._settings.x_api_base_url,
+                    )
+                )
+                artifacts = stack.enter_context(_artifact_store_for(self._settings))
+                deepseek = stack.enter_context(
+                    DeepSeekGateway(
+                        api_key=secrets_by_service["deepseek"],
+                        base_url=self._settings.deepseek_api_base_url,
+                    )
+                )
+                yield XCreatorAnalysisPipeline(
+                    session_factory=self._session_factory,
+                    x=x,
+                    deepseek=deepseek,
+                    artifacts=artifacts,
+                    checkpoints=CreatorAnalysisCheckpointStore(
+                        session_factory=self._session_factory
+                    ),
+                )
+        finally:
+            secrets_by_service.clear()
 
     @contextmanager
     def pipeline_for(self, target_type: TargetType):

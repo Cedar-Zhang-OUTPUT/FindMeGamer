@@ -130,8 +130,13 @@ def detail(creator):
         ),
         last_analyzed_at=creator.last_analyzed_at,
         next_analysis_at=creator.next_analysis_at,
-        analysis_available=creator.platform == "youtube"
-        and creator.youtube_channel_id is not None,
+        analysis_available=(
+            creator.platform == "youtube" and creator.youtube_channel_id is not None
+        )
+        or (creator.platform == "x" and creator.platform_account_id is not None),
+        analysis=creator.analysis or {},
+        brief=creator.brief or {},
+        source_status=creator.source_status or {},
         **creator_summary(creator),
     )
 

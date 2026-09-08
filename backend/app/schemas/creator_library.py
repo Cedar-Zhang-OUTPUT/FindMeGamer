@@ -199,6 +199,9 @@ class CreatorDetail(CreatorFields):
     last_analyzed_at: datetime | None
     next_analysis_at: datetime | None
     analysis_available: bool
+    analysis: PublicJSONObject = Field(default_factory=dict)
+    brief: PublicJSONObject = Field(default_factory=dict)
+    source_status: PublicJSONObject = Field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None
     latest_published_at: datetime | None = None

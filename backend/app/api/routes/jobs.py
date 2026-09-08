@@ -18,6 +18,8 @@ from sqlalchemy import literal, select, tuple_, union_all
 from sqlalchemy.orm import Session
 
 from app.analysis.targets import (
+    canonicalize_target,
+    creator_platform,
     CanonicalTarget,
     ChannelResolutionUnavailable,
     ChannelResolver,
@@ -353,7 +355,9 @@ def _dispatch_committed_job(
                 return _json_response(CommittedResponse(committed.status_code, current))
             from app.repositories.collection_settings import require_collection
 
-            require_collection(database_session, "youtube")
+            require_collection(
+                database_session, creator_platform(persisted.canonical_target_id)
+            )
             persisted.collection_paused = False
             database_session.flush()
         current_body = project_analysis_job(database_session, persisted).model_dump(
@@ -745,13 +749,16 @@ def create_router(
         idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
     ) -> JSONResponse:
         key = _validated_idempotency_key(idempotency_key)
-        if payload.target_type is TargetType.CREATOR:
-            from app.repositories.collection_settings import require_collection
-
-            with session_factory() as collection_session:
-                require_collection(collection_session, "youtube")
-                collection_session.commit()
         try:
+            canonical = canonicalize_target(payload.target_type, payload.url)
+            if payload.target_type is TargetType.CREATOR:
+                from app.repositories.collection_settings import require_collection
+
+                with session_factory() as collection_session:
+                    require_collection(
+                        collection_session, creator_platform(canonical.canonical_id)
+                    )
+                    collection_session.commit()
             target = resolve_target(payload.target_type, payload.url, resolver)
         except InvalidTarget:
             raise APIError(
@@ -952,7 +959,9 @@ def create_router(
                     code="analysis_not_paused",
                     message="This Analysis Job is not paused for collection.",
                 )
-            require_collection(repository._session, "youtube")
+            require_collection(
+                repository._session, creator_platform(job.canonical_target_id)
+            )
             job.collection_paused = False
             fresh_resume = True
             repository._session.flush()

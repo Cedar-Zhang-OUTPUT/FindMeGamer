@@ -2139,6 +2139,9 @@
             "title": "Active Email Count",
             "type": "integer"
           },
+          "analysis": {
+            "$ref": "#/components/schemas/PublicJSONObject"
+          },
           "analysis_available": {
             "title": "Analysis Available",
             "type": "boolean"
@@ -2154,6 +2157,9 @@
               }
             ],
             "title": "Avatar Url"
+          },
+          "brief": {
+            "$ref": "#/components/schemas/PublicJSONObject"
           },
           "contact_status": {
             "default": "missing",
@@ -2431,6 +2437,9 @@
               }
             ],
             "title": "Source Notes"
+          },
+          "source_status": {
+            "$ref": "#/components/schemas/PublicJSONObject"
           },
           "updated_at": {
             "anyOf": [

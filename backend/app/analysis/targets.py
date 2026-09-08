@@ -7,9 +7,7 @@ from urllib.parse import urlsplit
 from app.db.models.enums import TargetType
 
 
-_steam_path = re.compile(
-    r"^/app/(?P<app_id>[0-9]+)(?:/[A-Za-z0-9_-]+)?/?$"
-)
+_steam_path = re.compile(r"^/app/(?P<app_id>[0-9]+)(?:/[A-Za-z0-9_-]+)?/?$")
 _youtube_channel_path = re.compile(
     r"^/channel/(?P<channel_id>UC[A-Za-z0-9_-]{6,126})/?$"
 )
@@ -32,6 +30,14 @@ class CanonicalTarget:
     requires_resolution: bool = False
 
 
+def creator_platform(canonical_id: str) -> str:
+    return "x" if canonical_id.startswith("x:") else "youtube"
+
+
+def creator_account_id(canonical_id: str) -> str:
+    return canonical_id[2:] if creator_platform(canonical_id) == "x" else canonical_id
+
+
 class ChannelResolver(Protocol):
     def resolve_channel(self, target: CanonicalTarget) -> str: ...
 
@@ -47,8 +53,7 @@ def _parsed_https_url(raw_url: str):
     if not isinstance(raw_url, str) or not raw_url or len(raw_url) > 2048:
         raise InvalidTarget("The target URL is invalid.")
     if any(
-        character.isspace()
-        or unicodedata.category(character).startswith("C")
+        character.isspace() or unicodedata.category(character).startswith("C")
         for character in raw_url
     ):
         raise InvalidTarget("The target URL is invalid.")
@@ -70,9 +75,7 @@ def _parsed_https_url(raw_url: str):
     return parsed
 
 
-def canonicalize_target(
-    target_type: TargetType, raw_url: str
-) -> CanonicalTarget:
+def canonicalize_target(target_type: TargetType, raw_url: str) -> CanonicalTarget:
     parsed = _parsed_https_url(raw_url)
     hostname = parsed.hostname.casefold()
     if "%" in parsed.path or "\\" in parsed.path:
@@ -95,6 +98,16 @@ def canonicalize_target(
         )
 
     if target_type is TargetType.CREATOR:
+        if hostname in {"x.com", "www.x.com", "twitter.com", "www.twitter.com"}:
+            match = re.fullmatch(r"/i/user/([1-9][0-9]{0,31})/?", parsed.path)
+            if match is None:
+                raise InvalidTarget("An X account must have a bound numeric identity.")
+            account_id = match.group(1)
+            return CanonicalTarget(
+                target_type=target_type,
+                canonical_id=f"x:{account_id}",
+                canonical_url=f"https://x.com/i/user/{account_id}",
+            )
         if hostname not in {"youtube.com", "www.youtube.com"}:
             raise InvalidTarget("The target URL is invalid.")
         channel_match = _youtube_channel_path.fullmatch(parsed.path)

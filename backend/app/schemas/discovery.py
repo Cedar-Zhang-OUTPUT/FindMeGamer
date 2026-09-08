@@ -120,7 +120,7 @@ def platform_capabilities() -> list[DiscoveryCapability]:
         DiscoveryCapability(
             platform=p,
             metadata_discovery_available=p in {"youtube", "x"},
-            analysis_available=p == "youtube",
+            analysis_available=p in {"youtube", "x"},
         )
         for p in ("youtube", "x", "twitch", "instagram")
     ]

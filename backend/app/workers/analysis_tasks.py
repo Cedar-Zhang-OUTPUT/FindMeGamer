@@ -24,6 +24,7 @@ from app.core.analysis_job_contract import (
     valid_analysis_job_state,
 )
 from app.core.config import get_settings
+from app.analysis.targets import creator_platform
 from app.core.database import session_scope
 from app.db.models.enums import AnalysisStage, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
@@ -251,9 +252,13 @@ class AnalysisJobExecutor:
         session_factory: SessionFactory,
         pipeline_factory: PipelineFactory,
         clock: Callable[[], datetime] | None = None,
+        x_pipeline_factory: (
+            Callable[[], AbstractContextManager[Pipeline]] | None
+        ) = None,
     ) -> None:
         self._session_factory = session_factory
         self._pipeline_factory = pipeline_factory
+        self._x_pipeline_factory = x_pipeline_factory
         self._clock = clock or (lambda: datetime.now(UTC))
 
     def execute(self, job_id: UUID) -> None:
@@ -263,7 +268,23 @@ class AnalysisJobExecutor:
         from app.repositories.collection_settings import CollectionPaused
 
         try:
-            with self._pipeline_factory(target_type) as pipeline:
+            is_x = False
+            if target_type is TargetType.CREATOR:
+                with self._session_factory() as session:
+                    job = session.get(AnalysisJob, job_id)
+                    is_x = (
+                        job is not None
+                        and creator_platform(job.canonical_target_id) == "x"
+                    )
+                    session.commit()
+            if is_x and self._x_pipeline_factory is None:
+                raise PermanentIntegrationError("analysis_configuration_invalid")
+            context = (
+                self._x_pipeline_factory()
+                if is_x
+                else self._pipeline_factory(target_type)
+            )
+            with context as pipeline:
                 pipeline.run(job_id)
         except CollectionPaused:
             with self._session_factory() as session:
@@ -314,7 +335,7 @@ class AnalysisJobExecutor:
                     from app.repositories.collection_settings import collection_enabled
 
                     if job.collection_paused or not collection_enabled(
-                        session, "youtube"
+                        session, creator_platform(job.canonical_target_id)
                     ):
                         job.collection_paused = True
                         session.commit()
@@ -343,6 +364,7 @@ def get_analysis_executor() -> AnalysisJobExecutor:
     return AnalysisJobExecutor(
         session_factory=session_scope,
         pipeline_factory=runtime.pipeline_for,
+        x_pipeline_factory=runtime.x_pipeline,
     )
 
 

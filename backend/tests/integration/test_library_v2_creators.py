@@ -305,7 +305,7 @@ def test_work_manual_evidence_and_search_are_structured_not_inferred(auth_client
     assert auth_client.get(URL, params={"platform": "twitch"}).json()["total"] == 0
 
 
-def test_non_youtube_not_exposed_to_old_api_or_scheduler(auth_client, session):
+def test_x_not_exposed_to_old_api_but_available_to_scheduler(auth_client, session):
     from datetime import UTC, datetime, timedelta
     from app.repositories.profiles import ProfilesRepository
 
@@ -318,8 +318,8 @@ def test_non_youtube_not_exposed_to_old_api_or_scheduler(auth_client, session):
         item["id"] != str(row.id)
         for item in auth_client.get("/api/v1/profiles/creators").json()["items"]
     )
-    assert all(
-        item.profile_id != row.id
+    assert any(
+        item.profile_id == row.id and item.canonical_target_id == "x:123456"
         for item in ProfilesRepository(session).list_due_profiles(
             now=datetime.now(UTC), limit=100
         )
