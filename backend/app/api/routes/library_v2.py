@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query
@@ -33,12 +33,19 @@ def create_router(authenticate_workspace: Callable) -> APIRouter:
     def list_games(
         query: Annotated[str, Query(max_length=255)] = "",
         only_collection: bool = False,
+        website_status: Literal["all", "available", "missing"] = "all",
+        sort: Literal["name", "recent_updated", "recent_added"] = "name",
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
         session: Session = Depends(get_session),
     ) -> GamePage:
         return LibraryGamesRepository(session).list(
-            query=query, only_collection=only_collection, limit=limit, offset=offset
+            query=query,
+            only_collection=only_collection,
+            limit=limit,
+            offset=offset,
+            website_status=website_status,
+            sort=sort,
         )
 
     @router.post(

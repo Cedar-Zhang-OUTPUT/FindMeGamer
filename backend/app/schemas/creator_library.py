@@ -19,6 +19,9 @@ from app.schemas.library_v2 import ShortText, LongText, WebURL, Labels, unique_l
 from app.schemas.profiles import PublicJSONObject
 
 Platform = Literal["youtube", "x", "twitch", "instagram"]
+CreatorSort = Literal[
+    "name", "relevance", "followers", "recent_publish", "recent_added"
+]
 Count = Annotated[StrictInt | None, Field(ge=0)]
 
 
@@ -173,6 +176,15 @@ class ContactDetail(ContactFields):
     updated_at: datetime
 
 
+class RecentWorkSummary(BaseModel):
+    id: UUID
+    work_name: str | None
+    content_title: str | None
+    source_url: str | None
+    published_at: datetime | None
+    content_type: str
+
+
 class CreatorDetail(CreatorFields):
     id: UUID
     platform: Platform
@@ -187,6 +199,12 @@ class CreatorDetail(CreatorFields):
     last_analyzed_at: datetime | None
     next_analysis_at: datetime | None
     analysis_available: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    latest_published_at: datetime | None = None
+    active_email_count: int = 0
+    contact_status: Literal["available", "missing"] = "missing"
+    recent_works: list[RecentWorkSummary] = Field(default_factory=list)
 
 
 class CreatorPage(BaseModel):

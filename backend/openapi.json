@@ -568,6 +568,18 @@
             "title": "Creator Id",
             "type": "string"
           },
+          "evidence_groups": {
+            "items": {
+              "enum": [
+                "current_game",
+                "reference_game",
+                "related_content"
+              ],
+              "type": "string"
+            },
+            "title": "Evidence Groups",
+            "type": "array"
+          },
           "filter_notes": {
             "additionalProperties": true,
             "title": "Filter Notes",
@@ -588,6 +600,16 @@
           },
           "platform": {
             "title": "Platform",
+            "type": "string"
+          },
+          "relevance_status": {
+            "default": "not_evaluated",
+            "enum": [
+              "not_evaluated",
+              "available",
+              "stale"
+            ],
+            "title": "Relevance Status",
             "type": "string"
           },
           "selected": {
@@ -1643,6 +1665,11 @@
       "CreatorDetail": {
         "additionalProperties": false,
         "properties": {
+          "active_email_count": {
+            "default": 0,
+            "title": "Active Email Count",
+            "type": "integer"
+          },
           "analysis_available": {
             "title": "Analysis Available",
             "type": "boolean"
@@ -1658,6 +1685,15 @@
               }
             ],
             "title": "Avatar Url"
+          },
+          "contact_status": {
+            "default": "missing",
+            "enum": [
+              "available",
+              "missing"
+            ],
+            "title": "Contact Status",
+            "type": "string"
           },
           "contacts": {
             "items": {
@@ -1689,6 +1725,18 @@
               }
             ],
             "title": "Country Name"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
           },
           "description": {
             "anyOf": [
@@ -1793,6 +1841,18 @@
             ],
             "title": "Last Analyzed At"
           },
+          "latest_published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Published At"
+          },
           "manual_overrides": {
             "$ref": "#/components/schemas/PublicJSONObject"
           },
@@ -1874,6 +1934,13 @@
             "title": "Public Name Confirmed",
             "type": "boolean"
           },
+          "recent_works": {
+            "items": {
+              "$ref": "#/components/schemas/RecentWorkSummary"
+            },
+            "title": "Recent Works",
+            "type": "array"
+          },
           "revision": {
             "title": "Revision",
             "type": "integer"
@@ -1895,6 +1962,18 @@
               }
             ],
             "title": "Source Notes"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           },
           "work_count": {
             "title": "Work Count",
@@ -3602,6 +3681,18 @@
             ],
             "title": "Cover Url"
           },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
           "description": {
             "anyOf": [
               {
@@ -3752,6 +3843,18 @@
             "maxItems": 100,
             "title": "Tags",
             "type": "array"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
           },
           "website_url": {
             "anyOf": [
@@ -7495,6 +7598,74 @@
           "game_interval_days"
         ],
         "title": "ReanalysisSettingsUpdate",
+        "type": "object"
+      },
+      "RecentWorkSummary": {
+        "properties": {
+          "content_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Title"
+          },
+          "content_type": {
+            "title": "Content Type",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "work_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Name"
+          }
+        },
+        "required": [
+          "id",
+          "work_name",
+          "content_title",
+          "source_url",
+          "published_at",
+          "content_type"
+        ],
+        "title": "RecentWorkSummary",
         "type": "object"
       },
       "RecipientBatchCreate": {
@@ -12800,6 +12971,40 @@
           },
           {
             "in": "query",
+            "name": "evidence",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "current_game",
+                "reference_game",
+                "related_content",
+                "none"
+              ],
+              "title": "Evidence",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "added",
+              "enum": [
+                "added",
+                "relevance",
+                "followers",
+                "recent_publish",
+                "recent_added"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -12957,6 +13162,59 @@
               "default": "",
               "maxLength": 255,
               "title": "Language",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "platforms",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "enum": [
+                  "youtube",
+                  "x",
+                  "twitch",
+                  "instagram"
+                ],
+                "type": "string"
+              },
+              "maxItems": 4,
+              "title": "Platforms",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "languages",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 30,
+              "title": "Languages",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "name",
+              "enum": [
+                "name",
+                "relevance",
+                "followers",
+                "recent_publish",
+                "recent_added"
+              ],
+              "title": "Sort",
               "type": "string"
             }
           },
@@ -13616,6 +13874,36 @@
               "default": false,
               "title": "Only Collection",
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "website_status",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "available",
+                "missing"
+              ],
+              "title": "Website Status",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "name",
+              "enum": [
+                "name",
+                "recent_updated",
+                "recent_added"
+              ],
+              "title": "Sort",
+              "type": "string"
             }
           },
           {

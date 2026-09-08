@@ -156,6 +156,18 @@ class CandidateView(BaseModel):
     identity_changed: bool
     selected: Literal[False] = False
     added_at: datetime
+    evidence_groups: list[
+        Literal["current_game", "reference_game", "related_content"]
+    ] = Field(default_factory=list)
+    relevance_status: Literal["not_evaluated", "available", "stale"] = "not_evaluated"
+
+
+CandidateEvidence = Literal[
+    "all", "current_game", "reference_game", "related_content", "none"
+]
+CandidateSort = Literal[
+    "added", "relevance", "followers", "recent_publish", "recent_added"
+]
 
 
 class CandidatePage(BaseModel):

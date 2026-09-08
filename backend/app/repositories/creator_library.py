@@ -102,6 +102,8 @@ def contact_detail(contact, creator):
 
 
 def detail(creator):
+    from app.repositories.library_queries import creator_summary
+
     return CreatorDetail(
         **effective_fields(creator).model_dump(),
         id=creator.id,
@@ -128,6 +130,7 @@ def detail(creator):
         next_analysis_at=creator.next_analysis_at,
         analysis_available=creator.platform == "youtube"
         and creator.youtube_channel_id is not None,
+        **creator_summary(creator),
     )
 
 
@@ -289,12 +292,30 @@ class CreatorLibraryRepository:
         self.session.flush()
         return creator
 
-    def list(self, *, query, platform, language, only_collection, limit, offset):
+    def list(
+        self,
+        *,
+        query,
+        platform,
+        language,
+        only_collection,
+        limit,
+        offset,
+        platforms=(),
+        languages=(),
+        sort="name",
+    ):
+        from app.repositories.library_queries import creator_sort_key
+
         stmt = select(CreatorProfile).options(
             selectinload(CreatorProfile.contacts), selectinload(CreatorProfile.works)
         )
-        if platform:
-            stmt = stmt.where(CreatorProfile.platform == platform)
+        chosen_platforms = set(platforms) | ({platform} if platform else set())
+        chosen_languages = {v.strip().casefold() for v in languages if v.strip()}
+        if language.strip():
+            chosen_languages.add(language.strip().casefold())
+        if chosen_platforms:
+            stmt = stmt.where(CreatorProfile.platform.in_(chosen_platforms))
         if only_collection:
             stmt = stmt.where(CreatorProfile.favorite.is_(True))
         rows = self.session.scalars(stmt).all()
@@ -302,9 +323,9 @@ class CreatorLibraryRepository:
         query = query.strip().casefold()
         for creator in rows:
             item = detail(creator)
-            if language and language.casefold() not in {
+            if chosen_languages and not chosen_languages.intersection(
                 v.casefold() for v in item.languages
-            }:
+            ):
                 continue
             works = [
                 work_detail(w, creator)
@@ -324,14 +345,7 @@ class CreatorLibraryRepository:
             if query and query not in text.casefold():
                 continue
             items.append(item)
-        items.sort(
-            key=lambda v: (
-                (
-                    v.name or v.profile_url or v.source_identity.account_id or ""
-                ).casefold(),
-                str(v.id),
-            )
-        )
+        items.sort(key=lambda v: creator_sort_key(v, sort, query))
         return CreatorPage(
             items=items[offset : offset + limit],
             total=len(items),

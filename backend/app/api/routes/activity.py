@@ -22,15 +22,13 @@ from app.db.models.discovery import (
     Activity,
     DiscoveryQuery,
     DiscoveryBatch,
-    DiscoveryCandidate,
     DiscoveryAttempt,
 )
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import acquire_job_change_lock
-from app.db.models.profiles import CreatorProfile, GameProfile
+from app.db.models.profiles import GameProfile
 from app.repositories.discovery import DiscoveryConflict, start_batch, stop_query
 from app.repositories.library_v2 import game_detail
-from app.repositories.creator_library import detail as creator_detail
 from app.schemas.activity import (
     ActivityCreate,
     QueryCreate,
@@ -42,6 +40,8 @@ from app.schemas.activity import (
     DiscoveryAccepted,
     DiscoveryStopped,
     CandidatePage,
+    CandidateEvidence,
+    CandidateSort,
 )
 
 
@@ -415,42 +415,17 @@ def create_router(authenticate_workspace, *, dispatcher=None):
     )
     def results(
         query_id: UUID,
+        evidence: CandidateEvidence = "all",
+        sort: CandidateSort = "added",
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
         session: Session = Depends(get_session),
     ):
-        _get(session, DiscoveryQuery, query_id)
-        candidates = session.scalars(
-            select(DiscoveryCandidate)
-            .where(DiscoveryCandidate.query_id == query_id)
-            .order_by(DiscoveryCandidate.ordinal, DiscoveryCandidate.id)
-            .limit(limit)
-            .offset(offset)
-        ).all()
-        items = []
-        for row in candidates:
-            creator = session.get(CreatorProfile, row.creator_id)
-            items.append(
-                {
-                    "id": row.id,
-                    "creator_id": row.creator_id,
-                    "platform": row.platform,
-                    "account_id": row.account_id,
-                    "account": row.account_snapshot,
-                    "creator": creator_detail(creator) if creator else None,
-                    "filter_notes": row.filter_notes,
-                    "identity_revision": row.identity_revision,
-                    "identity_changed": creator is None
-                    or creator.identity_revision != row.identity_revision,
-                    "selected": False,
-                    "added_at": row.added_at,
-                }
-            )
-        total = session.scalar(
-            select(func.count())
-            .select_from(DiscoveryCandidate)
-            .where(DiscoveryCandidate.query_id == query_id)
+        from app.repositories.candidate_queries import candidate_page
+
+        query = _get(session, DiscoveryQuery, query_id)
+        return candidate_page(
+            session, query, evidence=evidence, sort=sort, limit=limit, offset=offset
         )
-        return {"items": items, "total": total, "limit": limit, "offset": offset}
 
     return router

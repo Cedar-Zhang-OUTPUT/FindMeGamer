@@ -90,6 +90,8 @@ def game_detail(profile: GameProfile) -> GameDetail:
         ),
         last_analyzed_at=profile.last_analyzed_at,
         next_analysis_at=profile.next_analysis_at,
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
     )
 
 
@@ -136,7 +138,14 @@ class LibraryGamesRepository:
         return profile
 
     def list(
-        self, *, query: str, only_collection: bool, limit: int, offset: int
+        self,
+        *,
+        query: str,
+        only_collection: bool,
+        limit: int,
+        offset: int,
+        website_status="all",
+        sort="name",
     ) -> GamePage:
         statement = select(GameProfile)
         if only_collection:
@@ -144,6 +153,12 @@ class LibraryGamesRepository:
         profiles = self.session.scalars(statement).all()
         query = query.strip().casefold()
         items = [game_detail(profile) for profile in profiles]
+        if website_status != "all":
+            items = [
+                item
+                for item in items
+                if bool(item.website_url) == (website_status == "available")
+            ]
         if query:
             items = [
                 item
@@ -159,12 +174,9 @@ class LibraryGamesRepository:
                     )
                 ).casefold()
             ]
-        items.sort(
-            key=lambda item: (
-                (item.name or item.website_url or "").casefold(),
-                str(item.id),
-            )
-        )
+        from app.repositories.library_queries import game_sort_key
+
+        items.sort(key=lambda item: game_sort_key(item, sort))
         return GamePage(
             items=items[offset : offset + limit],
             total=len(items),

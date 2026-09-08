@@ -175,6 +175,8 @@ class GameDetail(GameFields):
     source_identity: SourceIdentity
     last_analyzed_at: datetime | None
     next_analysis_at: datetime | None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class GamePage(BaseModel):

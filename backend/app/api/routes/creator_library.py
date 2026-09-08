@@ -24,6 +24,7 @@ from app.schemas.creator_library import (
     CreatorPatch,
     CreatorDetail,
     CreatorPage,
+    CreatorSort,
     Platform,
     IdentityUpdate,
     ContactCreate,
@@ -94,6 +95,12 @@ def create_router(authenticate_workspace):
         query: Annotated[str, Query(max_length=255)] = "",
         platform: Platform | None = None,
         language: Annotated[str, Query(max_length=255)] = "",
+        platforms: Annotated[list[Platform], Query(max_length=4)] = [],
+        languages: Annotated[
+            list[Annotated[str, Query(min_length=1, max_length=255)]],
+            Query(max_length=30),
+        ] = [],
+        sort: CreatorSort = "name",
         only_collection: bool = False,
         limit: Annotated[int, Query(ge=1, le=100)] = 50,
         offset: Annotated[int, Query(ge=0)] = 0,
@@ -106,6 +113,9 @@ def create_router(authenticate_workspace):
             only_collection=only_collection,
             limit=limit,
             offset=offset,
+            platforms=platforms,
+            languages=languages,
+            sort=sort,
         )
 
     @router.post(
