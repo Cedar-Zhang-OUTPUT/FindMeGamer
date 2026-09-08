@@ -306,14 +306,13 @@ class CreatorLibraryRepository:
         sort="name",
     ):
         from app.repositories.library_queries import creator_sort_key
+        from app.core.languages import language_keys
 
         stmt = select(CreatorProfile).options(
             selectinload(CreatorProfile.contacts), selectinload(CreatorProfile.works)
         )
         chosen_platforms = set(platforms) | ({platform} if platform else set())
-        chosen_languages = {v.strip().casefold() for v in languages if v.strip()}
-        if language.strip():
-            chosen_languages.add(language.strip().casefold())
+        chosen_languages = language_keys([*languages, language])
         if chosen_platforms:
             stmt = stmt.where(CreatorProfile.platform.in_(chosen_platforms))
         if only_collection:
@@ -324,7 +323,7 @@ class CreatorLibraryRepository:
         for creator in rows:
             item = detail(creator)
             if chosen_languages and not chosen_languages.intersection(
-                v.casefold() for v in item.languages
+                language_keys(item.languages)
             ):
                 continue
             works = [

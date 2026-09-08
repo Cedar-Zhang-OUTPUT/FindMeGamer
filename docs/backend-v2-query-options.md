@@ -48,8 +48,10 @@ come from the accepted selection API. Sorting/filtering does not alter them.
 - Repeated `platforms` and `languages` parameters: OR within a field, AND across
   fields. Legacy singular `platform`/`language` remain and union with plural values.
 - All four platform identifiers remain filterable, irrespective of connector
-  implementation. Language labels use trimmed case-insensitive equality; custom
-  labels are accepted. Omit languages for unrestricted; country is independent.
+  implementation. Language comparisons now recognize the15 explicit code/name
+  presets described in [language filters](backend-v2-language-filters.md); custom
+  labels keep trimmed case-insensitive equality without storage changes. Omit
+  languages for unrestricted; country is independent.
 - `sort=name|relevance|followers|recent_publish|recent_added`; legacy default
   `name`, new UI `relevance`. Library relevance is search identity relevance
   (exact name/handle/account, then substring, then work-title match), not game fit;

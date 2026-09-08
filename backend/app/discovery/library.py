@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
+from app.core.languages import language_key, language_keys
 
 from app.db.models.profiles import (
     CreatorContact,
@@ -200,15 +201,15 @@ def evaluate_candidate(
     filters: dict,
 ) -> tuple[bool, dict]:
     fields = effective_fields(creator)
-    languages = {v.casefold() for v in fields.languages}
+    languages = language_keys(fields.languages)
     if "languages" not in (creator.manual_overrides or {}):
         # ISO 639 und (undetermined) and zxx (no linguistic content) provide
         # no evidence of this account's language. Preserve the raw work metadata.
         languages.update(
-            item.language.casefold()
+            language_key(item.language)
             for item in contents
             if item.language
-            and item.language.casefold() not in {"und", "zxx"}
+            and language_key(item.language) not in {"", "und", "zxx"}
             and item.platform == account.platform
             and item.account_id == account.account_id
         )
@@ -244,7 +245,7 @@ def evaluate_candidate(
         else filters.get("include_unknown_country", False)
     ):
         failed.append("country")
-    requested_languages = {v.casefold() for v in filters.get("languages", [])}
+    requested_languages = language_keys(filters.get("languages", []))
     if requested_languages and not (
         bool(languages & requested_languages)
         if languages
