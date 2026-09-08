@@ -14,6 +14,7 @@ from app.api.routes import library_v2
 from app.api.routes import creator_library
 from app.api.routes import activity
 from app.api.routes import discovery_planning
+from app.api.routes import discovery_evaluation
 from app.api.routes import jobs as job_routes
 from app.api.routes import match as match_routes
 from app.api.routes import outreach as outreach_routes
@@ -65,6 +66,7 @@ def create_app(
     outreach_batch_dispatcher: outreach_routes.OutreachBatchDispatcher | None = None,
     discovery_dispatcher=None,
     planning_dispatcher=None,
+    evaluation_dispatcher=None,
 ) -> FastAPI:
     configure_request_logging()
     settings = get_settings()
@@ -189,6 +191,7 @@ def create_app(
             authenticate_workspace, dispatcher=planning_dispatcher
         )
     )
+    app.include_router(discovery_evaluation.create_router(authenticate_workspace, dispatcher=evaluation_dispatcher))
     app.include_router(
         settings_routes.create_router(
             authenticate_workspace,

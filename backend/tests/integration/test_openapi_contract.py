@@ -170,6 +170,23 @@ EXPECTED_OPERATIONS.update(
         ): "listDiscoveryPlansV2",
         ("GET", "/api/v2/discovery/plans/{plan_id}"): "getDiscoveryPlanV2",
         ("POST", "/api/v2/discovery/plans/{plan_id}/retry"): "retryDiscoveryPlanV2",
+        (
+            "POST",
+            "/api/v2/discovery/queries/{query_id}/evaluations",
+        ): "createDiscoveryEvaluationV2",
+        (
+            "GET",
+            "/api/v2/discovery/queries/{query_id}/evaluations",
+        ): "listDiscoveryEvaluationsV2",
+        ("GET", "/api/v2/discovery/evaluations/{run_id}"): "getDiscoveryEvaluationV2",
+        (
+            "GET",
+            "/api/v2/discovery/evaluations/{run_id}/results",
+        ): "getDiscoveryEvaluationResultsV2",
+        (
+            "POST",
+            "/api/v2/discovery/evaluations/{run_id}/retry",
+        ): "retryDiscoveryEvaluationV2",
     }
 )
 HTTP_METHODS = frozenset(

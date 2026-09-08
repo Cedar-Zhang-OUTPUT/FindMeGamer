@@ -2748,6 +2748,486 @@
         "title": "DiscoveryStopped",
         "type": "object"
       },
+      "EvaluationAccepted": {
+        "properties": {
+          "evaluation_id": {
+            "format": "uuid",
+            "title": "Evaluation Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluation_id",
+          "status"
+        ],
+        "title": "EvaluationAccepted",
+        "type": "object"
+      },
+      "EvaluationCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 600,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Ids"
+          }
+        },
+        "title": "EvaluationCreate",
+        "type": "object"
+      },
+      "EvaluationMatchBrief": {
+        "additionalProperties": false,
+        "properties": {
+          "audience_fit": {
+            "maxLength": 1200,
+            "minLength": 1,
+            "title": "Audience Fit",
+            "type": "string"
+          },
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "cited_work_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Cited Work Ids",
+            "type": "array"
+          },
+          "confidence": {
+            "enum": [
+              "limited",
+              "supported"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "content_fit": {
+            "maxLength": 1200,
+            "minLength": 1,
+            "title": "Content Fit",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "maxLength": 500,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 6,
+            "minItems": 1,
+            "title": "Limitations",
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 1200,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "summary",
+          "content_fit",
+          "audience_fit",
+          "limitations",
+          "cited_work_ids",
+          "confidence"
+        ],
+        "title": "EvaluationMatchBrief",
+        "type": "object"
+      },
+      "EvaluationPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "EvaluationPage",
+        "type": "object"
+      },
+      "EvaluationResult": {
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "creator_id": {
+            "format": "uuid",
+            "title": "Creator Id",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/KnownEvaluationEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_status": {
+            "enum": [
+              "unknown",
+              "metadata_only",
+              "recorded_evidence"
+            ],
+            "title": "Evidence Status",
+            "type": "string"
+          },
+          "fit_group": {
+            "enum": [
+              "strong_fit",
+              "potential_fit",
+              "limited_fit",
+              "unranked"
+            ],
+            "title": "Fit Group",
+            "type": "string"
+          },
+          "identity_changed": {
+            "title": "Identity Changed",
+            "type": "boolean"
+          },
+          "match_brief": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvaluationMatchBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "needs_enrichment": {
+            "title": "Needs Enrichment",
+            "type": "boolean"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "selected": {
+            "const": false,
+            "default": false,
+            "title": "Selected",
+            "type": "boolean"
+          },
+          "sender_watched": {
+            "const": false,
+            "default": false,
+            "title": "Sender Watched",
+            "type": "boolean"
+          },
+          "stale": {
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "creator_id",
+          "platform",
+          "account_id",
+          "name",
+          "status",
+          "fit_group",
+          "match_brief",
+          "evidence_status",
+          "evidence",
+          "needs_enrichment",
+          "stale",
+          "identity_changed"
+        ],
+        "title": "EvaluationResult",
+        "type": "object"
+      },
+      "EvaluationResultPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationResult"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "EvaluationResultPage",
+        "type": "object"
+      },
+      "EvaluationRetry": {
+        "additionalProperties": false,
+        "properties": {
+          "step_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "maxItems": 1000,
+                "minItems": 1,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Ids"
+          }
+        },
+        "title": "EvaluationRetry",
+        "type": "object"
+      },
+      "EvaluationStepView": {
+        "properties": {
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "error_code",
+          "attempt"
+        ],
+        "title": "EvaluationStepView",
+        "type": "object"
+      },
+      "EvaluationUsage": {
+        "properties": {
+          "failed_steps": {
+            "title": "Failed Steps",
+            "type": "integer"
+          },
+          "model_operations_started": {
+            "title": "Model Operations Started",
+            "type": "integer"
+          },
+          "pending_steps": {
+            "title": "Pending Steps",
+            "type": "integer"
+          },
+          "running_steps": {
+            "title": "Running Steps",
+            "type": "integer"
+          },
+          "succeeded_steps": {
+            "title": "Succeeded Steps",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "model_operations_started",
+          "succeeded_steps",
+          "failed_steps",
+          "pending_steps",
+          "running_steps"
+        ],
+        "title": "EvaluationUsage",
+        "type": "object"
+      },
+      "EvaluationView": {
+        "properties": {
+          "candidate_count": {
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "conditions": {
+            "additionalProperties": true,
+            "title": "Conditions",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "matched_count": {
+            "title": "Matched Count",
+            "type": "integer"
+          },
+          "method_version": {
+            "title": "Method Version",
+            "type": "string"
+          },
+          "models": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Models",
+            "type": "object"
+          },
+          "query_id": {
+            "format": "uuid",
+            "title": "Query Id",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          },
+          "source_snapshot": {
+            "additionalProperties": true,
+            "title": "Source Snapshot",
+            "type": "object"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "partial",
+              "failed",
+              "no_matches"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationStepView"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/EvaluationUsage"
+          }
+        },
+        "required": [
+          "id",
+          "query_id",
+          "status",
+          "stage",
+          "method_version",
+          "models",
+          "conditions",
+          "source_snapshot",
+          "candidate_count",
+          "matched_count",
+          "retryable",
+          "usage",
+          "steps",
+          "created_at"
+        ],
+        "title": "EvaluationView",
+        "type": "object"
+      },
       "ExistingProfileResponse": {
         "additionalProperties": false,
         "properties": {
@@ -3693,6 +4173,75 @@
         ],
         "title": "JobStatus",
         "type": "string"
+      },
+      "KnownEvaluationEvidence": {
+        "properties": {
+          "content_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Title"
+          },
+          "relation": {
+            "enum": [
+              "current_game",
+              "reference_game",
+              "related_content"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "enum": [
+              "metadata_only",
+              "recorded_evidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "timestamp_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timestamp Seconds"
+          },
+          "work_id": {
+            "format": "uuid",
+            "title": "Work Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "work_id",
+          "source_url",
+          "content_title",
+          "timestamp_seconds",
+          "relation",
+          "status"
+        ],
+        "title": "KnownEvaluationEvidence",
+        "type": "object"
       },
       "MatchBrief": {
         "additionalProperties": false,
@@ -9782,6 +10331,192 @@
         ]
       }
     },
+    "/api/v2/discovery/evaluations/{run_id}": {
+      "get": {
+        "operationId": "getDiscoveryEvaluationV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Evaluation",
+        "tags": [
+          "discovery-evaluation"
+        ]
+      }
+    },
+    "/api/v2/discovery/evaluations/{run_id}/results": {
+      "get": {
+        "operationId": "getDiscoveryEvaluationResultsV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResultPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Results",
+        "tags": [
+          "discovery-evaluation"
+        ]
+      }
+    },
+    "/api/v2/discovery/evaluations/{run_id}/retry": {
+      "post": {
+        "operationId": "retryDiscoveryEvaluationV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationRetry"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry Evaluation",
+        "tags": [
+          "discovery-evaluation"
+        ]
+      }
+    },
     "/api/v2/discovery/plans/{plan_id}": {
       "get": {
         "operationId": "getDiscoveryPlanV2",
@@ -9999,6 +10734,142 @@
         "summary": "Continue Query",
         "tags": [
           "activities-discovery"
+        ]
+      }
+    },
+    "/api/v2/discovery/queries/{query_id}/evaluations": {
+      "get": {
+        "operationId": "listDiscoveryEvaluationsV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "query_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Query Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Evaluations",
+        "tags": [
+          "discovery-evaluation"
+        ]
+      },
+      "post": {
+        "operationId": "createDiscoveryEvaluationV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "query_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Query Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Evaluation",
+        "tags": [
+          "discovery-evaluation"
         ]
       }
     },
