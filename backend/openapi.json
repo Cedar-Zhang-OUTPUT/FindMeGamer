@@ -1,6 +1,150 @@
 {
   "components": {
     "schemas": {
+      "ActivityCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "reference_work_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "title": "Reference Work Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "game_id",
+          "name"
+        ],
+        "title": "ActivityCreate",
+        "type": "object"
+      },
+      "ActivityDetail": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "queries": {
+            "items": {
+              "$ref": "#/components/schemas/QueryView"
+            },
+            "title": "Queries",
+            "type": "array"
+          },
+          "source_snapshot": {
+            "additionalProperties": true,
+            "title": "Source Snapshot",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "game_id",
+          "name",
+          "source_snapshot",
+          "created_at",
+          "queries"
+        ],
+        "title": "ActivityDetail",
+        "type": "object"
+      },
+      "ActivityPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ActivityView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "ActivityPage",
+        "type": "object"
+      },
+      "ActivityView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "game_id": {
+            "format": "uuid",
+            "title": "Game Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source_snapshot": {
+            "additionalProperties": true,
+            "title": "Source Snapshot",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "game_id",
+          "name",
+          "source_snapshot",
+          "created_at"
+        ],
+        "title": "ActivityView",
+        "type": "object"
+      },
       "AnalysisJobCreate": {
         "additionalProperties": false,
         "properties": {
@@ -204,6 +348,249 @@
         ],
         "title": "AnalysisStage",
         "type": "string"
+      },
+      "BatchView": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "initial_result_count": {
+            "title": "Initial Result Count",
+            "type": "integer"
+          },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "query_id": {
+            "format": "uuid",
+            "title": "Query Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "requests_reserved": {
+            "title": "Requests Reserved",
+            "type": "integer"
+          },
+          "scanned_reserved": {
+            "title": "Scanned Reserved",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "target_count": {
+            "title": "Target Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "query_id",
+          "ordinal",
+          "status",
+          "target_count",
+          "initial_result_count",
+          "requests_reserved",
+          "scanned_reserved",
+          "reason",
+          "created_at"
+        ],
+        "title": "BatchView",
+        "type": "object"
+      },
+      "CandidateFilters": {
+        "additionalProperties": false,
+        "properties": {
+          "contact": {
+            "default": "any",
+            "enum": [
+              "any",
+              "available",
+              "missing"
+            ],
+            "title": "Contact",
+            "type": "string"
+          },
+          "countries": {
+            "items": {
+              "pattern": "^[A-Z]{2}$",
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Countries",
+            "type": "array"
+          },
+          "follower_ranges": {
+            "items": {
+              "$ref": "#/components/schemas/FollowerRange"
+            },
+            "maxItems": 7,
+            "title": "Follower Ranges",
+            "type": "array"
+          },
+          "include_unknown_country": {
+            "default": false,
+            "title": "Include Unknown Country",
+            "type": "boolean"
+          },
+          "include_unknown_followers": {
+            "default": false,
+            "title": "Include Unknown Followers",
+            "type": "boolean"
+          },
+          "include_unknown_language": {
+            "default": false,
+            "title": "Include Unknown Language",
+            "type": "boolean"
+          },
+          "languages": {
+            "items": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Languages",
+            "type": "array"
+          },
+          "pending_country_labels": {
+            "items": {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Pending Country Labels",
+            "type": "array"
+          }
+        },
+        "title": "CandidateFilters",
+        "type": "object"
+      },
+      "CandidatePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CandidateView"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "CandidatePage",
+        "type": "object"
+      },
+      "CandidateView": {
+        "properties": {
+          "account": {
+            "additionalProperties": true,
+            "title": "Account",
+            "type": "object"
+          },
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "added_at": {
+            "format": "date-time",
+            "title": "Added At",
+            "type": "string"
+          },
+          "creator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CreatorDetail"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "creator_id": {
+            "format": "uuid",
+            "title": "Creator Id",
+            "type": "string"
+          },
+          "filter_notes": {
+            "additionalProperties": true,
+            "title": "Filter Notes",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "identity_changed": {
+            "title": "Identity Changed",
+            "type": "boolean"
+          },
+          "identity_revision": {
+            "title": "Identity Revision",
+            "type": "integer"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "selected": {
+            "const": false,
+            "default": false,
+            "title": "Selected",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "creator_id",
+          "platform",
+          "account_id",
+          "account",
+          "creator",
+          "filter_notes",
+          "identity_revision",
+          "identity_changed",
+          "added_at"
+        ],
+        "title": "CandidateView",
+        "type": "object"
       },
       "ChangedAnalysisJobResponse": {
         "additionalProperties": false,
@@ -863,6 +1250,18 @@
           "expected_revision"
         ],
         "title": "ContactPatch",
+        "type": "object"
+      },
+      "ContinueDiscovery": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge_unknown": {
+            "default": false,
+            "title": "Acknowledge Unknown",
+            "type": "boolean"
+          }
+        },
+        "title": "ContinueDiscovery",
         "type": "object"
       },
       "CreatorContactResponse": {
@@ -2196,6 +2595,159 @@
         "title": "CursorPage[GameProfileCard]",
         "type": "object"
       },
+      "DiscoveryAccepted": {
+        "properties": {
+          "batch_id": {
+            "format": "uuid",
+            "title": "Batch Id",
+            "type": "string"
+          },
+          "query_id": {
+            "format": "uuid",
+            "title": "Query Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "query_id",
+          "batch_id",
+          "status"
+        ],
+        "title": "DiscoveryAccepted",
+        "type": "object"
+      },
+      "DiscoveryCursor": {
+        "properties": {
+          "query_fingerprint": {
+            "title": "Query Fingerprint",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "query_fingerprint"
+        ],
+        "title": "DiscoveryCursor",
+        "type": "object"
+      },
+      "DiscoveryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscoveryCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "language_hint": {
+            "anyOf": [
+              {
+                "pattern": "^[a-zA-Z-]{2,12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language Hint"
+          },
+          "max_requests": {
+            "default": 2,
+            "maximum": 2.0,
+            "minimum": 0.0,
+            "title": "Max Requests",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 25,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "query": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "region_hint": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region Hint"
+          },
+          "search_mode": {
+            "default": "video",
+            "enum": [
+              "video",
+              "channel"
+            ],
+            "title": "Search Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "query"
+        ],
+        "title": "DiscoveryRequest",
+        "type": "object"
+      },
+      "DiscoveryStopped": {
+        "properties": {
+          "query_id": {
+            "format": "uuid",
+            "title": "Query Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stop_requested": {
+            "title": "Stop Requested",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query_id",
+          "status",
+          "stop_requested"
+        ],
+        "title": "DiscoveryStopped",
+        "type": "object"
+      },
       "ExistingProfileResponse": {
         "additionalProperties": false,
         "properties": {
@@ -2242,6 +2794,37 @@
           "favorite"
         ],
         "title": "FavoriteUpdate",
+        "type": "object"
+      },
+      "FollowerRange": {
+        "additionalProperties": false,
+        "properties": {
+          "maximum": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
+          }
+        },
+        "title": "FollowerRange",
         "type": "object"
       },
       "GameCreate": {
@@ -5156,6 +5739,177 @@
             "type": "null"
           }
         ]
+      },
+      "QueryCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "batch_request_budget": {
+            "default": 20,
+            "maximum": 40.0,
+            "minimum": 1.0,
+            "title": "Batch Request Budget",
+            "type": "integer"
+          },
+          "batch_scan_budget": {
+            "default": 1000,
+            "maximum": 2000.0,
+            "minimum": 1.0,
+            "title": "Batch Scan Budget",
+            "type": "integer"
+          },
+          "batch_target": {
+            "default": 100,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Batch Target",
+            "type": "integer"
+          },
+          "filters": {
+            "$ref": "#/components/schemas/CandidateFilters"
+          },
+          "providers": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoveryRequest"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Providers",
+            "type": "array"
+          },
+          "result_limit": {
+            "default": 600,
+            "maximum": 600.0,
+            "minimum": 1.0,
+            "title": "Result Limit",
+            "type": "integer"
+          },
+          "total_request_budget": {
+            "default": 120,
+            "maximum": 240.0,
+            "minimum": 1.0,
+            "title": "Total Request Budget",
+            "type": "integer"
+          },
+          "total_scan_budget": {
+            "default": 6000,
+            "maximum": 12000.0,
+            "minimum": 1.0,
+            "title": "Total Scan Budget",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "providers"
+        ],
+        "title": "QueryCreate",
+        "type": "object"
+      },
+      "QueryUsage": {
+        "properties": {
+          "provider_items_received": {
+            "title": "Provider Items Received",
+            "type": "integer"
+          },
+          "requests_used": {
+            "title": "Requests Used",
+            "type": "integer"
+          },
+          "unknown_requests_reserved": {
+            "title": "Unknown Requests Reserved",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "requests_used",
+          "provider_items_received",
+          "unknown_requests_reserved"
+        ],
+        "title": "QueryUsage",
+        "type": "object"
+      },
+      "QueryView": {
+        "properties": {
+          "activity_id": {
+            "format": "uuid",
+            "title": "Activity Id",
+            "type": "string"
+          },
+          "batches": {
+            "items": {
+              "$ref": "#/components/schemas/BatchView"
+            },
+            "title": "Batches",
+            "type": "array"
+          },
+          "conditions": {
+            "$ref": "#/components/schemas/QueryCreate"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "requests_reserved": {
+            "title": "Requests Reserved",
+            "type": "integer"
+          },
+          "requires_acknowledgement": {
+            "title": "Requires Acknowledgement",
+            "type": "boolean"
+          },
+          "result_count": {
+            "title": "Result Count",
+            "type": "integer"
+          },
+          "scanned_reserved": {
+            "title": "Scanned Reserved",
+            "type": "integer"
+          },
+          "source_snapshot": {
+            "additionalProperties": true,
+            "title": "Source Snapshot",
+            "type": "object"
+          },
+          "sources": {
+            "additionalProperties": true,
+            "title": "Sources",
+            "type": "object"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "stop_requested": {
+            "title": "Stop Requested",
+            "type": "boolean"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/QueryUsage"
+          }
+        },
+        "required": [
+          "id",
+          "activity_id",
+          "conditions",
+          "source_snapshot",
+          "status",
+          "stop_requested",
+          "requires_acknowledgement",
+          "result_count",
+          "requests_reserved",
+          "scanned_reserved",
+          "sources",
+          "batches",
+          "usage",
+          "created_at"
+        ],
+        "title": "QueryView",
+        "type": "object"
       },
       "ReanalysisSettingsResponse": {
         "properties": {
@@ -8346,6 +9100,480 @@
         "summary": "Update Reanalysis",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/api/v2/activities": {
+      "get": {
+        "operationId": "listActivitiesV2",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Activities",
+        "tags": [
+          "activities-discovery"
+        ]
+      },
+      "post": {
+        "operationId": "createActivityV2",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivityCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Activity",
+        "tags": [
+          "activities-discovery"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}": {
+      "get": {
+        "operationId": "getActivityV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Activity",
+        "tags": [
+          "activities-discovery"
+        ]
+      }
+    },
+    "/api/v2/activities/{activity_id}/queries": {
+      "post": {
+        "operationId": "createDiscoveryQueryV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "activity_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Activity Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QueryCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Query",
+        "tags": [
+          "activities-discovery"
+        ]
+      }
+    },
+    "/api/v2/discovery/queries/{query_id}": {
+      "get": {
+        "operationId": "getDiscoveryQueryV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "query_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Query Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueryView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Query",
+        "tags": [
+          "activities-discovery"
+        ]
+      }
+    },
+    "/api/v2/discovery/queries/{query_id}/continue": {
+      "post": {
+        "operationId": "continueDiscoveryV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "query_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Query Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContinueDiscovery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Continue Query",
+        "tags": [
+          "activities-discovery"
+        ]
+      }
+    },
+    "/api/v2/discovery/queries/{query_id}/results": {
+      "get": {
+        "operationId": "getDiscoveryResultsV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "query_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Query Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CandidatePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Results",
+        "tags": [
+          "activities-discovery"
+        ]
+      }
+    },
+    "/api/v2/discovery/queries/{query_id}/stop": {
+      "post": {
+        "operationId": "stopDiscoveryV2",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "query_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Query Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryStopped"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Stop",
+        "tags": [
+          "activities-discovery"
         ]
       }
     },

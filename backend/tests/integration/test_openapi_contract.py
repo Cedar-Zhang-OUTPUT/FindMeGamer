@@ -144,6 +144,24 @@ EXPECTED_OPERATIONS = {
         "/api/v1/outreach/deliveries/{delivery_id}",
     ): "getOutreachDelivery",
 }
+EXPECTED_OPERATIONS.update(
+    {
+        ("POST", "/api/v2/activities"): "createActivityV2",
+        ("GET", "/api/v2/activities"): "listActivitiesV2",
+        ("GET", "/api/v2/activities/{activity_id}"): "getActivityV2",
+        ("POST", "/api/v2/activities/{activity_id}/queries"): "createDiscoveryQueryV2",
+        ("GET", "/api/v2/discovery/queries/{query_id}"): "getDiscoveryQueryV2",
+        (
+            "GET",
+            "/api/v2/discovery/queries/{query_id}/results",
+        ): "getDiscoveryResultsV2",
+        (
+            "POST",
+            "/api/v2/discovery/queries/{query_id}/continue",
+        ): "continueDiscoveryV2",
+        ("POST", "/api/v2/discovery/queries/{query_id}/stop"): "stopDiscoveryV2",
+    }
+)
 HTTP_METHODS = frozenset(
     {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
 )

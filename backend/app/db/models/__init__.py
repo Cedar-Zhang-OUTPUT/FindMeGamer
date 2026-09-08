@@ -1,3 +1,10 @@
+from app.db.models.discovery import (
+    Activity,
+    DiscoveryQuery,
+    DiscoveryBatch,
+    DiscoveryAttempt,
+    DiscoveryCandidate,
+)
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob, CreatorAnalysisNode
 from app.db.models.match import (
@@ -24,6 +31,11 @@ from app.db.models.profiles import (
 from app.db.models.settings import ServiceSecret, SharedSettings
 
 __all__ = [
+    "Activity",
+    "DiscoveryQuery",
+    "DiscoveryBatch",
+    "DiscoveryAttempt",
+    "DiscoveryCandidate",
     "AnalysisJob",
     "CampaignCreatorResponse",
     "CreatorContact",

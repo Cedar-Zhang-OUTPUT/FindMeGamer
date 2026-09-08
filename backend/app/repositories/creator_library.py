@@ -65,7 +65,8 @@ def source_fields(creator):
             "avatar_url": facts.get("avatar_url"),
             "description": facts.get("description"),
             "follower_count": facts.get("subscriber_count"),
-            "follower_count_collected_at": creator.last_analyzed_at,
+            "follower_count_collected_at": facts.get("follower_count_collected_at")
+            or creator.last_analyzed_at,
             "languages": facts.get("languages", []),
             "country_code": facts.get("country"),
         },

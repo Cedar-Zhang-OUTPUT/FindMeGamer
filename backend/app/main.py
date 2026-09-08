@@ -12,6 +12,7 @@ from app.api.routes.health import ReadinessProbe
 from app.api.routes import profiles as profile_routes
 from app.api.routes import library_v2
 from app.api.routes import creator_library
+from app.api.routes import activity
 from app.api.routes import jobs as job_routes
 from app.api.routes import match as match_routes
 from app.api.routes import outreach as outreach_routes
@@ -61,6 +62,7 @@ def create_app(
     smtp_gateway: SMTPGateway | None = None,
     smtp_rate_limiter: SMTPRateLimiter | None = None,
     outreach_batch_dispatcher: outreach_routes.OutreachBatchDispatcher | None = None,
+    discovery_dispatcher=None,
 ) -> FastAPI:
     configure_request_logging()
     settings = get_settings()
@@ -177,6 +179,9 @@ def create_app(
     app.include_router(session.create_router(authenticate_workspace))
     app.include_router(library_v2.create_router(authenticate_workspace))
     app.include_router(creator_library.create_router(authenticate_workspace))
+    app.include_router(
+        activity.create_router(authenticate_workspace, dispatcher=discovery_dispatcher)
+    )
     app.include_router(
         settings_routes.create_router(
             authenticate_workspace,
