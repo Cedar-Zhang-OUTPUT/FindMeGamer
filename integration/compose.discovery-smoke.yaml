@@ -1,0 +1,56 @@
+# Dedicated one-run smoke project. Never combine with another Compose stack.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: discovery_smoke
+      POSTGRES_USER: smoke
+      POSTGRES_PASSWORD: synthetic-smoke-only
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U smoke -d discovery_smoke]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  api:
+    image: backend-test:latest
+    working_dir: /app
+    command: [python, /harness/discovery_smoke_runtime.py, api]
+    ports: ["127.0.0.1::8000"]
+    environment: &runtime
+      DATABASE_URL: postgresql+psycopg://smoke:synthetic-smoke-only@postgres:5432/discovery_smoke
+      REDIS_URL: redis://redis:6379/0
+      MASTER_KEY_FILE: /private/master.key
+      WORKSPACE_RATE_LIMIT: "10000"
+      EXTERNAL_BASE_URL: http://127.0.0.1:8000
+      AWS_EC2_METADATA_DISABLED: "true"
+      ARTIFACT_STORE: filesystem
+      ARTIFACT_DIRECTORY: /tmp/smoke-artifacts
+      STEAM_STORE_BASE_URL: http://127.0.0.1:9
+      DEEPSEEK_API_BASE_URL: http://127.0.0.1:9
+      GOOGLE_AI_API_BASE_URL: http://127.0.0.1:9
+      FMG_SMOKE_MODE: ${FMG_SMOKE_MODE}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONPATH: /app
+    volumes: &mounts
+      - ${FMG_SMOKE_SOURCE}/backend:/app:ro
+      - ${FMG_SMOKE_HARNESS}:/harness:ro
+      - ${FMG_SMOKE_PRIVATE}:/private:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+  worker:
+    image: backend-test:latest
+    working_dir: /app
+    command: [python, /harness/discovery_smoke_runtime.py, worker]
+    environment: *runtime
+    volumes: *mounts
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
