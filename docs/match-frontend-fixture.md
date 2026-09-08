@@ -156,3 +156,40 @@ runtime review confirmed API/both worker injection points against the fixed B
 source and found no blocker. These tests are source/transport evidence; the new
 instance's actual HTTP→draft worker→qualification→sending worker acceptance is a
 separate gate. Old four environments and their controls must remain unchanged.
+
+### New outreach instance: main flow accepted, failure checks in progress
+
+- Origin: `http://127.0.0.1:62611`.
+- Project: `fmg-match-frontend-ca4121f072f8`; queue: `match-frontend-ca4121f072f8`.
+- Private directory: `/var/folders/p4/5cgpbz2n2hj98xdvs3_b1hlc0000gn/T/fmg-match-frontend-ixcaiiq1/private`.
+- Backend: accepted `ece2e9d9558dfe057dc40ad58bd98a86e3149dd5`; actual database readback: `20260908_0017`.
+- Read `client.json` inside a test process, never print credentials or reuse another instance's IDs.
+
+The coordinator's actual success smoke passed on this fresh instance: two pages per
+YouTube/X source, six unique Creators, eight works, one planning/screening/ranking
+call and six deep calls, with real HTTP/API/Celery/database boundaries and strict
+synthetic upstreams. The public-only `success-report.json` remains in the private
+directory. This is not yet evidence for A+B draft/send completion.
+
+The new `outreach_smoke.run(private_directory)` main flow passed its first actual
+run in6.59s: a new manual Game/Activity with true fixture discovery, three explicitly
+chosen recipients (one missing email/evidence), canonical rev69 explicit registration,
+four real drafting HTTP calls across two compositions, explicit synthetic sender
+facts, qualification retaining all three, one named exclusion, then two actual worker
+sends captured as private EML files. The 20 fixed paragraphs/hash, exactly four slots,
+rendered text/HTML, sender/recipient and frozen snapshots matched; no CTA/tracking was
+added. Same HTTP key and new key with the same durable request_id replayed one batch;
+another composition for the same Activity/accounts was blocked409. Final count stayed
+one send batch and two captures; original Activity/recipient snapshots were unchanged.
+
+Source TDD was7 RED→GREEN helper tests, then all50 harness cases passed9.893s; the
+coordinator's bounded source review and independent50-case rerun passed9.832s.
+Original logs: `/tmp/fmg-outreach-smoke-tdd.9DDDen/`; public-only report:
+`outreach-success-04d4116c0efd.json` in the private directory. No failed actual run
+was omitted. This does not claim real external mail delivery.
+
+The success subtask returned the window, then explicitly reacquired it for the next
+bounded known-rejection and unknown-outcome runtime checks. It owns62611 until a
+new handback, with SMTP controls restored to success afterward. The frontend still
+owns65164 for F7 and must not use62611 until a completed handoff. No older instance
+was restarted, upgraded, reset or cleared.
