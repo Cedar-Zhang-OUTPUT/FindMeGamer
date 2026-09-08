@@ -13,6 +13,17 @@ function fixture() {
 }
 
 describe('connection changes', () => {
+  it('rejects disconnected Creator writes without dispatching or exposing storage errors',async()=>{
+    let count=0; const store=fixture();
+    const gateway=new WorkspaceGateway(store,async()=>{count++;return new Response('{}');});
+    await gateway.clear();
+    const input={method:'POST' as const,path:'/api/v2/library/creators',body:{platform:'youtube',account_id:'UC_fixture'},idempotencyKey:'creator-test-123'};
+    expect(await publicResult(()=>gateway.creatorRequest(input))).toMatchObject({ok:false,error:{code:'not_connected'}});
+    store.getConnection=async()=>{throw Error('sensitive-keychain-value');};
+    const result=await publicResult(()=>gateway.creatorRequest(input));
+    expect(result).toMatchObject({ok:false,error:{code:'secure_storage_unavailable'}});
+    expect(JSON.stringify(result)).not.toContain('sensitive-keychain-value');expect(count).toBe(0);
+  });
   it('fences Settings responses and never retries a changed-workspace send', async () => {
     let complete!: (value:Response)=>void;
     const gateway=new WorkspaceGateway(fixture(),()=>new Promise(resolve=>{complete=resolve;}));

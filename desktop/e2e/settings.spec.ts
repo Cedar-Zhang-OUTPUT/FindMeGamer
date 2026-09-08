@@ -56,8 +56,9 @@ test('complete Settings against accepted API, closed provider fixtures and captu
     await page.getByRole('button',{name:'Library',exact:true}).click();
     await page.getByRole('button',{name:'Open Fixture Cozy Gamer',exact:true}).click();
     await expect(page.getByRole('heading',{name:'Fixture Cozy Gamer',exact:true})).toBeVisible();
-    await expect(page.getByText('fixture@example.invalid',{exact:true}).first()).toBeVisible();
-    await expect(page.getByText('Loading profile…',{exact:true})).not.toBeVisible();
+    await page.getByRole('tab',{name:'Emails',exact:true}).click();
+    await expect(page.getByText('fixture@example.com',{exact:true}).first()).toBeVisible();
+    await expect(page.getByText('Loading creator…',{exact:true})).not.toBeVisible();
     await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
     await page.screenshot({path:'/tmp/fmg-settings-creator-dark-narrow.png'});
     await page.getByRole('button',{name:'Back to creators',exact:true}).click();
@@ -94,12 +95,18 @@ test('complete Settings against accepted API, closed provider fixtures and captu
       await expect(row.getByText('Last test: success',{exact:true})).toBeVisible();
     }
     const x=page.locator('.cloud-provider').filter({has:page.getByRole('heading',{name:'X',exact:true})});
-    await expect(x.getByText('Search & analysis not verified',{exact:true})).toBeVisible();
+    const xCaveat=x.getByText('Search & analysis not verified',{exact:true});
+    await expect(xCaveat).toHaveCount(1);await expect(xCaveat).toBeHidden();
+    const xScope=x.locator('summary').filter({hasText:/^X test scope$/});
+    await xScope.focus();await xScope.press('Enter');
+    await expect(xCaveat).toBeVisible();
+    await expect(x.locator('details')).toContainText('Checks usage access only. Account balance and recent search access are not verified.');
     await x.getByRole('button',{name:'Replace X credential',exact:true}).click();
     await x.getByLabel('X replacement credential').fill('synthetic-rejected-key');
     await x.getByRole('button',{name:'Save X credential',exact:true}).click();await page.getByRole('button',{name:'Confirm',exact:true}).click();
     await x.getByRole('button',{name:'Test usage access',exact:true}).click();await expect(x.getByText('Last test: failure',{exact:true})).toBeVisible();
-    await expect(x.getByText('Search & analysis not verified',{exact:true})).toBeVisible();
+    await expect(xCaveat).toBeVisible();
+    await expect(x.locator('details')).toContainText('Checks usage access only. Account balance and recent search access are not verified.');
     await page.screenshot({path:'/tmp/fmg-settings-services.png'});
 
     console.log('Settings: provider probes complete; checking intervals.');
@@ -110,8 +117,10 @@ test('complete Settings against accepted API, closed provider fixtures and captu
     await page.getByRole('tab',{name:'Auto-refresh',exact:true}).click();await page.getByRole('button',{name:'Save intervals',exact:true}).click();await page.getByRole('button',{name:'Confirm',exact:true}).click();
     await expect(page.getByText('Intervals saved',{exact:true})).toBeVisible();expect((await request('/api/v1/settings/reanalysis')).game_interval_days).toBe(Number(changed));
     await page.getByText('Refresh activity',{exact:true}).click();
-    await expect(page.locator('.refresh-activity').getByRole('heading',{name:'Steam-linked games',exact:true})).toBeVisible();
-    await expect(page.locator('.refresh-activity').getByText('1 records',{exact:true}).last()).toBeVisible();
+    const gameActivity=page.locator('.refresh-activity').getByRole('region',{name:'Steam-linked games',exact:true});
+    await expect(gameActivity.getByRole('heading',{name:'Steam-linked games',exact:true})).toBeVisible();
+    await expect(gameActivity.getByText('Loaded records',{exact:true})).toBeVisible();
+    await expect(gameActivity.getByText('1 records',{exact:true})).toBeVisible();
 
     console.log('Settings: intervals saved; checking SMTP.');
     await page.getByRole('tab',{name:'Email',exact:true}).click();

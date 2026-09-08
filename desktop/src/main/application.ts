@@ -5,6 +5,7 @@ import { CredentialStore } from './credential-store';
 import { WorkspaceGateway } from './gateway';
 import { LibraryClient, LibraryClientError } from './library-client';
 import { GameClient } from './game-client';
+import { CreatorClient } from './creator-client';
 import { SettingsClient } from './settings-client';
 import { PreferencesStore } from './preferences-store';
 import { UpdateChecker } from './update-checker';
@@ -27,6 +28,7 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   const gateway = new WorkspaceGateway(store, (url, init) => network.fetch(url, init));
   const library = new LibraryClient((route, query) => gateway.request(route, query));
   const games = new GameClient(input => gateway.gameRequest(input));
+  const creators = new CreatorClient(input => gateway.creatorRequest(input));
   const settings = new SettingsClient(input => gateway.settingsRequest(input));
   const preferences = new PreferencesStore(options.userDataDirectory ?? app.getPath('userData'));
   // A separate ephemeral session follows the system proxy without workspace headers.
@@ -95,6 +97,16 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('games:detail', input => games.detail(input));
   handle('games:create', input => games.create(input));
   handle('games:update', input => games.update(input));
+  handle('creators:list',input=>creators.list(input));
+  handle('creators:detail',input=>creators.detail(input));
+  handle('creators:create',input=>creators.create(input));
+  handle('creators:update',input=>creators.update(input));
+  handle('creators:rebind',input=>creators.rebind(input));
+  handle('creators:create-contact',input=>creators.createContact(input));
+  handle('creators:update-contact',input=>creators.updateContact(input));
+  handle('creators:works',input=>creators.works(input));
+  handle('creators:create-work',input=>creators.createWork(input));
+  handle('creators:update-work',input=>creators.updateWork(input));
   handle('settings:connection', input => settings.connection(input));
   handle('settings:replace-connection', input => settings.replaceConnection(input));
   handle('settings:test-connection', input => settings.testConnection(input));

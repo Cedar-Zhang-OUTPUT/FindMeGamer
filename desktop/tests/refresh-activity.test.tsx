@@ -30,7 +30,7 @@ it('loads bounded independent categories only when expanded, exposing loaded dat
   const games = within(screen.getByRole('region',{name:'Steam-linked games'}));
   expect(await games.findByText(future)).toBeVisible();
   expect(games.getByText(past)).toBeVisible();
-  expect(games.getByText('Without a scheduled refresh').nextElementSibling).toHaveTextContent('1');
+  expect(games.getByText('Not scheduled').nextElementSibling).toHaveTextContent('1');
   expect(games.getByText('2 records')).toBeVisible();
 });
 
@@ -39,7 +39,10 @@ it('labels partial coverage, preserves rows on page failure, and retries only th
   const {user} = setup(list);
   await user.click(screen.getByText('Refresh activity'));
   expect(await screen.findByText('First 1 records')).toBeVisible();
-  expect(within(screen.getByRole('region',{name:'Steam-linked games'})).getByText('Next scheduled among loaded records')).toBeVisible();
+  const games = within(screen.getByRole('region',{name:'Steam-linked games'}));
+  expect(games.getByText('Next refresh')).toBeVisible();
+  expect(games.getByText('Loaded records')).toBeVisible();
+  expect(screen.queryByText('More records are available; dates and counts cover loaded records only.')).not.toBeInTheDocument();
   await user.click(screen.getByRole('button',{name:'Load more games'}));
   expect(await screen.findByText('Could not load games activity.')).toBeVisible();
   expect(screen.getByText(future)).toBeVisible();
@@ -76,5 +79,5 @@ it('reports unavailable optional schedule metadata without counting it as unsche
   const games=within(await screen.findByRole('region',{name:'Steam-linked games'}));
   expect(await games.findByText('Schedule unavailable')).toBeVisible();
   expect(games.getByText('Unavailable')).toBeVisible();
-  expect(games.getByText('Without a scheduled refresh').nextElementSibling).toHaveTextContent('1');
+  expect(games.getByText('Not scheduled').nextElementSibling).toHaveTextContent('1');
 });

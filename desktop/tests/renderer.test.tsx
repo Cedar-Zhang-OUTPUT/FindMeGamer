@@ -4,26 +4,23 @@ import { act, cleanup, render, screen, waitFor, within } from '@testing-library/
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DesktopBridge, Result } from '../src/shared/bridge';
-import type { ListPage, ProfileDetail, ProfileSummary } from '../src/shared/library';
+import type { CreatorDetail, CreatorPage } from '../src/shared/creators';
 import { App } from '../src/renderer/App';
 import { gameFixture } from './game-fixtures';
 import { settingsBridgeMock } from './settings-fixtures';
+import { creatorFixture, contactFixture } from './creator-fixtures';
 
 const ok = <T,>(data: T): Result<T> => ({ ok: true, data });
 const failed = (message = 'Connection interrupted'): Result<never> => ({ ok: false, error: { code: 'network_error', message, retryable: true } });
-const profile = (name: string, id = name, kind: ProfileSummary['kind'] = 'creators'): ProfileSummary => ({
-  id, kind, name, sourceId: id, canonicalUrl: `https://www.youtube.com/channel/${id}`,
-  summary: 'Thoughtful indie game discoveries.', artworkUrl: null, favorite: false,
-  updatedAt: '2026-09-01T12:00:00Z', subscribers: null, tags: ['Indie games'],
-});
-function detail(name: string): ProfileDetail {
-  return { ...profile(name), contacts: [
-    { email: 'hello@example.com', source: 'channel', sourceUrl: 'https://www.youtube.com/', validationState: 'valid', purpose: 'Business' },
-    { email: 'press@example.com', source: 'website', sourceUrl: null, validationState: 'unknown', purpose: 'Press' },
-  ], manualNotes: 'Interested in atmospheric games.', groups: [
-    { id: 'facts', label: 'Profile facts', data: { country: 'Canada', recent_videos: [{ title: '<script>not executable</script>', view_count: 1200 }] } },
-    { id: 'analysis', label: 'Analysis', data: { strengths: ['Detailed commentary'] } },
-  ], raw: { arbitrary_future_field: { retained: true } } };
+const profile = (name:string,id=name):CreatorDetail => ({...creatorFixture(name,id),description:'Thoughtful indie game discoveries.'});
+const creatorPage = (items:CreatorDetail[],offset=0,total=items.length):CreatorPage => ({items,total,offset,limit:50});
+function detail(name:string):CreatorDetail {
+  const creator=profile(name);
+  return {...creator,contacts:[{...contactFixture(),email:'hello@example.com',purpose:'Business',validation_state:'valid'},
+    {...contactFixture(),id:'second-contact',email:'press@example.com',purpose:'Press',validation_state:'unknown'}],
+    internal_notes:'Interested in atmospheric games.',country_name:'Canada',
+    source_fields:{...creator.source_fields,description:'<script>not executable</script>'},
+    manual_overrides:{...creator.manual_overrides,arbitrary_future_field:{retained:true}}};
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 function bridge(overrides: Partial<DesktopBridge> = {}): DesktopBridge {
@@ -36,8 +33,8 @@ function bridge(overrides: Partial<DesktopBridge> = {}): DesktopBridge {
       clear: vi.fn(async () => ok({ serviceUrl: '', hasKey: false, storageAvailable: true })),
     },
     library: {
-      list: vi.fn(async () => ok({ items: [profile('Pixel Harbor')], nextCursor: null })),
-      detail: vi.fn(async ({ id }) => ok(detail(id))),
+      list: vi.fn(async () => ok({items:[],nextCursor:null})),
+      detail: vi.fn(async () => failed('Legacy detail unused')),
     },
     games: {
       list: vi.fn(async () => ok({items:[gameFixture()],total:1,limit:24,offset:0})),
@@ -136,7 +133,7 @@ describe('desktop renderer', () => {
     await user.click(screen.getByRole('button',{name:'Discard changes'}));
     expect(screen.getByRole('button',{name:'Open Pixel Harbor'})).toBeVisible();
     expect(api.games.update).not.toHaveBeenCalled();
-    expect(api.library.list).toHaveBeenCalledOnce();
+    expect(api.creators.list).toHaveBeenCalledOnce();
   });
 
   it('does not navigate away or clear the game draft when Save and leave fails', async () => {
@@ -166,7 +163,7 @@ describe('desktop renderer', () => {
     const api = bridge(); vi.mocked(api.connection.test).mockReturnValue(check.promise);
     const { user } = start(api);
     await waitFor(() => expect(api.connection.test).toHaveBeenCalledOnce());
-    expect(api.library.list).not.toHaveBeenCalled();
+    expect(api.creators.list).not.toHaveBeenCalled();
     await act(async () => check.resolve(ok({ authenticated: true, proxy: 'system', route: 'direct' })));
     expect(await screen.findByRole('button', { name: 'Open Pixel Harbor' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: /^Match$/ }));
@@ -180,13 +177,13 @@ describe('desktop renderer', () => {
 
   it('submits search explicitly and preserves separate tab queries and pages', async () => {
     const api = bridge();
-    vi.mocked(api.library.list).mockImplementation(async input => ok({ items: [profile(`${input.kind}:${input.query || 'all'}`, undefined, input.kind)], nextCursor: null }));
+    vi.mocked(api.creators.list).mockImplementation(async input => ok(creatorPage([profile(`creators:${input.query || 'all'}`)])));
     vi.mocked(api.games.list).mockImplementation(async input => ok({items:[gameFixture(`games:${input.query || 'all'}`)],total:1,limit:24,offset:0}));
     const { user } = start(api);
     await screen.findByRole('button', { name: 'Open creators:all' });
     const search = screen.getByRole('searchbox', { name: 'Search creators' });
     await user.type(search, 'cozy');
-    expect(api.library.list).toHaveBeenCalledTimes(1);
+    expect(api.creators.list).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole('button', { name: /^Search$/ }));
     await screen.findByRole('button', { name: 'Open creators:cozy' });
     await user.click(screen.getByRole('tab', { name: 'Games' }));
@@ -196,61 +193,64 @@ describe('desktop renderer', () => {
     await user.click(screen.getByRole('tab', { name: 'Creators' }));
     expect(screen.getByRole('searchbox', { name: 'Search creators' })).toHaveValue('cozy');
     expect(screen.getByRole('button', { name: 'Open creators:cozy' })).toBeVisible();
-    expect(api.library.list).toHaveBeenCalledTimes(2);
+    expect(api.creators.list).toHaveBeenCalledTimes(2);
     expect(api.games.list).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(api.library.list).mock.calls.every(([input]) => input.kind === 'creators')).toBe(true);
+    expect(vi.mocked(api.creators.list).mock.calls.every(([input]) => input.limit === 50)).toBe(true);
+    expect(api.library.list).not.toHaveBeenCalled();
   });
 
   it('does not let an older search replace the current results', async () => {
-    const older = deferred<Result<ListPage>>(); const newer = deferred<Result<ListPage>>();
+    const older = deferred<Result<CreatorPage>>(); const newer = deferred<Result<CreatorPage>>();
     const api = bridge();
-    vi.mocked(api.library.list).mockImplementation(async input => input.query === 'old' ? older.promise : input.query === 'new' ? newer.promise : ok({ items: [], nextCursor: null }));
+    vi.mocked(api.creators.list).mockImplementation(async input => input.query === 'old' ? older.promise : input.query === 'new' ? newer.promise : ok(creatorPage([])));
     const { user } = start(api); await screen.findByRole('heading', { name: 'No creators yet' });
     const search = screen.getByRole('searchbox');
     await user.type(search, 'old{Enter}');
     await user.clear(search); await user.type(search, 'new{Enter}');
-    await act(async () => newer.resolve(ok({ items: [profile('New result')], nextCursor: null })));
+    await act(async () => newer.resolve(ok(creatorPage([profile('New result')]))));
     await screen.findByRole('button', { name: 'Open New result' });
-    await act(async () => older.resolve(ok({ items: [profile('Stale result')], nextCursor: null })));
+    await act(async () => older.resolve(ok(creatorPage([profile('Stale result')]))));
     expect(screen.queryByRole('button', { name: 'Open Stale result' })).not.toBeInTheDocument();
   });
 
-  it('keeps existing items when loading more fails and retries the same cursor', async () => {
+  it('keeps the current page when the next page fails and retries the same offset', async () => {
     const api = bridge();
-    vi.mocked(api.library.list).mockResolvedValueOnce(ok({ items: [profile('First')], nextCursor: 'cursor-2' }))
-      .mockResolvedValueOnce(failed()).mockResolvedValueOnce(ok({ items: [profile('Second')], nextCursor: null }));
+    vi.mocked(api.creators.list).mockResolvedValueOnce(ok(creatorPage([profile('First')],0,51)))
+      .mockResolvedValueOnce(failed()).mockResolvedValueOnce(ok(creatorPage([profile('Second')],50,51)));
     const { user } = start(api); await screen.findByRole('button', { name: 'Open First' });
-    await user.click(screen.getByRole('button', { name: 'Load more' }));
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Connection interrupted');
     expect(screen.getByRole('button', { name: 'Open First' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('button', { name: 'Open Second' })).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Open First' })).toBeVisible();
-    expect(vi.mocked(api.library.list).mock.calls[2][0].cursor).toBe('cursor-2');
+    expect(screen.queryByRole('button', { name: 'Open First' })).not.toBeInTheDocument();
+    expect(vi.mocked(api.creators.list).mock.calls[2][0].offset).toBe(50);
   });
 
-  it('shows every contact and public field read-only, then returns to the same list', async () => {
-    const { user } = start(); await screen.findByRole('button', { name: 'Open Pixel Harbor' });
+  it('shows all v2 contacts and retained source fields, then returns to the same list', async () => {
+    const api=bridge();vi.mocked(api.creators.detail).mockResolvedValue(ok(detail('Pixel Harbor')));
+    const { user } = start(api); await screen.findByRole('button', { name: 'Open Pixel Harbor' });
     await user.click(screen.getByRole('button', { name: 'Open Pixel Harbor' }));
     expect(await screen.findByRole('heading', { name: 'Pixel Harbor' })).toBeVisible();
+    expect(within(screen.getByRole('article')).getByText('Followers unknown')).toBeVisible();
+    await user.click(screen.getByText('Profile source details',{selector:'summary'}));
+    expect(screen.getByText(/<script>not executable<\/script>/)).toBeVisible();
+    expect(screen.getByText(/arbitrary_future_field/)).toBeVisible();
+    expect(screen.getByRole('button',{name:'Edit profile'})).toBeEnabled();
+    await user.click(screen.getByRole('tab',{name:'Emails'}));
     expect(screen.getByText('hello@example.com')).toBeVisible();
     expect(screen.getByText('press@example.com')).toBeVisible();
     expect(screen.getByText('Business')).toBeVisible();
     expect(screen.getByText('Press')).toBeVisible();
-    expect(screen.getByText('Subscribers')).toBeVisible();
-    expect(screen.queryByText('0 subscribers')).not.toBeInTheDocument();
-    await user.click(screen.getByText('Profile facts', { selector: 'summary' }));
-    expect(screen.getByText('<script>not executable</script>')).toBeVisible();
-    await user.click(screen.getByText('All source fields', { selector: 'summary' }));
-    expect(screen.getByText('Arbitrary future field')).toBeVisible();
-    expect(screen.queryByRole('button', { name: /edit|send|analyze/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('0 followers')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /send|analyze/i })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Back to creators' }));
     expect(screen.getByRole('button', { name: 'Open Pixel Harbor' })).toBeVisible();
   });
 
   it('clears private results on disconnect and ignores a late detail response', async () => {
-    const pending = deferred<Result<ProfileDetail>>(); const api = bridge();
-    vi.mocked(api.library.detail).mockReturnValue(pending.promise);
+    const pending = deferred<Result<CreatorDetail>>(); const api = bridge();
+    vi.mocked(api.creators.detail).mockReturnValue(pending.promise);
     const { user } = start(api); await screen.findByRole('button', { name: 'Open Pixel Harbor' });
     await user.click(screen.getByRole('button', { name: 'Open Pixel Harbor' }));
     await user.click(screen.getByRole('button', { name: /^Settings$/ }));
@@ -284,7 +284,7 @@ describe('desktop renderer', () => {
     await act(async () => save.resolve(ok({ serviceUrl: 'https://workspace.example.com', hasKey: true, storageAvailable: true })));
     expect(screen.getByText('Saved · Verifying workspace…')).toBeVisible();
     expect(screen.queryByText('Connection verified')).not.toBeInTheDocument();
-    expect(api.library.list).not.toHaveBeenCalled();
+    expect(api.creators.list).not.toHaveBeenCalled();
     await waitFor(() => expect(api.connection.test).toHaveBeenCalledOnce());
     await act(async () => check.resolve(ok({ authenticated: true, proxy: 'system', route: 'direct' })));
     expect(await screen.findByText('Connection verified')).toBeVisible();
@@ -295,15 +295,15 @@ describe('desktop renderer', () => {
       .mockResolvedValueOnce(ok({ authenticated: true, proxy: 'system', route: 'direct' }));
     const { user } = start(api);
     expect(await screen.findByRole('alert')).toHaveTextContent('Workspace key was rejected');
-    expect(api.library.list).not.toHaveBeenCalled();
+    expect(api.creators.list).not.toHaveBeenCalled();
     await user.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('button', { name: 'Open Pixel Harbor' })).toBeVisible();
   });
 
   it('distinguishes an empty filtered result and recovers a failed detail locally', async () => {
-    const api = bridge(); vi.mocked(api.library.list).mockResolvedValueOnce(ok({ items: [], nextCursor: null }))
-      .mockResolvedValue(ok({ items: [profile('Recovered')], nextCursor: null }));
-    vi.mocked(api.library.detail).mockResolvedValueOnce(failed('Profile unavailable')).mockResolvedValueOnce(ok(detail('Recovered')));
+    const api = bridge(); vi.mocked(api.creators.list).mockResolvedValueOnce(ok(creatorPage([])))
+      .mockResolvedValue(ok(creatorPage([profile('Recovered')])));
+    vi.mocked(api.creators.detail).mockResolvedValueOnce(failed('Profile unavailable')).mockResolvedValueOnce(ok(detail('Recovered')));
     const { user } = start(api); await screen.findByRole('heading', { name: 'No creators yet' });
     await user.type(screen.getByRole('searchbox'), 'cozy{Enter}');
     await user.click(await screen.findByRole('button', { name: 'Open Recovered' }));
@@ -313,7 +313,7 @@ describe('desktop renderer', () => {
   });
 
   it('keeps tab controls keyboard accessible and clears submitted filters explicitly', async () => {
-    const api = bridge(); vi.mocked(api.library.list).mockImplementation(async input => ok({ items: input.query ? [] : [profile(input.kind, input.kind, input.kind)], nextCursor: null }));
+    const api = bridge(); vi.mocked(api.creators.list).mockImplementation(async input => ok(creatorPage(input.query ? [] : [profile('creators')])));
     vi.mocked(api.games.list).mockImplementation(async input => ok({items:input.query?[]:[gameFixture('games')],total:input.query?0:1,limit:24,offset:0}));
     const { user } = start(api); await screen.findByRole('button', { name: 'Open creators' });
     screen.getByRole('tab', { name: 'Creators' }).focus();
@@ -330,15 +330,14 @@ describe('desktop renderer', () => {
   });
 
   it('keeps collection filters and successful pagination independent across tabs and navigation', async () => {
-    const api = bridge(); vi.mocked(api.library.list).mockImplementation(async input => {
-      if (input.kind === 'games') return ok({ items: [profile('A game', 'game', 'games')], nextCursor: null });
-      if (input.cursor) return ok({ items: [profile('Second saved')], nextCursor: null });
-      return ok({ items: [profile(input.onlyCollection ? 'First saved' : 'All creator')], nextCursor: input.onlyCollection ? 'saved-page-2' : null });
+    const api = bridge(); vi.mocked(api.creators.list).mockImplementation(async input => {
+      if (input.offset) return ok(creatorPage([profile('Second saved')],50,51));
+      return ok(creatorPage([profile(input.onlyCollection ? 'First saved' : 'All creator')],0,input.onlyCollection?51:1));
     });
     const { user } = start(api); await screen.findByRole('button', { name: 'Open All creator' });
     await user.click(screen.getByRole('checkbox', { name: 'Saved only' }));
     await screen.findByRole('button', { name: 'Open First saved' });
-    await user.click(screen.getByRole('button', { name: 'Load more' }));
+    await user.click(screen.getByRole('button', { name: 'Next page' }));
     await screen.findByRole('button', { name: 'Open Second saved' });
     await user.click(screen.getByRole('tab', { name: 'Games' }));
     await screen.findByRole('button', { name: 'Open A game' });
@@ -347,18 +346,18 @@ describe('desktop renderer', () => {
     await user.click(screen.getByRole('button', { name: /^Library$/ }));
     await user.click(screen.getByRole('tab', { name: 'Creators' }));
     expect(screen.getByRole('checkbox', { name: 'Saved only' })).toBeChecked();
-    expect(screen.getByRole('button', { name: 'Open First saved' })).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'Open First saved' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open Second saved' })).toBeVisible();
-    expect(api.library.list).toHaveBeenCalledTimes(3);
+    expect(api.creators.list).toHaveBeenCalledTimes(3);
     expect(api.games.list).toHaveBeenCalledOnce();
-    expect(vi.mocked(api.library.list).mock.calls[2][0]).toMatchObject({ onlyCollection: true, cursor: 'saved-page-2' });
+    expect(vi.mocked(api.creators.list).mock.calls[2][0]).toMatchObject({ onlyCollection: true, offset: 50 });
   });
 
   it('ignores late list data from a replaced connection', async () => {
-    const old = deferred<Result<ListPage>>(); const api = bridge();
-    vi.mocked(api.library.list).mockReturnValueOnce(old.promise).mockResolvedValueOnce(ok({ items: [profile('New workspace profile')], nextCursor: null }));
+    const old = deferred<Result<CreatorPage>>(); const api = bridge();
+    vi.mocked(api.creators.list).mockReturnValueOnce(old.promise).mockResolvedValueOnce(ok(creatorPage([profile('New workspace profile')])));
     vi.mocked(api.connection.save).mockResolvedValue(ok({ serviceUrl: 'https://new.example.com', hasKey: true, storageAvailable: true }));
-    const { user } = start(api); await waitFor(() => expect(api.library.list).toHaveBeenCalledOnce());
+    const { user } = start(api); await waitFor(() => expect(api.creators.list).toHaveBeenCalledOnce());
     await user.click(screen.getByRole('button', { name: /^Settings$/ }));
     const url = screen.getByRole('textbox', { name: 'Service URL' });
     await user.clear(url); await user.type(url, 'https://new.example.com');
@@ -367,7 +366,7 @@ describe('desktop renderer', () => {
     await screen.findByText('Connection verified');
     await user.click(screen.getByRole('button', { name: /^Library$/ }));
     expect(await screen.findByRole('button', { name: 'Open New workspace profile' })).toBeVisible();
-    await act(async () => old.resolve(ok({ items: [profile('Old private profile')], nextCursor: null })));
+    await act(async () => old.resolve(ok(creatorPage([profile('Old private profile')]))));
     expect(screen.queryByRole('button', { name: 'Open Old private profile' })).not.toBeInTheDocument();
   });
 
@@ -399,7 +398,7 @@ describe('desktop renderer', () => {
   });
 
   it('preserves searches, pages and the open profile after verifying unchanged credentials', async () => {
-    const api = bridge(); vi.mocked(api.library.list).mockImplementation(async input => ok({ items: [profile(input.query || 'Initial')], nextCursor: null }));
+    const api = bridge(); vi.mocked(api.creators.list).mockImplementation(async input => ok(creatorPage([profile(input.query || 'Initial')])));
     const recheck = deferred<Result<{authenticated: true; proxy: 'system'; route: 'direct'}>>();
     const { user } = start(api); await screen.findByRole('button', { name: 'Open Initial' });
     await user.type(screen.getByRole('searchbox'), 'Saved context{Enter}');
@@ -415,7 +414,7 @@ describe('desktop renderer', () => {
     await user.click(screen.getByRole('button', { name: 'Back to creators' }));
     expect(screen.getByRole('searchbox')).toHaveValue('Saved context');
     expect(screen.getByRole('button', { name: 'Open Saved context' })).toBeVisible();
-    expect(api.library.list).toHaveBeenCalledTimes(2);
-    expect(api.library.detail).toHaveBeenCalledOnce();
+    expect(api.creators.list).toHaveBeenCalledTimes(2);
+    expect(api.creators.detail).toHaveBeenCalledOnce();
   });
 });

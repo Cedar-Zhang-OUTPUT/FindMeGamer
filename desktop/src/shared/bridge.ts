@@ -2,6 +2,7 @@ import type { ListProfilesInput, ProfileDetail, ProfileKind, ListPage } from './
 import type { CreateGameInput, GameDetail, GameListInput, GamePage, UpdateGameInput } from './games';
 import type { SettingsAPI } from './settings';
 import type { PreferencesAPI, UpdatesAPI } from './preferences';
+import type { CreatorAPI } from './creators';
 
 export interface ConnectionStatus {
   serviceUrl: string;
@@ -15,6 +16,7 @@ export interface ConnectionCheck { authenticated: true; proxy: 'system'; route: 
 
 /** Business methods only. No generic request, filesystem, shell, or IPC channel access. */
 export interface DesktopBridge {
+  creators: CreatorAPI;
   settings: SettingsAPI;
   preferences: PreferencesAPI;
   updates: UpdatesAPI;

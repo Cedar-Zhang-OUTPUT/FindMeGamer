@@ -25,6 +25,26 @@ function start(connected = false) {
 afterEach(()=>{cleanup();vi.restoreAllMocks();Reflect.deleteProperty(window,'desktop');document.documentElement.removeAttribute('data-theme');document.documentElement.style.removeProperty('font-size');});
 
 describe('complete Settings host',()=>{
+  it('shows one connection status and keeps route details optional',async()=>{
+    const {user}=start(true);
+    await user.click(await screen.findByRole('button',{name:'Settings'}));
+    expect(screen.getByText('Connection verified')).toBeVisible();
+    expect(screen.queryByText('Connected', {exact:true})).not.toBeInTheDocument();
+    const route=screen.getByText(/Direct route/);
+    expect(route).not.toBeVisible();
+    await user.click(screen.getByText('Connection details',{selector:'summary'}));
+    expect(route).toBeVisible();
+    expect(screen.getByRole('button',{name:'Open Library'})).toBeEnabled();
+  });
+  it('offers reconnect only when connected workspace fields change',async()=>{
+    const {api,user}=start(true);await user.click(await screen.findByRole('button',{name:'Settings'}));
+    expect(screen.queryByRole('button',{name:'Connect'})).not.toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'Test connection'})).toBeEnabled();
+    await user.type(screen.getByLabelText('Workspace key',{exact:true}),'replacement-test-key');
+    expect(screen.getByRole('button',{name:'Connect'})).toBeEnabled();
+    expect(screen.getByRole('button',{name:'Test connection'})).toBeDisabled();
+    expect(api.connection.save).not.toHaveBeenCalled();
+  });
   it('previews appearance immediately and rolls back a failed local write',async()=>{
     const {api,user}=start();
     let resolve!:(value:Awaited<ReturnType<typeof api.preferences.update>>)=>void;

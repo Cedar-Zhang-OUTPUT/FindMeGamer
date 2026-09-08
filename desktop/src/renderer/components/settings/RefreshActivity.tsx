@@ -42,14 +42,13 @@ function Category({ api, kind }: { api: Props['api']; kind: ProfileKind }) {
   return <section aria-label={kind === 'games' ? 'Steam-linked games' : 'YouTube creators'} className="refresh-activity-category">
     <h4>{kind === 'games' ? 'Steam-linked games' : 'YouTube creators'}</h4>
     {page && <dl>
-      <dt>Coverage</dt><dd>{partial ? `First ${items.length} records` : `${items.length} records`}</dd>
-      <dt>Last analysis among loaded records</dt><dd>{last ? <time dateTime={last}>{last}</time> : 'Unavailable'}</dd>
-      <dt>Next scheduled among loaded records</dt><dd>{next ? <time dateTime={next}>{next}</time> : unknown ? 'Unavailable' : 'No scheduled refresh'}</dd>
+      <dt>Loaded records</dt><dd>{partial ? `First ${items.length} records` : `${items.length} records`}</dd>
+      <dt>Last analysis</dt><dd>{last ? <time dateTime={last}>{last}</time> : 'Unavailable'}</dd>
+      <dt>Next refresh</dt><dd>{next ? <time dateTime={next}>{next}</time> : unknown ? 'Unavailable' : 'No scheduled refresh'}</dd>
       <dt>Scheduled</dt><dd>{nextDates.length}</dd>
-      <dt>Without a scheduled refresh</dt><dd>{unscheduled}</dd>
+      <dt>Not scheduled</dt><dd>{unscheduled}</dd>
       {unknown > 0 && <><dt>Schedule unavailable</dt><dd>{unknown}</dd></>}
     </dl>}
-    {partial && <p>More records are available; dates and counts cover loaded records only.</p>}
     {pending && <p role="status">Loading {kind} activity…</p>}
     {failed && <p role="alert">Could not load {kind} activity.</p>}
     {failed ? <button type="button" disabled={pending} onClick={() => setRequest(previous => ({ ...previous, attempt: previous.attempt + 1 }))}>Retry {kind}</button>

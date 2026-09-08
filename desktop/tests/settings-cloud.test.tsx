@@ -53,6 +53,27 @@ function apiMock(): SettingsAPI {
   };
 }
 afterEach(cleanup);
+it("keeps service test limits discoverable without showing repeated explanatory text", async () => {
+  const user = userEvent.setup();
+  render(<CloudSettings api={apiMock()} connected section="services" />);
+  const caveat = await screen.findByText("Search & analysis not verified");
+  expect(caveat).not.toBeVisible();
+  await user.click(screen.getByText("X test scope", { selector: "summary" }));
+  expect(caveat).toBeVisible();
+  expect(screen.getByText(/Checks usage access only/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "Test usage access" })).toBeEnabled();
+});
+it("keeps saved SMTP connection details behind a named disclosure while showing the sender", async () => {
+  const user = userEvent.setup();
+  render(<CloudSettings api={apiMock()} connected section="email" />);
+  expect(await screen.findByText("Studio <sender@example.com>")).toBeVisible();
+  const host = screen.getByText(/smtp.example.com/);
+  expect(host).not.toBeVisible();
+  await user.click(screen.getByText("SMTP connection details", { selector: "summary" }));
+  expect(host).toBeVisible();
+  expect(screen.getByText(/STARTTLS/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "Edit email settings" })).toBeEnabled();
+});
 it("reconciles an uncertain password save before enabling SMTP tests, preserving non-secret edits", async () => {
   const api = apiMock(),
     user = userEvent.setup();

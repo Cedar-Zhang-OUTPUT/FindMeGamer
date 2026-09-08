@@ -2,6 +2,18 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopBridge } from '../shared/bridge';
 
 const bridge: DesktopBridge = {
+  creators: {
+    list: input => ipcRenderer.invoke('creators:list',input),
+    detail: id => ipcRenderer.invoke('creators:detail',id),
+    create: input => ipcRenderer.invoke('creators:create',input),
+    update: input => ipcRenderer.invoke('creators:update',input),
+    rebind: input => ipcRenderer.invoke('creators:rebind',input),
+    createContact: input => ipcRenderer.invoke('creators:create-contact',input),
+    updateContact: input => ipcRenderer.invoke('creators:update-contact',input),
+    works: input => ipcRenderer.invoke('creators:works',input),
+    createWork: input => ipcRenderer.invoke('creators:create-work',input),
+    updateWork: input => ipcRenderer.invoke('creators:update-work',input),
+  },
   settings: {
     connection: service => ipcRenderer.invoke('settings:connection', service),
     replaceConnection: input => ipcRenderer.invoke('settings:replace-connection', input),

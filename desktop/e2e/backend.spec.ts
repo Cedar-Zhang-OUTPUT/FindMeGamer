@@ -38,7 +38,8 @@ test('isolated backend through the real desktop Settings and Library', async () 
     await expect(page.getByRole('button',{name:'Open Fixture Cozy Gamer',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Open Fixture Cozy Gamer',exact:true}).click();
     await expect(page.getByRole('heading',{name:'Fixture Cozy Gamer',exact:true})).toBeVisible();
-    await expect(page.getByText('fixture@example.invalid',{exact:true}).first()).toBeVisible();
+    await page.getByRole('tab',{name:'Emails',exact:true}).click();
+    await expect(page.getByText('fixture@example.com',{exact:true}).first()).toBeVisible();
     await page.getByRole('button',{name:'Back to creators',exact:true}).click();
     await page.getByRole('tab',{name:'Games',exact:true}).click();
     await page.getByRole('button',{name:'Open Fixture Star Garden',exact:true}).click();

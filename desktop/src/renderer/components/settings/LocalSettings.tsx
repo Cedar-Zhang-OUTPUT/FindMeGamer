@@ -18,7 +18,7 @@ export function AppearanceSettings({state}:{state:AppearanceState}) {
     <div className="settings-control-row"><label htmlFor="text-size">Text size</label><select id="text-size" value={state.preferences.fontSize} disabled={state.busy} onChange={event=>void state.save({fontSize:event.target.value as typeof state.preferences.fontSize})}>
       <option value="small">Small</option><option value="medium">Medium</option><option value="default">Default</option><option value="large">Large</option><option value="extra-large">Extra large</option>
     </select></div>
-    <div className="appearance-preview"><span className="preview-avatar" aria-hidden="true">F</span><div><strong>Find your next collaborator</strong><p>Creators, games and new possibilities.</p></div></div>
+    <div className="appearance-preview"><span className="preview-avatar" aria-hidden="true">F</span><strong>Find your next collaborator</strong></div>
     <button className="text-button" disabled={state.busy} onClick={()=>void state.save('restore')}>Restore appearance defaults</button>
     {state.error && <ErrorNotice error={state.error}/>}
   </section>;

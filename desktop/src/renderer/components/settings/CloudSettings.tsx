@@ -323,16 +323,14 @@ function Provider({
         </span>
       </div>
       {name === "x" && (
-        <>
+        <details>
+          <summary>X test scope</summary>
           <p className="cloud-note">Search &amp; analysis not verified</p>
-          <details>
-            <summary>Test scope</summary>
-            <p>
-              Checks usage access only. Account balance and recent search access
-              are not verified.
-            </p>
-          </details>
-        </>
+          <p>
+            Checks usage access only. Account balance and recent search access
+            are not verified.
+          </p>
+        </details>
       )}
     </article>
   );
@@ -592,11 +590,15 @@ function Email({
           <div>
             <p>{`${saved.fromName || ""} <${saved.username || ""}>`}</p>
             <span>
-              {saved.host} · {saved.encryption?.toUpperCase()} ·{" "}
               {saved.lastTestStatus
                 ? `Last SMTP test: ${saved.lastTestStatus}`
                 : "Not tested"}
             </span>
+            <details>
+              <summary>SMTP connection details</summary>
+              <p>{saved.host} · {saved.port} · {saved.encryption?.toUpperCase()}</p>
+            </details>
+            {saved.encryption === "none" && <p role="alert">Unencrypted SMTP exposes credentials and email in transit.</p>}
           </div>
           <button
             disabled={op.busy}

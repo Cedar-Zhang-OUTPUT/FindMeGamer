@@ -5,37 +5,41 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { previewDocument } from '../src/shared/mail-preview';
 import { gameFixture } from '../tests/game-fixtures';
+import { creatorFixture, contactFixture, workFixture } from '../tests/creator-fixtures';
 import { isolatedPreferences } from './preferences';
 
 const gameId = '11111111-1111-4111-8111-111111111111';
 const creatorId = '22222222-2222-4222-8222-222222222222';
 const testKey = 'local-fixture-only-not-a-production-key';
-const timestamp = '2026-09-08T01:00:00Z';
-function profile(kind: 'game' | 'creator') {
-  return {
-    type: kind, id: kind === 'game' ? gameId : creatorId,
-    name: kind === 'game' ? 'Test Fixture — Forest Signal' : 'Test Fixture — Pixel Harbor',
-    steam_app_id: '123456', youtube_channel_id: 'UC_local_test_fixture',
-    canonical_url: kind === 'game' ? 'https://store.steampowered.com/app/123456/' : 'https://www.youtube.com/channel/UC_local_test_fixture',
-    favorite: false, current_facts: { description: 'Explicit local test data, not a real creator or production game.', subscriber_count: null },
-    brief: {}, source_status: {}, last_analyzed_at: timestamp, next_analysis_at: null,
-    contact: null, contacts: [], analysis: {}, model_metadata: {}, prompt_metadata: {}, manual_notes: null,
-  };
-}
+const creator = {
+  ...creatorFixture('Test Fixture — Pixel Harbor', creatorId),
+  public_name: 'Pixel Harbor', public_name_confirmed: true, handle: '@pixelharbor',
+  description: 'Cozy games, thoughtful reviews, and community livestreams.', languages: ['English'],
+  profile_url: 'https://example.invalid/pixel-harbor',
+  source_identity: { platform: 'youtube' as const, account_id: 'UC_local_test_fixture', canonical_url: 'https://www.youtube.com/channel/UC_local_test_fixture', revision: 1 },
+  contacts: [{ ...contactFixture(), email: 'fixture@example.invalid', purpose: 'Business inquiries', source_url: 'https://example.invalid/pixel-harbor/contact' }],
+};
+const work = {
+  ...workFixture(), creator_id: creatorId, content_title: 'Forest Signal — First impressions',
+  content_type: 'review' as const, game_id: gameId, metrics: [{ name: 'views', value: 0 }],
+  evidence_excerpt: 'A relaxing exploration game with a hand-painted forest.',
+  source_url: 'https://www.youtube.com/watch?v=local_fixture',
+};
 
-test('desktop Library HTTP path, credentials, navigation, narrow layout and isolation', async () => {
-  const requests: { method: string; path: string }[] = [];
+test('desktop Library HTTP path, credentials, navigation, narrow layout and isolation', async ({}, testInfo) => {
+  const requests: { method: string; path: string; query: string }[] = [];
   let failCreators = false;
   const server = createServer((request, response) => {
     const url = new URL(request.url!, 'http://localhost');
-    requests.push({ method: request.method!, path: url.pathname });
+    requests.push({ method: request.method!, path: url.pathname, query: url.search });
     response.setHeader('Content-Type', 'application/json');
     if (request.method !== 'GET' || request.headers.authorization !== `Bearer ${testKey}`) { response.writeHead(401).end('{}'); return; }
     if (url.pathname === '/api/v1/session') response.end(JSON.stringify({ workspace_name: 'LOCAL TEST FIXTURE', api_version: 'v1', service_connections: {} }));
-    else if (url.pathname === '/api/v1/profiles/creators' && failCreators) response.writeHead(503).end('{}');
-    else if (url.pathname === '/api/v1/profiles/creators') response.end(JSON.stringify({ items: [profile('creator')], next_cursor: null }));
+    else if (url.pathname === '/api/v2/library/creators' && failCreators) response.writeHead(503).end('{}');
+    else if (url.pathname === '/api/v2/library/creators') response.end(JSON.stringify({ items: [creator], total: 1, offset: 0, limit: 50 }));
     else if (url.pathname === '/api/v2/library/games') response.end(JSON.stringify({ items: [gameFixture('Test Fixture — Forest Signal', gameId)], total:1,offset:0,limit:24 }));
-    else if (url.pathname === `/api/v1/profiles/creators/${creatorId}`) response.end(JSON.stringify(profile('creator')));
+    else if (url.pathname === `/api/v2/library/creators/${creatorId}`) response.end(JSON.stringify(creator));
+    else if (url.pathname === `/api/v2/library/creators/${creatorId}/works`) response.end(JSON.stringify({ items: [work], total: 1, offset: 0, limit: 50 }));
     else if (url.pathname === `/api/v2/library/games/${gameId}`) response.end(JSON.stringify(gameFixture('Test Fixture — Forest Signal', gameId)));
     else response.writeHead(404).end('{}');
   });
@@ -50,6 +54,7 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
     app = await electron.launch({ args: [...(executablePath ? [] : ['.']), `--user-data-dir=${userData}`], ...(executablePath ? {executablePath} : {}), cwd: process.cwd(), env: environment, chromiumSandbox: true });
     if (executablePath) expect(await app.evaluate(({app}) => app.isPackaged)).toBe(true);
     const page = await app.firstWindow();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(page.getByRole('heading', { name: 'Connect your workspace' })).toBeVisible();
     await page.getByRole('button', { name: 'Open Settings', exact: true }).click();
     await page.getByLabel('Service URL').fill(`http://127.0.0.1:${address.port}`);
@@ -57,13 +62,77 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
     await page.getByRole('button', { name: 'Connect', exact: true }).click();
     await expect(page.getByText('Connection verified', {exact: true})).toBeVisible();
     await expect(page.getByLabel('Workspace key', {exact: true})).toHaveValue('');
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1320, 920));
+    const connectionDetails = page.locator('summary').filter({ hasText: 'Connection details' });
+    await expect(page.getByText('System proxy · Direct route', {exact: true})).not.toBeVisible();
+    await page.screenshot({path:testInfo.outputPath('settings-workspace-default.png')});
+    await connectionDetails.focus();
+    await connectionDetails.press('Enter');
+    await expect(page.getByText('System proxy · Direct route', {exact: true})).toBeVisible();
+    await page.screenshot({path:testInfo.outputPath('settings-workspace-connection-details.png')});
+    await connectionDetails.press('Enter');
     await page.getByRole('button', {name: 'Library', exact: true}).click();
     await expect(page.getByRole('button', {name: 'Open Test Fixture — Pixel Harbor', exact: true})).toBeVisible();
     await page.getByRole('button', {name: 'Open Test Fixture — Pixel Harbor', exact: true}).click();
     await expect(page.getByRole('heading', {name: 'Test Fixture — Pixel Harbor', exact: true})).toBeVisible();
+    await expect(page.getByRole('tab', {name:'Profile',exact:true})).toHaveAttribute('aria-selected','true');
+    await expect(page.getByRole('article').getByText('Followers unknown',{exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'Change identity',exact:true})).not.toBeVisible();
+    await expect(page.getByText('UC_local_test_fixture',{exact:true})).not.toBeVisible();
+    await expect(page.getByRole('heading',{name:'fixture@example.invalid',exact:true})).not.toBeVisible();
+    await page.screenshot({path:testInfo.outputPath('creator-profile-default.png')});
+    const accountIdentity = page.locator('summary').filter({hasText:'Account identity'});
+    await accountIdentity.focus();
+    await accountIdentity.press('Enter');
+    await expect(page.getByRole('button',{name:'Change identity',exact:true})).toBeVisible();
+    await expect(page.getByText('UC_local_test_fixture',{exact:true})).toBeVisible();
+    await page.screenshot({path:testInfo.outputPath('creator-account-identity-expanded.png')});
+    await accountIdentity.press('Enter');
+    await page.getByRole('tab',{name:'Profile',exact:true}).focus();
+    await page.getByRole('tab',{name:'Profile',exact:true}).press('ArrowRight');
+    await expect(page.getByRole('tab',{name:'Emails',exact:true})).toBeFocused();
+    await expect(page.getByRole('heading',{name:'fixture@example.invalid',exact:true})).toBeVisible();
+    await page.screenshot({path:testInfo.outputPath('creator-emails.png')});
+    await page.getByRole('tab',{name:'Emails',exact:true}).press('ArrowRight');
+    await expect(page.getByRole('tab',{name:'Known works',exact:true})).toBeFocused();
+    await expect(page.getByRole('heading',{name:'Forest Signal — First impressions',exact:true})).toBeVisible();
+    await expect(page.getByRole('tabpanel',{name:'Known works',exact:true}).getByText('Test Fixture — Forest Signal',{exact:true})).toBeVisible();
+    await page.screenshot({path:testInfo.outputPath('creator-known-works.png')});
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 820));
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath('creator-known-works-narrow.png')});
+    await page.getByRole('tab',{name:'Known works',exact:true}).press('Home');
+    await expect(page.getByRole('tab',{name:'Profile',exact:true})).toBeFocused();
+    await expect(page.getByRole('button',{name:'Edit profile',exact:true})).toBeVisible();
+    await expect(page.getByRole('button',{name:'Change identity',exact:true})).not.toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath('creator-profile-narrow.png')});
+    await page.getByRole('button', {name:'Settings',exact:true}).click();
+    await page.getByRole('tab', {name:'Appearance',exact:true}).click();
+    await page.getByRole('radio', {name:'Dark',exact:true}).check();
+    await page.getByLabel('Text size', {exact:true}).selectOption('extra-large');
+    await page.getByRole('button', {name:'Library',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'Test Fixture — Pixel Harbor',exact:true})).toBeVisible();
+    await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize)).toBe('20px');
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath('creator-profile-dark-large.png')});
+    await page.getByRole('tab',{name:'Known works',exact:true}).click();
+    await expect(page.getByRole('heading',{name:'Forest Signal — First impressions',exact:true})).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath('creator-known-works-dark-large.png')});
+    await page.getByRole('button', {name:'Settings',exact:true}).click();
+    await page.getByRole('button', {name:'Restore appearance defaults',exact:true}).click();
+    await page.getByRole('button', {name:'Library',exact:true}).click();
     await page.getByRole('button', {name: 'Back to creators', exact: true}).click();
     await page.getByRole('tab', {name: 'Games', exact: true}).click();
     await expect(page.getByRole('button', {name: 'Open Test Fixture — Forest Signal', exact: true})).toBeVisible();
+    await page.getByRole('button', {name: 'Open Test Fixture — Forest Signal', exact: true}).click();
+    await expect(page.getByRole('heading',{name:'Test Fixture — Forest Signal',exact:true})).toBeVisible();
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({path:testInfo.outputPath('game-detail-narrow.png')});
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(1320, 920));
+    await page.screenshot({path:testInfo.outputPath('game-detail.png')});
+    await page.getByRole('button',{name:'Back to games',exact:true}).click();
     for (const name of ['Match', 'Outreach']) {
       await page.getByRole('button', {name, exact: true}).click();
       await expect(page.getByRole('region', {name:`${name.toLowerCase()} page`,exact:true}).getByText('Not connected yet', {exact: true})).toBeVisible();
@@ -71,9 +140,9 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
     await page.getByRole('button', {name: 'Library', exact: true}).click();
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setSize(760, 660));
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    await page.screenshot({path:'/tmp/fmg-library-narrow.png'});
+    await page.screenshot({path:testInfo.outputPath('library-narrow.png')});
     const boundary = await page.evaluate(() => ({node: typeof (window as any).require, process: typeof (window as any).process, keyInDOM: document.body.innerText.includes('local-fixture-only-not-a-production-key'), methods: Object.keys(window.desktop).sort(), storage: localStorage.length}));
-    expect(boundary).toEqual({node:'undefined',process:'undefined',keyInDOM:false,methods:['connection','games','library','openExternal','preferences','settings','updates'],storage:0});
+    expect(boundary).toEqual({node:'undefined',process:'undefined',keyInDOM:false,methods:['connection','creators','games','library','openExternal','preferences','settings','updates'],storage:0});
     const stored = await readFile(path.join(userData, 'credentials.json'), 'utf8');
     expect(stored).not.toContain(testKey);
     const denied = await page.evaluate(() => window.desktop.openExternal('file:///etc/passwd'));
@@ -90,12 +159,15 @@ test('desktop Library HTTP path, credentials, navigation, narrow layout and isol
     failCreators = true;
     await page.getByRole('searchbox').fill('failure');
     await page.getByRole('searchbox').press('Enter');
-    await expect(page.getByRole('alert')).toContainText('HTTP 503');
+    await expect(page.getByRole('alert')).toContainText('The service could not complete this Creator request.');
     failCreators = false;
     await page.getByRole('button', {name:'Try again',exact:true}).click();
     await expect(page.getByRole('button', {name:'Open Test Fixture — Pixel Harbor',exact:true})).toBeVisible();
     expect(requests.every(request => request.method === 'GET')).toBe(true);
-    expect(requests.some(request => request.path === `/api/v1/profiles/creators/${creatorId}`)).toBe(true);
+    expect(requests.some(request => request.path.startsWith('/api/v1/profiles/creators'))).toBe(false);
+    expect(requests.some(request => request.path === `/api/v2/library/creators/${creatorId}`)).toBe(true);
+    expect(requests.some(request => request.path === `/api/v2/library/creators/${creatorId}/works` && new URLSearchParams(request.query).get('limit') === '50')).toBe(true);
+    expect(requests.filter(request => request.path === '/api/v2/library/creators').every(request => new URLSearchParams(request.query).get('limit') === '50' && new URLSearchParams(request.query).get('offset') === '0')).toBe(true);
   } finally {
     await app?.close();
     await new Promise<void>(resolve => server.close(() => resolve()));

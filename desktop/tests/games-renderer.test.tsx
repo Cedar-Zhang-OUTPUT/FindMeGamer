@@ -34,6 +34,15 @@ async function edit(user: ReturnType<typeof userEvent.setup>) {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('editable Games Library', () => {
+  it('keeps an empty game focused on editing without empty metadata panels', async () => {
+    const api=apiMock();vi.mocked(api.games.detail).mockResolvedValue(ok(game({description:null,developer:null,website_url:null,tags:[],languages:[]})));
+    const {user}=start(api);await user.click(await screen.findByRole('button',{name:'Open Harbor Lights'}));
+    expect(await screen.findByRole('button',{name:'Edit game'})).toBeVisible();
+    expect(screen.queryByRole('heading',{name:/Reference works/})).not.toBeInTheDocument();
+    expect(screen.queryByText('No description recorded.')).not.toBeInTheDocument();
+    const details=screen.getByText('Source & saved fields').closest('details');expect(details).not.toHaveAttribute('open');
+    await user.click(screen.getByRole('button',{name:'Edit game'}));expect(screen.getByLabelText('Description')).toHaveValue('');
+  });
   it('uses direct reference entry and contextual controls without duplicate instruction paragraphs', async () => {
     const {user} = start();
     await user.click(await screen.findByRole('button',{name:'New game'}));

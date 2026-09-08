@@ -37,7 +37,8 @@ test('Game v2 persists edits, deduplicates retries, resolves conflicts and repai
   // database has committed. The second identical request must not create a duplicate.
   const relay = createServer(async (request,response) => {
     const route = new URL(request.url!, 'http://localhost');
-    if (!/^\/api\/(v1\/(session|profiles\/creators(?:\/[0-9a-f-]+)?)|v2\/library\/games(?:\/[0-9a-f-]+)?)$/.test(route.pathname)) { response.writeHead(404).end(); return; }
+    if (!/^\/api\/(v1\/session|v2\/library\/(games(?:\/[0-9a-f-]+)?|creators(?:\/[0-9a-f-]+(?:\/works)?)?))$/.test(route.pathname)) { response.writeHead(404).end(); return; }
+    if (route.pathname.startsWith('/api/v2/library/creators') && request.method !== 'GET') { response.writeHead(405).end(); return; }
     try {
       const chunks:Buffer[] = []; for await (const chunk of request) chunks.push(Buffer.from(chunk));
       const body = Buffer.concat(chunks).toString('utf8');

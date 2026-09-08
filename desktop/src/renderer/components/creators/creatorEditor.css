@@ -1,0 +1,16 @@
+.creator-editor { display: grid; gap: 1.25rem; min-width: 0; }
+.creator-editor > h2 { margin: 0; }
+.creator-editor form, .creator-editor section { min-width: 0; }
+.creator-editor .creator-form { border-radius: 1rem; background: var(--surface); }
+.creator-editor .game-editor-footer { position: static; margin-top: 1rem; }
+.creator-identity-summary { display: grid; gap: .35rem; overflow-wrap: anywhere; }
+.creator-identity-summary > span { font-size: .875rem; color: var(--muted); }
+.creator-identity-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.creator-identity-compare section { min-width: 0; overflow-wrap: anywhere; }
+.creator-recovery { margin-top: 1rem; }
+.creator-recovery-list { display: grid; gap: .75rem; }
+.creator-recovery-list > div { padding: .875rem; border: 1px solid var(--line); border-radius: .75rem; display: grid; gap: .4rem; overflow-wrap: anywhere; }
+.creator-recovery-list > div > span, .creator-recovery-list code { color: var(--muted); font-size: .8125rem; }
+.creator-recovery-list button { justify-self: start; }
+.creator-editor .game-conflict pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 850px) { .creator-identity-compare { grid-template-columns: 1fr; } }
