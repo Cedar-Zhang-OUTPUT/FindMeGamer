@@ -13,6 +13,11 @@
 - **执行归属**：后端＝“FindMeGamer 后端开发”；前端＝“FindMeGamer 前端优化”；总管＝集成、固定环境与有限验收。下面的“下一单元”是工作分解，不将所有缺项追加入正在验收的增量。
 - **最新后续增量**：B10 命名集合、B11 语言比较及 B12 Outreach A 模板/四槽草稿/依据均正式接受；后端现做 Outreach B 资格/最终发送，尚未接受。F5 源码与真实HTTP已接受并合入 `08c7d20`；F6源码/HTTP已接受，F7实施中。以下页面行保留初次核验时的差距描述，遇到较早“planned/in-progress”应以本条及具体增量记录为准，不把源码/局部HTTP接受等同完整页面/原生包交付。
 
+### 最新接受增量（优先于上述较早进度）
+
+- B13 Outreach B `ece2e9d9558dfe057dc40ad58bd98a86e3149dd5` 已接受：[发送契约](backend-v2-activity-sending.md)。执行方最终2267 passed/3既定deferred/0failed（221.26秒），一次有限独立审查闭环；总管固定归档31新测试（19.98秒）、22旧保护（2.50秒）、3OpenAPI（5.52秒）全部通过，实际DB0017。原始日志 `/tmp/fmg-outreach-b-ece2e9d.CP7v7a/` 已核对，临时资源已清理。完整N资格、明确排除、冻结发送、持久重放、普通邀请去重、failed/unknown区分均在本增量范围；尚不代表新独立A+B运行夹具或真实邮件投递验收。后端继续C回复/合作状态。
+- F6补充 `aec17c3` 仅7个desktop文件，cherry-pick为 `17f83f5`，desktop树一致。执行方固定快照805/58、typecheck/build81通过；总管核实5个实现/测试文件字节与提交一致，新跑10个Settings焦点回归和typecheck通过，并检查宽/窄/135%字号截图。HEADLESS生产React+真实HTTP1/1通过4.9秒，隐藏Settings不再提前读取；不等同Electron/IPC/preload/Keychain/最终包。F7人选准备、F8模板草稿仍在后续交付链路。
+
 ## 可引用的实际验收记录
 
 下列均是既有交付/总管记录。本次矩阵工作未运行测试、原型脚本、真实提供商、SMTP 或生产操作；测试数量不能跨增量相加为通过率。

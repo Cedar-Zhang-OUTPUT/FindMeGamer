@@ -8,6 +8,23 @@ import sys
 
 from fixture import destination_allowed, start_server
 
+OUTREACH_REVISIONS = {"ece2e9d9558dfe057dc40ad58bd98a86e3149dd5"}
+
+
+def install_smtp_capture(private, state_directory):
+    if private["backend_revision"] not in OUTREACH_REVISIONS:
+        return None
+    from smtp_capture import capture_gateway
+
+    gateway = capture_gateway(state_directory)
+    from app.workers import activity_send_tasks, outreach_tasks
+
+    # Keep real worker/claim/limiter/MIME/error logic. Only construction of its
+    # real SMTPGateway is bound to the socket-free resolver/connection factory.
+    activity_send_tasks.SMTPGateway = lambda: gateway
+    outreach_tasks.SMTPGateway = lambda: gateway
+    return gateway
+
 
 def configure():
     from app.core.security import hash_workspace_key
@@ -46,13 +63,14 @@ def main():
 
         command.upgrade(Config("/app/alembic.ini"), "head")
     elif action in {"api", "worker"}:
+        smtp_gateway = install_smtp_capture(private, "/state")
         start_server("/state")
         if action == "api":
             import uvicorn
             from app.main import create_app
 
             uvicorn.run(
-                create_app(),
+                create_app(smtp_gateway=smtp_gateway),
                 host="0.0.0.0",
                 port=8000,
                 access_log=False,

@@ -282,6 +282,25 @@ class LifecycleContracts(unittest.TestCase):
             self.assertNotEqual(queries["project"], collection["project"])
             self.assertNotEqual(queries["workspace_key"], collection["workspace_key"])
 
+    def test_outreach_revision_uses_0017_without_upgrading_query_fixture(self):
+        revision = "ece2e9d9558dfe057dc40ad58bd98a86e3149dd5"
+        with tempfile.TemporaryDirectory() as temporary:
+            query_directory = Path(temporary) / "queries"
+            queries = self.module.initialize(
+                query_directory,
+                backend_revision="a852307d6908e671ae1998c9741f19ffe65f5048",
+            )
+            outreach_directory = Path(temporary) / "outreach"
+            outreach = self.module.initialize(
+                outreach_directory, backend_revision=revision
+            )
+            self.assertEqual(outreach["migration"], "20260908_0017")
+            self.assertEqual(self.module.load_owned(outreach_directory), outreach)
+            self.assertEqual(self.module.load_owned(query_directory), queries)
+            self.assertEqual(queries["migration"], "20260908_0015")
+            self.assertNotEqual(outreach["project"], queries["project"])
+            self.assertNotEqual(outreach["workspace_key"], queries["workspace_key"])
+
     def test_cli_can_start_a_separate_accepted_revision_without_printing_keys(self):
         revision = "b2b15f40e0ed0f8c7de7bf17ec190acb4c0e3857"
         with tempfile.TemporaryDirectory() as temporary:

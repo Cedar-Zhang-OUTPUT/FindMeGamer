@@ -125,3 +125,34 @@ files, checked the accepted gateway/schema seam and repeated all26 successfully 
 8.434s. One bounded review, no second broad audit; no Docker/real provider/SMTP/UI
 scenario was run for this fixture-source increment. RED/GREEN logs are retained in
 `/tmp/fmg-draft-fixture-tdd.kkypwV/`.
+
+## Accepted outreach runtime boundary
+
+The manager also accepts `ece2e9d9558dfe057dc40ad58bd98a86e3149dd5` /
+`20260908_0017` for a **new** independent instance. Older instances/defaults keep
+their original revision. This pin adds accepted templates/drafts, qualification
+and immutable Activity sending; it does not include in-progress collaboration C.
+
+Only this exact pin installs `smtp_capture.capture_gateway` in the real API and
+both real sending workers before startup. The real SMTPGateway still handles MIME,
+error classification and connection lifecycle; its injected resolver/connection
+factory never creates a socket. Normal repository/worker claims, rate limiting and
+delivery transitions remain unchanged. Installation failures stop startup rather
+than falling back to external SMTP. Only the explicit synthetic TLS account at
+`smtp.integration.invalid:465`, sender/username `sender@example.com` and password
+`synthetic-smtp-integration-key` is accepted, with a single `example.com` recipient.
+These are public fixture constants, never production credentials.
+
+The private state directory contains only synthetic `smtp-*.eml` captures (0600)
+and fixed-label `smtp-events.jsonl`. Optional 0600 `smtp-control.json` accepts only
+`{"mode":"success"}`, `fail_before`, `reject` or `unknown_after_capture`; omitted
+control means success. No HTTP control endpoint or live SMTP service is added.
+Control ownership remains exclusive per instance, and unknown outcomes must be
+resolved explicitly through the accepted application API, never blindly resent.
+
+TDD covered 13 capture cases, three runtime wiring cases and one new independent
+0017 lifecycle case; all43 harness tests passed in8.609s. One bounded independent
+runtime review confirmed API/both worker injection points against the fixed B
+source and found no blocker. These tests are source/transport evidence; the new
+instance's actual HTTP→draft worker→qualification→sending worker acceptance is a
+separate gate. Old four environments and their controls must remain unchanged.
