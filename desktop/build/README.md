@@ -1,0 +1,1 @@
+`AppIcon.icns` is reused unchanged from the existing FindMeGamer macOS app icon. It is not generated from a PRD screenshot and does not rename the product to OUTPUT. This directory supplies local `.app` packaging resources only.
