@@ -157,7 +157,7 @@ source and found no blocker. These tests are source/transport evidence; the new
 instance's actual HTTP→draft worker→qualification→sending worker acceptance is a
 separate gate. Old four environments and their controls must remain unchanged.
 
-### New outreach instance: main flow accepted, failure checks in progress
+### New outreach instance: main/failure flows accepted and handed to frontend
 
 - Origin: `http://127.0.0.1:62611`.
 - Project: `fmg-match-frontend-ca4121f072f8`; queue: `match-frontend-ca4121f072f8`.
@@ -188,8 +188,26 @@ Original logs: `/tmp/fmg-outreach-smoke-tdd.9DDDen/`; public-only report:
 `outreach-success-04d4116c0efd.json` in the private directory. No failed actual run
 was omitted. This does not claim real external mail delivery.
 
-The success subtask returned the window, then explicitly reacquired it for the next
-bounded known-rejection and unknown-outcome runtime checks. It owns62611 until a
-new handback, with SMTP controls restored to success afterward. The frontend still
-owns65164 for F7 and must not use62611 until a completed handoff. No older instance
-was restarted, upgraded, reset or cleared.
+The separate `outreach_failure_smoke.run(private_directory)` first actual run also
+passed17.68s. A new one-recipient Activity saw the real `rejected` event and failed
+with zero captures; clearing the control and explicitly retrying the same frozen
+Delivery produced one sent message, attempt2. Another new Activity captured one
+message then reported `unknown_after_capture`; no automatic retry occurred, the
+ordinary retry endpoint returned409, and explicit source-note resolution to sent
+kept attempt1 and exactly one capture. An ordinary new invitation was blocked409.
+The actual transport event order was asserted, not just a host control-file read.
+Both scenarios restored SMTP success in a finally block. No not-sent resend was
+added. Original evidence: `/tmp/fmg-outreach-failure-tdd.qgyjkG/`, private public-only
+report `outreach-failures-88cd38c87bab.json`. Seven more helper tests first failed,
+then all57 passed10.993s; the coordinator read both files and original logs and
+independently repeated all57 successfully10.931s. No actual-run failure was omitted.
+
+The coordinator read back SMTP `success`, queue depth0 and DB0017, then explicitly
+handed62611 to **FindMeGamer 前端优化** for F8/P7. That task now owns its control
+window; the coordinator and other agents must not call its API, change controls or
+run smoke concurrently. Use new test-owned Activities and explicit contact choices;
+the shared synthetic Library now has test-owned contacts/recorded evidence and old
+successful/failure-resolved invitations. Inspect old frozen history read-only. F7's
+65164 remains available separately and has no A/B routes.62611 has no C0018 or newer
+Steam-import route; it is not an Analyze/probe/live-service/final-package fixture.
+No earlier environment was restarted, upgraded, reset or cleared.
