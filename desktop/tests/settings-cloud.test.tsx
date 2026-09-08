@@ -11,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import type { SettingsAPI, SMTPStatus } from "../src/shared/settings";
 import { CloudSettings } from "../src/renderer/components/settings/CloudSettings";
+import { collectionSettingsFixture } from './collection-fixtures';
 const status = {
   configured: true,
   lastTestStatus: null,
@@ -29,6 +30,8 @@ const smtp: SMTPStatus = {
 const ok = <T,>(data: T) => ({ ok: true as const, data });
 function apiMock(): SettingsAPI {
   return {
+    collection: vi.fn(async () => ok(collectionSettingsFixture())),
+    setCollection: vi.fn(async () => ok(collectionSettingsFixture())),
     connection: vi.fn(async () => ok(status)),
     replaceConnection: vi.fn(async () => ok(status)),
     testConnection: vi.fn(async () =>

@@ -5,12 +5,17 @@ import type { SettingsAPI, SMTPStatus } from '../src/shared/settings';
 import { creatorAPIMock } from './creator-api-mock';
 import { creatorFixture } from './creator-fixtures';
 import { matchAPIMock } from './match-api-mock';
+import { collectionSettingsFixture } from './collection-fixtures';
 
 export const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 export const emptySMTP: SMTPStatus = { configured: false, host: null, port: null, encryption: null, username: null, fromName: null, replyTo: null, emailsPerMinute: 10, lastTestStatus: null, lastTestedAt: null };
 export function settingsBridgeMock() {
   let preferences: Preferences = { appearance: 'system', fontSize: 'default', automaticUpdates: true };
+  let collection = collectionSettingsFixture();
   const settings: SettingsAPI = {
+    collection: vi.fn(async () => ok(collection)),
+    setCollection: vi.fn(async input => ok(collection = { items: collection.items.map(item => item.platform === input.platform ? { ...item, enabled: input.enabled,
+      availability: !input.enabled ? 'disabled' : !item.implemented ? 'not_implemented' : item.credentials_configured ? 'configured_unverified' : 'missing_connection' } : item) })),
     connection: vi.fn(async () => ok({ configured: false, lastTestStatus: null, lastTestedAt: null })),
     replaceConnection: vi.fn(async () => ok({ configured: true, lastTestStatus: null, lastTestedAt: null })),
     testConnection: vi.fn(async () => ok({ configured: true, lastTestStatus: 'success' as const, lastTestedAt: '2026-09-08T01:00:00Z' })),

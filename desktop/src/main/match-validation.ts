@@ -64,6 +64,14 @@ const json = (value: unknown, mode: Mode, depth = 0): unknown => {
   }));
 };
 const jsonObject: Rule = (value, mode) => { object(value, mode); return json(value, mode); };
+const sourceStates: Rule = (value, mode) => {
+  const sources=object(jsonObject(value,mode),mode);
+  for(const source of Object.values(sources)){
+    const state=object(source,mode);
+    if(Object.hasOwn(state,'blocked_reason')&&state.blocked_reason!=='collection_disabled')fail(mode);
+  }
+  return sources;
+};
 const dictionary = (rule: Rule): Rule => (value, mode) => {
   const raw = object(value, mode); if (Object.keys(raw).length > 100) fail(mode);
   return Object.fromEntries(Object.entries(raw).map(([key, item]) => { text(key, mode, 100); if (['__proto__', 'constructor', 'prototype'].includes(key)) fail(mode); return [key, rule(item, mode)]; }));
@@ -111,7 +119,7 @@ const batch = record({ id: identifier, query_id: identifier, ordinal: count(), s
   initial_result_count: count(600), requests_reserved: count(), scanned_reserved: count(), reason: nullable(string(255)), created_at: time });
 const query = record({ id: identifier, activity_id: identifier, conditions: queryCreate, source_snapshot: jsonObject,
   status: string(100, 1), stop_requested: boolean, requires_acknowledgement: boolean, result_count: count(600),
-  requests_reserved: count(), scanned_reserved: count(), sources: jsonObject,
+  requests_reserved: count(), scanned_reserved: count(), sources: sourceStates,
   batches: list(batch, 10_000, 0, value => value.id.toLowerCase()), usage, created_at: time });
 const planOutput = record({ summary: narrative(1500), rationale: narrative(1500),
   queries: list(record({ platform: planningPlatform, terms: list(narrative(100), 3, 1) }), 2, 1),

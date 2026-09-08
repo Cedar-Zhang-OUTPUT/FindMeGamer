@@ -21,7 +21,7 @@ type Owner='activity'|'new'|'creator'|'none';
 const scroller=()=>document.querySelector<HTMLElement>('.main-scroll');
 function gameName(activity:ActivityView){const game=activity.source_snapshot.game;return game&&typeof game==='object'&&!Array.isArray(game)&&typeof game.name==='string'?game.name:'Saved game';}
 
-export function MatchWorkspace({api,active,onNavigationGuardChange,onConnectionRepair}:{api:DesktopBridge;active:boolean;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void}){
+export function MatchWorkspace({api,active,onNavigationGuardChange,onConnectionRepair,onCollectionSettings}:{api:DesktopBridge;active:boolean;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void}){
   const [route,setRoute]=useState<Route>({kind:'list'}),[page,setPage]=useState<ActivityPage|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<PublicError|null>(null),[failedOffset,setFailedOffset]=useState<number|null>(null);
   const listRoot=useRef<HTMLDivElement>(null),activityRoot=useRef<HTMLDivElement>(null),listScroll=useRef(0),activityScroll=useRef(0),selectedActivity=useRef<string|null>(null),creatorOpener=useRef<HTMLElement|null>(null);
   const pageGeneration=useRef(0),creatorGeneration=useRef(0),loaded=useRef(false),pendingPage=useRef(false),alive=useRef(true),restoreFrame=useRef<number|null>(null);
@@ -82,7 +82,7 @@ export function MatchWorkspace({api,active,onNavigationGuardChange,onConnectionR
       {page&&page.total>0&&<div className="match-pagination"><button className="button secondary" disabled={busy||page.offset===0} onClick={()=>void load(Math.max(0,page.offset-50))}>Previous page</button><button className="button secondary" disabled={busy||page.offset+page.limit>=page.total} onClick={()=>void load(page.offset+50)}>Next page</button></div>}
     </div>
     {route.kind==='new'&&<NewActivity api={api} onCreated={created} onCancel={toList} onNavigationGuardChange={newGuard} onConnectionRepair={onConnectionRepair}/>}
-    {route.kind==='activity'&&<><div ref={activityRoot} hidden={Boolean(overlay)}><MatchActivity key={route.id} api={api} activityId={route.id} active={active&&!overlay} onBack={toList} onOpenCreator={(id,section)=>void openCreator(id,section==='contacts'?'emails':section==='works'?'works':'profile')} onNavigationGuardChange={activityGuard} onConnectionRepair={onConnectionRepair}/></div>
+    {route.kind==='activity'&&<><div ref={activityRoot} hidden={Boolean(overlay)}><MatchActivity key={route.id} api={api} activityId={route.id} active={active&&!overlay} onBack={toList} onOpenCreator={(id,section)=>void openCreator(id,section==='contacts'?'emails':section==='works'?'works':'profile')} onNavigationGuardChange={activityGuard} onConnectionRepair={onConnectionRepair} onCollectionSettings={onCollectionSettings}/></div>
       {overlay&&<div className="match-creator-route"><button className="text-button back-button" onClick={requestBack}><Icon name="arrow"/>Back to activity</button>
         {overlay.kind==='loading'&&(overlay.error?<ErrorNotice error={overlay.error} onRetry={()=>void openCreator(overlay.id,overlay.section,true)}/>:<Loading label="Loading creator…"/>)}
         {overlay.kind==='detail'&&<>{overlay.saved&&<p role="status" className="creator-saved-message">Saved</p>}<CreatorRecord key={overlay.creator.id} api={api} creator={overlay.creator} initialSection={overlay.section} refreshToken={overlay.creator.revision} onBack={backToActivity} onEdit={edit}/></>}

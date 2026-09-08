@@ -30,12 +30,14 @@ export function App() {
   const [hasLibrarySession, setHasLibrarySession] = useState(false);
   const [recoveryOrigin, setRecoveryOrigin] = useState<string | null>(null);
   const [recoveryPage,setRecoveryPage]=useState<'library'|'match'>('library');
+  const [collectionReturn,setCollectionReturn]=useState(false);
+  const [collectionRequest,setCollectionRequest]=useState(0);
   const operation = useRef(0);
   const mounted = useRef(true);
   const navigationGate = useNavigationGuard();
   const matchGate = useNavigationGuard();
   const settingsGate = useNavigationGuard();
-  const taskGate=page==='match'||(page==='settings'&&recoveryOrigin&&recoveryPage==='match')?matchGate:navigationGate;
+  const taskGate=page==='match'||(page==='settings'&&(collectionReturn||recoveryOrigin&&recoveryPage==='match'))?matchGate:navigationGate;
   const pageScroll = useRef<Record<Navigation, number>>({match:0,outreach:0,library:0,settings:0});
   function navigate(target: Navigation) {
     if (page === target) return;
@@ -45,13 +47,29 @@ export function App() {
       setPage(target);
       requestAnimationFrame(() => { if (scroller) scroller.scrollTop = pageScroll.current[target]; });
     };
+    // Collection is a same-workspace detour: retain Match and fence connection changes.
+    if (collectionReturn && page==='settings') {
+      settingsGate.request(()=>{
+        setCollectionReturn(false);
+        if(target==='match')proceed();
+        else {
+          // The retained task owns its dialog; reveal it before asking to leave.
+          setPage('match');
+          matchGate.request(proceed);
+        }
+      });
     // A task can lend navigation to credential repair without surrendering its draft.
-    if (target === 'settings' && status?.serviceUrl && taskGate.getRecovery()) {
+    } else if (target === 'settings' && status?.serviceUrl && taskGate.getRecovery()) {
       setRecoveryOrigin(status.serviceUrl);setRecoveryPage(page==='match'?'match':'library'); proceed();
     } else if (target === recoveryPage && recoveryOrigin) {
       settingsGate.request(()=>{setRecoveryOrigin(null); proceed();});
     } else if(page==='settings') settingsGate.request(()=>taskGate.request(()=>{setRecoveryOrigin(null);proceed();}));
     else taskGate.request(() => { setRecoveryOrigin(null); proceed(); });
+  }
+  function openCollectionSettings() {
+    if(page!=='match')return;
+    pageScroll.current.match=document.querySelector<HTMLElement>('.main-scroll')?.scrollTop??0;
+    setRecoveryOrigin(null);setCollectionReturn(true);setCollectionRequest(value=>value+1);setPage('settings');
   }
 
   async function verify(token: number) {
@@ -85,7 +103,7 @@ export function App() {
   }, [api]);
 
   async function connect(input: ConnectionInput) {
-    if (!api) return;
+    if (!api || collectionReturn) return;
     const recovery = recoveryOrigin ? (recoveryPage==='match'?matchGate:navigationGate).getRecovery() : undefined;
     if (recoveryOrigin && (!recovery || input.serviceUrl !== recoveryOrigin)) return;
     if (status?.hasKey && !input.key && input.serviceUrl === status.serviceUrl) {
@@ -106,6 +124,7 @@ export function App() {
     } catch { if (mounted.current && operation.current === token) { setPhase('error'); setError(interrupted); } }
   }
   function testConnection() {
+    if(collectionReturn)return;
     const token = ++operation.current;
     // Verifying unchanged credentials must not throw away list/profile context.
     // The retained Library stays hidden until verification succeeds; a failure clears it.
@@ -113,7 +132,7 @@ export function App() {
     void verify(token);
   }
   async function disconnect() {
-    if (!api || recoveryOrigin) return;
+    if (!api || recoveryOrigin || collectionReturn) return;
     const token = ++operation.current;
     setEpoch(previous => previous + 1); setHasLibrarySession(false); setPhase('disconnected'); setError(null); setRoute(null);
     try {
@@ -135,8 +154,8 @@ export function App() {
           <div className="page-heading"><h1>Library</h1></div>
           {phase === 'loading' || phase === 'checking' || phase === 'saving' ? <Loading label={phase === 'loading' ? 'Opening workspace…' : 'Verifying connection…'}/> : <><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={() => navigate('settings')}>Open Settings</button>}/>{error && <ErrorNotice error={error} onRetry={status?.hasKey ? testConnection : () => void readStatus()}/>}</>}
         </>}</section>
-        <section className="page-content" hidden={page !== 'settings'} aria-label="Settings page"><SettingsView api={api} active={page==='settings'} available={hasLibrarySession&&Boolean(status?.hasKey)} workspaceEpoch={epoch} appearance={appearance} onNavigationGuardChange={settingsGate.register} connection={{status,phase,error,route,recovering:Boolean(recoveryOrigin),onConnect:connect,onTest:testConnection,onDisconnect:()=>void disconnect(),returnLabel:recoveryOrigin&&recoveryPage==='match'?'Return to Match':undefined,onLibrary:()=>navigate(recoveryOrigin?recoveryPage:'library')}}/></section>
-        <section className="page-content" hidden={page!=='match'} aria-label="match page">{hasLibrarySession&&<div hidden={!connected}><MatchWorkspace key={epoch} api={api} active={page==='match'&&connected} onNavigationGuardChange={matchGate.register} onConnectionRepair={()=>navigate('settings')}/></div>}{!connected&&<><div className="page-heading"><h1>Match</h1></div>{phase==='loading'||phase==='checking'||phase==='saving'?<Loading label="Opening workspace…"/>:<><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={()=>navigate('settings')}>Open Settings</button>}/>{error&&<ErrorNotice error={error} onRetry={status?.hasKey?testConnection:()=>void readStatus()}/>}</>}</>}</section>
+        <section className="page-content" hidden={page !== 'settings'} aria-label="Settings page"><SettingsView api={api} active={page==='settings'} available={hasLibrarySession&&Boolean(status?.hasKey)} workspaceEpoch={epoch} appearance={appearance} collectionRequest={collectionRequest} onNavigationGuardChange={settingsGate.register} connection={{status,phase,error,route,blocked:collectionReturn,recovering:Boolean(recoveryOrigin),onConnect:connect,onTest:testConnection,onDisconnect:()=>void disconnect(),returnLabel:collectionReturn||recoveryOrigin&&recoveryPage==='match'?'Return to Match':undefined,onLibrary:()=>navigate(collectionReturn?'match':recoveryOrigin?recoveryPage:'library')}}/></section>
+        <section className="page-content" hidden={page!=='match'} aria-label="match page">{hasLibrarySession&&<div hidden={!connected}><MatchWorkspace key={epoch} api={api} active={page==='match'&&connected} onNavigationGuardChange={matchGate.register} onConnectionRepair={()=>navigate('settings')} onCollectionSettings={openCollectionSettings}/></div>}{!connected&&<><div className="page-heading"><h1>Match</h1></div>{phase==='loading'||phase==='checking'||phase==='saving'?<Loading label="Opening workspace…"/>:<><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={()=>navigate('settings')}>Open Settings</button>}/>{error&&<ErrorNotice error={error} onRetry={status?.hasKey?testConnection:()=>void readStatus()}/>}</>}</>}</section>
         <section className="page-content" hidden={page!=='outreach'} aria-label="outreach page"><div className="page-heading"><h1>Outreach</h1></div><div className="feature-unavailable"><span className="feature-icon"><Icon name="outreach"/></span><span className="status-badge">Not connected yet</span><button className="button primary" onClick={()=>navigate('library')}>Open Library<Icon name="chevron"/></button></div></section>
       </main>
     </div>

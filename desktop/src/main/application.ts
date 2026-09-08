@@ -126,6 +126,8 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('creators:create-work',input=>creators.createWork(input));
   handle('creators:update-work',input=>creators.updateWork(input));
   handle('settings:connection', input => settings.connection(input));
+  handle('settings:collection', () => settings.collection());
+  handle('settings:set-collection', input => settings.setCollection(input));
   handle('settings:replace-connection', input => settings.replaceConnection(input));
   handle('settings:test-connection', input => settings.testConnection(input));
   handle('settings:reanalysis', () => settings.reanalysis());

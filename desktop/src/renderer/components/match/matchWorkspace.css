@@ -45,4 +45,12 @@
 .match-recovery-records > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; }.match-recovery-records code { display: block; font-size: .75rem; margin-top: 5px; overflow-wrap: anywhere; }
 .match-evaluation-status { justify-content: flex-start; margin-block: 20px; }.match-evaluation-status > span { color: var(--muted); font-size: .8125rem; }
 .match-no-evaluation { padding: 30px; text-align: center; color: var(--muted); }
+.match-collection { margin-block:14px; }
+.match-collection .match-source-states { gap:20px; }
+.match-collection .match-source-status { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.match-collection .match-source-status strong { color:var(--ink); font-weight:500; }
+.match-collection .collection-off > span { color:var(--muted); }
+.match-collection-actions { display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:.8125rem; }
+.match-collection-actions > strong { color:var(--ink); font-weight:600; }
+.match-collection-actions > span { color:var(--muted); }
 @media(max-width:760px) { .match-activity-row { gap: 12px; padding: 16px; }.match-activity-row time { max-width: 100px; }.match-chosen-game { flex-wrap: wrap; }.match-context dl { grid-template-columns: minmax(0,1fr); }.match-history { align-items: flex-start; }.match-history label { flex-direction: column; align-items: flex-start; }.match-evaluate-action { flex-wrap: wrap; }.match-recovery-records > div { flex-wrap: wrap; } }

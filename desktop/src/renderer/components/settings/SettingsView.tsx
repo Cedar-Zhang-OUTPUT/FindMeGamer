@@ -4,25 +4,29 @@ import type { NavigationGuard } from '../../../shared/games';
 import type { AppearanceState } from '../../hooks/useAppearance';
 import { ConnectionSettings } from '../ConnectionSettings';
 import { CloudSettings, type CloudDraftState } from './CloudSettings';
+import { CollectionSettings } from './CollectionSettings';
 import { AppearanceSettings, UpdateSettings } from './LocalSettings';
 import { RefreshActivity } from './RefreshActivity';
 
 const sections = [
   {id:'appearance',label:'Appearance',scope:'local'}, {id:'workspace',label:'Workspace',scope:'local'},
-  {id:'services',label:'Services',scope:'shared'}, {id:'refresh',label:'Auto-refresh',scope:'shared'},
+  {id:'services',label:'Services',scope:'shared'}, {id:'collection',label:'Collection',scope:'shared'}, {id:'refresh',label:'Auto-refresh',scope:'shared'},
   {id:'email',label:'Email',scope:'shared'}, {id:'updates',label:'Updates',scope:'local'},
 ] as const;
 type Section = typeof sections[number]['id'];
 type ConnectionProps = ComponentProps<typeof ConnectionSettings>;
-export function SettingsView({api,active,available,workspaceEpoch,appearance,connection,onNavigationGuardChange}: {
+export function SettingsView({api,active,available,workspaceEpoch,appearance,connection,collectionRequest=0,onNavigationGuardChange}: {
   api:DesktopBridge;active:boolean;available:boolean;workspaceEpoch:number;appearance:AppearanceState;
-  connection:ConnectionProps;onNavigationGuardChange:(guard:NavigationGuard|null)=>void;
+  connection:ConnectionProps;collectionRequest?:number;onNavigationGuardChange:(guard:NavigationGuard|null)=>void;
 }) {
   // Workspace first preserves the most common recovery/connect entry. Category selection persists.
   const [section,setSection]=useState<Section>('workspace');
+  const [lastShared,setLastShared]=useState<'services'|'collection'|'refresh'|'email'>('services');
   const [lastCloud,setLastCloud]=useState<'services'|'refresh'|'email'>('services');
   const [cloudFlags,setCloudFlags]=useState({dirty:false,busy:false});
+  const [collectionFlags,setCollectionFlags]=useState({dirty:false,busy:false});
   const cloud=useRef<CloudDraftState>({dirty:false,busy:false,discard:()=>{}});
+  const collection=useRef<CloudDraftState>({dirty:false,busy:false,discard:()=>{}});
   const [connectionDirty,setConnectionDirty]=useState(false);
   const [resetConnection,setResetConnection]=useState(0);
   const [leaving,setLeaving]=useState<null|'dirty'|'busy'>(null);
@@ -32,21 +36,38 @@ export function SettingsView({api,active,available,workspaceEpoch,appearance,con
     cloud.current=state;
     setCloudFlags(previous=>previous.dirty===state.dirty&&previous.busy===state.busy?previous:{dirty:state.dirty,busy:state.busy});
   },[]);
-  const busy=cloudFlags.busy||connection.phase==='saving';
-  const dirty=connectionDirty||cloudFlags.dirty;
+  const collectionChanged=useCallback((state:CloudDraftState)=>{
+    collection.current=state;
+    setCollectionFlags(previous=>previous.dirty===state.dirty&&previous.busy===state.busy?previous:{dirty:state.dirty,busy:state.busy});
+  },[]);
+  const sharedBusy=cloudFlags.busy||collectionFlags.busy;
+  const sharedDirty=cloudFlags.dirty||collectionFlags.dirty;
+  const busy=sharedBusy||connection.phase==='saving';
+  const dirty=connectionDirty||sharedDirty;
+  const previousCollectionRequest=useRef(0);
   useEffect(()=>{
     onNavigationGuardChange(dirty||busy?(proceed)=>{pending.current=proceed;setLeaving(busy?'busy':'dirty');}:null);
     return()=>onNavigationGuardChange(null);
   },[dirty,busy,onNavigationGuardChange]);
   useEffect(()=>{if(connection.recovering)setSection('workspace');},[connection.recovering]);
+  useEffect(()=>{
+    if(collectionRequest===previousCollectionRequest.current)return;
+    previousCollectionRequest.current=collectionRequest;
+    if(collectionRequest>0&&!connection.recovering){
+      choose('collection');
+      if(active)requestAnimationFrame(()=>document.getElementById('settings-tab-collection')?.focus());
+    }
+  },[active,collectionRequest,connection.recovering]);
   useEffect(()=>{if(leaving==='busy'&&!busy){pending.current=null;setLeaving(null);}},[leaving,busy]);
   function choose(next:Section){
     const scroller=document.querySelector<HTMLElement>('.main-scroll');
     scrollPositions.current[section]=scroller?.scrollTop??0;
-    setSection(next);if(next==='services'||next==='refresh'||next==='email')setLastCloud(next);
+    setSection(next);
+    if(next==='services'||next==='collection'||next==='refresh'||next==='email')setLastShared(next);
+    if(next==='services'||next==='refresh'||next==='email')setLastCloud(next);
     requestAnimationFrame(()=>{if(scroller)scroller.scrollTop=scrollPositions.current[next]??0;});
   }
-  function discard(){cloud.current.discard();setResetConnection(value=>value+1);setConnectionDirty(false);const proceed=pending.current;pending.current=null;setLeaving(null);proceed?.();}
+  function discard(){cloud.current.discard();collection.current.discard();setResetConnection(value=>value+1);setConnectionDirty(false);const proceed=pending.current;pending.current=null;setLeaving(null);proceed?.();}
   return <div className="settings-workspace">
     <div className="page-heading"><h1>Settings</h1></div>
     <div className="settings-layout">
@@ -61,10 +82,11 @@ export function SettingsView({api,active,available,workspaceEpoch,appearance,con
       <div className="settings-panels">
         <div id="settings-panel-appearance" role="tabpanel" aria-labelledby="settings-tab-appearance" hidden={section!=='appearance'}><AppearanceSettings state={appearance}/></div>
         <div id="settings-panel-workspace" role="tabpanel" aria-labelledby="settings-tab-workspace" hidden={section!=='workspace'}>
-          {(cloudFlags.dirty||cloudFlags.busy)&&<div className="settings-pending-notice" role="status"><span>{cloudFlags.busy?'Shared settings action in progress.':'Unsaved shared settings'}</span><button className="text-button" onClick={()=>choose(lastCloud)}>Review settings</button></div>}
-          <ConnectionSettings {...connection} embedded blocked={cloudFlags.dirty||cloudFlags.busy} resetSignal={resetConnection} onDraftStateChange={setConnectionDirty}/>
+          {(sharedDirty||sharedBusy)&&<div className="settings-pending-notice" role="status"><span>{sharedBusy?'Shared settings action in progress.':'Unsaved shared settings'}</span><button className="text-button" onClick={()=>choose(collectionFlags.busy?'collection':cloudFlags.dirty||cloudFlags.busy?lastCloud:lastShared)}>Review settings</button></div>}
+          <ConnectionSettings {...connection} embedded blocked={connection.blocked||sharedDirty||sharedBusy} resetSignal={resetConnection} onDraftStateChange={setConnectionDirty}/>
         </div>
         <div hidden={!['services','refresh','email'].includes(section)}><CloudSettings key={workspaceEpoch} api={api.settings} connected={available} section={section==='services'||section==='refresh'||section==='email'?section:lastCloud} onDraftStateChange={cloudChanged}/></div>
+        <CollectionSettings key={workspaceEpoch} api={api.settings} connected={available} active={active&&section==='collection'} onDraftStateChange={collectionChanged}/>
         <div hidden={section!=='refresh'}><RefreshActivity key={workspaceEpoch} api={api} connected={available}/></div>
         <div id="settings-panel-updates" role="tabpanel" aria-labelledby="settings-tab-updates" hidden={section!=='updates'}><UpdateSettings api={api} active={active&&section==='updates'} appearance={appearance}/></div>
       </div>

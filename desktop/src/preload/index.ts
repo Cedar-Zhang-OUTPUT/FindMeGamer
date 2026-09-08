@@ -33,6 +33,8 @@ const bridge: DesktopBridge = {
     updateWork: input => ipcRenderer.invoke('creators:update-work',input),
   },
   settings: {
+    collection: () => ipcRenderer.invoke('settings:collection'),
+    setCollection: input => ipcRenderer.invoke('settings:set-collection', input),
     connection: service => ipcRenderer.invoke('settings:connection', service),
     replaceConnection: input => ipcRenderer.invoke('settings:replace-connection', input),
     testConnection: service => ipcRenderer.invoke('settings:test-connection', service),

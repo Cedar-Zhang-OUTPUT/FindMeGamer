@@ -1,19 +1,23 @@
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
-import type { ServiceName } from '../shared/settings';
+import type { CollectionPlatform, ServiceName } from '../shared/settings';
 import { normalizeServiceUrl } from './policies';
 import { PublicFailure, type Connection, type Fetcher } from './transport';
 
 type ConnectionPath = `/api/v1/settings/connections/${ServiceName}`;
+type CollectionPath = `/api/v1/settings/collection/${CollectionPlatform}`;
 type SMTPBody = { host: string; port: number; encryption: 'tls' | 'starttls' | 'none'; username: string; password?: string; from_name: string; reply_to: string; emails_per_minute: number };
 export type SettingsRequest =
-  | { method: 'GET'; path: ConnectionPath | '/api/v1/settings/reanalysis' | '/api/v1/outreach/smtp' }
+  | { method: 'GET'; path: ConnectionPath | '/api/v1/settings/collection' | '/api/v1/settings/reanalysis' | '/api/v1/outreach/smtp' }
   | { method: 'POST'; path: ConnectionPath | '/api/v1/outreach/smtp/test-connection' }
   | { method: 'POST'; path: '/api/v1/outreach/smtp/test-email'; body: { recipient: string } }
   | { method: 'PUT'; path: ConnectionPath; body: { secret: string } }
+  | { method: 'PUT'; path: CollectionPath; body: { enabled: boolean } }
   | { method: 'PUT'; path: '/api/v1/outreach/smtp'; body: SMTPBody }
   | { method: 'PATCH'; path: '/api/v1/settings/reanalysis'; body: { game_interval_days: number; creator_interval_days: number } };
 const servicePath = /^\/api\/v1\/settings\/connections\/(steam|youtube|deepseek|google_ai|x)$/;
+const collectionPath = /^\/api\/v1\/settings\/collection\/(youtube|x|twitch|instagram)$/;
+const collectionRoot = '/api/v1/settings/collection';
 const smtpPath = '/api/v1/outreach/smtp';
 const reanalysisPath = '/api/v1/settings/reanalysis';
 const LIMIT = 65_536;
@@ -43,8 +47,9 @@ export function validateSettingsRequest(value: SettingsRequest): SettingsRequest
   const { path, method } = raw;
   if (typeof path !== 'string') invalidSettings();
   const connection = servicePath.test(path);
-  const hasBody = (method === 'PUT' && (connection || path === smtpPath)) || (method === 'PATCH' && path === reanalysisPath) || (method === 'POST' && path === `${smtpPath}/test-email`);
-  if (!hasBody && !(method === 'GET' && (connection || path === smtpPath || path === reanalysisPath)) && !(method === 'POST' && (connection || path === `${smtpPath}/test-connection`))) invalidSettings();
+  const collection = collectionPath.test(path);
+  const hasBody = (method === 'PUT' && (connection || collection || path === smtpPath)) || (method === 'PATCH' && path === reanalysisPath) || (method === 'POST' && path === `${smtpPath}/test-email`);
+  if (!hasBody && !(method === 'GET' && (connection || path === collectionRoot || path === smtpPath || path === reanalysisPath)) && !(method === 'POST' && (connection || path === `${smtpPath}/test-connection`))) invalidSettings();
   settingsKeys(raw, hasBody ? ['method', 'path', 'body'] : ['method', 'path']);
   if (!hasBody) return { method, path } as SettingsRequest;
   const body = settingsObject(raw.body);
@@ -53,6 +58,10 @@ export function validateSettingsRequest(value: SettingsRequest): SettingsRequest
     settingsKeys(body, ['secret']);
     if (typeof body.secret !== 'string' || [...body.secret].length < 1 || [...body.secret].length > 16_384) invalidSettings();
     normalized = { secret: body.secret };
+  } else if (collection) {
+    settingsKeys(body, ['enabled']);
+    if (typeof body.enabled !== 'boolean') invalidSettings();
+    normalized = { enabled: body.enabled };
   } else if (path === reanalysisPath) {
     settingsKeys(body, ['game_interval_days', 'creator_interval_days']);
     normalized = { game_interval_days: settingsInteger(body.game_interval_days, 1, 90), creator_interval_days: settingsInteger(body.creator_interval_days, 1, 30) };

@@ -6,7 +6,7 @@ import './discoveryConditions.css';
 
 type AudienceMode='any'|'presets'|'custom';
 type FilterKind='languages'|'countries'|'followers';
-export interface DiscoveryConditionsProps{value:PlanCreate;onChange:(value:PlanCreate)=>void;disabled?:boolean;onSubmit:()=>void;onCancel?:()=>void}
+export interface DiscoveryConditionsProps{value:PlanCreate;onChange:(value:PlanCreate)=>void;disabled?:boolean;submitDisabled?:boolean;onSubmit:()=>void;onCancel?:()=>void}
 const optionId=(kind:string,code:string)=>`discovery-${kind}-${encodeURIComponent(code)}`;
 const formatChoices=(values:string[],choices:readonly Choice[])=>values.length?values.map(code=>choices.find(item=>item[0]===code)?.[1]??code).join(', '):'Any';
 function focusOption(kind:string,code:string){const id=optionId(kind,code),element=document.getElementById(id);if(element)element.focus();else requestAnimationFrame(()=>document.getElementById(id)?.focus());}
@@ -92,7 +92,7 @@ function AudienceDialog({filters,initialMode,onApply,onCancel,disabled}:{filters
   </FilterDialog>;
 }
 
-export function DiscoveryConditions({value,onChange,disabled=false,onSubmit,onCancel}:DiscoveryConditionsProps){
+export function DiscoveryConditions({value,onChange,disabled=false,submitDisabled=false,onSubmit,onCancel}:DiscoveryConditionsProps){
   const filters=filtersFrom(value),keywords=value.keywords??[];
   const [dialog,setDialog]=useState<FilterKind|null>(null),[keyword,setKeyword]=useState(''),[keywordError,setKeywordError]=useState('');
   const [errors,setErrors]=useState<Record<string,string>>({});
@@ -111,7 +111,7 @@ export function DiscoveryConditions({value,onChange,disabled=false,onSubmit,onCa
   const followerSummary=filters.follower_ranges.length?filters.follower_ranges.map(range=>range.maximum==null?`${(range.minimum??0).toLocaleString('en')}+`:`${(range.minimum??0).toLocaleString('en')}–${range.maximum.toLocaleString('en')}`).join(', '):'Any';
   const audienceSignature=JSON.stringify(filters.follower_ranges);
   return <form ref={form} className="discovery-conditions" noValidate onSubmit={event=>{
-    event.preventDefault();if(disabled||dialog)return;
+    event.preventDefault();if(disabled||submitDisabled||dialog)return;
     if(keyword.trim()){setKeywordError('Add or clear this keyword before finding creators.');form.current?.querySelector<HTMLInputElement>('#discovery-keywords')?.focus();return;}
     const issues=validateConditions(value);setErrors(issues);
     if(Object.keys(issues).length){requestAnimationFrame(()=>{const first=form.current?.querySelector<HTMLElement>('[aria-invalid="true"]');for(let parent=first?.parentElement;parent;parent=parent.parentElement)if(parent instanceof HTMLDetailsElement)parent.open=true;first?.focus();});return;}
@@ -126,7 +126,7 @@ export function DiscoveryConditions({value,onChange,disabled=false,onSubmit,onCa
       <div className="discovery-condition-row"><label className="discovery-label" htmlFor="discovery-contact">Business email</label><div><select id="discovery-contact" value={filters.contact} onChange={event=>update({...value,filters:{...filters,contact:event.target.value as CandidateFilters['contact']}})}><option value="any">Any</option><option value="available">Public business email available</option><option value="missing">Business email missing</option></select><p className="discovery-note">Email availability is not consent to email.</p></div></div>
       <details className="discovery-advanced"><summary>Advanced limits</summary><div>{BUDGETS.map(({key,label,value:fallback,maximum})=><label key={key}>{label}<input type="number" min="1" max={maximum} step="1" aria-label={label} value={Number.isNaN(value[key])?'':value[key]??fallback} aria-invalid={Boolean(errors[key])} aria-describedby={errors[key]?`discovery-error-${key}`:undefined} onChange={event=>update({...value,[key]:event.target.value===''?NaN:Number(event.target.value)})}/>{errors[key]&&<span className="discovery-error" id={`discovery-error-${key}`}>{errors[key]}</span>}</label>)}</div></details>
     </fieldset>
-    <div className="discovery-submit"><p>Uses model and platform quotas.</p><div>{onCancel&&<button type="button" className="button secondary" disabled={disabled} onClick={onCancel}>Cancel</button>}<button type="submit" className="button primary" disabled={disabled}>Find creators</button></div></div>
+    <div className="discovery-submit"><p>Uses model and platform quotas.</p><div>{onCancel&&<button type="button" className="button secondary" disabled={disabled} onClick={onCancel}>Cancel</button>}<button type="submit" className="button primary" disabled={disabled||submitDisabled}>Find creators</button></div></div>
     {dialog==='languages'||dialog==='countries'?<ChoiceDialog kind={dialog} filters={filters} disabled={disabled} onCancel={()=>setDialog(null)} onApply={applyFilters}/>:dialog==='followers'?<AudienceDialog filters={filters} initialMode={audience.current?.signature===audienceSignature?audience.current.mode:inferAudience(filters.follower_ranges)} disabled={disabled} onCancel={()=>setDialog(null)} onApply={(next,mode)=>{audience.current={signature:JSON.stringify(next.follower_ranges),mode};applyFilters(next);}}/>:null}
   </form>;
 }

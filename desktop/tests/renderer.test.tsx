@@ -9,6 +9,7 @@ import { App } from '../src/renderer/App';
 import { gameFixture } from './game-fixtures';
 import { settingsBridgeMock } from './settings-fixtures';
 import { creatorFixture, contactFixture } from './creator-fixtures';
+import { collectionSettingsFixture } from './collection-fixtures';
 
 const ok = <T,>(data: T): Result<T> => ({ ok: true, data });
 const failed = (message = 'Connection interrupted'): Result<never> => ({ ok: false, error: { code: 'network_error', message, retryable: true } });
@@ -50,6 +51,54 @@ function start(api = bridge()) { window.desktop = api; render(<App />); return {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); Reflect.deleteProperty(window, 'desktop'); });
 
 describe('desktop renderer', () => {
+  it('opens Collection directly and returns to retained Match conditions without discarding or starting work',async()=>{
+    const api=bridge();
+    vi.mocked(api.settings.collection).mockResolvedValue(ok({items:collectionSettingsFixture().items.map(item=>({...item,enabled:false,availability:'disabled' as const}))}));
+    const {user}=start(api);await screen.findByRole('button',{name:'Open Pixel Harbor'});
+    await user.click(screen.getByRole('button',{name:'Match'}));
+    await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));
+    await user.click(await screen.findByRole('button',{name:'Adjust conditions'}));
+    await user.click(screen.getByRole('checkbox',{name:/^X$/}));
+    await user.click(screen.getByRole('button',{name:'Collection settings'}));
+    expect(await screen.findByRole('tab',{name:'Collection'})).toHaveAttribute('aria-selected','true');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab',{name:'Workspace'}));
+    expect(screen.getByLabelText('Service URL')).toBeDisabled();
+    expect(screen.getByLabelText('Workspace key')).toBeDisabled();
+    expect(screen.getByRole('button',{name:'Disconnect'})).toBeDisabled();
+    await user.click(screen.getByRole('button',{name:'Return to Match'}));
+    expect(screen.getByRole('checkbox',{name:/^X$/})).toBeChecked();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(api.match.createPlan).not.toHaveBeenCalled();expect(api.match.continueDiscovery).not.toHaveBeenCalled();
+    expect(api.connection.save).not.toHaveBeenCalled();expect(api.connection.clear).not.toHaveBeenCalled();
+  });
+  it('still guards a retained Match draft when leaving the Collection detour for another task',async()=>{
+    const {user}=start();await screen.findByRole('button',{name:'Open Pixel Harbor'});
+    await user.click(screen.getByRole('button',{name:'Match'}));await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));
+    await user.click(await screen.findByRole('button',{name:'Adjust conditions'}));
+    await user.click(screen.getByRole('button',{name:'Collection settings'}));
+    await screen.findByRole('tab',{name:'Collection'});
+    await user.click(screen.getByRole('button',{name:'Library'}));
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button',{name:'Match'}));
+    expect(screen.getByRole('button',{name:'Find creators'})).toBeVisible();
+  });
+  it('repairs a failed collection-policy read without discarding Match conditions or starting work',async()=>{
+    const api=bridge();const {user}=start(api);await screen.findByRole('button',{name:'Open Pixel Harbor'});
+    await user.click(screen.getByRole('button',{name:'Match'}));await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));
+    await user.click(await screen.findByRole('button',{name:'Adjust conditions'}));await user.click(screen.getByRole('checkbox',{name:/^X$/}));
+    vi.mocked(api.settings.collection).mockResolvedValue({ok:false,error:{code:'workspace_key_invalid',message:'Repair key',retryable:false}});
+    await user.click(screen.getByRole('button',{name:'Refresh activity'}));
+    await user.click(await screen.findByRole('button',{name:'Repair connection'}));
+    expect(screen.getByRole('tab',{name:'Workspace'})).toHaveAttribute('aria-selected','true');
+    expect(screen.getByLabelText('Service URL')).toBeDisabled();expect(screen.getByLabelText('Workspace key')).toBeEnabled();
+    await user.type(screen.getByLabelText('Workspace key'),'replacement-synthetic-key');
+    await user.click(screen.getByRole('button',{name:'Connect'}));
+    await user.click(await screen.findByRole('button',{name:'Return to Match'}));
+    expect(screen.getByRole('checkbox',{name:/^X$/})).toBeChecked();
+    expect(api.match.createPlan).not.toHaveBeenCalled();expect(api.match.continueDiscovery).not.toHaveBeenCalled();
+  });
   it('keeps Match creation through same-origin credential repair and returns to Match, not Library',async()=>{
     const api=bridge();vi.mocked(api.match.createActivity).mockResolvedValueOnce({ok:false,error:{code:'save_outcome_unknown',message:'Unconfirmed request',retryable:false}}).mockResolvedValueOnce({ok:false,error:{code:'workspace_key_invalid',message:'Repair key',retryable:false}});
     const {user}=start(api);await screen.findByRole('button',{name:'Open Pixel Harbor'});

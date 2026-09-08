@@ -27,6 +27,7 @@ Open Settings and enter the service origin and Workspace Key. HTTPS is required 
 ## Delivered scope
 
 - Four stable navigation entries: Match, Outreach, Library and Settings.
+- Shared Collection settings: explicit YouTube/X policy changes with coworker-impact confirmation, separate credentials/availability states, and readback after uncertain saves. Twitch/Instagram remain unavailable. Match preserves source outcomes and candidates; re-enabling saves policy only, with a separate explicit Continue action. The Collection detour retains Match conditions and blocks workspace replacement until return.
 - Match v2 source implementation: Activity/Game/reference selection, explicit server discovery planning, retained paginated candidates, stop/continue and history, explicit frozen-candidate evaluation and grouped Match Briefs. Detail/evidence and usage are disclosed on demand. Source verification passed; packaged real-backend acceptance is pending manual macOS Keychain authorization (see the Match unit record).
 - Responsive PRD-inspired warm surface, coral actions, deep-blue sidebar and local pixel-art backgrounds. FindMeGamer remains the product name; native macOS titlebar controls are not painted into the page.
 - Editable Creator and Game v2 Library, explicit search, independent tab state and saved filters. Both use offset pagination; Creator filters include platform, language and favorites.
@@ -60,6 +61,7 @@ All business requests originate in main and include `Authorization: Bearer …`.
 | Create game | `POST /api/v2/library/games` with `Idempotency-Key` |
 | Edit game | `PATCH /api/v2/library/games/{uuid}` with `expected_revision` |
 | Service credentials | `GET/PUT/POST /api/v1/settings/connections/{service}`; PUT secret is write-only; POST tests stored credentials |
+| Shared collection policy | `GET /api/v1/settings/collection`, `PUT /api/v1/settings/collection/{platform}` with exact `{enabled:boolean}`; four-platform response, no automatic collection |
 | Refresh intervals | `GET/PATCH /api/v1/settings/reanalysis`; Game 1–90 days, Creator 1–30 days, both fields saved together |
 | Refresh activity | Existing v1 profile lists (Steam-linked games / YouTube creators), expansion-only bounded pages; actual last/next analysis timestamps |
 | Shared SMTP | `GET/PUT /api/v1/outreach/smtp`; optional write-only password replacement |
@@ -112,6 +114,8 @@ FMG_BACKEND_FIXTURE_FILE=/absolute/path/to/authorized/client.json npx playwright
 FMG_VERIFY_SYSTEM_HTTPS=1 npx playwright test e2e/network.spec.ts
 FMG_BACKEND_FIXTURE_FILE=/absolute/path/to/authorized/client.json FMG_SETTINGS_CAPTURE_DIR=/absolute/path/to/isolated/capture npx playwright test e2e/settings.spec.ts
 ```
+
+The separate collection policy HTTP check is `FMG_COLLECTION_FIXTURE_FILE=/absolute/path/to/authorized/client.json npx playwright test e2e/collection-http.spec.ts`. It requires exclusive access to the coordinator-owned `b2b15f4` / migration `0014` fixture, changes and restores one synthetic shared flag, verifies retained Match state and zero provider/model events, and launches no Electron process. See [collection-switches-unit.md](docs/collection-switches-unit.md). This is not packaged GUI acceptance. The original `cad5565` Match fixture has no collection endpoint and must not be used to validate this newer source's collection-dependent flow.
 
 Set `FMG_PACKAGED_EXECUTABLE` to the full `FindMeGamer.app/Contents/MacOS/FindMeGamer` path to repeat these checks against the packaged app. The network check makes one anonymous request to the approved service's public health endpoint, keeps TLS validation enabled, removes shell proxy variables from Electron, and expects a machine with its macOS system proxy enabled. It is opt-in and is not a production-authentication test.
 

@@ -1,5 +1,5 @@
-import type { ServiceName, ServiceStatus, ReanalysisSettings, SMTPInput, SMTPStatus, SMTPTestResult, TestStatus, SMTPEncryption } from '../shared/settings';
-import { serviceNames } from '../shared/settings';
+import type { CollectionPlatform, CollectionPlatformState, CollectionSettings, ServiceName, ServiceStatus, ReanalysisSettings, SMTPInput, SMTPStatus, SMTPTestResult, TestStatus, SMTPEncryption } from '../shared/settings';
+import { collectionPlatforms, serviceNames } from '../shared/settings';
 import { PublicFailure } from './transport';
 import { deliveryOutcomeUnknown, invalidSettings, settingsKeys, settingsObject, validateSettingsRequest, type SettingsRequest } from './settings-transport';
 export type SettingsRequestHandler = (input: SettingsRequest) => Promise<unknown>;
@@ -11,6 +11,20 @@ function integer(value: unknown, max: number): number { if (typeof value !== 'nu
 function timestamp(value: unknown): string | null { const result = text(value); if (result !== null && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/i.test(result) || !Number.isFinite(Date.parse(result)))) invalidResponse(); return result; }
 function status(value: unknown): TestStatus { if (value !== null && value !== 'success' && value !== 'failure') invalidResponse(); return value; }
 function service(value: unknown): ServiceName { if (typeof value !== 'string' || !(serviceNames as readonly string[]).includes(value)) invalidSettings(); return value as ServiceName; }
+function collectionPlatform(value: unknown): CollectionPlatform { if (typeof value !== 'string' || !(collectionPlatforms as readonly string[]).includes(value)) invalidSettings(); return value as CollectionPlatform; }
+function collectionPlatformState(value: unknown): CollectionPlatformState {
+  const raw = object(value);
+  if (typeof raw.platform !== 'string' || !(collectionPlatforms as readonly string[]).includes(raw.platform)) invalidResponse();
+  if (!['disabled', 'not_implemented', 'missing_connection', 'configured_unverified'].includes(raw.availability as string)) invalidResponse();
+  return { platform: raw.platform as CollectionPlatform, enabled: bool(raw.enabled), implemented: bool(raw.implemented), credentials_configured: bool(raw.credentials_configured), availability: raw.availability as CollectionPlatformState['availability'] };
+}
+function collectionSettings(value: unknown): CollectionSettings {
+  const raw = object(value);
+  if (!Array.isArray(raw.items) || raw.items.length !== collectionPlatforms.length) invalidResponse();
+  const items = raw.items.map(collectionPlatformState);
+  if (new Set(items.map(item => item.platform)).size !== collectionPlatforms.length) invalidResponse();
+  return { items };
+}
 function connectionStatus(value: unknown): ServiceStatus { const raw = object(value); return { configured: bool(raw.configured), lastTestStatus: status(raw.last_test_status), lastTestedAt: timestamp(raw.last_tested_at) }; }
 function reanalysis(value: unknown): ReanalysisSettings { const raw = object(value); return { gameIntervalDays: integer(raw.game_interval_days, 90), creatorIntervalDays: integer(raw.creator_interval_days, 30) }; }
 function smtpStatus(value: unknown): SMTPStatus {
@@ -26,6 +40,12 @@ function testResult(value: unknown): SMTPTestResult {
 export class SettingsClient {
   constructor(private readonly request: SettingsRequestHandler) {}
   private perform(input: SettingsRequest) { return this.request(validateSettingsRequest(input)); }
+  async collection(): Promise<CollectionSettings> { return collectionSettings(await this.perform({ method: 'GET', path: '/api/v1/settings/collection' })); }
+  async setCollection(input: { platform: CollectionPlatform; enabled: boolean }): Promise<CollectionSettings> {
+    const raw = settingsObject(input); settingsKeys(raw, ['platform', 'enabled']);
+    if (typeof raw.enabled !== 'boolean') invalidSettings();
+    return collectionSettings(await this.perform({ method: 'PUT', path: `/api/v1/settings/collection/${collectionPlatform(raw.platform)}`, body: { enabled: raw.enabled } }));
+  }
   async connection(value: ServiceName): Promise<ServiceStatus> { return connectionStatus(await this.perform({ method: 'GET', path: `/api/v1/settings/connections/${service(value)}` })); }
   async replaceConnection(input: { service: ServiceName; secret: string }): Promise<ServiceStatus> {
     const raw = settingsObject(input); settingsKeys(raw, ['service', 'secret']);
