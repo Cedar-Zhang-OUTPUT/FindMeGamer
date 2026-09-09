@@ -22,7 +22,7 @@ type Owner='activity'|'new'|'creator'|'none';
 const scroller=()=>document.querySelector<HTMLElement>('.main-scroll');
 function gameName(activity:ActivityView){const game=activity.source_snapshot.game;return game&&typeof game==='object'&&!Array.isArray(game)&&typeof game.name==='string'?game.name:'Saved game';}
 
-interface MatchWorkspaceProps {api:DesktopBridge;active:boolean;surface?:'match'|'outreach';onShowMatch?:()=>void;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void;onSMTPSettings?:()=>void;gameRequest?:{game:GameDetail;nonce:number};onGameRequestHandled?:()=>void}
+interface MatchWorkspaceProps {api:DesktopBridge;active:boolean;surface?:'match'|'outreach';onShowMatch?:()=>void;onShowOutreach?:()=>void;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void;onSMTPSettings?:()=>void;gameRequest?:{game:GameDetail;nonce:number};onGameRequestHandled?:()=>void}
 export function MatchWorkspace(props:MatchWorkspaceProps){
   const guards=useRef<{task:NavigationGuard|null;analysis:NavigationGuard|null}>({task:null,analysis:null});
   const publish=useRef(props.onNavigationGuardChange);publish.current=props.onNavigationGuardChange;
@@ -37,7 +37,7 @@ export function MatchWorkspace(props:MatchWorkspaceProps){
   const analysisGuard=useCallback((value:NavigationGuard|null)=>register('analysis',value),[register]);
   return <AnalyzeProvider api={props.api} onNavigationGuardChange={analysisGuard} onConnectionRepair={props.onConnectionRepair} onCollectionSettings={props.onCollectionSettings}><MatchWorkspaceContent {...props} onNavigationGuardChange={taskGuard}/></AnalyzeProvider>;
 }
-function MatchWorkspaceContent({api,active,onNavigationGuardChange,onConnectionRepair,onCollectionSettings,onSMTPSettings,gameRequest,onGameRequestHandled,surface='match',onShowMatch}:MatchWorkspaceProps){
+function MatchWorkspaceContent({api,active,onNavigationGuardChange,onConnectionRepair,onCollectionSettings,onSMTPSettings,gameRequest,onGameRequestHandled,surface='match',onShowMatch,onShowOutreach}:MatchWorkspaceProps){
   const analysis=useAnalyze();
   const [route,setRoute]=useState<Route>({kind:'list'}),[page,setPage]=useState<ActivityPage|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<PublicError|null>(null),[failedOffset,setFailedOffset]=useState<number|null>(null);
   const priorSurface=useRef(surface);
@@ -121,7 +121,7 @@ function MatchWorkspaceContent({api,active,onNavigationGuardChange,onConnectionR
       {page&&page.total>0&&<div className="match-pagination"><button className="button secondary" disabled={busy||page.offset===0} onClick={()=>void load(Math.max(0,page.offset-50))}>Previous page</button><button className="button secondary" disabled={busy||page.offset+page.limit>=page.total} onClick={()=>void load(page.offset+50)}>Next page</button></div>}
     </div>
     {route.kind==='new'&&<NewActivity key={route.nonce??'manual'} api={api} initialGame={route.game} onCreated={created} onCancel={toList} onNavigationGuardChange={newGuard} onConnectionRepair={onConnectionRepair}/>}
-    {route.kind==='activity'&&<><div ref={activityRoot} hidden={Boolean(overlay)}><MatchActivity key={route.id} api={api} activityId={route.id} active={active&&!overlay} surface={surface} onShowMatch={onShowMatch} onBack={toList} onOpenCreator={(id,section)=>void openCreator(id,section==='contacts'?'emails':section==='works'?'works':'profile')} onNavigationGuardChange={activityGuard} onConnectionRepair={onConnectionRepair} onCollectionSettings={onCollectionSettings} onSMTPSettings={onSMTPSettings}/></div>
+    {route.kind==='activity'&&<><div ref={activityRoot} hidden={Boolean(overlay)}><MatchActivity key={route.id} api={api} activityId={route.id} active={active&&!overlay} surface={surface} onShowMatch={onShowMatch} onShowOutreach={onShowOutreach} onBack={toList} onOpenCreator={(id,section)=>void openCreator(id,section==='contacts'?'emails':section==='works'?'works':'profile')} onNavigationGuardChange={activityGuard} onConnectionRepair={onConnectionRepair} onCollectionSettings={onCollectionSettings} onSMTPSettings={onSMTPSettings}/></div>
       {overlay&&<div className="match-creator-route"><button className="text-button back-button" onClick={requestBack}><Icon name="arrow"/>Back to activity</button>
         {overlay.kind==='loading'&&(overlay.error?<ErrorNotice error={overlay.error} onRetry={()=>void openCreator(overlay.id,overlay.section,true)}/>:<Loading label="Loading creator…"/>)}
         {overlay.kind==='detail'&&<>{overlay.saved&&<p role="status" className="creator-saved-message">Saved</p>}<CreatorRecord key={overlay.creator.id} api={api} creator={overlay.creator} initialSection={overlay.section} invitationActivityId={surface==='outreach'?route.id:undefined} refreshToken={overlay.creator.revision} onBack={backToActivity} onEdit={edit}/></>}

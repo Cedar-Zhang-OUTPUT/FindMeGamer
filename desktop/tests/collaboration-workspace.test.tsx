@@ -15,11 +15,11 @@ afterEach(cleanup);
 it('keeps invitation edits and its parent exit guard through Creator inspection and workspace tabs',async()=>{
  const api={...settingsBridgeMock(),openExternal:vi.fn()} as unknown as DesktopBridge,user=userEvent.setup(),row=invitationFixture({activity_id:activityFixture().id});
  vi.mocked(api.collaboration.list).mockResolvedValue(ok({items:[row],total:1,offset:0,limit:50}));vi.mocked(api.collaboration.detail).mockResolvedValue(ok(row));let guard:NavigationGuard|null=null;
- render(<MatchWorkspace api={api} active onNavigationGuardChange={g=>{guard=g;}}/>);await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));expect(api.collaboration.list).not.toHaveBeenCalled();await user.click(screen.getByRole('tab',{name:'Invitations'}));
+ render(<MatchWorkspace api={api} active surface="outreach" onNavigationGuardChange={g=>{guard=g;}}/>);await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));await user.click(screen.getByRole('tab',{name:'Invitations'}));
  await user.click(await screen.findByRole('button',{name:'Edit progress'}));await user.type(screen.getByLabelText('Notes'),'Keep my notes');await user.click(screen.getByRole('button',{name:'Open creator'}));await screen.findByRole('button',{name:'Edit profile'});
  const exit=vi.fn();act(()=>guard?.(exit));await user.click(await screen.findByRole('button',{name:'Keep working'}));expect(exit).not.toHaveBeenCalled();await user.click(screen.getByRole('button',{name:'Back to activity'}));
  await waitFor(()=>expect(screen.getByLabelText('Notes')).toBeEnabled());expect(screen.getByLabelText('Notes')).toHaveValue('Keep my notes');
- await user.click(screen.getByRole('tab',{name:'Find & prepare'}));await user.click(screen.getByRole('tab',{name:'Invitations'}));expect(screen.getByLabelText('Notes')).toHaveValue('Keep my notes');
+ await user.click(screen.getByRole('tab',{name:'Prepare & send'}));await user.click(screen.getByRole('tab',{name:'Invitations'}));expect(screen.getByLabelText('Notes')).toHaveValue('Keep my notes');
  expect(api.collaboration.update).not.toHaveBeenCalled();expect(api.collaboration.respond).not.toHaveBeenCalled();
 });
 it('loads Creator history only on demand and offers no writes, including historic creator associations',async()=>{
@@ -36,7 +36,7 @@ it('clears only a specifically confirmed edit while preserving another relations
 });
 it('returns keyboard focus to the current workspace tab while the original Creator opener is reloading',async()=>{
  const api={...settingsBridgeMock(),openExternal:vi.fn()} as unknown as DesktopBridge,user=userEvent.setup(),row=invitationFixture({activity_id:activityFixture().id});vi.mocked(api.collaboration.list).mockResolvedValue(ok({items:[row],total:1,offset:0,limit:50}));vi.mocked(api.collaboration.detail).mockResolvedValue(ok(row));
- render(<MatchWorkspace api={api} active/>);await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));await user.click(screen.getByRole('tab',{name:'Invitations'}));await user.click(await screen.findByRole('button',{name:'Open creator'}));await screen.findByRole('button',{name:'Edit profile'});
+ render(<MatchWorkspace api={api} active surface="outreach"/>);await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));await user.click(screen.getByRole('tab',{name:'Invitations'}));await user.click(await screen.findByRole('button',{name:'Open creator'}));await screen.findByRole('button',{name:'Edit profile'});
  vi.mocked(api.collaboration.detail).mockImplementationOnce(()=>new Promise(()=>{}));await user.click(screen.getByRole('button',{name:'Back to activity'}));
  await waitFor(()=>expect(screen.getByRole('tab',{name:'Invitations'})).toHaveFocus());expect(screen.getByRole('button',{name:'Open creator'})).toBeDisabled();
 });
