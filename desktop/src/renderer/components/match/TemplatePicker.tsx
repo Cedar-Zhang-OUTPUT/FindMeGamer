@@ -44,7 +44,7 @@ export function TemplatePicker({game,catalog,selectedId,active,busy,error,recipi
     {mode==='new'?<form className="template-new" onSubmit={event=>{event.preventDefault();void save();}}>
       <label>Version name<input value={name} maxLength={200} disabled={disabled} onChange={event=>setName(event.target.value)}/></label>
       <label>Subject<input value={subject} maxLength={998} disabled={disabled} onChange={event=>setSubject(event.target.value)}/></label>
-      <label>Fixed email text<textarea ref={bodyField} value={body} disabled={disabled} rows={14} onChange={event=>setBody(event.target.value)}/></label>
+      <label>Fixed email text<textarea aria-label="Fixed email text" ref={bodyField} value={body} disabled={disabled} rows={14} onChange={event=>setBody(event.target.value)}/></label>
       <div className="template-slots" aria-label="Insert personalization slot">{SLOT_KEYS.map((key,index)=><button type="button" key={key} data-slot={key} disabled={disabled} onClick={()=>insert(key)}>{index+1}. {SLOT_LABELS[key]}</button>)}</div>
       {validation&&<p className="inline-warning" role="alert">{validation}</p>}
       <footer className="template-actions"><button type="button" className="text-button" disabled={disabled} onClick={cancel}>Cancel new version</button><button type="submit" className="button primary" disabled={disabled}>{saving?'Saving…':'Save new version'}</button></footer>

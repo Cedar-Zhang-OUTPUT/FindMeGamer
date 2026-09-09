@@ -134,6 +134,12 @@ test('C built renderer saves only explicit notes and retains unsaved collaborati
       const reads=bridge['match.activity'];
       await page.getByRole('button',{name:'Continue in Match',exact:true}).click();
       await expect(page.getByRole('tab',{name:'Find & prepare',exact:true})).toHaveAttribute('aria-selected','true');
+      await expect(page.getByRole('button',{name:'Adjust conditions',exact:true})).toBeVisible();
+      const resultsShot=testInfo.outputPath('P4-results-wide.png');await page.screenshot({path:resultsShot});(report.screenshots as string[]).push(resultsShot);
+      await page.getByRole('button',{name:'Adjust conditions',exact:true}).click();
+      await expect(page.getByRole('form',{name:'Discovery conditions'})).toBeVisible();
+      const conditionsShot=testInfo.outputPath('P3-conditions-wide.png');await page.screenshot({path:conditionsShot});(report.screenshots as string[]).push(conditionsShot);
+      await page.getByRole('form',{name:'Discovery conditions'}).getByRole('button',{name:'Cancel',exact:true}).click();
       await page.getByRole('button',{name:'Outreach',exact:true}).click();
       await expect(responseFilter).toHaveValue('accepted');
       await expect(editor.getByRole('button',{name:'Open creator',exact:true})).toBeEnabled();

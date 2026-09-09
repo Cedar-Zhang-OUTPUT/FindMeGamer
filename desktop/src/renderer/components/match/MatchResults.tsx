@@ -159,7 +159,7 @@ function CandidateCard({ candidate, onOpenCreator, sort, selection, outreach }: 
 
   return <article className="match-card match-candidate-card" aria-label={name}>
     {selection&&<label className="saved-list-mark"><input type="checkbox" aria-label={`Include ${name} in saved list`} checked={selection.ids.includes(candidate.id)} disabled={selection.disabled||(!selection.ids.includes(candidate.id)&&selection.ids.length>=600)} onChange={()=>selection.onToggle(candidate.id)}/>Mark for list</label>}
-    {!selection&&outreach&&<label className="saved-list-mark"><input type="checkbox" aria-label={`Select ${name} for outreach`} checked={outreach.isSelected(candidate)} disabled={outreach.disabled||candidate.identity_changed} onChange={()=>outreach.onToggle(candidate)}/>Selected for outreach</label>}
+    {!selection&&outreach&&<label className="saved-list-mark"><input type="checkbox" aria-label={`Select ${name} for outreach`} checked={outreach.isSelected(candidate)} disabled={outreach.disabled||candidate.identity_changed} onChange={()=>outreach.onToggle(candidate)}/></label>}
     <header className="match-card-header">
       <Artwork url={avatar} name={name} kind="creators"/>
       <div className="match-card-title"><h3>{name}</h3>{handle && handle !== name ? <p>{handle}</p> : null}</div>

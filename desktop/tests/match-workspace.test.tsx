@@ -61,7 +61,7 @@ it('creates a real activity from the empty list and opens it without starting a 
   const api=setup(),user=userEvent.setup();vi.mocked(api.match.activities).mockResolvedValue(ok({items:[],total:0,limit:50,offset:0}));
   vi.mocked(api.match.activity).mockResolvedValue(ok({...activityFixture(),queries:[]}));vi.mocked(api.match.plans).mockResolvedValue(ok({items:[],total:0,offset:0,limit:50}));
   render(<MatchWorkspace api={api} active/>);await screen.findByRole('heading',{name:'No activities yet'});
-  await user.click(screen.getByRole('button',{name:'New activity'}));await user.type(screen.getByLabelText('Activity name'),'Indie launch');await user.click(await screen.findByRole('button',{name:'Select game A game'}));await user.click(await screen.findByRole('button',{name:'Use game'}));await user.click(screen.getByRole('button',{name:'Create activity'}));
+  await user.click(screen.getByRole('button',{name:'New activity'}));await user.click(await screen.findByRole('button',{name:'Use game A game'}));await user.click(await screen.findByText('Activity name · Optional'));await user.type(screen.getByLabelText('Activity name'),'Indie launch');await user.click(screen.getByRole('button',{name:'Continue to matching'}));
   expect(await screen.findByRole('heading',{name:'Indie launch'})).toBeVisible();expect(await screen.findByRole('button',{name:'Find creators'})).toBeVisible();expect(api.match.activity).toHaveBeenCalledWith(activityFixture().id);expect(api.match.createPlan).not.toHaveBeenCalled();
 });
 it('reuses the actual Creator editor and returns to retained activity details with fresh candidates and focus',async()=>{

@@ -32,6 +32,7 @@ it('selects explicitly, then prepares every chosen person after stopping discove
   await user.click(await screen.findByRole('button',{name:'Prepare 1'}));
   expect(api.match.stop).toHaveBeenCalledWith({queryId:queryFixture().id,idempotencyKey:expect.any(String)});
   await waitFor(()=>expect(api.outreach.freeze).toHaveBeenCalledOnce());
+  await user.click(await screen.findByRole('button',{name:'Back to people'}));
   expect(await screen.findByRole('heading',{name:'Preparation · 1'})).toBeVisible();
   expect(screen.getByRole('button',{name:/Edit Creator 1/})).toBeVisible();
   expect(screen.queryByRole('button',{name:/^Send(?:\s|$)/})).not.toBeInTheDocument();
@@ -72,6 +73,7 @@ it('guards an uncertain freeze and retries the same ordered batch request withou
   expect(within(screen.getByRole('dialog')).getByRole('button',{name:'Discard changes'})).toBeDisabled();
   await user.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Keep working'}));
   await user.click(screen.getByRole('button',{name:'Retry same save'}));
+  await user.click(await screen.findByRole('button',{name:'Back to people'}));
   expect(await screen.findByRole('heading',{name:'Preparation · 1'})).toBeVisible();
   expect(api.match.stop).toHaveBeenCalledOnce();expect(vi.mocked(api.outreach.freeze).mock.calls[0]).toEqual(vi.mocked(api.outreach.freeze).mock.calls[1]);
 });

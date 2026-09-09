@@ -110,7 +110,7 @@ export function DiscoveryConditions({value,onChange,disabled=false,submitDisable
   }
   const followerSummary=filters.follower_ranges.length?filters.follower_ranges.map(range=>range.maximum==null?`${(range.minimum??0).toLocaleString('en')}+`:`${(range.minimum??0).toLocaleString('en')}–${range.maximum.toLocaleString('en')}`).join(', '):'Any';
   const audienceSignature=JSON.stringify(filters.follower_ranges);
-  return <form ref={form} className="discovery-conditions" noValidate onSubmit={event=>{
+  return <form ref={form} aria-label="Discovery conditions" className="discovery-conditions" noValidate onSubmit={event=>{
     event.preventDefault();if(disabled||submitDisabled||dialog)return;
     if(keyword.trim()){setKeywordError('Add or clear this keyword before finding creators.');form.current?.querySelector<HTMLInputElement>('#discovery-keywords')?.focus();return;}
     const issues=validateConditions(value);setErrors(issues);

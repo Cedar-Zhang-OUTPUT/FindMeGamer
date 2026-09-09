@@ -5,7 +5,7 @@ test.use({trace:'off',screenshot:'off',video:'off'});
 test('internal package shows first-run cloud origin without a key or connection',async({},info)=>{
  test.skip(process.env.FMG_INTERNAL_FIRST_RUN!=='approved','Explicit packaged first-run verification only.');
  const executable=process.env.FMG_PACKAGED_EXECUTABLE;
- if(!executable?.includes('/artifacts/FindMeGamer-Electron-0.2.0-internal.1-arm64-')||!executable.endsWith('/FindMeGamer.app/Contents/MacOS/FindMeGamer'))throw Error('explicit_internal_package_required');
+ if(!executable?.includes('/artifacts/FindMeGamer-Electron-0.2.0-internal.2-arm64-')||!executable.endsWith('/FindMeGamer.app/Contents/MacOS/FindMeGamer'))throw Error('explicit_internal_package_required');
  const userData=await mkdtemp('/tmp/fmg-internal-first-run-');await isolatedPreferences(userData);
  let app:ElectronApplication|undefined;
  try{
@@ -17,7 +17,7 @@ test('internal package shows first-run cloud origin without a key or connection'
     const external=/^https?:/.test(details.url);if(external)(globalThis as any).__firstRunNetwork.push(details.method);callback({cancel:external});
    });
    return {packaged:app.isPackaged,path:app.getAppPath(),userData:app.getPath('userData'),version:app.getVersion()};
-  });expect(main).toMatchObject({packaged:true,userData,version:'0.2.0-internal.1'});
+  });expect(main).toMatchObject({packaged:true,userData,version:'0.2.0-internal.2'});
   const page=await app.firstWindow();await page.getByRole('button',{name:'Open Settings',exact:true}).click();
   await expect(page.getByLabel('Service URL')).toHaveValue('https://44.233.174.193');await expect(page.getByLabel('Workspace key',{exact:true})).toHaveValue('');await expect(page.getByRole('button',{name:'Connect',exact:true})).toBeDisabled();
   const status=await page.evaluate(()=>window.desktop.connection.status());expect(status).toMatchObject({ok:true,data:{hasKey:false,serviceUrl:'https://44.233.174.193'}});

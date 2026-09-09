@@ -57,8 +57,7 @@ describe('desktop renderer', () => {
     await user.click(await screen.findByRole('button',{name:'Use for Match'}));
     expect(await screen.findByRole('textbox',{name:'Name'})).toHaveValue('A game');
     expect(api.match.createActivity).not.toHaveBeenCalled();expect(api.analysis.steamImport).not.toHaveBeenCalled();
-    await user.click(screen.getByRole('button',{name:'Use game'}));
-    expect(screen.getByRole('button',{name:'Create activity'})).toBeVisible();
+    expect(screen.getByRole('button',{name:'Continue to matching'})).toBeVisible();
     await user.click(screen.getByRole('button',{name:'Library'}));
     await user.click(await screen.findByRole('button',{name:'Discard changes'}));
     expect(await screen.findByRole('button',{name:'Use for Match'})).toBeVisible();
@@ -115,14 +114,13 @@ describe('desktop renderer', () => {
     const api=bridge();vi.mocked(api.match.createActivity).mockResolvedValueOnce({ok:false,error:{code:'save_outcome_unknown',message:'Unconfirmed request',retryable:false}}).mockResolvedValueOnce({ok:false,error:{code:'workspace_key_invalid',message:'Repair key',retryable:false}});
     const {user}=start(api);await screen.findByRole('button',{name:'Open Pixel Harbor'});
     await user.click(screen.getByRole('button',{name:'Match'}));await user.click(await screen.findByRole('button',{name:'New activity'}));
-    await user.type(screen.getByLabelText('Activity name'),'Retained campaign');await user.click(await screen.findByRole('button',{name:'Select game A game'}));
-    await user.click(await screen.findByRole('button',{name:'Use game'}));
-    await user.click(screen.getByRole('button',{name:'Create activity'}));await user.click(await screen.findByRole('button',{name:'Retry same request'}));
+    await user.click(await screen.findByRole('button',{name:'Use game A game'}));await user.click(await screen.findByText('Activity name · Optional'));await user.type(screen.getByLabelText('Activity name'),'Retained campaign');
+    await user.click(screen.getByRole('button',{name:'Continue to matching'}));await user.click(await screen.findByRole('button',{name:'Retry same request'}));
     await user.click(await screen.findByRole('button',{name:'Open Settings'}));
     expect(screen.getByLabelText('Service URL')).toBeDisabled();
     await user.type(screen.getByLabelText('Workspace key'),'repaired-test-key');await user.click(screen.getByRole('button',{name:'Connect'}));
     await user.click(await screen.findByRole('button',{name:'Return to Match'}));
-    expect(screen.getByLabelText('Activity name')).toHaveValue('Retained campaign');expect(screen.getByRole('button',{name:'Retry same request'})).toBeDisabled();
+    expect(screen.getByRole('button',{name:'Edit game'})).toBeDisabled();expect(screen.getByRole('button',{name:'Retry same request'})).toBeDisabled();
     expect(api.match.createActivity).toHaveBeenCalledTimes(2);
   });
   it('repairs same-origin authentication without losing an uncertain creation or replaying after credentials change', async () => {

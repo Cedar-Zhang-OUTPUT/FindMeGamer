@@ -29,9 +29,11 @@ function UnsavedDialog({ locked, busy, resolving, onStay, onDiscard, onSave }: {
   }}><h2 id="game-unsaved-title">Unsaved game changes</h2><p>{locked ? 'The creation result is unknown. Resolve this request before starting another game.' : busy ? 'Your save is still in progress.' : resolving ? 'Resolve the conflicting values to save, or discard your local changes.' : 'Save your changes before leaving?'}</p><div className="game-dialog-actions"><button className="button secondary" onClick={onStay}>Continue editing</button><button className="text-button game-discard" disabled={locked || busy} onClick={onDiscard}>Discard changes</button><button className="button primary" disabled={locked || busy || resolving} onClick={onSave}>Save and leave</button></div></div></div>, document.body);
 }
 
-export function GameEditor({ api, initial, continuationLabel, onSaved, onCancel, onNavigationGuardChange, onConnectionRepair }: {
-  api: DesktopBridge; initial: GameDetail | null; onSaved: (game: GameDetail) => void; onCancel: () => void;
+export function GameEditor({ api, initial, continuationLabel, headerAccessory, referenceSelection, onSaved, onCancel, onNavigationGuardChange, onConnectionRepair }: {
+  api: DesktopBridge; initial: GameDetail | null; onSaved: (game: GameDetail, selectedReferences?:string[], intent?:'continue'|'leave') => void; onCancel: () => void;
   continuationLabel?: string;
+  headerAccessory?: React.ReactNode;
+  referenceSelection?: {ids:string[];onChange:(ids:string[])=>void};
   onNavigationGuardChange?: (guard: NavigationGuard | null) => void;
   onConnectionRepair?: () => void;
 }) {
@@ -82,8 +84,20 @@ export function GameEditor({ api, initial, continuationLabel, onSaved, onCancel,
     const proceed = latestNavigation.current;
     latestNavigation.current = null;
     onNavigationGuardChange?.(null);
-    onSaved(game);
+    onSaved(game,selectedReferences(game),proceed?'leave':'continue');
     proceed?.();
+  }
+  function selectedReferences(saved:GameDetail){
+    if(!referenceSelection)return undefined;
+    const selected=draft.references.filter(reference=>referenceSelection.ids.includes(reference.id||reference.localId));
+    const used=new Set<string>();
+    for(const item of selected){
+      const match=saved.reference_works.find(reference=>reference.id&&!used.has(reference.id)&&(item.id?item.id===reference.id:
+        (item.name.trim()||null)===(reference.name??null)&&(item.url.trim()||null)===(reference.url??null)&&
+        (item.reason.trim()||null)===(reference.reason??null)&&JSON.stringify(item.similarities.split('\n').map(value=>value.trim()).filter(Boolean))===JSON.stringify(reference.similarities)));
+      if(match?.id)used.add(match.id);
+    }
+    return [...used];
   }
   async function readCreated(id: string) {
     if (inFlight.current) return;
@@ -114,7 +128,7 @@ export function GameEditor({ api, initial, continuationLabel, onSaved, onCancel,
       requestAnimationFrame(() => { const element = document.getElementById(`game-${Object.keys(errors)[0]}`); const disclosure = element?.closest('details'); if (disclosure) disclosure.open = true; element?.focus(); });
       return;
     }
-    if (base && !dirty) { if (proceed) proceed(); else if (continuationLabel) onSaved(base); else onCancel(); return; }
+    if (base && !dirty) { if (proceed) proceed(); else if (continuationLabel) onSaved(base,selectedReferences(base)); else onCancel(); return; }
     setPendingNavigation(null); latestNavigation.current = proceed ?? null;
     inFlight.current = true; setState('saving'); setError(null);
     try {
@@ -166,7 +180,7 @@ export function GameEditor({ api, initial, continuationLabel, onSaved, onCancel,
   function back() { if (needsGuard) guard(onCancel); else onCancel(); }
 
   if (state === 'created') return <section className="game-created-state"><h2 ref={heading} tabIndex={-1}>Game created</h2><code>{createdId}</code>{error ? <><ErrorNotice error={error}/><button className="button primary" onClick={() => createdId && void readCreated(createdId)}>Retry latest</button><button className="text-button" onClick={onCancel}>Back to games</button></> : <Loading label="Loading latest game…"/>}</section>;
-  return <div className="game-editor"><div className="game-editor-heading"><button className="text-button" onClick={back}><Icon name="arrow"/>Back to games</button>{(busy || dirty) && <span className="read-only-label">{busy ? 'Saving…' : 'Unsaved changes'}</span>}</div><h2 ref={heading} tabIndex={-1}>{base ? 'Edit game' : 'New game'}</h2>
+  return <div className="game-editor"><div className="game-editor-heading"><button className="text-button" onClick={back}><Icon name="arrow"/>Back to games</button>{(busy || dirty) && <span className="read-only-label">{busy ? 'Saving…' : 'Unsaved changes'}</span>}</div><h2 ref={heading} tabIndex={-1}>{continuationLabel?'Game details & references':base ? 'Edit game' : 'New game'}</h2>{headerAccessory}
     {state === 'conflict' && base ? <section className="game-conflict" aria-label="Conflict resolution"><h3>Resolve changes</h3><p>Another editor saved this game.</p>{conflict?.error ? <ErrorNotice error={conflict.error} onRetry={() => void loadConflict()}/> : !conflict?.latest ? <Loading label="Loading latest record…"/> : <>
       <div className="game-conflict-rows">{changedKeys(base, draft).map(key => {
         const usesSource = key !== 'favorite' && key !== 'reference_works' && draft.resets.includes(key);
@@ -180,7 +194,7 @@ export function GameEditor({ api, initial, continuationLabel, onSaved, onCancel,
       {error && <ErrorNotice error={error}/>}
       {recoveryAvailable && onConnectionRepair && <button className="button secondary" type="button" onClick={onConnectionRepair}>Repair connection</button>}
       {Object.keys(fieldErrors).length > 0 && <div className="game-validation-summary" role="alert">Check the highlighted fields.</div>}
-      <form noValidate onSubmit={event => { event.preventDefault(); void save(); }}><GameForm base={base} draft={draft} disabled={busy || locked} errors={fieldErrors} onChange={next => { setDraft(next); setFieldErrors({}); setError(null); }}/><div className="game-editor-footer"><button className="button secondary" type="button" disabled={busy || locked} onClick={back}>Cancel</button><button className="button primary" type="submit" disabled={busy || locked || (Boolean(base) && !dirty && !continuationLabel)}>{busy ? 'Saving…' : base ? continuationLabel ?? 'Save changes' : 'Create game'}</button></div></form>
+      <form noValidate onSubmit={event => { event.preventDefault(); void save(); }}><GameForm base={base} draft={draft} disabled={busy || locked} errors={fieldErrors} selection={referenceSelection} onChange={next => { setDraft(next); setFieldErrors({}); setError(null); }}/><div className="game-editor-footer"><button className="button secondary" type="button" disabled={busy || locked} onClick={back}>Cancel</button><button className="button primary" type="submit" disabled={busy || locked || (Boolean(base) && !dirty && !continuationLabel)}>{busy ? 'Saving…' : continuationLabel ?? (base ? 'Save changes' : 'Create game')}</button></div></form>
     </>}
     {pendingNavigation && <UnsavedDialog locked={locked} busy={busy} resolving={state === 'conflict'} onStay={() => setPendingNavigation(null)} onDiscard={() => { const proceed = pendingNavigation; setPendingNavigation(null); setDraft(draftFrom(base)); onNavigationGuardChange?.(null); if (proceed !== onCancel) onCancel(); proceed(); }} onSave={() => void save(false, pendingNavigation)}/>}
   </div>;

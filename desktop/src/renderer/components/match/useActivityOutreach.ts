@@ -7,11 +7,11 @@ import {candidateSelection,excludedSelections,readCandidateMembership,visibleSel
 import {useOutreachOperation} from './useOutreachOperation';
 import {useMatchOperation} from './useMatchOperation';
 import type {OutreachCommand,OutreachReceipt} from './outreachMutation';
-type Props={api:Pick<DesktopBridge,'outreach'|'match'>;activityId:string;active:boolean;queryId:string|null;candidates:CandidateView[];candidateCurrent:boolean;options:Required<CandidateQueryOptions>;onOptions:(next:Required<CandidateQueryOptions>)=>void;blocked:boolean};
+type Props={api:Pick<DesktopBridge,'outreach'|'match'>;activityId:string;active:boolean;queryId:string|null;candidates:CandidateView[];candidateCurrent:boolean;options:Required<CandidateQueryOptions>;onOptions:(next:Required<CandidateQueryOptions>)=>void;blocked:boolean;onPrepared?:(batch:RecipientBatchDetail)=>void};
 type PendingFreeze={queryId:string;recipients:RecipientChoice[]};
 type AfterWrite={kind:'ordinary'}|{kind:'filter';apply:()=>void;count:number};
 const unavailable:PublicError={code:'preparation_unavailable',message:'Reload the current people and search before continuing.',retryable:true};
-export function useActivityOutreach({api,activityId,active,queryId,candidates,candidateCurrent,options,onOptions,blocked}:Props){
+export function useActivityOutreach({api,activityId,active,queryId,candidates,candidateCurrent,options,onOptions,blocked,onPrepared}:Props){
   const session=useOutreachSession(api.outreach,activityId,active),operation=useOutreachOperation(api.outreach),stopOperation=useMatchOperation(api.match);
   const [panel,setPanel]=useState<'candidates'|'selected'|'batch'>('candidates'),[selectedId,setSelectedId]=useState<string|null>(null);
   const [batchMode,setBatchMode]=useState<'current'|'history'>('current');
@@ -42,6 +42,7 @@ export function useActivityOutreach({api,activityId,active,queryId,candidates,ca
     if(!receipt)return false;
     if(receipt.kind==='freeze'){
       setBatch(receipt.data);setBatchCurrent(true);setBatchMode('current');setPanel('batch');setSelectedId(null);setHistoryEpoch(n=>n+1);pendingFreeze.current=null;setPendingCount(0);setNotice('Preparation saved');
+      onPrepared?.(receipt.data);
     }else{
       if(receipt.kind==='bulk'&&afterWrite.current.kind==='filter'){afterWrite.current.apply();setNotice(`${afterWrite.current.count} removed from selection`);}
       if(receipt.kind==='update')setNotice('Changes saved');

@@ -51,7 +51,7 @@ describe('editable Games Library', () => {
     await user.click(screen.getByRole('button',{name:'Add reference'}));
     await waitFor(() => expect(screen.getByRole('textbox',{name:'Reference name'})).toHaveFocus());
     await user.type(screen.getByRole('textbox',{name:'Reference name'}),'Nearby inspiration');
-    await user.click(screen.getByRole('button',{name:'Edit reference Nearby inspiration'}));
+    await user.click(screen.getByRole('button',{name:'Add'}));
     expect(screen.queryByRole('textbox',{name:'Reference name'})).not.toBeInTheDocument();
     await user.click(screen.getByRole('button',{name:'Edit reference Nearby inspiration'}));
     expect(screen.getByRole('textbox',{name:'Reference name'})).toHaveValue('Nearby inspiration');
@@ -294,14 +294,15 @@ describe('editable Games Library', () => {
     const { user } = start(api); await edit(user);
     for (const name of ['Beacon', 'Beacon', 'Remove me']) {
       await user.click(screen.getByRole('button', { name: 'Add reference' }));
-      const groups = screen.getAllByRole('group', { name: /^Reference \d+$/ });
-      await user.type(within(groups.at(-1)!).getByRole('textbox', { name: 'Reference name' }), name);
+      const dialog = screen.getByRole('dialog', { name: 'Add reference' });
+      await user.type(within(dialog).getByRole('textbox', { name: 'Reference name' }), name);
+      await user.click(within(dialog).getByRole('button',{name:'Add'}));
     }
     await user.click(screen.getByRole('button', { name: 'Remove reference Remove me' }));
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText('One lighthouse')).toBeVisible();
     expect(vi.mocked(api.games.update).mock.calls[0][0].data.reference_works).toEqual([
-      { name: 'Beacon', url: null, similarities: [], reason: null }, { name: 'Beacon', url: null, similarities: [], reason: null },
+      { name: 'Beacon', url: null, similarities: [], reason: null },
     ]);
     expect(screen.queryByText('Remove me')).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Reference works 1' })).toBeVisible();

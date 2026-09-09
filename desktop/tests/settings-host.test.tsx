@@ -98,6 +98,7 @@ describe('complete Settings host',()=>{
   it('keeps workspace input across categories and confirms before discarding it',async()=>{
     const {api,user}=start();
     await user.click(await screen.findByRole('button',{name:'Open Settings'}));
+    await user.clear(screen.getByLabelText('Service URL'));
     await user.type(screen.getByLabelText('Service URL'),'https://draft.example.com');
     await user.type(screen.getByLabelText('Workspace key'),'synthetic-unsaved');
     await user.click(screen.getByRole('tab',{name:'Appearance'}));

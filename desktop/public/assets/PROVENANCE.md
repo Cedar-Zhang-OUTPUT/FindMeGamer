@@ -1,5 +1,7 @@
 # 来源与许可边界
 
+`steam-entry.svg` 复用本项目 release-v5 设计包的 `assets/states/empty-search.svg`，用于 P1 Steam 入口；不是截图裁切或真实身份图片。
+
 本包没有附带第三方字体、购买素材库或官方平台 Logo，不承诺商标可注册、独家版权或已完成法律审查。
 
 ## 原生矢量

@@ -27,9 +27,7 @@ function setup(){
   return {api,user:userEvent.setup()};
 }
 async function createDrafts(user:ReturnType<typeof userEvent.setup>){
-  await user.click(await screen.findByRole('button',{name:'Selected · 1'}));
-  await user.click(await screen.findByRole('button',{name:'Prepare 1'}));
-  await user.click(await screen.findByRole('button',{name:'Choose template'}));
+  await user.click(await screen.findByRole('button',{name:'Draft 1 emails'}));
   await user.selectOptions(await screen.findByRole('combobox',{name:'Template version'}),draftIds.template);
   await user.click(screen.getByRole('button',{name:'Create 1 drafts'}));
   await screen.findByRole('textbox',{name:'Observation'});

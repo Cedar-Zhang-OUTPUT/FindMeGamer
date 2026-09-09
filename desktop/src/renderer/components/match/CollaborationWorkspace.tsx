@@ -1,9 +1,17 @@
 import {CollaborationEditor} from './CollaborationEditor';
+import type {ActivityInvitation} from '../../../shared/collaboration';
 import type {InvitationFilters,useActivityCollaboration} from './useActivityCollaboration';
 import {ErrorNotice,Loading} from '../Primitives';
 import {reconcileCollaboration,reviewCollaboration} from './collaborationMutation';
 import './collaborationWorkspace.css';
 const label=(s:string)=>s.replaceAll('_',' ');
+function recordedWork(row:ActivityInvitation){
+ const latest=row.memberships.reduce<ActivityInvitation['memberships'][number]|undefined>((found,item)=>!found||Date.parse(item.created_at)>Date.parse(found.created_at)?item:found,undefined);
+ const works=latest?.snapshot.works;if(!Array.isArray(works)||!works.length)return '—';
+ const work=works[0];if(!work||typeof work!=='object'||Array.isArray(work))return '—';
+ const name=typeof work.work_name==='string'?work.work_name:typeof work.content_title==='string'?work.content_title:null;
+ return name?name+(works.length>1?` +${works.length-1}`:''):'—';
+}
 export function CollaborationWorkspace({controller:c,active,onOpenCreator,onChoosePeople,onConnectionRepair}:{controller:ReturnType<typeof useActivityCollaboration>;active:boolean;onOpenCreator:(id:string)=>void;onChoosePeople:()=>void;onConnectionRepair?:()=>void}){
  const state=c.operation.state,attempt=state.phase==='uncertain'?state.attempt:null;
  return <section hidden={!active} className="collaboration-workspace" aria-label="Invitations">
@@ -16,7 +24,7 @@ export function CollaborationWorkspace({controller:c,active,onOpenCreator,onChoo
   {(c.locked||state.error)&&<div className="collaboration-recovery"><button className="button secondary" disabled={c.busy} onClick={()=>void c.checkCurrent()}>Check current record</button>{c.locked&&<button className="button secondary" disabled={!c.operation.retryAllowed||c.busy} onClick={()=>void c.retryOriginal()}>Retry original request</button>}{onConnectionRepair&&<button className="text-button" onClick={onConnectionRepair}>Open Settings</button>}
     {attempt&&c.readback&&<><p>Current revision {c.readback.revision}</p><button disabled={!reconcileCollaboration(attempt,c.readback)||c.busy} onClick={c.confirmCurrent}>Confirm saved change</button><button disabled={!reviewCollaboration(attempt,c.readback)||c.busy} onClick={c.reviewCurrent}>Review newer version</button></>}
   </div>}
-  <div className="collaboration-layout"><aside><ul aria-label="Invitation relationships">{c.page?.items.map(row=><li key={row.selection_id}><button aria-pressed={c.selectedId===row.selection_id} disabled={c.busy||c.locked} onClick={()=>c.select(row.selection_id)}><strong>{row.display_name||'Unnamed creator'}</strong><span>{label(row.invitation_state)}</span><small>{label(row.sending_state)} · {label(row.cooperation_state)}{!row.selected?' · Historical':''}</small></button></li>)}</ul>
+  <div className="collaboration-layout"><aside><div className="collaboration-roster-head" aria-hidden="true"><span>Creator / work</span><span>Sending</span><span>Response</span><span>Follow-up</span></div><ul aria-label="Invitation relationships">{c.page?.items.map(row=><li key={row.selection_id}><button aria-pressed={c.selectedId===row.selection_id} disabled={c.busy||c.locked} onClick={()=>c.select(row.selection_id)}><span className="collaboration-roster-person"><strong>{row.display_name||'Unnamed creator'}</strong><small>{row.identity.platform==='youtube'?'YouTube':row.identity.platform==='x'?'X':typeof row.identity.platform==='string'?row.identity.platform:'Platform unknown'} · {recordedWork(row)}{!row.selected?' · Historical':''}</small></span><span className={`collaboration-state sending-${row.sending_state}`}>{label(row.sending_state)}</span><span className={`collaboration-state response-${row.invitation_state}`}>{label(row.invitation_state)}</span><span className="collaboration-state">{label(row.follow_up_state)}</span></button></li>)}</ul>
     {c.page?.items.length===0&&!c.loading&&<div><p>{Object.keys(c.filters).length?'No matching invitations':'No invitations yet'}</p>{!Object.keys(c.filters).length&&<button className="button secondary" onClick={onChoosePeople}>Choose creators</button>}</div>}
     {c.page&&c.page.total>0&&<div className="collaboration-pagination"><span>{c.page.offset+1}–{c.page.offset+c.page.items.length} / {c.page.total}</span><button disabled={c.busy||c.locked||c.loading||c.offset===0} onClick={()=>c.changePage(Math.max(0,c.offset-50))}>Previous</button><button disabled={c.busy||c.locked||c.loading||c.offset+50>=c.page.total} onClick={()=>c.changePage(c.offset+50)}>Next</button></div>}
   </aside><div>{c.invitation?<CollaborationEditor key={c.editorEpoch} invitation={c.invitation} current={active&&c.current} busy={c.busy||c.locked} confirmedChange={c.confirmedChange} onUpdate={c.update} onRespond={c.respond} onDirtyChange={c.setDirty} onOpenCreator={()=>onOpenCreator(c.invitation!.creator_id)}/>:c.selectedId?<Loading label="Loading relationship…"/>:null}</div></div>
