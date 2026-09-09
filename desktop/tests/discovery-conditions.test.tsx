@@ -15,7 +15,7 @@ function Harness({initial=defaultConditions(),submit=vi.fn(),disabled=false}:{in
 const payload=()=>JSON.parse(screen.getByTestId('conditions').textContent!) as PlanCreate;
 describe('discovery condition values',()=>{
   it('defaults to supported discovery, all unknown values and bounded budgets',()=>{
-    expect(defaultConditions()).toEqual({mode:'discover',platforms:['youtube','x'],keywords:[],filters:{countries:[],languages:[],pending_country_labels:[],follower_ranges:[],include_unknown_country:true,include_unknown_language:true,include_unknown_followers:true,contact:'any'},batch_target:100,result_limit:600,batch_request_budget:20,batch_scan_budget:1000,total_request_budget:120,total_scan_budget:6000});
+    expect(defaultConditions()).toEqual({mode:'discover',platforms:['youtube','x','twitch','instagram'],keywords:[],filters:{countries:[],languages:[],pending_country_labels:[],follower_ranges:[],include_unknown_country:true,include_unknown_language:true,include_unknown_followers:true,contact:'any'},batch_target:100,result_limit:600,batch_request_budget:20,batch_scan_budget:1000,total_request_budget:120,total_scan_budget:6000});
   });
   it('validates platform, text, range and budget limits without confusing zero with unknown',()=>{
     const value=defaultConditions();value.platforms=[];value.keywords=['\n'];value.filters={countries:['USA'],languages:[''],follower_ranges:[{minimum:10,maximum:0}]};value.total_scan_budget=12001;
@@ -26,10 +26,10 @@ describe('discovery condition values',()=>{
   });
 });
 describe('DiscoveryConditions',()=>{
-  it('keeps quota notice visible, unavailable providers disabled and advanced budgets optional',async()=>{
+  it('keeps quota notice visible, all four platforms selectable and advanced budgets optional',async()=>{
     const user=userEvent.setup(),submit=vi.fn();render(<Harness submit={submit}/>);
     expect(screen.getByText('Uses model and platform quotas.')).toBeVisible();
-    expect(screen.getByRole('checkbox',{name:/Twitch/})).toBeDisabled();expect(screen.getByRole('checkbox',{name:/Instagram/})).toBeDisabled();
+    expect(screen.getByRole('checkbox',{name:/Twitch/})).toBeEnabled();expect(screen.getByRole('checkbox',{name:/Instagram/})).toBeEnabled();
     expect(screen.getByLabelText('Batch target')).not.toBeVisible();
     await user.click(screen.getByText('Advanced limits',{selector:'summary'}));
     expect(screen.getByLabelText('Batch target')).toHaveValue(100);

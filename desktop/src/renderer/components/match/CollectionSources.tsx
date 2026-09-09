@@ -15,10 +15,14 @@ export function CollectionSources({selected,query,policy,onSettings}:{selected:r
       const saved=policy.data?.items.find(item=>item.platform===platform);
       const title=platform==='youtube'?'YouTube':platform==='x'?'X':taskLabel(platform);
       const off=Boolean(saved?.implemented&&!saved.enabled);
+      const library=source?.library&&typeof source.library==='object'&&!Array.isArray(source.library)?source.library:null;
+      const realtimeUnavailable=Boolean(saved&&(!saved.implemented||!saved.enabled||!saved.credentials_configured))||['not_supported','missing_connection','failed'].includes(String(source?.status));
       const resumed=source?.blocked_reason==='collection_disabled'&&saved?.enabled&&saved.implemented&&saved.credentials_configured;
       return <div key={platform} className={`match-source-status ${off?'collection-off':''}`}>
         <strong>{source?`${title} · ${taskLabel(typeof source.status==='string'?source.status:'unknown')}`:title}</strong>
-        <span>{off&&running&&source?.blocked_reason!=='collection_disabled'&&source?.status!=='exhausted'?'Pauses after in-flight collection':resumed?'Ready to continue':saved?collectionLabel(saved):source?.blocked_reason==='collection_disabled'?'Collection off':'Checking collection settings…'}</span>
+        <span>{library?`Library · ${typeof library.added_count==='number'?`${library.added_count} found · `:''}${library.status==='complete'?'Search complete':library.status==='more'?'More available':'Pending'}`:'Library'}</span>
+        <span>{off&&running&&source?.blocked_reason!=='collection_disabled'&&source?.status!=='exhausted'?'Pauses after in-flight collection':resumed?'Ready to continue':realtimeUnavailable?'Real-time data unavailable':saved?collectionLabel(saved):'Checking real-time access…'}</span>
+        {off&&<span>Real-time collection off</span>}
       </div>;
     })}</div>
     <div className="match-collection-actions">{unavailable&&<strong role="status">No available sources</strong>}{policy.phase==='failed'&&<span>Showing last known settings</span>}{onSettings&&<button className="text-button" onClick={onSettings}>Collection settings</button>}</div>

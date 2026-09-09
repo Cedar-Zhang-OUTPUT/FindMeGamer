@@ -1,8 +1,11 @@
 import type {QueryView} from '../../../shared/match';
 import {queryIsRunning} from './useMatchSession';
 export function canContinueQuery(query:QueryView){
-  if(queryIsRunning(query)||query.result_count>=(query.conditions.result_limit??600)||query.requests_reserved>=(query.conditions.total_request_budget??120)||query.scanned_reserved>=(query.conditions.total_scan_budget??6000))return false;
-  const states=Object.values(query.sources).map(value=>value&&typeof value==='object'&&!Array.isArray(value)?value.status:null);
+  if(queryIsRunning(query)||query.result_count>=(query.conditions.result_limit??600))return false;
+  const sources=Object.values(query.sources);
+  if(sources.some(value=>{if(!value||typeof value!=='object'||Array.isArray(value))return false;const library=value.library;return library&&typeof library==='object'&&!Array.isArray(library)&&['pending','more'].includes(String(library.status));}))return true;
+  if(query.requests_reserved>=(query.conditions.total_request_budget??120)||query.scanned_reserved>=(query.conditions.total_scan_budget??6000))return false;
+  const states=sources.map(value=>value&&typeof value==='object'&&!Array.isArray(value)?value.status:null);
   return !states.length||!states.every(status=>['exhausted','not_supported','budget_exhausted'].includes(String(status)));
 }
 export const taskDate=(value:string)=>new Intl.DateTimeFormat('en',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date(value));

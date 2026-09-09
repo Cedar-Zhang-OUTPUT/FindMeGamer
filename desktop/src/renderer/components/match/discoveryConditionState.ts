@@ -29,7 +29,7 @@ export function filtersFrom(value:PlanCreate):Required<CandidateFilters>{
   return {countries:[],languages:[],pending_country_labels:[],follower_ranges:[],include_unknown_country:true,include_unknown_language:true,include_unknown_followers:true,contact:'any',...value.filters};
 }
 export function defaultConditions():PlanCreate{
-  return {mode:'discover',platforms:['youtube','x'],keywords:[],filters:filtersFrom({mode:'discover',platforms:['youtube','x']}),...Object.fromEntries(BUDGETS.map(({key,value})=>[key,value]))};
+  return {mode:'discover',platforms:['youtube','x','twitch','instagram'],keywords:[],filters:filtersFrom({mode:'discover',platforms:['youtube','x','twitch','instagram']}),...Object.fromEntries(BUDGETS.map(({key,value})=>[key,value]))};
 }
 export function sameRange(a:FollowerRange,b:FollowerRange){return (a.minimum??null)===(b.minimum??null)&&(a.maximum??null)===(b.maximum??null);}
 export function rangeError(ranges:FollowerRange[]):string|undefined{
@@ -44,7 +44,7 @@ export function rangeError(ranges:FollowerRange[]):string|undefined{
 export const cleanText=(value:string,limit:number)=>Boolean(value.trim())&&value.length<=limit&&!/[\u0000-\u001f\u007f]/.test(value);
 export function validateConditions(value:PlanCreate):Record<string,string>{
   const errors:Record<string,string>={};
-  if(!value.platforms.length||value.platforms.length>2||new Set(value.platforms).size!==value.platforms.length||value.platforms.some(platform=>!['youtube','x'].includes(platform)))errors.platforms='Choose YouTube or X.';
+  if(!value.platforms.length||value.platforms.length>4||new Set(value.platforms).size!==value.platforms.length||value.platforms.some(platform=>!['youtube','x','twitch','instagram'].includes(platform)))errors.platforms='Choose at least one platform.';
   if((value.keywords??[]).length>20||(value.keywords??[]).some(word=>!cleanText(word,100)))errors.keywords='Use up to 20 keywords, each 1–100 characters.';
   const filters=filtersFrom(value);
   if(filters.countries.length>30||filters.countries.some(code=>!/^[A-Z]{2}$/.test(code)))errors.countries='Use up to 30 two-letter country codes.';

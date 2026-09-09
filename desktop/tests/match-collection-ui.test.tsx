@@ -42,7 +42,7 @@ it('re-enabling and refreshing does not dispatch; only the explicit Continue but
 });
 it('a disabled YouTube channel does not suppress the enabled X source',async()=>{
   const query=queryFixture();query.conditions.providers.push({platform:'x',query:'indie'});query.sources={youtube:{status:'more',blocked_reason:'collection_disabled'},x:{status:'more'}};
-  const {api}=start(query);await screen.findByText('Collection off');
+  const {api}=start(query);await screen.findByText('Real-time collection off');
   expect(screen.getByRole('button',{name:'Continue discovery'})).toBeEnabled();expect(screen.queryByText('No available sources')).not.toBeInTheDocument();
   expect(api.match.continueDiscovery).not.toHaveBeenCalled();
 });
@@ -54,7 +54,11 @@ it('communicates bounded in-flight pause without pretending the running task sto
 it('keeps new-search inputs usable while no selected channel is eligible',async()=>{
   const {api,user}=start();await screen.findByText('No available sources');
   await user.click(screen.getByRole('button',{name:'Adjust conditions'}));
-  const find=screen.getByRole('button',{name:'Find creators'});expect(find).toBeDisabled();
+  const find=screen.getByRole('button',{name:'Find creators'});expect(find).toBeEnabled();
   await user.click(screen.getByRole('checkbox',{name:/^X$/}));expect(find).toBeEnabled();
   expect(api.match.createPlan).not.toHaveBeenCalled();
+});
+it('continues Library results independently from unavailable real-time access',async()=>{
+ const query=queryFixture();query.conditions.providers=[{platform:'twitch',query:'indie'}];query.sources={twitch:{status:'not_supported',library:{status:'more',scanned_count:50,added_count:2}}};
+ const {api}=start(query);expect(await screen.findByText('Real-time data unavailable')).toBeVisible();expect(screen.getByText('Library · 2 found · More available')).toBeVisible();expect(screen.getByRole('button',{name:'Continue discovery'})).toBeEnabled();expect(screen.getByRole('button',{name:'Evaluate 2 loaded'})).toBeEnabled();expect(api.match.continueDiscovery).not.toHaveBeenCalled();
 });

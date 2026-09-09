@@ -20,7 +20,7 @@ export interface DiscoveryBudgets {
   batch_target?: number; result_limit?: number; batch_request_budget?: number;
   batch_scan_budget?: number; total_request_budget?: number; total_scan_budget?: number;
 }
-export type PlanningPlatform = 'youtube' | 'x';
+export type PlanningPlatform = 'youtube' | 'x' | 'twitch' | 'instagram';
 export interface PlanCreate extends DiscoveryBudgets {
   mode: 'preview' | 'discover'; platforms: PlanningPlatform[]; keywords?: string[]; filters?: CandidateFilters;
 }

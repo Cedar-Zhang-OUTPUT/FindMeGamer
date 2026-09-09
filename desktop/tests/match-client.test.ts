@@ -5,6 +5,11 @@ const key = 'match-operation-123';
 const activities = '/api/v2/activities', discovery = '/api/v2/discovery';
 
 describe('Match client v2 boundary', () => {
+  it('accepts all four planning platforms without injecting source switches',async()=>{
+    const request=vi.fn(async()=>({plan_id:P,status:'queued'})),platforms=['youtube','x','twitch','instagram'] as const;
+    await new MatchClient(request).createPlan({activityId:A,idempotencyKey:key,data:{mode:'discover',platforms:[...platforms]}});
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({body:{mode:'discover',platforms:[...platforms]}}));
+  });
   it('routes every read with the correct ownership and bounded pagination', async () => {
     const cases = [
       [(c: MatchClient) => c.activities({}), activityFixture(), { method: 'GET', path: activities, query: { offset: '0', limit: '50' } }, true],
@@ -42,7 +47,7 @@ describe('Match client v2 boundary', () => {
     }
   });
   it.each([
-    { mode: 'discover', platforms: [] }, { mode: 'discover', platforms: ['youtube', 'youtube'] }, { mode: 'discover', platforms: ['twitch'] },
+    { mode: 'discover', platforms: [] }, { mode: 'discover', platforms: ['youtube', 'youtube'] }, { mode: 'discover', platforms: ['unknown'] },
     { mode: 'discover', platforms: ['x'], batch_target: 101 }, { mode: 'discover', platforms: ['x'], result_limit: 601 },
     { mode: 'discover', platforms: ['x'], batch_request_budget: 41 }, { mode: 'discover', platforms: ['x'], total_request_budget: 241 },
     { mode: 'discover', platforms: ['x'], batch_scan_budget: 2001 }, { mode: 'discover', platforms: ['x'], total_scan_budget: 12001 },

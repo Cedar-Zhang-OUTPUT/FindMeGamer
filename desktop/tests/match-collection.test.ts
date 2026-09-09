@@ -15,10 +15,18 @@ it('lets a selected enabled source continue when another source is administrativ
   const query=queryFixture();query.conditions.providers.push({platform:'x',query:'indie'});query.sources={youtube:{status:'more',blocked_reason:'collection_disabled'},x:{status:'more'}};
   expect(canContinueWithCollection(query,policy())).toBe(true);
 });
+it('allows four library sources and continues unscanned library pages while real-time is unavailable',()=>{
+ expect(eligiblePlatforms(['youtube','x','twitch','instagram'],policy())).toEqual(['youtube','x','twitch','instagram']);
+ const query=queryFixture();query.conditions.providers=[{platform:'twitch',query:'indie'}];query.sources={twitch:{status:'not_supported',library:{status:'more',scanned_count:50,added_count:5}}};
+ expect(canContinueWithCollection(query,policy())).toBe(true);
+ expect(canContinueWithCollection({...query,requests_reserved:120,scanned_reserved:6000},policy())).toBe(true);
+ expect(canContinueWithCollection({...query,result_count:600},policy())).toBe(false);
+ query.sources={twitch:{status:'not_supported',library:{status:'complete',scanned_count:50,added_count:5}}};expect(canContinueWithCollection(query,policy())).toBe(false);
+});
 it('does not use an enabled but unselected source or an unimplemented platform',()=>{
   expect(canContinueWithCollection(queryFixture(),policy())).toBe(false);
-  expect(eligiblePlatforms(['youtube','twitch','instagram'],policy())).toEqual([]);
-  expect(collectionLabel(policy().items[2])).toBe('Unavailable in this version');
+  expect(eligiblePlatforms(['youtube','twitch','instagram'],policy())).toEqual(['youtube','twitch','instagram']);
+  expect(collectionLabel(policy().items[2])).toBe('Real-time data unavailable');
 });
 it('allows explicit continuation after re-enable without rewriting saved source status',()=>{
   const query=queryFixture();query.sources.youtube={status:'more',blocked_reason:'collection_disabled'};
@@ -34,9 +42,9 @@ it('keeps quota and exhausted-source limits even when a channel is enabled',()=>
   expect(canContinueWithCollection(query,policy())).toBe(false);
 });
 it('requires a known policy and saved credentials without claiming verified access',()=>{
-  expect(eligiblePlatforms(['x'],null)).toEqual([]);
+  expect(eligiblePlatforms(['x'],null)).toEqual(['x']);
   const settings=policy();settings.items[1]={...settings.items[1],credentials_configured:false,availability:'missing_connection'};
-  expect(eligiblePlatforms(['x'],settings)).toEqual([]);
+  expect(eligiblePlatforms(['x'],settings)).toEqual(['x']);
   expect(collectionLabel(settings.items[1])).toBe('Credentials needed');
   expect(collectionLabel(policy().items[1])).toBe('Access unverified');
 });
@@ -48,4 +56,11 @@ it('retains the administrative blocked reason alongside the original provider ou
   const response=wireQuery();response.sources.youtube={status:'partial',coverage:'partial',issues:[],blocked_reason:'collection_disabled'};
   const result=await new MatchClient(vi.fn(async()=>response)).query(response.id);
   expect(result.sources.youtube).toEqual({status:'partial',coverage:'partial',issues:[],blocked_reason:'collection_disabled'});
+});
+it('validates independent Library source progress without discarding the real-time outcome',async()=>{
+ const response=wireQuery();response.sources.youtube={status:'not_supported',library:{status:'more',scanned_count:200,added_count:20}};
+ expect((await new MatchClient(vi.fn(async()=>response)).query(response.id)).sources).toEqual(response.sources);
+ for(const library of [{status:'invented',scanned_count:0,added_count:0},{status:'more',scanned_count:-1,added_count:2},{status:'more',scanned_count:2,added_count:1,_cursor:'private'}]){
+   response.sources.youtube=JSON.parse(JSON.stringify({status:'not_supported',library}));await expect(new MatchClient(vi.fn(async()=>response)).query(response.id)).rejects.toMatchObject({code:'invalid_response'});
+ }
 });

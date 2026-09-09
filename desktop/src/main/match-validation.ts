@@ -69,6 +69,7 @@ const sourceStates: Rule = (value, mode) => {
   for(const source of Object.values(sources)){
     const state=object(source,mode);
     if(Object.hasOwn(state,'blocked_reason')&&state.blocked_reason!=='collection_disabled')fail(mode);
+    if(Object.hasOwn(state,'library'))record({status:enumeration('pending','more','complete'),scanned_count:count(),added_count:count()})(state.library,mode);
   }
   return sources;
 };
@@ -78,7 +79,7 @@ const dictionary = (rule: Rule): Rule => (value, mode) => {
 };
 const ids = (max: number, min = 0, unique = false) => list(identifier, max, min, unique ? id => id.toLowerCase() : undefined);
 const platform = enumeration('youtube', 'x', 'twitch', 'instagram');
-const planningPlatform = enumeration('youtube', 'x');
+const planningPlatform = enumeration('youtube', 'x', 'twitch', 'instagram');
 const followerRange: Rule = (value, mode) => {
   const result = record({}, { minimum: nullable(count()), maximum: nullable(count()) })(value, mode) as DTO.FollowerRange;
   if (result.minimum == null && result.maximum == null) fail(mode);
@@ -92,7 +93,7 @@ const filters = record({}, {
 });
 const options = { filters, batch_target: count(100, 1), result_limit: count(600, 1), batch_request_budget: count(40, 1),
   batch_scan_budget: count(2000, 1), total_request_budget: count(240, 1), total_scan_budget: count(12000, 1) };
-const planCreate = record({ mode: enumeration('preview', 'discover'), platforms: list(planningPlatform, 2, 1, value => value) }, { keywords: list(keyword, 20), ...options });
+const planCreate = record({ mode: enumeration('preview', 'discover'), platforms: list(planningPlatform, 4, 1, value => value) }, { keywords: list(keyword, 20), ...options });
 const activityCreate = record({ game_id: identifier, name: string(255, 1) }, { reference_work_ids: ids(100) });
 const continueDiscovery = record({}, { acknowledge_unknown: boolean });
 const evaluationCreate = record({}, { candidate_ids: nullable(ids(600, 1, true)) });
@@ -122,8 +123,8 @@ const query = record({ id: identifier, activity_id: identifier, conditions: quer
   requests_reserved: count(), scanned_reserved: count(), sources: sourceStates,
   batches: list(batch, 10_000, 0, value => value.id.toLowerCase()), usage, created_at: time });
 const planOutput = record({ summary: narrative(1500), rationale: narrative(1500),
-  queries: list(record({ platform: planningPlatform, terms: list(narrative(100), 3, 1) }), 2, 1),
-  provider_queries: record({}, { youtube: string(512, 1), x: string(512, 1) }) });
+  queries: list(record({ platform: planningPlatform, terms: list(narrative(100), 3, 1) }), 4, 1),
+  provider_queries: record({}, { youtube: string(512, 1), x: string(512, 1), twitch: string(512, 1), instagram: string(512, 1) }) });
 const plan = record({ id: identifier, activity_id: identifier, status: enumeration('queued', 'running', 'ready', 'failed'),
   conditions: planCreate, source_snapshot: jsonObject, output: nullable(planOutput), error_code: nullable(string(255)),
   retryable: boolean, attempt: count(), model: string(255), query_id: nullable(identifier), created_at: time });
