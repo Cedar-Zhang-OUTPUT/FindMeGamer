@@ -14,13 +14,14 @@ from app.repositories.library_v2 import game_detail
 from app.repositories.creator_library import effective_fields, work_detail
 from app.repositories.discovery_evaluation import result_rows
 from app.core.idempotency import utc_now
+from app.core.creator_identity import creator_account_key
 from app.schemas.activity_outreach import Preparation, PreparationContact
 
 
 def identity(creator):
     return {
         "platform": creator.platform,
-        "account_id": creator.platform_account_id or creator.youtube_channel_id,
+        "account_id": creator_account_key(creator),
         "revision": creator.identity_revision,
     }
 

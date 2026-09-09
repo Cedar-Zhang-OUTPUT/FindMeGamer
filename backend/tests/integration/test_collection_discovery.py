@@ -80,7 +80,8 @@ def test_unimplemented_preset_is_recoverable_without_paid_attempt(session, enabl
         batch.id,
         **factories(session, lambda req: pytest.fail("Preset made a paid request")),
     )
-    assert query.status == "paused"
-    assert batch.reason == "no_available_sources"
+    assert query.status == "completed"
+    assert batch.reason == "library_only"
+    assert query.provider_states["twitch"]["library"]["status"] == "complete"
     assert query.requests_reserved == 0
     assert query.provider_states["twitch"]["status"] == "not_supported"

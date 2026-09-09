@@ -106,6 +106,11 @@ def _query(session, item):
         platform: {key: value for key, value in state.items() if key != "cursor"}
         for platform, state in (item.provider_states or {}).items()
     }
+    for state in sources.values():
+        if "library" in state:
+            state["library"] = {
+                k: v for k, v in state["library"].items() if not k.startswith("_")
+            }
     attempts = session.scalars(
         select(DiscoveryAttempt)
         .join(DiscoveryBatch)

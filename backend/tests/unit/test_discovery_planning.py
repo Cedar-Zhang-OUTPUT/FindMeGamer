@@ -75,7 +75,9 @@ def test_generate_plan_uses_real_gateway_and_compiles_provider_queries() -> None
     }
 
 
-def test_generate_plan_prompt_includes_only_allowlisted_frozen_and_condition_fields() -> None:
+def test_generate_plan_prompt_includes_only_allowlisted_frozen_and_condition_fields() -> (
+    None
+):
     captured: list[dict] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -209,7 +211,11 @@ def test_url_only_game_fails_before_model_io() -> None:
         lambda value: value | {"summary": "x" * 1501},
         lambda value: value | {"queries": []},
         lambda value: value
-        | {"queries": [{"platform": "youtube", "terms": ["one", "two", "three", "four"]}]},
+        | {
+            "queries": [
+                {"platform": "youtube", "terms": ["one", "two", "three", "four"]}
+            ]
+        },
         lambda value: value
         | {"queries": [{"platform": "youtube", "terms": ["site:evil.example"]}]},
         lambda value: value
@@ -237,12 +243,16 @@ def test_search_plan_schema_rejects_invalid_shape_and_unsafe_terms(mutate) -> No
         (["youtube"], [{"platform": "x", "terms": ["Café Quest"]}]),
     ],
 )
-def test_generate_plan_rejects_platform_mismatch_after_one_repair(platforms, queries) -> None:
+def test_generate_plan_rejects_platform_mismatch_after_one_repair(
+    platforms, queries
+) -> None:
     body = _valid_output() | {"queries": queries}
     calls = []
+
     def handler(request):
         calls.append(request)
         return _response(json.dumps(body))
+
     gateway = _gateway(handler)
 
     with pytest.raises(InvalidModelOutput, match="deepseek_model_output_invalid"):
@@ -255,22 +265,31 @@ def test_generate_plan_rejects_platform_mismatch_after_one_repair(platforms, que
     assert len(calls) == 2
 
 
-@pytest.mark.parametrize("wrong_platforms", [["x"], ["youtube", "x"], ["youtube", "youtube"]])
+@pytest.mark.parametrize(
+    "wrong_platforms", [["x"], ["youtube", "x"], ["youtube", "youtube"]]
+)
 def test_platform_mismatch_uses_existing_single_schema_repair(wrong_platforms):
     requests = []
+
     def handler(request):
         payload = json.loads(request.read())
         requests.append(payload)
         platforms = wrong_platforms if len(requests) == 1 else ["youtube"]
-        body = _valid_output() | {"queries": [{"platform": p, "terms": ["LIMINAL Within"]} for p in platforms]}
+        body = _valid_output() | {
+            "queries": [{"platform": p, "terms": ["LIMINAL Within"]} for p in platforms]
+        }
         return _response(json.dumps(body))
+
     output = generate_plan(
-        {"game": {"name": "LIMINAL: Within"}}, {"platforms": ["youtube"]},
-        gateway=_gateway(handler), model="deepseek-chat",
+        {"game": {"name": "LIMINAL: Within"}},
+        {"platforms": ["youtube"]},
+        gateway=_gateway(handler),
+        model="deepseek-chat",
     )
     assert [query.platform for query in output.queries] == ["youtube"]
     assert len(requests) == 2
     assert all(request["max_tokens"] == 2048 for request in requests)
+
 
 def test_generate_plan_propagates_gateway_timeout() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
@@ -293,7 +312,9 @@ def test_generate_plan_propagates_truncated_output_without_retry() -> None:
         calls += 1
         return _response('{"summary":"partial', finish_reason="length")
 
-    with pytest.raises(TransientIntegrationError, match="deepseek_model_output_invalid"):
+    with pytest.raises(
+        TransientIntegrationError, match="deepseek_model_output_invalid"
+    ):
         generate_plan(
             {"game": {"name": "Café Quest"}},
             {"platforms": ["youtube"]},
@@ -304,11 +325,24 @@ def test_generate_plan_propagates_truncated_output_without_retry() -> None:
     assert calls == 1
 
 
-def test_keyword_repair_explains_unsafe_title_punctuation_without_weakening_validation(caplog):
+def test_keyword_repair_explains_unsafe_title_punctuation_without_weakening_validation(
+    caplog, monkeypatch
+):
+    import logging
+
+    # Alembic's fileConfig disables preimported loggers in combined suite runs.
+    monkeypatch.setattr(
+        logging.getLogger("app.integrations.deepseek"), "disabled", False
+    )
     requests = []
-    invalid = {"summary": "Supplied puzzle game.", "rationale": "Search supplied title.",
-               "queries": [{"platform": "youtube", "terms": ["LIMINAL: Within"]}]}
-    valid = invalid | {"queries": [{"platform": "youtube", "terms": ["LIMINAL Within"]}]}
+    invalid = {
+        "summary": "Supplied puzzle game.",
+        "rationale": "Search supplied title.",
+        "queries": [{"platform": "youtube", "terms": ["LIMINAL: Within"]}],
+    }
+    valid = invalid | {
+        "queries": [{"platform": "youtube", "terms": ["LIMINAL Within"]}]
+    }
 
     def handler(request):
         payload = json.loads(request.read())
@@ -320,26 +354,38 @@ def test_keyword_repair_explains_unsafe_title_punctuation_without_weakening_vali
         assert "colons" in repair
         return _response(json.dumps(valid))
 
-    output = generate_plan({"game": {"name": "LIMINAL: Within"}},
-                           {"platforms": ["youtube"]}, gateway=_gateway(handler),
-                           model="deepseek-v4-flash")
+    output = generate_plan(
+        {"game": {"name": "LIMINAL: Within"}},
+        {"platforms": ["youtube"]},
+        gateway=_gateway(handler),
+        model="deepseek-v4-flash",
+    )
     assert len(requests) == 2
     assert output.queries[0].terms == ["LIMINAL Within"]
     assert "LIMINAL" not in caplog.text
     assert "keyword_unsafe_query_syntax" in caplog.text
 
 
-@pytest.mark.parametrize("code,expected", [
-    ("planning_platform_invalid", "planning_platform_invalid"),
-    ("deepseek_response_invalid", "deepseek_response_invalid"),
-    ("private-model-text", "unclassified"),
-])
-def test_planning_failure_log_keeps_allowlisted_cause_without_raw_exception(code, expected, caplog):
+@pytest.mark.parametrize(
+    "code,expected",
+    [
+        ("planning_platform_invalid", "planning_platform_invalid"),
+        ("deepseek_response_invalid", "deepseek_response_invalid"),
+        ("private-model-text", "unclassified"),
+    ],
+)
+def test_planning_failure_log_keeps_allowlisted_cause_without_raw_exception(
+    code, expected, caplog
+):
     from uuid import UUID
     from app.workers.planning_tasks import _log_failure
 
-    _log_failure(UUID("00000000-0000-0000-0000-000000000001"), InvalidModelOutput(code),
-                 "planning_model_output_invalid", 1)
+    _log_failure(
+        UUID("00000000-0000-0000-0000-000000000001"),
+        InvalidModelOutput(code),
+        "planning_model_output_invalid",
+        1,
+    )
     record = json.loads(caplog.records[-1].message)
     assert record["reason"] == expected
     assert record["attempt"] == 1

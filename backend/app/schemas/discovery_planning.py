@@ -6,11 +6,12 @@ from pydantic import BaseModel, Field, StrictStr, model_validator
 
 from app.schemas.activity import DiscoveryOptions
 from app.schemas.discovery_plan_output import SearchPlanOutput
+from app.schemas.discovery import Platform
 
 
 class PlanCreate(DiscoveryOptions):
     mode: Literal["preview", "discover"]
-    platforms: list[Literal["youtube", "x"]] = Field(min_length=1, max_length=2)
+    platforms: list[Platform] = Field(min_length=1, max_length=4)
     keywords: list[Annotated[StrictStr, Field(min_length=1, max_length=100)]] = Field(
         default_factory=list, max_length=20
     )
@@ -32,7 +33,7 @@ class PlanAccepted(BaseModel):
 
 
 class PublishedPlanOutput(SearchPlanOutput):
-    provider_queries: dict[Literal["youtube", "x"], str]
+    provider_queries: dict[Platform, str]
 
 
 class PlanView(BaseModel):

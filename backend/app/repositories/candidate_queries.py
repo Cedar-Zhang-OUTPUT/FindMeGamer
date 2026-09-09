@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.db.models.discovery import DiscoveryCandidate
+from app.core.creator_identity import creator_account_key
 from app.db.models.discovery_evaluation import EvaluationRun, EvaluationItem
 from app.db.models.profiles import CreatorProfile
 from app.repositories.creator_library import detail
@@ -91,8 +92,7 @@ def candidate_page(
             creator is None
             or creator.identity_revision != row.identity_revision
             or creator.platform != row.platform
-            or (creator.platform_account_id or creator.youtube_channel_id)
-            != row.account_id
+            or creator_account_key(creator) != row.account_id
         )
         current = detail(creator) if creator else None
         groups = (

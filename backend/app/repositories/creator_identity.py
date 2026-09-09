@@ -86,7 +86,7 @@ def rebind_creator(
                 ActivityDelivery.snapshot["identity"]["platform"].astext
                 == creator.platform,
                 ActivityDelivery.snapshot["identity"]["account_id"].astext
-                == old_account,
+                == (old_account or f"library:{creator.id}"),
             )
             .limit(1)
         )

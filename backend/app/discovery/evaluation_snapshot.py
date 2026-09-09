@@ -4,6 +4,7 @@ import hashlib
 import json
 
 from app.repositories.creator_library import effective_fields, work_detail
+from app.core.creator_identity import creator_account_key
 
 GAME_FIELDS = ("name", "description", "tags", "developer", "languages", "release_date")
 CREATOR_FIELDS = (
@@ -110,7 +111,7 @@ def creator_snapshot(creator, candidate_id):
     )
     identity = {
         "platform": creator.platform,
-        "account_id": creator.platform_account_id or creator.youtube_channel_id,
+        "account_id": creator_account_key(creator),
         "revision": creator.identity_revision,
     }
     # Fingerprint all effective work values, even if only the most useful20 fit the

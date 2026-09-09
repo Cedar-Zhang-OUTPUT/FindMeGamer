@@ -150,7 +150,8 @@ def test_cancel_readd_and_cross_query_identity_dedup(auth_client, session, monke
     execute(session, another["batch_id"], lambda request: provider_page([1]))
     candidate = session.scalar(
         select(DiscoveryCandidate).where(
-            DiscoveryCandidate.query_id == UUID(another["query_id"])
+            DiscoveryCandidate.query_id == UUID(another["query_id"]),
+            DiscoveryCandidate.account_id == candidates[0].account_id,
         )
     )
     assert choose(auth_client, activity_id, candidate.id)["id"] == selected["id"]

@@ -85,9 +85,14 @@ def start_batch(session, query, acknowledge_unknown=False):
     limits = query.conditions
     if query.result_count >= limits.get("result_limit", 600):
         raise DiscoveryConflict("The query result limit has been reached.")
-    if query.requests_reserved >= limits.get(
-        "total_request_budget", 120
-    ) or query.scanned_reserved >= limits.get("total_scan_budget", 6000):
+    library_remaining = any(
+        state.get("library", {}).get("status") == "more"
+        for state in query.provider_states.values()
+    )
+    if not library_remaining and (
+        query.requests_reserved >= limits.get("total_request_budget", 120)
+        or query.scanned_reserved >= limits.get("total_scan_budget", 6000)
+    ):
         raise DiscoveryConflict("The query budget has been exhausted.")
     ordinal = (
         session.scalar(

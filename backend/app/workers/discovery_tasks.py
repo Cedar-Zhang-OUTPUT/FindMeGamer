@@ -63,6 +63,7 @@ def finish(query, batch, reason):
         "result_limit",
         "providers_finished",
         "total_budget_exhausted",
+        "library_only",
     ):
         query.status = "completed"
     else:
@@ -88,8 +89,11 @@ def reserve(session, batch_id):
     if query.result_count >= limits.get("result_limit", 600):
         finish(query, batch, "result_limit")
         return None
-    if query.result_count - batch.initial_result_count >= batch.target_count:
-        finish(query, batch, "target_reached")
+    from app.discovery.library_candidates import scan_library
+
+    scan_library(session, query, batch)
+    if query.result_count >= limits.get("result_limit", 600):
+        finish(query, batch, "result_limit")
         return None
     states = dict(query.provider_states)
     request = None
@@ -120,6 +124,19 @@ def reserve(session, batch_id):
             "unavailable",
         ):
             continue
+        # Library results must not suppress the first live page per platform.
+        # Further pages retain the existing batch target and provider cursor.
+        if query.result_count - batch.initial_result_count >= batch.target_count:
+            attempted = session.scalar(
+                select(DiscoveryAttempt.id)
+                .where(
+                    DiscoveryAttempt.batch_id == batch.id,
+                    DiscoveryAttempt.platform == platform,
+                )
+                .limit(1)
+            )
+            if attempted:
+                continue
         raw = dict(provider)
         raw["cursor"] = state.get("cursor")
         request = DiscoveryRequest.model_validate(raw)
@@ -128,6 +145,11 @@ def reserve(session, batch_id):
     if request is None:
         statuses = {state.get("status") for state in states.values()}
         if any(
+            state.get("library", {}).get("status") == "more"
+            for state in states.values()
+        ):
+            reason = "library_more"
+        elif any(
             state.get("blocked_reason") == "collection_disabled"
             for state in states.values()
         ):
@@ -139,7 +161,12 @@ def reserve(session, batch_id):
         elif statuses.intersection({"missing_connection", "unavailable"}):
             reason = "source_unavailable"
         elif statuses == {"not_supported"}:
-            reason = "no_available_sources"
+            reason = "library_only"
+        elif (
+            query.result_count - batch.initial_result_count >= batch.target_count
+            and "more" in statuses
+        ):
+            reason = "target_reached"
         else:
             reason = "providers_finished"
         finish(query, batch, reason)
@@ -148,6 +175,7 @@ def reserve(session, batch_id):
     scan = request.page_size
     if request.max_requests < cost:
         states[request.platform] = {
+            **states.get(request.platform, {}),
             "status": "budget_exhausted",
             "issues": [{"code": "budget_exhausted"}],
         }
@@ -214,6 +242,7 @@ def apply_outcome(session, attempt_id, token, page, failure):
         attempt.status = "unavailable"
         attempt.outcome = {"status": "missing_connection"}
         states[attempt.platform] = {
+            **states.get(attempt.platform, {}),
             "status": "missing_connection",
             "issues": [{"code": "unavailable"}],
             "cursor": attempt.input.get("cursor"),
@@ -227,6 +256,7 @@ def apply_outcome(session, attempt_id, token, page, failure):
         query.provider_states = states
         return True
     from app.discovery.library import import_discovered_account, evaluate_candidate
+    from app.discovery.library_candidates import add_candidate
 
     for account in page.accounts:
         contents = [
@@ -241,33 +271,9 @@ def apply_outcome(session, attempt_id, token, page, failure):
         eligible, notes = evaluate_candidate(
             session, creator, account, contents, query.conditions.get("filters", {})
         )
-        if not eligible or query.result_count >= query.conditions.get(
-            "result_limit", 600
-        ):
+        if not eligible:
             continue
-        existing = session.scalar(
-            select(DiscoveryCandidate.id).where(
-                DiscoveryCandidate.query_id == query.id,
-                DiscoveryCandidate.platform == account.platform,
-                DiscoveryCandidate.account_id == account.account_id,
-            )
-        )
-        if existing:
-            continue
-        query.result_count += 1
-        session.add(
-            DiscoveryCandidate(
-                query_id=query.id,
-                creator_id=creator.id,
-                platform=account.platform,
-                account_id=account.account_id,
-                identity_revision=creator.identity_revision,
-                account_snapshot=account.model_dump(mode="json"),
-                filter_notes=notes,
-                ordinal=query.result_count,
-            )
-        )
-        session.flush()
+        add_candidate(session, query, creator, account, notes, "realtime")
     attempt.status = "applied"
     attempt.outcome = page.model_dump(
         mode="json", exclude={"accounts", "contents", "next_cursor"}
@@ -278,6 +284,7 @@ def apply_outcome(session, attempt_id, token, page, failure):
         else ("exhausted" if page.status == "complete" else page.status)
     )
     states[attempt.platform] = {
+        **states.get(attempt.platform, {}),
         "status": state_status,
         "cursor": (
             page.next_cursor.model_dump(mode="json")

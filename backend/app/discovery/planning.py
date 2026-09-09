@@ -60,7 +60,10 @@ def generate_plan(
     model: str,
 ) -> SearchPlanOutput:
     game = _mapping(source_snapshot.get("game"))
-    if not any(_has_semantic_value(game.get(field)) for field in ("name", "description", "tags")):
+    if not any(
+        _has_semantic_value(game.get(field))
+        for field in ("name", "description", "tags")
+    ):
         raise PlanningInputError("game_context_required")
 
     requested_platforms = _requested_platforms(conditions.get("platforms"))
@@ -72,14 +75,19 @@ def generate_plan(
         queries: list[SearchPlanQuery] = Field(
             min_length=len(requested_platforms),
             max_length=len(requested_platforms),
-            description="Exactly one query for each platform: " + ", ".join(requested_platforms),
+            description="Exactly one query for each platform: "
+            + ", ".join(requested_platforms),
         )
 
         @model_validator(mode="after")
         def requested_platforms_only(self):
             actual = [query.platform for query in self.queries]
-            if len(set(actual)) != len(actual) or set(actual) != set(requested_platforms):
-                raise ValueError("query platforms must exactly match requested platforms")
+            if len(set(actual)) != len(actual) or set(actual) != set(
+                requested_platforms
+            ):
+                raise ValueError(
+                    "query platforms must exactly match requested platforms"
+                )
             return self
 
     prompt_data = {
@@ -180,9 +188,12 @@ def _safe_strings(value: object) -> list[str]:
 def _requested_platforms(value: object) -> list[str]:
     platforms = _safe_strings(value)
     if (
-        not 1 <= len(platforms) <= 2
+        not 1 <= len(platforms) <= 4
         or len(set(platforms)) != len(platforms)
-        or any(platform not in {"youtube", "x"} for platform in platforms)
+        or any(
+            platform not in {"youtube", "x", "twitch", "instagram"}
+            for platform in platforms
+        )
     ):
         raise PlanningInputError("plan_platforms_invalid")
     return platforms

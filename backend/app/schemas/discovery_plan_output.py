@@ -3,6 +3,7 @@
 from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+from app.schemas.discovery import Platform
 
 
 def _bounded_narrative(value: str) -> str:
@@ -18,8 +19,7 @@ def _safe_keyword_phrase(value: str) -> str:
     if not any(character.isalnum() for character in value):
         raise ValueError("keyword phrase must contain a letter or digit")
     if any(
-        not (character.isalnum() or character in {" ", "'", "-"})
-        for character in value
+        not (character.isalnum() or character in {" ", "'", "-"}) for character in value
     ):
         raise ValueError("keyword phrase contains unsafe query syntax")
     return value
@@ -42,7 +42,7 @@ class _StrictOutput(BaseModel):
 
 
 class SearchPlanQuery(_StrictOutput):
-    platform: Literal["youtube", "x"]
+    platform: Platform
     terms: list[KeywordPhrase] = Field(min_length=1, max_length=3)
 
     @field_validator("terms")
@@ -56,4 +56,4 @@ class SearchPlanQuery(_StrictOutput):
 class SearchPlanOutput(_StrictOutput):
     summary: Narrative
     rationale: Narrative
-    queries: list[SearchPlanQuery] = Field(min_length=1, max_length=2)
+    queries: list[SearchPlanQuery] = Field(min_length=1, max_length=4)

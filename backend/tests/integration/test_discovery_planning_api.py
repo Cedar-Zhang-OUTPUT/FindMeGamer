@@ -161,7 +161,10 @@ def test_failed_plan_safe_and_retry_preserves_existing_ready_plan(
 
     # Alembic's test-session logging setup disables pre-imported loggers.
     import logging
-    monkeypatch.setattr(logging.getLogger("app.workers.planning_tasks"), "disabled", False)
+
+    monkeypatch.setattr(
+        logging.getLogger("app.workers.planning_tasks"), "disabled", False
+    )
 
     first = prepare(auth_client, monkeypatch, mode="preview")
     run_discovery_plan(
@@ -203,8 +206,11 @@ def test_failed_plan_safe_and_retry_preserves_existing_ready_plan(
     }
     assert failed["retryable"] is True
     assert failed["query_id"] is None
-    diagnostics = [json.loads(record.message) for record in caplog.records
-                   if record.name == "app.workers.planning_tasks"]
+    diagnostics = [
+        json.loads(record.message)
+        for record in caplog.records
+        if record.name == "app.workers.planning_tasks"
+    ]
     assert diagnostics[-1]["plan_id"] == str(second)
     assert diagnostics[-1]["attempt"] == 1
     assert "secret arbitrary unsafe text" not in json.dumps(diagnostics)
@@ -224,12 +230,12 @@ def test_failed_plan_safe_and_retry_preserves_existing_ready_plan(
     assert get_plan(auth_client, second)["status"] == "ready"
 
 
-def test_planning_rejects_inactive_platforms_and_unauthenticated_requests(
+def test_planning_rejects_unknown_duplicate_platforms_and_unauthenticated_requests(
     auth_client, client, monkeypatch
 ):
     activity = make_activity(auth_client)
     path = f"/api/v2/activities/{activity['id']}/discovery-plans"
-    for platforms in (["twitch"], ["instagram"], ["x", "x"]):
+    for platforms in (["unknown"], ["x", "x"]):
         assert (
             auth_client.post(
                 path,

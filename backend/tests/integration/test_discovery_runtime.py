@@ -435,7 +435,7 @@ def test_explicit_continue_retries_failed_page_with_last_committed_cursor(sessio
     "platform,reason,status",
     [
         ("x", "source_unavailable", "paused"),
-        ("twitch", "no_available_sources", "paused"),
+        ("twitch", "library_only", "completed"),
     ],
 )
 def test_unavailable_sources_do_not_report_provider_exhaustion(
