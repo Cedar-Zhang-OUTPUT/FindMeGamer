@@ -9,6 +9,7 @@ from app.db.models.settings import SharedSettings
 from app.repositories.activity_preparation import preparation
 from app.repositories.creator_library import effective_fields
 from app.repositories.library_v2 import game_detail
+from app.outreach.evidence import choose_recorded_work
 
 
 def current_input(session, recipient_id, template):
@@ -22,16 +23,8 @@ def current_input(session, recipient_id, template):
     )
     fields = effective_fields(creator)
     works = prepared["works"]
-    work = next(
-        (
-            w
-            for w in works
-            if w.get("source_url")
-            and w.get("evidence_excerpt")
-            and w.get("verification_notes")
-        ),
-        works[0] if works else {},
-    )
+    recorded_work = choose_recorded_work(works)
+    work = recorded_work or (works[0] if works else {})
     reference = work.get("content_title") or work.get("work_name")
     missing = []
     for key, condition in (
@@ -75,8 +68,14 @@ def current_input(session, recipient_id, template):
             "evidence_excerpt",
             "verification_notes",
             "timestamp_seconds",
+            "game_id",
+            "relation",
+            "evidence_status",
         )
     }
+    source["evidence_tier"] = (
+        work.get("relation", "related_content") if recorded_work else "unverified"
+    )
     return {
         "selection_id": str(selection.id),
         "identity": prepared["identity"],

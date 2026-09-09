@@ -121,7 +121,9 @@ def create_router(authenticate_workspace, *, dispatcher=None):
             eligible = []
             for index, candidate in enumerate(candidates):
                 creator = _get(session, CreatorProfile, candidate.creator_id)
-                snapshot, fingerprint = creator_snapshot(creator, candidate.id)
+                snapshot, fingerprint = creator_snapshot(
+                    creator, candidate.id, source=query.source_snapshot
+                )
                 frozen_identity = {
                     "platform": candidate.platform,
                     "account_id": candidate.account_id,
@@ -221,15 +223,11 @@ def create_router(authenticate_workspace, *, dispatcher=None):
         run = _get(session, EvaluationRun, run_id)
         statement = select(EvaluationItem).where(EvaluationItem.run_id == run_id)
         total = session.scalar(select(func.count()).select_from(statement.subquery()))
-        items = list(
-            session.scalars(
-                statement.order_by(
-                    EvaluationItem.score.desc().nullslast(), EvaluationItem.input_order
-                )
-                .limit(limit)
-                .offset(offset)
-            )
-        )
+        from app.discovery.evidence_priority import ordered_items
+
+        items = ordered_items(list(session.scalars(statement)), run.source_snapshot)[
+            offset : offset + limit
+        ]
         return {
             "items": result_rows(session, run, items),
             "total": total,

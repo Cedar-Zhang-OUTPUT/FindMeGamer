@@ -90,13 +90,14 @@ def game_brief(snapshot):
         "context_is_bounded": True,
         "reference_count": len(data["references"]),
     }
+    brief["game"]["id"] = snapshot.get("game", {}).get("id")
     intent = snapshot.get("campaign_brief")
     if isinstance(intent, str) and intent.strip():
         brief["campaign_intent"] = {"text": intent[:5000], "is_verified_fact": False}
     return brief
 
 
-def creator_snapshot(creator, candidate_id):
+def creator_snapshot(creator, candidate_id, *, source=None):
     fields = effective_fields(creator).model_dump(mode="json")
     fields = {k: fields.get(k) for k in CREATOR_FIELDS}
     works = [
@@ -129,9 +130,17 @@ def creator_snapshot(creator, candidate_id):
             "works": works,
         }
     )
+    from app.discovery.evidence_priority import match_priority
+
+    priority = match_priority({"works": works}, source) if source else 2
+    ordered_works = (
+        sorted(works, key=lambda work: match_priority({"works": [work]}, source))
+        if source
+        else works
+    )
     chosen = [
         {k: (v[:2000] if isinstance(v, str) else v) for k, v in w.items()}
-        for w in works[:20]
+        for w in ordered_works[:20]
     ]
     compact = {
         k: fields.get(k)
@@ -153,6 +162,12 @@ def creator_snapshot(creator, candidate_id):
         "work_count": len(works),
         "context_is_bounded": True,
     }
+    if source is not None:
+        label = ("current_game_work", "reference_game_work", "type_related_candidate")[
+            priority
+        ]
+        snapshot["match_priority"] = label
+        compact["match_priority"] = label
     return snapshot, fingerprint
 
 

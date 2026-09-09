@@ -22,7 +22,7 @@ from app.discovery.evaluation_snapshot import (
 )
 from app.repositories.library_v2 import game_detail
 
-METHOD_VERSION = "discovery-evaluation-v1-chunk20-absolute"
+METHOD_VERSION = "discovery-evaluation-v2-work-priority-chunk20"
 MODELS = {
     "screening": "deepseek-v4-flash",
     "deep_match": "deepseek-v4-pro",
