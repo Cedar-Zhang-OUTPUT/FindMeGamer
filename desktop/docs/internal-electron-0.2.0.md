@@ -9,6 +9,7 @@ TDD: four expected failures before implementation; final 43 tests passed (creden
 ## Packaging
 
 - npm version `0.2.0-internal.1`; macOS short version `0.2.0`, build `20001`, custom release metadata includes full internal version and Electron technology.
+- Before ASAR sealing, restore the full npm semver overwritten by packager's numeric macOS appVersion; native acceptance asserts `app.getVersion()` retains `internal.1`.
 - Local and remote tag checks found no existing 0.2 tag at preparation time. Coordinator owns final tag/ref and publication.
 - `npm run bundle:dir` creates a new uniquely suffixed artifacts directory every time, never overwriting older builds.
 - Current host/target: arm64, macOS 14+. No Intel or universal compatibility claim.

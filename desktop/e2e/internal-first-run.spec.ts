@@ -16,8 +16,8 @@ test('internal package shows first-run cloud origin without a key or connection'
    for(const partition of ['workspace-network','renderer','updates-network'])session.fromPartition(partition).webRequest.onBeforeRequest((details,callback)=>{
     const external=/^https?:/.test(details.url);if(external)(globalThis as any).__firstRunNetwork.push(details.method);callback({cancel:external});
    });
-   return {packaged:app.isPackaged,path:app.getAppPath(),userData:app.getPath('userData')};
-  });expect(main).toMatchObject({packaged:true,userData});
+   return {packaged:app.isPackaged,path:app.getAppPath(),userData:app.getPath('userData'),version:app.getVersion()};
+  });expect(main).toMatchObject({packaged:true,userData,version:'0.2.0-internal.1'});
   const page=await app.firstWindow();await page.getByRole('button',{name:'Open Settings',exact:true}).click();
   await expect(page.getByLabel('Service URL')).toHaveValue('https://44.233.174.193');await expect(page.getByLabel('Workspace key',{exact:true})).toHaveValue('');await expect(page.getByRole('button',{name:'Connect',exact:true})).toBeDisabled();
   const status=await page.evaluate(()=>window.desktop.connection.status());expect(status).toMatchObject({ok:true,data:{hasKey:false,serviceUrl:'https://44.233.174.193'}});

@@ -2,7 +2,7 @@ import { packager } from '@electron/packager';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
-import { mkdir, mkdtemp, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 
 const execute = promisify(execFile);
 
@@ -15,6 +15,14 @@ const paths = await packager({
   dir: '.', out: output, name: 'FindMeGamer', appBundleId: 'com.findmegamer.desktop',
   platform: 'darwin', arch: process.arch, electronVersion: '44.2.0',
   appVersion: '0.2.0', buildVersion: '20001',
+  // Packager rewrites package.json from appVersion; preserve full semver for
+  // Electron's app.getVersion()/update checks while macOS keeps numeric metadata.
+  beforeAsar: [async (buildPath) => {
+    const file = path.join(buildPath, 'package.json');
+    const packaged = JSON.parse(await readFile(file, 'utf8'));
+    packaged.version = metadata.version;
+    await writeFile(file, JSON.stringify(packaged, null, 2));
+  }],
   icon: 'build/AppIcon.icns',
   asar: true, overwrite: false, appCategoryType: 'public.app-category.productivity',
   extendInfo: { LSMinimumSystemVersion: '14.0', FMGReleaseVersion: metadata.version, FMGClientTechnology: 'Electron' },
