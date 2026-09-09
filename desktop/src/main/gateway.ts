@@ -9,6 +9,7 @@ import { authenticatedSavedSetRequest, validateSavedSetRequest, type SavedSetReq
 import { authenticatedOutreachRequest, validateOutreachRequest, type OutreachRequest } from './outreach-transport';
 import { authenticatedDraftsRequest, validateDraftsRequest, type DraftsRequest } from './drafts-transport';
 import { authenticatedSendingRequest, validateSendingRequest, isSendingWrite, type SendingRequest } from './sending-transport';
+import {authenticatedCollaborationRequest,validateCollaborationRequest,isCollaborationWrite,type CollaborationRequest} from './collaboration-transport';
 
 interface Store {
   status(): Promise<ConnectionStatus>;
@@ -157,6 +158,15 @@ export class WorkspaceGateway {
       this.assertGeneration(generation, !isWrite);
       return authenticatedSendingRequest(this.fetcher, connection, request);
     }, { isWrite });
+  }
+  async collaborationRequest(input:CollaborationRequest):Promise<unknown>{
+    const request=validateCollaborationRequest(input),isWrite=isCollaborationWrite(request);
+    return this.runCurrent(async()=>{
+      const generation=this.generation;let connection:Connection|null;
+      try{connection=await this.store.getConnection();}catch{throw new PublicFailure('secure_storage_unavailable','Could not read your workspace key. Check Keychain access or reconnect in Settings.');}
+      if(!connection)throw new PublicFailure('not_connected','Connect your workspace in Settings.');
+      this.assertGeneration(generation,!isWrite);return authenticatedCollaborationRequest(this.fetcher,connection,request);
+    },{isWrite});
   }
   private assertGeneration(generation: number, retryable = true) {
     if (generation !== this.generation) throw new PublicFailure('connection_changed', retryable

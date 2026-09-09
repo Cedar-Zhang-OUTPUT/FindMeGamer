@@ -32,6 +32,8 @@ export interface CreatorDetail extends CreatorFields {
   source_identity: CreatorIdentity; source_fields: CreatorFields; manual_overrides: JsonObject;
   overridden_fields: CreatorField[]; contacts: ContactDetail[]; work_count: number;
   last_analyzed_at: string | null; next_analysis_at: string | null; analysis_available: boolean;
+  /** Additive read-only metadata; absent on older v2 responses, never CreatorFields. */
+  analysis?: JsonObject; brief?: JsonObject; source_status?: JsonObject;
   created_at?: string | null; updated_at?: string | null; latest_published_at?: string | null;
   recent_works?: RecentWorkSummary[]; active_email_count?: number; contact_status?: 'available' | 'missing';
 }

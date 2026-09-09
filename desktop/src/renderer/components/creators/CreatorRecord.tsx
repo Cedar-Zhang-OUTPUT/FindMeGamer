@@ -4,6 +4,7 @@ import type { ContactDetail, CreatorDetail, OtherContact, WorkDetail } from '../
 import { Artwork, ErrorNotice, friendlyLabel, Icon } from '../Primitives';
 import { CreatorContacts } from './CreatorContacts';
 import { CreatorWorks } from './CreatorWorks';
+import {CreatorInvitationHistory} from './CreatorInvitationHistory';
 import './creatorRecord.css';
 
 type Section = 'profile' | 'emails' | 'works';
@@ -80,7 +81,7 @@ export function CreatorRecord({ api, creator, onBack, onEdit, refreshToken = 0, 
     <header className="creator-record-header"><Artwork url={creator.avatar_url} name={name} kind="creators" large/><div className="creator-record-title"><span className="eyebrow">{friendlyLabel(creator.platform)} creator</span><h1 ref={title} tabIndex={-1}>{name}</h1>{creator.handle && <p>{creator.handle}</p>}</div><div className="creator-header-actions">{safeHTTPS(creator.profile_url) && <button className="button secondary" onClick={() => void openProfile()}>Open profile<Icon name="external"/></button>}</div><dl className="creator-headline-metrics"><div><dt>Followers</dt><dd>{creator.follower_count === null ? 'Followers unknown' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(creator.follower_count)}</dd></div><div><dt>Known works</dt><dd>{creator.work_count.toLocaleString('en')}</dd></div></dl></header>
     {headerError && <ErrorNotice error={headerError}/>} 
     <div className="creator-tabs" role="tablist" aria-label="Creator record sections">{sections.map(item => <button key={item.id} ref={node => { if (node) tabs.current.set(item.id, node); else tabs.current.delete(item.id); }} type="button" role="tab" id={`creator-tab-${item.id}`} aria-controls={`creator-panel-${item.id}`} aria-selected={section === item.id} tabIndex={section === item.id ? 0 : -1} onClick={() => choose(item.id)} onKeyDown={event => keyNavigation(event, item.id)}>{item.label}</button>)}</div>
-    <div role="tabpanel" id="creator-panel-profile" aria-labelledby="creator-tab-profile" hidden={section !== 'profile'}><Profile api={api} creator={creator} onEdit={onEdit}/></div>
+    <div role="tabpanel" id="creator-panel-profile" aria-labelledby="creator-tab-profile" hidden={section !== 'profile'}><Profile api={api} creator={creator} onEdit={onEdit}/><CreatorInvitationHistory key={creator.id} api={api.collaboration} creatorId={creator.id} active={section==='profile'}/></div>
     <div role="tabpanel" id="creator-panel-emails" aria-labelledby="creator-tab-emails" hidden={section !== 'emails'}><CreatorContacts api={api} contacts={creator.contacts} onEdit={onEdit}/></div>
     <div role="tabpanel" id="creator-panel-works" aria-labelledby="creator-tab-works" hidden={section !== 'works'}><CreatorWorks api={api} creatorId={creator.id} identityRevision={creator.source_identity.revision} active={section === 'works'} onEdit={onEdit} refreshToken={refreshToken}/></div>
   </article>;

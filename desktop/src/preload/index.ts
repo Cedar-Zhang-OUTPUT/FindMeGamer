@@ -2,6 +2,13 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopBridge } from '../shared/bridge';
 
 const bridge: DesktopBridge = {
+  collaboration: {
+    list: input => ipcRenderer.invoke('collaboration:list', input),
+    detail: input => ipcRenderer.invoke('collaboration:detail', input),
+    creatorHistory: input => ipcRenderer.invoke('collaboration:creatorHistory', input),
+    update: input => ipcRenderer.invoke('collaboration:update', input),
+    respond: input => ipcRenderer.invoke('collaboration:respond', input),
+  },
   sending: {
     qualify: input => ipcRenderer.invoke('sending:qualify', input),
     send: input => ipcRenderer.invoke('sending:send', input),

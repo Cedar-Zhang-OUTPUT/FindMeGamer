@@ -63,7 +63,14 @@ export function MatchWorkspace({api,active,onNavigationGuardChange,onConnectionR
   },[active,load]);
   function restore(root:HTMLDivElement|null,position:number,target:HTMLElement|null){
     if(restoreFrame.current!==null)cancelAnimationFrame(restoreFrame.current);
-    restoreFrame.current=requestAnimationFrame(()=>{restoreFrame.current=null;if(!root||root.closest('[hidden]'))return;const scroll=scroller();if(scroll)scroll.scrollTop=position;(target?.isConnected?target:root.querySelector<HTMLElement>('button'))?.focus({preventScroll:true});});
+    restoreFrame.current=requestAnimationFrame(()=>{
+      restoreFrame.current=null;if(!root||root.closest('[hidden]'))return;const scroll=scroller();if(scroll)scroll.scrollTop=position;
+      // The opener can remain disabled during a fresh relationship GET. Keep
+      // keyboard context on a visible tab instead of silently focusing body.
+      const usable=(node:HTMLElement|null)=>node?.isConnected&&!node.matches(':disabled')&&!node.closest('[hidden]');
+      const fallback=Array.from(root.querySelectorAll<HTMLElement>('[role=tab][aria-selected=true]')).find(node=>usable(node))??Array.from(root.querySelectorAll<HTMLElement>('button')).find(node=>usable(node));
+      (usable(target)?target:fallback)?.focus({preventScroll:true});
+    });
   }
   function toList(){creatorGeneration.current++;setRoute({kind:'list'});const row=Array.from(listRoot.current?.querySelectorAll<HTMLElement>('[data-activity-id]')??[]).find(node=>node.dataset.activityId===selectedActivity.current);restore(listRoot.current,listScroll.current,row??null);}
   function openActivity(id:string){listScroll.current=scroller()?.scrollTop??0;selectedActivity.current=id;setRoute({kind:'activity',id,creator:null});const scroll=scroller();if(scroll)scroll.scrollTop=0;}

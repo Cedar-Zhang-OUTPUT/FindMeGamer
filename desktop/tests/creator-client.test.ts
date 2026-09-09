@@ -5,6 +5,20 @@ const path = `/api/v2/library/creators/${CREATOR_ID}`;
 const key = 'creator-save-123';
 
 describe('Creator client contract', () => {
+  it('accepts only bounded read-only analysis metadata while preserving old Creator responses and rejecting manual writes', async () => {
+    const metadata = { analysis: { kind: 'ai_inference', observations: [{ source_ids: ['post-1'], text: 'Synthetic inference' }] }, brief: { summary: 'Synthetic summary' }, source_status: { coverage: 'recent_account_posts', sample_size: 1, more_available: false } };
+    const request = vi.fn().mockResolvedValue({ ...creatorFixture(), ...metadata }), client = new CreatorClient(request);
+    const decoded = await client.detail(CREATOR_ID); expect(decoded).toMatchObject(metadata);
+    request.mockResolvedValue(creatorFixture()); expect(await client.detail(CREATOR_ID)).toEqual(creatorFixture());
+    const cycle: Record<string, unknown> = {}; cycle.self = cycle;
+    for (const analysis of [null, [], { invalid: undefined }, { invalid: Infinity }, cycle, { text: 'x'.repeat(1_000_001) }, Object.fromEntries(Array.from({ length: 2001 }, (_, i) => [`key${i}`, 0]))]) {
+      request.mockResolvedValue({ ...creatorFixture(), analysis }); await expect(client.detail(CREATOR_ID)).rejects.toMatchObject({ code: 'invalid_response' });
+    }
+    for (const field of ['analysis', 'brief', 'source_status']) {
+      request.mockClear(); await expect(client.update({ id: CREATOR_ID, data: { expected_revision: 3, [field]: {} } as never })).rejects.toMatchObject({ code: 'request_invalid' }); expect(request).not.toHaveBeenCalled();
+      request.mockResolvedValue({ ...creatorFixture(), manual_overrides: { [field]: {} } }); await expect(client.detail(CREATOR_ID)).rejects.toMatchObject({ code: 'invalid_response' });
+    }
+  });
   it('retains bounded imported work text only as read-only source metadata', async () => {
     const work = { ...workFixture(), source_fields: { ...workFixture().source_fields, text: 'Synthetic recorded source text' } };
     const request = vi.fn().mockResolvedValue({ items: [work], total: 1, offset: 0, limit: 50 });

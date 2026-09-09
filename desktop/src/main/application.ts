@@ -12,6 +12,7 @@ import { SavedSetClient } from './saved-set-client';
 import { OutreachClient } from './outreach-client';
 import { DraftsClient } from './drafts-client';
 import { SendingClient } from './sending-client';
+import { CollaborationClient } from './collaboration-client';
 import { PreferencesStore } from './preferences-store';
 import { UpdateChecker } from './update-checker';
 import { APP_URL, CONTENT_POLICY, externalUrl, isTrustedFrame, resourcePath } from './policies';
@@ -40,6 +41,7 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   const outreach = new OutreachClient(input => gateway.outreachRequest(input));
   const drafts = new DraftsClient(input => gateway.draftsRequest(input));
   const sending = new SendingClient(input => gateway.sendingRequest(input));
+  const collaboration = new CollaborationClient(input => gateway.collaborationRequest(input));
   const preferences = new PreferencesStore(options.userDataDirectory ?? app.getPath('userData'));
   // A separate ephemeral session follows the system proxy without workspace headers.
   const updateNetwork = session.fromPartition('updates-network');
@@ -118,6 +120,11 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('outreach:batch',input=>outreach.batch(input));
   handle('outreach:freeze',input=>outreach.freeze(input));
   handle('sending:qualify', input => sending.qualify(input));
+  handle('collaboration:list', input => collaboration.list(input));
+  handle('collaboration:detail', input => collaboration.detail(input));
+  handle('collaboration:creatorHistory', input => collaboration.creatorHistory(input));
+  handle('collaboration:update', input => collaboration.update(input));
+  handle('collaboration:respond', input => collaboration.respond(input));
   handle('sending:send', input => sending.send(input));
   handle('sending:batches', input => sending.batches(input));
   handle('sending:batch', input => sending.batch(input));

@@ -8,6 +8,7 @@ import type { SavedSetsAPI } from './savedSets';
 import type { OutreachAPI } from './outreach';
 import type { DraftsAPI } from './drafts';
 import type { SendingAPI } from './sending';
+import type { CollaborationAPI } from './collaboration';
 
 export interface ConnectionStatus {
   serviceUrl: string;
@@ -21,6 +22,7 @@ export interface ConnectionCheck { authenticated: true; proxy: 'system'; route: 
 
 /** Business methods only. No generic request, filesystem, shell, or IPC channel access. */
 export interface DesktopBridge {
+  collaboration: CollaborationAPI;
   sending: SendingAPI;
   drafts: DraftsAPI;
   outreach: OutreachAPI;

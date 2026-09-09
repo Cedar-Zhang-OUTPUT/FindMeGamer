@@ -2,6 +2,7 @@ import { domainToASCII } from 'node:url';
 import { CONTACT_FIELDS, CREATOR_FIELDS, CREATOR_PLATFORMS, WORK_FIELDS } from '../shared/creators';
 import type { ContactDetail, CreatorDetail, CreatorFields, CreatorSort, RecentWorkSummary, WorkDetail } from '../shared/creators';
 import { PublicFailure } from './transport';
+import type { JsonObject, JsonValue } from '../shared/library';
 
 export type Mode = 'input' | 'response';
 export const UUID_SOURCE = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
@@ -173,6 +174,28 @@ function account(value: unknown): string | null { return value === null ? null :
 function uniqueIDs<T extends { id: string }>(items: T[]): T[] {
   if (new Set(items.map(item => item.id.toLowerCase())).size !== items.length) fail('response'); return items;
 }
+/** PublicJSONObject read projection, kept separate from editable Creator/source fields. */
+function analysisMetadata(value: unknown): JsonObject {
+  let nodes = 0, keyCount = 0; const active = new WeakSet<object>();
+  function visit(item: unknown, depth: number): JsonValue {
+    if (++nodes > 10_000 || depth > 32) fail('response');
+    if (item === null || typeof item === 'boolean') return item;
+    if (typeof item === 'string') return text(item, 'response', 1_000_000);
+    if (typeof item === 'number') { if (!Number.isFinite(item)) fail('response'); return item; }
+    if (!item || typeof item !== 'object' || active.has(item)) fail('response');
+    active.add(item);
+    try {
+      if (Array.isArray(item)) return item.map(child => visit(child, depth + 1));
+      const raw = object(item, 'response'), result: JsonObject = {};
+      for (const [key, child] of Object.entries(raw)) {
+        if (++keyCount > 2000 || ['__proto__', 'constructor', 'prototype'].includes(key)) fail('response');
+        text(key, 'response', 512); result[key] = visit(child, depth + 1);
+      }
+      return result;
+    } finally { active.delete(item); }
+  }
+  object(value, 'response'); return visit(value, 0) as JsonObject;
+}
 function contact(value: unknown, identityRevision: number): ContactDetail {
   const raw = object(value, 'response');
   keys(raw, [...CONTACT_FIELDS, 'id', 'origin', 'source_type', 'validation_state', 'source_fields', 'manual_overrides', 'identity_revision', 'is_current_identity', 'updated_at'], 'response');
@@ -187,7 +210,7 @@ function contact(value: unknown, identityRevision: number): ContactDetail {
 export function decodeCreator(value: unknown, expectedId?: string): CreatorDetail {
   const raw = object(value, 'response');
   const summaries = ['created_at', 'updated_at', 'latest_published_at', 'recent_works', 'active_email_count', 'contact_status'] as const;
-  keys(raw, [...CREATOR_FIELDS, 'id', 'platform', 'revision', 'favorite', 'source_identity', 'source_fields', 'manual_overrides', 'overridden_fields', 'contacts', 'work_count', 'last_analyzed_at', 'next_analysis_at', 'analysis_available', ...summaries], 'response');
+  keys(raw, [...CREATOR_FIELDS, 'id', 'platform', 'revision', 'favorite', 'source_identity', 'source_fields', 'manual_overrides', 'overridden_fields', 'contacts', 'work_count', 'last_analyzed_at', 'next_analysis_at', 'analysis_available', 'analysis', 'brief', 'source_status', ...summaries], 'response');
   const id = identifier(raw.id, 'response'); if (expectedId && id.toLowerCase() !== expectedId.toLowerCase()) fail('response');
   const identity = object(raw.source_identity, 'response'); keys(identity, ['platform', 'account_id', 'canonical_url', 'revision'], 'response');
   const identityRevision = integer(identity.revision, 'response'); const servicePlatform = platform(raw.platform, 'response');
@@ -214,7 +237,8 @@ export function decodeCreator(value: unknown, expectedId?: string): CreatorDetai
     manual_overrides: source(raw.manual_overrides, 'creator'), overridden_fields: overridden,
     contacts: uniqueIDs(array(raw.contacts, 'response', Number.MAX_SAFE_INTEGER, item => contact(item, identityRevision))),
     work_count: integer(raw.work_count, 'response'), last_analyzed_at: timestamp(raw.last_analyzed_at, 'response'),
-    next_analysis_at: timestamp(raw.next_analysis_at, 'response'), analysis_available: bool(raw.analysis_available, 'response'), ...optionalSummaries } as CreatorDetail;
+    next_analysis_at: timestamp(raw.next_analysis_at, 'response'), analysis_available: bool(raw.analysis_available, 'response'), ...optionalSummaries,
+    ...Object.fromEntries(['analysis', 'brief', 'source_status'].filter(key => Object.hasOwn(raw, key)).map(key => [key, analysisMetadata(raw[key])])) } as CreatorDetail;
 }
 export function decodeWork(value: unknown, creatorId: string, expectedId?: string): WorkDetail {
   const raw = object(value, 'response');
