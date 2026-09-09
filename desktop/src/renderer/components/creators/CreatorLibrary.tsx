@@ -9,9 +9,11 @@ import { CreatorIdentityEditor } from './CreatorIdentityEditor';
 import type { EditContext } from './creatorDraft';
 import { LanguageFilter, PlatformFilter } from './CreatorLibraryFilters';
 import './creatorLibrary.css';
+import {useAnalyze} from '../analyze/AnalyzeProvider';
+import {SourceImport} from '../analyze/SourceImport';
 
 type Section = 'profile' | 'emails' | 'works';
-type Route = {kind:'list'} | {kind:'loading'; id:string; error:PublicError|null} | {kind:'detail'; creator:CreatorDetail; section:Section; saved?:boolean} | {kind:'editor'; initial:EditContext; creator:CreatorDetail|null; section:Section} | {kind:'identity'; creator:CreatorDetail};
+type Route = {kind:'list'} | {kind:'loading'; id:string; error:PublicError|null} | {kind:'detail'; creator:CreatorDetail; section:Section; saved?:boolean} | {kind:'editor'; initial:EditContext; creator:CreatorDetail|null; section:Section} | {kind:'identity'; creator:CreatorDetail} | {kind:'source';creator:CreatorDetail};
 type Filters = {query:string; platforms:CreatorPlatform[]; languages:string[]; sort:CreatorSort; onlyCollection:boolean};
 const emptyFilters:Filters = {query:'',platforms:[],languages:[],sort:'relevance',onlyCollection:false};
 const networkError:PublicError = {code:'network_error',message:'Creators could not be loaded. Your current page is still here.',retryable:true};
@@ -27,7 +29,8 @@ function emailSummary(creator:CreatorDetail){
   return 'Email availability unknown';
 }
 
-export function CreatorLibrary({api,active,onNavigationGuardChange,onConnectionRepair}:{api:DesktopBridge;active:boolean;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void}) {
+export function CreatorLibrary({api,active,onNavigationGuardChange,onConnectionRepair,openRequest}:{api:DesktopBridge;active:boolean;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;openRequest?:{id:string;nonce:number}}) {
+  const analyze=useAnalyze();
   const [filters,setFilters]=useState<Filters>(emptyFilters);
   const [desiredFilters,setDesiredFilters]=useState<Filters>(emptyFilters);
   const [search,setSearch]=useState('');
@@ -54,6 +57,7 @@ export function CreatorLibrary({api,active,onNavigationGuardChange,onConnectionR
     } catch {if(alive.current&&token===generation.current){setError(networkError);setFailedInput(request);setBusy(false);}}
   },[api]);
   useEffect(()=>{if(active&&!loaded.current){loaded.current=true;void loadPage(inputFor(emptyFilters));}},[active,loadPage]);
+  useEffect(()=>{if(openRequest)void open(openRequest.id);},[openRequest]);
   function rememberScroll(){listScroll.current=document.querySelector<HTMLElement>('.main-scroll')?.scrollTop??0;}
   function scrollTop(){const scroller=document.querySelector<HTMLElement>('.main-scroll');if(scroller)scroller.scrollTop=0;}
   function back(){detailGeneration.current++;setRoute({kind:'list'});if(restoreFrame.current!==null)cancelAnimationFrame(restoreFrame.current);restoreFrame.current=requestAnimationFrame(()=>{
@@ -82,6 +86,9 @@ export function CreatorLibrary({api,active,onNavigationGuardChange,onConnectionR
   }
   function clear(){setSearch('');void loadPage(inputFor(emptyFilters));}
   const filtered=Boolean(filters.query||filters.platforms.length||filters.languages.length||filters.onlyCollection||filters.sort!=='relevance');
+  const selected=route.kind==='detail'?route.creator:null;
+  const identity=selected?.source_identity;
+  const analyzeAllowed=Boolean(selected?.analysis_available&&identity?.account_id&&identity.canonical_url&&(identity.platform==='youtube'&&/^https:\/\/(www\.)?youtube\.com\/channel\/UC[A-Za-z0-9_-]+\/?$/.test(identity.canonical_url)||identity.platform==='x'&&/^\d+$/.test(identity.account_id)&&identity.canonical_url===`https://x.com/i/user/${identity.account_id}`));
   return <div className="creator-library">
     <div ref={listRoot} hidden={route.kind!=='list'}>
       <div className="creator-library-tools"><form className="search-form" role="search" onSubmit={event=>{event.preventDefault();void loadPage(inputFor({...desiredFilters,query:search.trim()},0));}}><Icon name="search"/><input type="search" aria-label="Search creators" placeholder="Search creators…" maxLength={255} value={search} onChange={event=>setSearch(event.target.value)}/><button className="button primary" type="submit">Search</button></form><button className="button primary" onClick={()=>{rememberScroll();scrollTop();setRoute({kind:'editor',initial:{kind:'creator',base:null},creator:null,section:'profile'});}}>New creator</button></div>
@@ -95,7 +102,8 @@ export function CreatorLibrary({api,active,onNavigationGuardChange,onConnectionR
       {page&&page.total>0&&<div className="creator-library-pagination"><button className="button secondary" disabled={busy||Boolean(error)||page.offset===0} onClick={()=>void loadPage(inputFor(desiredFilters,Math.max(0,page.offset-50)))}>Previous page</button><button className="button secondary" disabled={busy||Boolean(error)||page.offset+page.limit>=page.total} onClick={()=>void loadPage(inputFor(desiredFilters,page.offset+page.limit))}>Next page</button></div>}
     </div>
     {route.kind==='loading'&&<><button className="text-button back-button" onClick={back}><Icon name="arrow"/>Back to creators</button>{route.error?<ErrorNotice error={route.error} onRetry={()=>void open(route.id,true)}/>:<Loading label="Loading creator…"/>}</>}
-    {route.kind==='detail'&&<>{route.saved&&<div className="creator-saved-message" role="status"><Icon name="check"/>Saved</div>}<CreatorRecord key={route.creator.id} api={api} creator={route.creator} initialSection={route.section} refreshToken={route.creator.revision} onBack={back} onEdit={edit}/></>}
+    {route.kind==='detail'&&<>{route.saved&&<div className="creator-saved-message" role="status"><Icon name="check"/>Saved</div>}<CreatorRecord key={route.creator.id} api={api} creator={route.creator} initialSection={route.section} refreshToken={route.creator.revision} onBack={back} onEdit={edit} onAnalyze={analyzeAllowed?()=>analyze.request({target_type:'creator',url:route.creator.source_identity.canonical_url!,mode:'reanalyze',profileId:route.creator.id,title:nameOf(route.creator)}):undefined} onBindYouTube={identity?.platform==='youtube'&&!identity.account_id?()=>setRoute({kind:'source',creator:route.creator}):undefined}/>{identity?.platform==='x'&&!identity.account_id&&<p className="muted">Analyze requires a bound numeric X account.</p>}{(identity?.platform==='twitch'||identity?.platform==='instagram')&&<p className="muted">Analyze is not connected for this platform.</p>}</>}
+    {route.kind==='source'&&<SourceImport api={api} target={{kind:'youtube',creator:route.creator}} onSaved={record=>saved(record as CreatorDetail)} onClose={()=>{onNavigationGuardChange?.(null);setRoute({kind:'detail',creator:route.creator,section:'profile'});}} onNavigationGuardChange={onNavigationGuardChange} onConnectionRepair={onConnectionRepair}/>}
     {route.kind==='editor'&&<CreatorEditor api={api} initial={route.initial} onSaved={saved} onCancel={cancel} onNavigationGuardChange={onNavigationGuardChange} onConnectionRepair={onConnectionRepair}/>}
     {route.kind==='identity'&&<CreatorIdentityEditor api={api} initial={route.creator} onSaved={saved} onCancel={cancel} onNavigationGuardChange={onNavigationGuardChange} onConnectionRepair={onConnectionRepair}/>}
   </div>;

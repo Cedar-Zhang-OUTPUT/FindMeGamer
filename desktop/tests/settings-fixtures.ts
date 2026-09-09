@@ -13,6 +13,7 @@ import { qualificationFixture, sendBatchFixture, deliveryFixture } from './sendi
 import type { SendingAPI } from '../src/shared/sending';
 import type { CollaborationAPI } from '../src/shared/collaboration';
 import {invitationFixture} from './collaboration-fixtures';
+import type { AnalysisAPI } from '../src/shared/analyze';
 
 export const ok = <T>(data: T): Result<T> => ({ ok: true, data });
 export const emptySMTP: SMTPStatus = { configured: false, host: null, port: null, encryption: null, username: null, fromName: null, replyTo: null, emailsPerMinute: 10, lastTestStatus: null, lastTestedAt: null };
@@ -34,6 +35,8 @@ export function settingsBridgeMock() {
     sendTestEmail: vi.fn(async () => ok({succeeded:true,lastTestStatus:'success' as const,lastTestedAt:'2026-09-08T01:00:00Z'})),
   };
   const creators = creatorAPIMock();
+  const unavailable = async () => ({ok:false as const,error:{code:'not_connected',message:'Connect your workspace in Settings.',retryable:false}});
+  const analysis: AnalysisAPI = {steamImport:vi.fn(unavailable),bindYouTube:vi.fn(unavailable),create:vi.fn(unavailable),detail:vi.fn(unavailable),changed:vi.fn(async()=>ok({items:[],cursor:'',has_more:false,affected_profile_ids:[]})),retry:vi.fn(unavailable),resume:vi.fn(unavailable)};
   const collaboration:CollaborationAPI={list:vi.fn(async input=>ok({items:[],total:0,offset:input.offset??0,limit:input.limit??50})),detail:vi.fn(async()=>ok(invitationFixture())),creatorHistory:vi.fn(async input=>ok({items:[],total:0,offset:input.offset??0,limit:input.limit??50})),update:vi.fn(),respond:vi.fn()};
   const sending: SendingAPI = {
     qualify: vi.fn(async () => ok(qualificationFixture())), send: vi.fn(async () => ok(sendBatchFixture())),
@@ -55,7 +58,7 @@ export function settingsBridgeMock() {
   };
   vi.mocked(creators.list).mockResolvedValue(ok({items:[creatorFixture('Pixel Harbor','Pixel Harbor')],total:1,limit:50,offset:0}));
   vi.mocked(creators.detail).mockImplementation(async id => ok(creatorFixture(id,id)));
-  return { collaboration, sending, drafts, outreach:outreachAPIMock(),savedSets:{list:vi.fn(async()=>ok({items:[],total:0,offset:0,limit:50})),detail:vi.fn(),results:vi.fn(),create:vi.fn()}, match:matchAPIMock(), creators, settings, preferences: {
+  return { analysis, collaboration, sending, drafts, outreach:outreachAPIMock(),savedSets:{list:vi.fn(async()=>ok({items:[],total:0,offset:0,limit:50})),detail:vi.fn(),results:vi.fn(),create:vi.fn()}, match:matchAPIMock(), creators, settings, preferences: {
     read: vi.fn(async () => ok(preferences)),
     update: vi.fn(async (input: Partial<Preferences>) => ok(preferences = {...preferences,...input})),
     restoreAppearance: vi.fn(async () => ok(preferences = {...preferences,appearance:'system',fontSize:'default'})),

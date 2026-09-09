@@ -13,6 +13,7 @@ import { OutreachClient } from './outreach-client';
 import { DraftsClient } from './drafts-client';
 import { SendingClient } from './sending-client';
 import { CollaborationClient } from './collaboration-client';
+import { AnalysisClient } from './analyze-client';
 import { PreferencesStore } from './preferences-store';
 import { UpdateChecker } from './update-checker';
 import { APP_URL, CONTENT_POLICY, externalUrl, isTrustedFrame, resourcePath } from './policies';
@@ -42,6 +43,7 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   const drafts = new DraftsClient(input => gateway.draftsRequest(input));
   const sending = new SendingClient(input => gateway.sendingRequest(input));
   const collaboration = new CollaborationClient(input => gateway.collaborationRequest(input));
+  const analysis = new AnalysisClient(input => gateway.analysisRequest(input));
   const preferences = new PreferencesStore(options.userDataDirectory ?? app.getPath('userData'));
   // A separate ephemeral session follows the system proxy without workspace headers.
   const updateNetwork = session.fromPartition('updates-network');
@@ -104,6 +106,13 @@ export async function createApplication(options: { show?: boolean; userDataDirec
     return { authenticated: true, proxy: 'system', route: route === 'DIRECT' ? 'direct' : 'proxy' };
   }));
   handle('library:list', input => library.list(input));
+  handle('analysis:steamImport', input => analysis.steamImport(input));
+  handle('analysis:bindYouTube', input => analysis.bindYouTube(input));
+  handle('analysis:create', input => analysis.create(input));
+  handle('analysis:detail', input => analysis.detail(input));
+  handle('analysis:changed', input => analysis.changed(input));
+  handle('analysis:retry', input => analysis.retry(input));
+  handle('analysis:resume', input => analysis.resume(input));
   handle('library:detail', input => library.detail(input));
   handle('games:list', input => games.list(input));
   handle('games:detail', input => games.detail(input));

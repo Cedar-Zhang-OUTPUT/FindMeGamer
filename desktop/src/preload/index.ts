@@ -2,6 +2,15 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopBridge } from '../shared/bridge';
 
 const bridge: DesktopBridge = {
+  analysis: Object.freeze({
+    steamImport: (input: Parameters<DesktopBridge['analysis']['steamImport']>[0]) => ipcRenderer.invoke('analysis:steamImport', input),
+    bindYouTube: (input: Parameters<DesktopBridge['analysis']['bindYouTube']>[0]) => ipcRenderer.invoke('analysis:bindYouTube', input),
+    create: (input: Parameters<DesktopBridge['analysis']['create']>[0]) => ipcRenderer.invoke('analysis:create', input),
+    detail: (input: Parameters<DesktopBridge['analysis']['detail']>[0]) => ipcRenderer.invoke('analysis:detail', input),
+    changed: (input: Parameters<DesktopBridge['analysis']['changed']>[0]) => ipcRenderer.invoke('analysis:changed', input),
+    retry: (input: Parameters<DesktopBridge['analysis']['retry']>[0]) => ipcRenderer.invoke('analysis:retry', input),
+    resume: (input: Parameters<DesktopBridge['analysis']['resume']>[0]) => ipcRenderer.invoke('analysis:resume', input),
+  }),
   collaboration: {
     list: input => ipcRenderer.invoke('collaboration:list', input),
     detail: input => ipcRenderer.invoke('collaboration:detail', input),

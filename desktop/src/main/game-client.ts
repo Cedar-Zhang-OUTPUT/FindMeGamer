@@ -144,7 +144,7 @@ function timestamp(value: unknown): string | null {
   return result;
 }
 
-function decodeDetail(value: unknown, expectedId?: string): GameDetail {
+export function decodeDetail(value: unknown, expectedId?: string): GameDetail {
   const raw = object(value, 'response');
   keys(raw, [...fieldNames, ...metadata], 'response');
   const id = identifier(raw.id, 'response');

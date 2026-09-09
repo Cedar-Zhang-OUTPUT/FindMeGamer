@@ -5,8 +5,11 @@ import { GameEditor } from './GameEditor';
 import { comparisonValue, gameLabels } from './gameDraft';
 import { analyzedDate, Artwork, EmptyState, ErrorNotice, Icon, Loading } from './Primitives';
 import '../games.css';
+import {useAnalyze} from './analyze/AnalyzeProvider';
+import {SourceImport} from './analyze/SourceImport';
+import {GameAnalysisInsights} from './analyze/AnalysisInsights';
 
-type Route = { kind: 'list' } | { kind: 'loading'; id: string; error: PublicError | null } | { kind: 'detail'; game: GameDetail; saved?: boolean } | { kind: 'editor'; game: GameDetail | null };
+type Route = { kind: 'list' } | { kind: 'loading'; id: string; error: PublicError | null } | { kind: 'detail'; game: GameDetail; saved?: boolean } | { kind: 'editor'; game: GameDetail | null } | {kind:'source';game?:GameDetail};
 interface LibraryState { search: string; query: string; onlyCollection: boolean; websiteStatus: GameWebsiteStatus; sort: GameSort; page: GamePage | null; busy: boolean; error: PublicError | null; failedInput: GameListInput | null }
 function queryInput(state: LibraryState, offset = 0): GameListInput {
   return { query: state.query, onlyCollection: state.onlyCollection, websiteStatus: state.websiteStatus, sort: state.sort, offset };
@@ -18,7 +21,8 @@ function canOpen(url: string | null): url is string {
   try { const parsed = new URL(url); return parsed.protocol === 'https:' && !parsed.username && !parsed.password; } catch { return false; }
 }
 
-function GameRecord({ api, game, saved, onBack, onEdit }: { api: DesktopBridge; game: GameDetail; saved?: boolean; onBack: () => void; onEdit: () => void }) {
+function GameRecord({ api, game, saved, onBack, onEdit,onImport }: { api: DesktopBridge; game: GameDetail; saved?: boolean; onBack: () => void; onEdit: () => void;onImport:()=>void }) {
+  const analyze=useAnalyze();
   const [externalError, setExternalError] = useState<PublicError | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => { heading.current?.focus({ preventScroll: true }); }, [game.id]);
@@ -31,13 +35,15 @@ function GameRecord({ api, game, saved, onBack, onEdit }: { api: DesktopBridge; 
       <div className="profile-metrics">{game.favorite && <div><span>Collection</span><strong>Saved</strong></div>}{game.last_analyzed_at && <div><span>Analyzed</span><strong>{analyzedDate(game.last_analyzed_at)}</strong></div>}{game.release_date && <div><span>Release date</span><strong>{game.release_date}</strong></div>}</div>
     </section>
     {externalError && <ErrorNotice error={externalError}/>}
+    <div className="analysis-entry-actions">{game.source_identity.canonical_url?<button className="button primary" onClick={()=>analyze.request({target_type:'game',url:game.source_identity.canonical_url!,mode:'reanalyze',profileId:game.id,title:titleOf(game)})}>Analyze game</button>:null}<button className="button secondary" onClick={onImport}>{game.source_identity.steam_app_id?'Refresh Steam source':'Bind Steam source'}</button></div>
+    {game.last_analyzed_at&&<GameAnalysisInsights api={api} id={game.id} revision={game.revision}/>}
     <div className={`game-detail-columns ${game.reference_works.length ? '' : 'game-detail-single'}`}><section>{game.description && <><h3>About</h3><p className="game-description-text">{game.description}</p></>}{game.tags.length > 0 && <ul className="tags">{game.tags.map((tag, index) => <li key={`${tag}-${index}`}>{tag}</li>)}</ul>}<dl className="game-identity-fields"><div><dt>Website</dt><dd>{game.website_url ? <><span>{game.website_url}</span>{canOpen(game.website_url) && <button className="text-button" onClick={() => void open(game.website_url!)}>Open website<Icon name="external"/></button>}</> : 'Not recorded'}</dd></div>{game.steam_app_id && <div><dt>Steam ID</dt><dd>{game.steam_app_id}</dd></div>}{game.languages.length > 0 && <div><dt>Languages</dt><dd>{game.languages.join(', ')}</dd></div>}</dl></section>
       {game.reference_works.length > 0 && <section className="game-detail-references"><h3>Reference works <span className="count">{game.reference_works.length}</span></h3>{game.reference_works.length ? <ul>{game.reference_works.map((reference, index) => <li key={reference.id || index}><h4>{reference.name || reference.url}</h4>{reference.url && <div className="game-reference-link"><span>{reference.url}</span>{canOpen(reference.url) && <button className="text-button" onClick={() => void open(reference.url!)}>Open reference<Icon name="external"/></button>}</div>}{reference.similarities.length > 0 && <ul className="tags">{reference.similarities.map((item, itemIndex) => <li key={itemIndex}>{item}</li>)}</ul>}{reference.reason && <p>{reference.reason}</p>}</li>)}</ul> : <p className="muted">No references added.</p>}</section>}</div>
     <details className="game-provenance"><summary>Source &amp; saved fields</summary><div className="game-source-binding"><h3>Source binding · Read-only</h3><dl><div><dt>Steam source</dt><dd>{game.source_identity.steam_app_id || 'Not bound'}</dd></div><div><dt>Source URL</dt><dd>{game.source_identity.canonical_url || 'Not bound'}</dd></div><div><dt>Revision</dt><dd>{game.revision}</dd></div></dl></div><div className="game-source-comparisons">{GAME_FIELDS.map(field => <div className="game-source-field" key={field}><h4>{gameLabels[field]}{game.overridden_fields.includes(field) && <span className="game-source-badge">Manual override</span>}</h4><div><span>Source</span><p>{comparisonValue(game.source_fields[field])}</p></div><div><span>Saved</span><p>{comparisonValue(game[field])}</p></div></div>)}</div></details>
   </article>;
 }
 
-export function GameLibrary({ api, active, onNavigationGuardChange, onConnectionRepair }: { api: DesktopBridge; active: boolean; onNavigationGuardChange?: (guard: NavigationGuard | null) => void; onConnectionRepair?: () => void }) {
+export function GameLibrary({ api, active, onNavigationGuardChange, onConnectionRepair,openRequest }: { api: DesktopBridge; active: boolean; onNavigationGuardChange?: (guard: NavigationGuard | null) => void; onConnectionRepair?: () => void;openRequest?:{id:string;nonce:number} }) {
   const [library, setLibrary] = useState<LibraryState>({ search: '', query: '', onlyCollection: false, websiteStatus: 'all', sort: 'recent_updated', page: null, busy: false, error: null, failedInput: null });
   const [route, setRoute] = useState<Route>({ kind: 'list' });
   const listState = useRef(library); listState.current = library;
@@ -66,6 +72,7 @@ export function GameLibrary({ api, active, onNavigationGuardChange, onConnection
     } catch { if (alive.current && generation.current === token) setLibrary(previous => ({ ...previous, busy: false, error: interrupted, failedInput: request })); }
   }, [api]);
   useEffect(() => { if (active && !loaded.current) { loaded.current = true; void loadPage({ offset: 0 }, false); } }, [active, loadPage]);
+  useEffect(()=>{if(openRequest)void openGame(openRequest.id);},[openRequest]);
 
   function rememberScroll() { listScroll.current = document.querySelector<HTMLElement>('.main-scroll')?.scrollTop ?? 0; }
   function scrollTop() { const element = document.querySelector<HTMLElement>('.main-scroll'); if (element) element.scrollTop = 0; }
@@ -96,6 +103,7 @@ export function GameLibrary({ api, active, onNavigationGuardChange, onConnection
   const pageInput = (offset: number): GameListInput => queryInput(library, offset);
   const filtered = Boolean(library.query || library.onlyCollection || library.websiteStatus !== 'all');
   return <div className="games-library">
+    {route.kind==='list'&&<div className="analysis-entry-actions"><button className="button secondary" onClick={()=>{rememberScroll();setRoute({kind:'source'});}}>Import from Steam</button></div>}
     <div ref={listRoot} hidden={route.kind !== 'list'}><div className="game-library-tools"><form className="search-form" role="search" onSubmit={event => { event.preventDefault(); void loadPage({ ...pageInput(0), query: library.search.trim() }); }}><Icon name="search"/><input type="search" aria-label="Search games" maxLength={255} placeholder="Search games…" value={library.search} onChange={event => setLibrary(previous => ({ ...previous, search: event.target.value }))}/><button className="button secondary" type="submit">Search</button></form><button className="button primary" onClick={() => { rememberScroll(); scrollTop(); setRoute({ kind: 'editor', game: null }); }}>New game</button></div>
       <div className="game-list-filter"><label className="collection-filter"><input type="checkbox" checked={library.onlyCollection} onChange={event => void loadPage({ ...pageInput(0), onlyCollection: event.target.checked })}/><Icon name="collection"/>Saved only</label><label className="game-query-choice">Website<select value={library.websiteStatus} onChange={event => void loadPage({ ...pageInput(0), websiteStatus: event.target.value as GameWebsiteStatus })}><option value="all">All</option><option value="available">Available</option><option value="missing">Missing</option></select></label><label className="game-query-choice">Sort<select aria-label="Sort games" value={library.sort} onChange={event => void loadPage({ ...pageInput(0), sort: event.target.value as GameSort })}><option value="recent_updated">Recently updated</option><option value="recent_added">Recently added</option><option value="name">Name</option></select></label><button className="text-button" disabled={library.busy} onClick={() => void loadPage(pageInput(library.failedInput?.offset ?? page?.offset ?? 0))}>Refresh</button></div>
       {library.query && <div className="active-filters"><span>Results for “{library.query}”</span><button className="text-button" onClick={() => { setLibrary(previous => ({ ...previous, search: '' })); void loadPage({ ...pageInput(0), query: '' }); }}>Clear search</button></div>}
@@ -107,7 +115,8 @@ export function GameLibrary({ api, active, onNavigationGuardChange, onConnection
       {page && <div className="game-pagination"><span>{shownStart}–{page.offset + page.items.length} of {page.total}</span><div><button className="button secondary" disabled={library.busy || Boolean(library.error) || page.offset === 0} onClick={() => void loadPage(pageInput(Math.max(0, page.offset - 24)))}>Previous page</button><button className="button secondary" disabled={library.busy || Boolean(library.error) || page.offset + page.limit >= page.total} onClick={() => void loadPage(pageInput(page.offset + page.limit))}>Next page</button></div></div>}
     </div>
     {route.kind === 'loading' && <section className="game-detail-loading"><button className="text-button" onClick={() => backToList()}>Back to games</button>{route.error ? <ErrorNotice error={route.error} onRetry={() => void openGame(route.id, true)}/> : <Loading label="Loading game…"/>}</section>}
-    {route.kind === 'detail' && <GameRecord api={api} game={route.game} saved={route.saved} onBack={() => backToList()} onEdit={() => { setRoute({ kind: 'editor', game: route.game }); scrollTop(); }}/>}
+    {route.kind === 'detail' && <GameRecord api={api} game={route.game} saved={route.saved} onBack={() => backToList()} onImport={()=>setRoute({kind:'source',game:route.game})} onEdit={() => { setRoute({ kind: 'editor', game: route.game }); scrollTop(); }}/>}
+    {route.kind==='source'&&<SourceImport api={api} target={{kind:'game',game:route.game}} onSaved={record=>saved(record as GameDetail)} onClose={()=>{registerGuard(null);route.game?setRoute({kind:'detail',game:route.game}):backToList();}} onNavigationGuardChange={registerGuard} onConnectionRepair={onConnectionRepair}/>}
     {route.kind === 'editor' && <GameEditor key={route.game?.id || 'new'} api={api} initial={route.game} onSaved={saved} onCancel={() => backToList(true)} onNavigationGuardChange={registerGuard} onConnectionRepair={onConnectionRepair}/>}
   </div>;
 }

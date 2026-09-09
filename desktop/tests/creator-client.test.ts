@@ -5,6 +5,11 @@ const path = `/api/v2/library/creators/${CREATOR_ID}`;
 const key = 'creator-save-123';
 
 describe('Creator client contract', () => {
+  it('accepts nullable provider language evidence without exposing it as editable work fields',async()=>{
+    const request=vi.fn(),client=new CreatorClient(request);
+    for(const value of [null,'en-US']){request.mockResolvedValue({items:[{...workFixture(),source_fields:{...workFixture().source_fields,language:value,language_source_field:value===null?null:'snippet.defaultAudioLanguage'}}],total:1,offset:0,limit:50});expect((await client.works({creatorId:CREATOR_ID})).items[0].source_fields.language).toBe(value);}
+    for(const field of ['language','language_source_field']){request.mockClear();await expect(client.updateWork({creatorId:CREATOR_ID,workId:WORK_ID,data:{expected_revision:1,[field]:'en'} as never})).rejects.toMatchObject({code:'request_invalid'});expect(request).not.toHaveBeenCalled();}
+  });
   it('accepts only bounded read-only analysis metadata while preserving old Creator responses and rejecting manual writes', async () => {
     const metadata = { analysis: { kind: 'ai_inference', observations: [{ source_ids: ['post-1'], text: 'Synthetic inference' }] }, brief: { summary: 'Synthetic summary' }, source_status: { coverage: 'recent_account_posts', sample_size: 1, more_available: false } };
     const request = vi.fn().mockResolvedValue({ ...creatorFixture(), ...metadata }), client = new CreatorClient(request);

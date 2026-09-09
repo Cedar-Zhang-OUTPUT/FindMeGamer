@@ -127,10 +127,11 @@ function source(value: unknown, kind: Kind, complete = false): Record<string, un
 }
 function workSource(value: unknown): Record<string, unknown> {
   const raw = object(value, 'response');
-  const { text: recordedText, ...editableFields } = raw;
+  const { text: recordedText, language, language_source_field, ...editableFields } = raw;
   const result = source(editableFields, 'work');
   // Imported PublicJSONObject retains source evidence, not an editable WorkField.
   if (Object.hasOwn(raw, 'text')) result.text = text(recordedText, 'response', 20_000);
+  for(const [key,value] of [['language',language],['language_source_field',language_source_field]] as const)if(Object.hasOwn(raw,key))result[key]=value===null?null:text(value,'response',255);
   return result;
 }
 export type BodyKind = 'creatorCreate' | 'creatorPatch' | 'identity' | 'contactCreate' | 'contactPatch' | 'workCreate' | 'workPatch';
