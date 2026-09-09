@@ -28,9 +28,11 @@ from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import acquire_job_change_lock
 from app.db.models.profiles import GameProfile
 from app.repositories.discovery import DiscoveryConflict, start_batch, stop_query
+from app.discovery.activity_context import activity_context
 from app.repositories.library_v2 import game_detail
 from app.schemas.activity import (
     ActivityCreate,
+    CampaignBriefUpdate,
     QueryCreate,
     ContinueDiscovery,
     ActivityView,
@@ -74,6 +76,8 @@ def _activity(item):
         "game_id": item.game_id,
         "name": item.name,
         "source_snapshot": item.source_snapshot,
+        "campaign_brief": item.campaign_brief,
+        "revision": item.revision,
         "created_at": item.created_at,
     }
 
@@ -244,6 +248,7 @@ def create_router(authenticate_workspace, *, dispatcher=None):
                 id=uuid4(),
                 game_id=game.id,
                 name=value.name,
+                campaign_brief=value.campaign_brief,
                 source_snapshot={
                     "game": detail,
                     "references": [references[i] for i in wanted],
@@ -262,6 +267,38 @@ def create_router(authenticate_workspace, *, dispatcher=None):
             operation=operation,
         )
         return send(body, status)
+
+    @router.patch(
+        "/activities/{activity_id}/campaign-brief",
+        response_model=ActivityView,
+        operation_id="updateActivityCampaignBriefV2",
+    )
+    def update_campaign_brief(
+        activity_id: UUID,
+        value: CampaignBriefUpdate,
+        session: Session = Depends(get_session),
+    ):
+        acquire_job_change_lock(session)
+        item = session.scalar(
+            select(Activity)
+            .where(Activity.id == activity_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if item is None:
+            raise _error(
+                404, "discovery_not_found", "The requested item was not found."
+            )
+        if item.revision != value.expected_revision:
+            raise _error(
+                409,
+                "activity_revision_conflict",
+                "Activity changed. Refresh before saving the campaign brief.",
+            )
+        item.campaign_brief = value.campaign_brief
+        item.revision += 1
+        session.commit()
+        return _activity(item)
 
     @router.get(
         "/activities", response_model=ActivityPage, operation_id="listActivitiesV2"
@@ -316,7 +353,7 @@ def create_router(authenticate_workspace, *, dispatcher=None):
                 id=uuid4(),
                 activity_id=activity.id,
                 conditions=value.model_dump(mode="json"),
-                source_snapshot=activity.source_snapshot,
+                source_snapshot=activity_context(activity),
             )
             session.add(item)
             session.flush()

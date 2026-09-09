@@ -8,6 +8,7 @@ from app.api.routes.activity import _error, _get
 from app.db.models.activity_outreach import RecipientBatch, RecipientSnapshot
 from app.db.models.discovery import Activity
 from app.discovery.evaluation_snapshot import digest
+from app.discovery.activity_context import activity_context
 from app.repositories.activity_preparation import (
     preparation,
     get_selection,
@@ -125,7 +126,7 @@ def freeze_batch(session, activity_id, value):
         activity_id=activity_id,
         request_id=value.request_id,
         request_hash=request_hash,
-        source_snapshot=deepcopy(activity.source_snapshot),
+        source_snapshot=activity_context(activity),
     )
     session.add(batch)
     session.flush()

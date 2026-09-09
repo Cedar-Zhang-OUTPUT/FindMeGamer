@@ -85,11 +85,15 @@ def game_data(snapshot):
 
 def game_brief(snapshot):
     data = game_data(snapshot)
-    return {
+    brief = {
         **bounded(data),
         "context_is_bounded": True,
         "reference_count": len(data["references"]),
     }
+    intent = snapshot.get("campaign_brief")
+    if isinstance(intent, str) and intent.strip():
+        brief["campaign_intent"] = {"text": intent[:5000], "is_verified_fact": False}
+    return brief
 
 
 def creator_snapshot(creator, candidate_id):

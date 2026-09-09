@@ -9,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
     text,
@@ -39,6 +40,8 @@ class Activity(TimestampMixin, Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     source_snapshot: Mapped[dict] = json_object()
+    campaign_brief: Mapped[str | None] = mapped_column(Text)
+    revision: Mapped[int] = counter()
 
 
 class DiscoveryQuery(TimestampMixin, Base):

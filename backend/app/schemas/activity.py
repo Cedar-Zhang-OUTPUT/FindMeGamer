@@ -5,7 +5,15 @@ from uuid import UUID
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StrictStr,
+    BeforeValidator,
+    model_validator,
+)
 
 from app.schemas.discovery import DiscoveryRequest
 from app.schemas.creator_library import CreatorDetail
@@ -45,10 +53,25 @@ class CandidateFilters(StrictModel):
     ] = Field(default_factory=list, max_length=30)
 
 
+CampaignBrief = Annotated[
+    StrictStr | None,
+    Field(max_length=5000),
+    BeforeValidator(
+        lambda value: value.strip() or None if isinstance(value, str) else value
+    ),
+]
+
+
+class CampaignBriefUpdate(StrictModel):
+    campaign_brief: CampaignBrief
+    expected_revision: Annotated[StrictInt, Field(ge=0)]
+
+
 class ActivityCreate(StrictModel):
     game_id: UUID
     name: str = Field(min_length=1, max_length=255)
     reference_work_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    campaign_brief: CampaignBrief = None
 
 
 class DiscoveryOptions(StrictModel):
@@ -82,6 +105,8 @@ class ActivityView(BaseModel):
     game_id: UUID
     name: str
     source_snapshot: dict[str, Any]
+    campaign_brief: CampaignBrief = None
+    revision: int = 0
     created_at: datetime
 
 

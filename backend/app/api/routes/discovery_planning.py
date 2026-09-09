@@ -1,5 +1,6 @@
 from typing import Annotated
 from uuid import UUID, uuid4
+from app.discovery.activity_context import activity_context
 
 from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse
@@ -66,7 +67,7 @@ def create_router(authenticate_workspace, *, dispatcher=None):
             plan = DiscoveryPlan(
                 id=uuid4(),
                 activity_id=activity.id,
-                source_snapshot=activity.source_snapshot,
+                source_snapshot=activity_context(activity),
                 conditions=value.model_dump(mode="json"),
                 model=PLANNING_MODEL,
             )

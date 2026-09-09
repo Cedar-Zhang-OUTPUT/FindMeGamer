@@ -45,7 +45,7 @@ def test_0018_upgrade_preserves_creator_data_and_accepts_x_jobs_without_weakenin
         with Session(database_engine) as session, session.begin():
             assert (
                 session.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260908_0019"
+                == "20260909_0020"
             )
             profile = session.get(CreatorProfile, x_id)
             assert profile.manual_overrides == {

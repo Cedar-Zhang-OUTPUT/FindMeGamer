@@ -212,6 +212,8 @@ def preparation(session, row):
             "preparation": body,
             "creator_fingerprint": creator_fingerprint,
             "game": live_game,
+            "campaign_brief": activity.campaign_brief,
+            "activity_revision": activity.revision,
         }
     )
     return Preparation.model_validate(body).model_dump(mode="json")
