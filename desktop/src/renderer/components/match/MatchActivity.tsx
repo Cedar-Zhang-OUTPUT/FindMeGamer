@@ -1,4 +1,4 @@
-import {useCallback,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState} from 'react';
 import type {DesktopBridge,PublicError} from '../../../shared/bridge';
 import type {SavedSetView} from '../../../shared/savedSets';
 import type {NavigationGuard} from '../../../shared/games';
@@ -37,9 +37,10 @@ function ResultTabs({value,onChange,count}:{value:'candidates'|'briefs';onChange
   }}><button role="tab" tabIndex={value==='candidates'?0:-1} aria-selected={value==='candidates'} onClick={()=>onChange('candidates')}>Candidates</button><button role="tab" tabIndex={value==='briefs'?0:-1} aria-selected={value==='briefs'} onClick={()=>onChange('briefs')}>Match briefs{count!==undefined?` · ${count}`:''}</button></div>;
 }
 
-export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavigationGuardChange,onConnectionRepair,onCollectionSettings,onSMTPSettings}:{api:DesktopBridge;activityId:string;active:boolean;onBack:()=>void;onOpenCreator:(id:string,section?:'overview'|'contacts'|'works')=>void;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void;onSMTPSettings?:()=>void}){
+export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavigationGuardChange,onConnectionRepair,onCollectionSettings,onSMTPSettings,surface='match',onShowMatch}:{api:DesktopBridge;activityId:string;active:boolean;onBack:()=>void;onOpenCreator:(id:string,section?:'overview'|'contacts'|'works')=>void;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void;onSMTPSettings?:()=>void;surface?:'match'|'outreach';onShowMatch?:()=>void}){
   const session=useMatchSession(api.match,activityId,active),operation=useMatchOperation(api.match);
-  const [workspacePanel,setWorkspacePanel]=useState<'matching'|'invitations'>('matching');
+  const [workspacePanel,setWorkspacePanel]=useState<'matching'|'invitations'>(surface==='outreach'?'invitations':'matching');
+  useEffect(()=>{setWorkspacePanel(surface==='outreach'?'invitations':'matching');},[surface]);
   const savedOperation=useSavedSetOperation(api.savedSets);
   const [listDraft,setListDraft]=useState<SavedListDraft|null>(null),[openedSetId,setOpenedSetId]=useState<string|null>(null),[setsRefresh,setSetsRefresh]=useState(0);
   const [checkingSet,setCheckingSet]=useState(false),[recoveredSet,setRecoveredSet]=useState<SavedSetView|null>(null),[setReadError,setSetReadError]=useState<PublicError|null>(null),[setReadBusy,setSetReadBusy]=useState(false);
@@ -97,11 +98,11 @@ export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavi
   }
   return <section className="match-activity">
     <div className="match-breadcrumb"><button className="text-button" onClick={()=>guard.request(onBack)}><Icon name="arrow"/>Activities</button><span>{gameName}</span><button className="icon-button" title="Refresh activity" aria-label="Refresh activity" onClick={refresh} disabled={session.loading}><Icon name="refresh"/></button></div>
-    <div className="page-heading"><h1>{activity?.name??'Activity'}</h1></div>
+    <div className="page-heading"><h1>{activity?.name??'Activity'}</h1>{surface==='outreach'&&onShowMatch&&<button className="button secondary" onClick={onShowMatch}>Continue in Match</button>}</div>
     {!activity&&!session.errors.activity&&<Loading label="Loading activity…"/>}{session.errors.activity&&<ErrorNotice error={session.errors.activity} onRetry={session.refresh}/>}
     {activity&&<>
-      <div className="creator-tabs" role="tablist" aria-label="Activity workspace" onKeyDown={event=>{if(locked||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const next=event.key==='Home'?'matching':event.key==='End'?'invitations':workspacePanel==='matching'?'invitations':'matching';setWorkspacePanel(next);event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]')[next==='matching'?0:1]?.focus();}}>{(['matching','invitations'] as const).map(panel=><button key={panel} role="tab" aria-selected={workspacePanel===panel} aria-controls={`activity-panel-${panel}`} id={`activity-tab-${panel}`} tabIndex={workspacePanel===panel?0:-1} disabled={locked} onClick={()=>setWorkspacePanel(panel)}>{panel==='matching'?'Find & prepare':'Invitations'}</button>)}</div>
-      <div role="tabpanel" id="activity-panel-invitations" aria-labelledby="activity-tab-invitations" hidden={workspacePanel!=='invitations'}><CollaborationWorkspace controller={collaboration} active={active&&workspacePanel==='invitations'} onOpenCreator={openCreator} onChoosePeople={()=>setWorkspacePanel('matching')} onConnectionRepair={onConnectionRepair}/></div>
+      <div className="creator-tabs" role="tablist" aria-label="Activity workspace" onKeyDown={event=>{if(locked||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const next=event.key==='Home'?'matching':event.key==='End'?'invitations':workspacePanel==='matching'?'invitations':'matching';setWorkspacePanel(next);event.currentTarget.querySelectorAll<HTMLButtonElement>('[role=tab]')[next==='matching'?0:1]?.focus();}}>{(['matching','invitations'] as const).map(panel=><button key={panel} role="tab" aria-selected={workspacePanel===panel} aria-controls={`activity-panel-${panel}`} id={`activity-tab-${panel}`} tabIndex={workspacePanel===panel?0:-1} disabled={locked} onClick={()=>setWorkspacePanel(panel)}>{panel==='matching'?(surface==='outreach'?'Prepare & send':'Find & prepare'):'Invitations'}</button>)}</div>
+      <div role="tabpanel" id="activity-panel-invitations" aria-labelledby="activity-tab-invitations" hidden={workspacePanel!=='invitations'}><CollaborationWorkspace controller={collaboration} active={active&&workspacePanel==='invitations'} onOpenCreator={openCreator} onChoosePeople={()=>surface==='outreach'&&onShowMatch?onShowMatch():setWorkspacePanel('matching')} onConnectionRepair={onConnectionRepair}/></div>
       <div role="tabpanel" id="activity-panel-matching" aria-labelledby="activity-tab-matching" hidden={workspacePanel!=='matching'}>
       <details className="match-context"><summary>Game context</summary><p>{gameName} · Saved {taskDate(activity.created_at)}</p><p>Library edits do not change this activity’s saved game or references.</p>{game&&typeof game==='object'&&!Array.isArray(game)&&typeof game.description==='string'&&<p>{game.description}</p>}
         {Array.isArray(activity.source_snapshot.references)&&<ul>{activity.source_snapshot.references.map((reference,index)=><li key={index}>{reference&&typeof reference==='object'&&!Array.isArray(reference)&&typeof reference.name==='string'?reference.name:'Reference work'}</li>)}</ul>}

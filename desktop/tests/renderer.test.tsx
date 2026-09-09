@@ -233,7 +233,7 @@ describe('desktop renderer', () => {
     expect(screen.queryByText('Pixel Harbor')).not.toBeInTheDocument();
   });
 
-  it('verifies a saved key before reading Library and keeps unfinished features honest', async () => {
+  it('verifies a saved key before reading Library and opens the connected task entries', async () => {
     const check = deferred<Result<{ authenticated: true; proxy: 'system'; route: 'direct' }>>();
     const api = bridge(); vi.mocked(api.connection.test).mockReturnValue(check.promise);
     const { user } = start(api);
@@ -247,7 +247,7 @@ describe('desktop renderer', () => {
     expect(screen.queryByRole('button', { name: /send/i })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^Outreach$/ }));
     expect(screen.getByRole('heading', { name: 'Outreach' })).toBeVisible();
-    expect(within(screen.getByRole('region', { name: 'outreach page' })).getByText('Not connected yet')).toBeVisible();
+    expect(await within(screen.getByRole('region', { name: 'outreach page' })).findByRole('button',{name:'Open Indie launch'})).toBeVisible();
   });
 
   it('submits search explicitly and preserves separate tab queries and pages', async () => {

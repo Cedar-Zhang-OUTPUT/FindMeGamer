@@ -29,6 +29,7 @@ export interface CreatorRecordProps {
   onEdit: (target: { kind: 'creator' | 'contact' | 'work' | 'identity'; base?: ContactDetail | WorkDetail }) => void;
   refreshToken?: number;
   initialSection?: Section;
+  invitationActivityId?: string;
   onAnalyze?:()=>void;
   onBindYouTube?:()=>void;
 }
@@ -53,7 +54,7 @@ function Profile({ api, creator, onEdit }: { api: DesktopBridge; creator: Creato
   </section>;
 }
 
-export function CreatorRecord({ api, creator, onBack, onEdit,onAnalyze,onBindYouTube, refreshToken = 0, initialSection = 'profile' }: CreatorRecordProps) {
+export function CreatorRecord({ api, creator, onBack, onEdit,onAnalyze,onBindYouTube, invitationActivityId, refreshToken = 0, initialSection = 'profile' }: CreatorRecordProps) {
   const [section, setSection] = useState<Section>(initialSection);
   const [headerError, setHeaderError] = useState<PublicError | null>(null);
   const tabs = useRef(new Map<Section, HTMLButtonElement>());
@@ -86,7 +87,7 @@ export function CreatorRecord({ api, creator, onBack, onEdit,onAnalyze,onBindYou
     {(onAnalyze||onBindYouTube)&&<div className="analysis-entry-actions">{onAnalyze&&<button className="button primary" onClick={onAnalyze}>Analyze creator</button>}{onBindYouTube&&<button className="button primary" onClick={onBindYouTube}>Bind YouTube channel</button>}</div>}
     {section==='profile'&&<AnalysisInsights brief={creator.brief} analysis={creator.analysis} sourceStatus={creator.source_status}/>}
     <div className="creator-tabs" role="tablist" aria-label="Creator record sections">{sections.map(item => <button key={item.id} ref={node => { if (node) tabs.current.set(item.id, node); else tabs.current.delete(item.id); }} type="button" role="tab" id={`creator-tab-${item.id}`} aria-controls={`creator-panel-${item.id}`} aria-selected={section === item.id} tabIndex={section === item.id ? 0 : -1} onClick={() => choose(item.id)} onKeyDown={event => keyNavigation(event, item.id)}>{item.label}</button>)}</div>
-    <div role="tabpanel" id="creator-panel-profile" aria-labelledby="creator-tab-profile" hidden={section !== 'profile'}><Profile api={api} creator={creator} onEdit={onEdit}/><CreatorInvitationHistory key={creator.id} api={api.collaboration} creatorId={creator.id} active={section==='profile'}/></div>
+    <div role="tabpanel" id="creator-panel-profile" aria-labelledby="creator-tab-profile" hidden={section !== 'profile'}><Profile api={api} creator={creator} onEdit={onEdit}/><CreatorInvitationHistory key={creator.id} api={api.collaboration} creatorId={creator.id} initialActivityId={invitationActivityId} active={section==='profile'}/></div>
     <div role="tabpanel" id="creator-panel-emails" aria-labelledby="creator-tab-emails" hidden={section !== 'emails'}><CreatorContacts api={api} contacts={creator.contacts} onEdit={onEdit}/></div>
     <div role="tabpanel" id="creator-panel-works" aria-labelledby="creator-tab-works" hidden={section !== 'works'}><CreatorWorks api={api} creatorId={creator.id} identityRevision={creator.source_identity.revision} active={section === 'works'} onEdit={onEdit} refreshToken={refreshToken}/></div>
   </article>;

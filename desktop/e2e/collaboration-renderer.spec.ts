@@ -41,7 +41,8 @@ async function treeHash(directory: string) {
 }
 
 test('C built renderer saves only explicit notes and retains unsaved collaboration context', async ({ browser }, testInfo) => {
-  test.skip(process.env.FMG_C_RENDERER_FROZEN !== '64692' || process.env.FMG_C_RENDERER_UPDATE !== 'approved', 'Requires coordinator freeze/lease, passed API ledger and exactly one notes-update authorization.');
+  const globalReadOnly = process.env.FMG_GLOBAL_OUTREACH === '64692';
+  test.skip(!globalReadOnly && (process.env.FMG_C_RENDERER_FROZEN !== '64692' || process.env.FMG_C_RENDERER_UPDATE !== 'approved'), 'Requires exclusive fixture lease and an explicit verification mode.');
   test.setTimeout(120_000);
   const run = randomUUID(), ledger = `${PRIVATE}/c-renderer-${run}.json`, marker = `Synthetic C renderer notes verification ${run}`;
   const report: Record<string, unknown> = { status: 'running', stage: 'bootstrap', evidence: 'headless-built-renderer', screenshots: [] };
@@ -71,7 +72,7 @@ test('C built renderer saves only explicit notes and retains unsaved collaborati
     const fetcher: Fetcher = async (url, init) => {
       const u = new URL(url), method = init.method ?? 'GET';
       const get = method === 'GET' && /^\/api\/(v1\/(session$|settings\/|outreach\/smtp$)|v2\/(library\/(games|creators)|activities|discovery|saved-sets|outreach\/))/.test(u.pathname);
-      const update = method === 'POST' && u.pathname === `/api/v2/activities/${ACTIVITY}/invitations/${SELECTION}/update` && posts === 0;
+      const update = !globalReadOnly && method === 'POST' && u.pathname === `/api/v2/activities/${ACTIVITY}/invitations/${SELECTION}/update` && posts === 0;
       if (u.origin !== ORIGIN || !(get || update)) { forbiddenHTTP++; throw new Error('http_scope'); }
       if (update) { const body = JSON.parse(String(init.body)); safe(Object.keys(body).sort().join(',') === 'expected_revision,notes' && body.expected_revision === expectedRevision && body.notes === marker, 'exact_notes_body'); posts++; }
       const family = `${method} ${u.pathname.replace(/[a-f0-9]{8}-[a-f0-9-]{27}/gi, ':id')}`; http[family] = (http[family] ?? 0) + 1;
@@ -118,11 +119,33 @@ test('C built renderer saves only explicit notes and retains unsaved collaborati
         drafts: group('drafts', ['templates', 'template', 'registerCanonical', 'createTemplate', 'compositions', 'composition', 'createComposition', 'edit', 'refresh', 'retry', 'senderFacts']), sending: group('sending', ['qualify', 'send', 'batches', 'batch', 'retry', 'resolve']), collaboration: group('collaboration', ['list', 'detail', 'creatorHistory', 'update', 'respond']), openExternal: (v: string) => (window as any).__fmgInvoke('openExternal', v),
       } });
     });
-    await checkpoint('open_activity'); await page.goto(origin); await expect(page.getByText('Workspace connected', { exact: true })).toBeVisible(); await page.getByRole('button', { name: 'Match', exact: true }).click();
+    await checkpoint('open_activity'); await page.goto(origin); await expect(page.getByText('Workspace connected', { exact: true })).toBeVisible(); await page.getByRole('button', { name: globalReadOnly ? 'Outreach' : 'Match', exact: true }).click();
     let located = false; for (let n = 0; n < 10; n++) { const button = page.getByRole('button', { name: `Open ${activity.name}`, exact: true }); await expect(page.getByRole('button', { name: /^Open / }).first()).toBeVisible(); if (await button.count()) { await button.click(); located = true; break; } await page.getByRole('button', { name: 'Next page', exact: true }).click(); } safe(located, 'activity_found');
     await page.getByRole('tab', { name: 'Invitations', exact: true }).click();
     const workspace = page.getByRole('region', { name: 'Invitations', exact: true }), editor = workspace.getByRole('region', { name: 'Invitation relationship', exact: true });
     await expect(editor).toBeVisible(); await checkpoint('response_filter'); const responseFilter = workspace.locator('.collaboration-filters').getByRole('combobox', { name:'Response', exact: true }); await responseFilter.selectOption('accepted'); await expect(editor).toBeVisible();
+    if(globalReadOnly){
+      await checkpoint('global_outreach_read_only');
+      await editor.getByRole('button',{name:'Open creator',exact:true}).click();
+      await expect(page.getByRole('button',{name:'All activities',exact:true})).toBeVisible();
+      await expect(page.locator('.creator-invitation-history').getByRole('button').filter({hasText:activity.name})).toBeVisible();
+      await page.getByRole('button',{name:'Back to activity',exact:true}).click();
+      await expect(responseFilter).toHaveValue('accepted');
+      const reads=bridge['match.activity'];
+      await page.getByRole('button',{name:'Continue in Match',exact:true}).click();
+      await expect(page.getByRole('tab',{name:'Find & prepare',exact:true})).toHaveAttribute('aria-selected','true');
+      await page.getByRole('button',{name:'Outreach',exact:true}).click();
+      await expect(responseFilter).toHaveValue('accepted');
+      await expect(editor.getByRole('button',{name:'Open creator',exact:true})).toBeEnabled();
+      safe(bridge['match.activity']===reads,'shared_activity_retained');
+      await page.setViewportSize({width:760,height:920});
+      await page.evaluate(()=>{document.documentElement.style.fontSize='135%';});
+      safe(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'outreach_narrow_layout');
+      const shot=testInfo.outputPath('global-outreach-narrow.png');await page.screenshot({path:shot});(report.screenshots as string[]).push(shot);
+      safe(JSON.stringify(await collaboration.detail(scope))===JSON.stringify(original)&&posts===0,'global_outreach_zero_writes');
+      safe(pageErrors===0&&forbiddenHTTP===0&&unexpectedBridge===0,'global_outreach_runtime');
+      report.status='passed';await checkpoint('global_outreach_complete');
+    }else{
     await checkpoint('explicit_notes_update'); await editor.getByRole('button', { name: 'Edit progress', exact: true }).click(); await editor.getByRole('textbox', { name:'Notes', exact: true }).fill(marker); await editor.getByRole('button', { name: 'Save progress', exact: true }).click(); await expect(editor.getByRole('button', { name: 'Edit progress', exact: true })).toBeVisible();
     const saved = await collaboration.detail(scope); safe(saved.revision === original.revision + 1 && saved.notes === marker && JSON.stringify(saved.responses) === JSON.stringify(original.responses) && saved.cooperation_state === original.cooperation_state && saved.follow_up_state === original.follow_up_state && saved.sending_state === original.sending_state && posts === 1, 'one_real_ui_notes_write');
     report.saved_revision = saved.revision; report.notes_hash = sha(marker);
@@ -140,6 +163,7 @@ test('C built renderer saves only explicit notes and retains unsaved collaborati
     const responseShot = testInfo.outputPath('collaboration-response-gate.png'); await page.screenshot({ path: responseShot }); (report.screenshots as string[]).push(responseShot); await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
     safe(JSON.stringify(await collaboration.detail(scope)) === JSON.stringify(saved) && posts === 1 && !bridge['collaboration.respond'], 'cancel_detour_response_no_extra_write');
     safe(pageErrors === 0 && consoleProblems === 0 && forbiddenHTTP === 0 && unexpectedBridge === 0 && blockedBrowser === 0, 'runtime_errors'); report.status = 'passed'; await checkpoint('complete');
+    }
   } catch (error) {
     report.status = 'failed'; report.error = error instanceof Error && /^[a-z0-9_]+$/.test(error.message) ? error.message : 'ui_assertion_failed';
     if(error instanceof Error)report.locator_failure=error.message.match(/waiting for ([^\n]+)/)?.[1]??null;

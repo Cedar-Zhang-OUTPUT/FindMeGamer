@@ -22,7 +22,7 @@ type Owner='activity'|'new'|'creator'|'none';
 const scroller=()=>document.querySelector<HTMLElement>('.main-scroll');
 function gameName(activity:ActivityView){const game=activity.source_snapshot.game;return game&&typeof game==='object'&&!Array.isArray(game)&&typeof game.name==='string'?game.name:'Saved game';}
 
-interface MatchWorkspaceProps {api:DesktopBridge;active:boolean;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void;onSMTPSettings?:()=>void;gameRequest?:{game:GameDetail;nonce:number};onGameRequestHandled?:()=>void}
+interface MatchWorkspaceProps {api:DesktopBridge;active:boolean;surface?:'match'|'outreach';onShowMatch?:()=>void;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void;onSMTPSettings?:()=>void;gameRequest?:{game:GameDetail;nonce:number};onGameRequestHandled?:()=>void}
 export function MatchWorkspace(props:MatchWorkspaceProps){
   const guards=useRef<{task:NavigationGuard|null;analysis:NavigationGuard|null}>({task:null,analysis:null});
   const publish=useRef(props.onNavigationGuardChange);publish.current=props.onNavigationGuardChange;
@@ -37,9 +37,11 @@ export function MatchWorkspace(props:MatchWorkspaceProps){
   const analysisGuard=useCallback((value:NavigationGuard|null)=>register('analysis',value),[register]);
   return <AnalyzeProvider api={props.api} onNavigationGuardChange={analysisGuard} onConnectionRepair={props.onConnectionRepair} onCollectionSettings={props.onCollectionSettings}><MatchWorkspaceContent {...props} onNavigationGuardChange={taskGuard}/></AnalyzeProvider>;
 }
-function MatchWorkspaceContent({api,active,onNavigationGuardChange,onConnectionRepair,onCollectionSettings,onSMTPSettings,gameRequest,onGameRequestHandled}:MatchWorkspaceProps){
+function MatchWorkspaceContent({api,active,onNavigationGuardChange,onConnectionRepair,onCollectionSettings,onSMTPSettings,gameRequest,onGameRequestHandled,surface='match',onShowMatch}:MatchWorkspaceProps){
   const analysis=useAnalyze();
   const [route,setRoute]=useState<Route>({kind:'list'}),[page,setPage]=useState<ActivityPage|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState<PublicError|null>(null),[failedOffset,setFailedOffset]=useState<number|null>(null);
+  const priorSurface=useRef(surface);
+  useEffect(()=>{if(priorSurface.current===surface)return;priorSurface.current=surface;creatorGeneration.current++;setRoute(current=>current.kind==='new'?{kind:'list'}:current.kind==='activity'?{...current,creator:null}:current);},[surface]);
   const listRoot=useRef<HTMLDivElement>(null),activityRoot=useRef<HTMLDivElement>(null),listScroll=useRef(0),activityScroll=useRef(0),selectedActivity=useRef<string|null>(null),creatorOpener=useRef<HTMLElement|null>(null);
   const pageGeneration=useRef(0),creatorGeneration=useRef(0),loaded=useRef(false),pendingPage=useRef(false),alive=useRef(true),restoreFrame=useRef<number|null>(null);
   const guards=useRef<Record<Owner,NavigationGuard|null>>({activity:null,new:null,creator:null,none:null});
@@ -110,19 +112,19 @@ function MatchWorkspaceContent({api,active,onNavigationGuardChange,onConnectionR
   function saved(creator:CreatorDetail){creatorGeneration.current++;setRoute(current=>current.kind==='activity'?{...current,creator:{kind:'detail',creator,section:current.creator&&'section' in current.creator?current.creator.section:'profile',saved:true}}:current);}
   function requestBack(){const guard=guards.current[ownerRef.current];if(guard)guard(backToActivity);else backToActivity();}
   return <div className="match-workspace">
-    <div className="analysis-entry-actions"><button className="button secondary" onClick={analysis.showTasks}>Analysis tasks</button></div>
+    <div className="analysis-entry-actions"><button className="button secondary" onClick={analysis.showTasks}>Analysis tasks</button>{surface==='outreach'&&onSMTPSettings&&<button className="button secondary" onClick={onSMTPSettings}>Email settings</button>}</div>
     <div ref={listRoot} hidden={route.kind!=='list'}>
-      <div className="page-heading match-workspace-heading"><h1>Match</h1><button className="button primary" onClick={()=>{listScroll.current=scroller()?.scrollTop??0;setRoute({kind:'new'});}}>New activity</button></div>
+      <div className="page-heading match-workspace-heading"><h1>{surface==='outreach'?'Outreach':'Match'}</h1>{surface==='outreach'?<button className="button primary" onClick={onShowMatch}>Find creators</button>:<button className="button primary" onClick={()=>{listScroll.current=scroller()?.scrollTop??0;setRoute({kind:'new'});}}>New activity</button>}</div>
       <div className="match-list-caption"><span>{page?`${page.items.length?page.offset+1:0}–${page.items.length?page.offset+page.items.length:0} of ${page.total}`:''}</span><button className="icon-button" aria-label="Refresh activities" title="Refresh activities" disabled={busy} onClick={()=>void load(page?.offset??0)}><Icon name="refresh"/></button></div>
       {busy&&<Loading label="Loading activities…"/>}{page&&<ul className="match-activity-list" aria-label="Activities">{page.items.map(activity=><li key={activity.id}><button className="match-activity-row" data-activity-id={activity.id} aria-label={`Open ${activity.name}`} onClick={()=>openActivity(activity.id)}><span><strong>{activity.name}</strong><span>{gameName(activity)}</span></span><time dateTime={activity.created_at}>{taskDate(activity.created_at)}</time><Icon name="chevron"/></button></li>)}</ul>}
       {error&&<ErrorNotice error={error} onRetry={()=>void load(failedOffset??page?.offset??0)}/>}{!busy&&!error&&page?.items.length===0&&<EmptyState title="No activities yet"/>}
       {page&&page.total>0&&<div className="match-pagination"><button className="button secondary" disabled={busy||page.offset===0} onClick={()=>void load(Math.max(0,page.offset-50))}>Previous page</button><button className="button secondary" disabled={busy||page.offset+page.limit>=page.total} onClick={()=>void load(page.offset+50)}>Next page</button></div>}
     </div>
     {route.kind==='new'&&<NewActivity key={route.nonce??'manual'} api={api} initialGame={route.game} onCreated={created} onCancel={toList} onNavigationGuardChange={newGuard} onConnectionRepair={onConnectionRepair}/>}
-    {route.kind==='activity'&&<><div ref={activityRoot} hidden={Boolean(overlay)}><MatchActivity key={route.id} api={api} activityId={route.id} active={active&&!overlay} onBack={toList} onOpenCreator={(id,section)=>void openCreator(id,section==='contacts'?'emails':section==='works'?'works':'profile')} onNavigationGuardChange={activityGuard} onConnectionRepair={onConnectionRepair} onCollectionSettings={onCollectionSettings} onSMTPSettings={onSMTPSettings}/></div>
+    {route.kind==='activity'&&<><div ref={activityRoot} hidden={Boolean(overlay)}><MatchActivity key={route.id} api={api} activityId={route.id} active={active&&!overlay} surface={surface} onShowMatch={onShowMatch} onBack={toList} onOpenCreator={(id,section)=>void openCreator(id,section==='contacts'?'emails':section==='works'?'works':'profile')} onNavigationGuardChange={activityGuard} onConnectionRepair={onConnectionRepair} onCollectionSettings={onCollectionSettings} onSMTPSettings={onSMTPSettings}/></div>
       {overlay&&<div className="match-creator-route"><button className="text-button back-button" onClick={requestBack}><Icon name="arrow"/>Back to activity</button>
         {overlay.kind==='loading'&&(overlay.error?<ErrorNotice error={overlay.error} onRetry={()=>void openCreator(overlay.id,overlay.section,true)}/>:<Loading label="Loading creator…"/>)}
-        {overlay.kind==='detail'&&<>{overlay.saved&&<p role="status" className="creator-saved-message">Saved</p>}<CreatorRecord key={overlay.creator.id} api={api} creator={overlay.creator} initialSection={overlay.section} refreshToken={overlay.creator.revision} onBack={backToActivity} onEdit={edit}/></>}
+        {overlay.kind==='detail'&&<>{overlay.saved&&<p role="status" className="creator-saved-message">Saved</p>}<CreatorRecord key={overlay.creator.id} api={api} creator={overlay.creator} initialSection={overlay.section} invitationActivityId={surface==='outreach'?route.id:undefined} refreshToken={overlay.creator.revision} onBack={backToActivity} onEdit={edit}/></>}
         {overlay.kind==='editor'&&<CreatorEditor api={api} initial={overlay.initial} onSaved={saved} onCancel={cancelEdit} onNavigationGuardChange={creatorGuard} onConnectionRepair={onConnectionRepair}/>}
         {overlay.kind==='identity'&&<CreatorIdentityEditor api={api} initial={overlay.creator} onSaved={saved} onCancel={cancelEdit} onNavigationGuardChange={creatorGuard} onConnectionRepair={onConnectionRepair}/>}
       </div>}
