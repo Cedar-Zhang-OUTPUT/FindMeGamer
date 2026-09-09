@@ -55,6 +55,6 @@ it('retains a failed planning task and its explicit retry after an Outreach roun
 });
 it('opens the shared Creator record in the source activity context and returns to retained invitation filters',async()=>{
  const {api,row,user}=setup();vi.mocked(api.collaboration.creatorHistory).mockResolvedValue(ok({items:[row],total:1,limit:50,offset:0}));await screen.findByRole('button',{name:'Open Pixel Harbor'});await user.click(screen.getByRole('button',{name:'Outreach'}));await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));await screen.findByRole('button',{name:'Record response'});
- await user.selectOptions(screen.getByLabelText('Follow-up',{selector:'select'}),'follow_up_needed');await user.click(await screen.findByRole('button',{name:'Open creator'}));await screen.findByRole('button',{name:'Edit profile'});
+ await user.selectOptions(screen.getByLabelText('Follow-up',{selector:'select'}),'follow_up_needed');await user.click(await screen.findByRole('button',{name:'Open creator'}));expect(await screen.findByRole('tab',{name:'Invitations'})).toHaveAttribute('aria-selected','true');
  await waitFor(()=>expect(api.collaboration.creatorHistory).toHaveBeenCalledWith({creatorId:row.creator_id,activityId:row.activity_id,limit:50,offset:0}));expect(screen.getByRole('button',{name:'All activities'})).toBeVisible();await user.click(screen.getByRole('button',{name:'Back to activity'}));expect(await screen.findByLabelText('Follow-up',{selector:'select'})).toHaveValue('follow_up_needed');
 });

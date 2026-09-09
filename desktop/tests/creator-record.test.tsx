@@ -149,7 +149,7 @@ describe('CreatorRecord', () => {
   it('uses one keyboard-reachable tab stop and fetches works only when Known works is active', async () => {
     const { api, user } = start();
     expect(api.creators.works).not.toHaveBeenCalled();
-    const profile = screen.getByRole('tab', { name: 'Profile' });
+    const profile = screen.getByRole('tab', { name: 'Overview' });
     expect(profile).toHaveAttribute('tabindex', '0');
     expect(screen.getByRole('tab', { name: 'Emails' })).toHaveAttribute('tabindex', '-1');
     profile.focus();

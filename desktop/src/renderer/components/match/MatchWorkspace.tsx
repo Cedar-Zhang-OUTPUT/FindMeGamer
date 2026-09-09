@@ -15,7 +15,7 @@ import {taskDate} from './matchStatus';
 import './matchWorkspace.css';
 import {AnalyzeProvider,useAnalyze} from '../analyze/AnalyzeProvider';
 
-type Section='profile'|'emails'|'works';
+type Section='profile'|'emails'|'works'|'invitations';
 type CreatorRoute={kind:'loading';id:string;section:Section;error:PublicError|null}|{kind:'detail';creator:CreatorDetail;section:Section;saved?:boolean}|{kind:'editor';creator:CreatorDetail;section:Section;initial:EditContext}|{kind:'identity';creator:CreatorDetail;section:Section};
 type Route={kind:'list'}|{kind:'new';game?:GameDetail;nonce?:number}|{kind:'activity';id:string;creator:CreatorRoute|null};
 type Owner='activity'|'new'|'creator'|'none';
@@ -121,10 +121,10 @@ function MatchWorkspaceContent({api,active,onNavigationGuardChange,onConnectionR
       {page&&page.total>0&&<div className="match-pagination"><button className="button secondary" disabled={busy||page.offset===0} onClick={()=>void load(Math.max(0,page.offset-50))}>Previous page</button><button className="button secondary" disabled={busy||page.offset+page.limit>=page.total} onClick={()=>void load(page.offset+50)}>Next page</button></div>}
     </div>
     {route.kind==='new'&&<NewActivity key={route.nonce??'manual'} api={api} initialGame={route.game} onCreated={created} onCancel={toList} onNavigationGuardChange={newGuard} onConnectionRepair={onConnectionRepair}/>}
-    {route.kind==='activity'&&<><div ref={activityRoot} hidden={Boolean(overlay)}><MatchActivity key={route.id} api={api} activityId={route.id} active={active&&!overlay} surface={surface} onShowMatch={onShowMatch} onShowOutreach={onShowOutreach} onBack={toList} onOpenCreator={(id,section)=>void openCreator(id,section==='contacts'?'emails':section==='works'?'works':'profile')} onNavigationGuardChange={activityGuard} onConnectionRepair={onConnectionRepair} onCollectionSettings={onCollectionSettings} onSMTPSettings={onSMTPSettings}/></div>
+    {route.kind==='activity'&&<><div ref={activityRoot} hidden={Boolean(overlay)}><MatchActivity key={route.id} api={api} activityId={route.id} active={active&&!overlay} surface={surface} onShowMatch={onShowMatch} onShowOutreach={onShowOutreach} onBack={toList} onOpenCreator={(id,section)=>void openCreator(id,surface==='outreach'?'invitations':section==='contacts'?'emails':section==='works'?'works':'profile')} onNavigationGuardChange={activityGuard} onConnectionRepair={onConnectionRepair} onCollectionSettings={onCollectionSettings} onSMTPSettings={onSMTPSettings}/></div>
       {overlay&&<div className="match-creator-route"><button className="text-button back-button" onClick={requestBack}><Icon name="arrow"/>Back to activity</button>
         {overlay.kind==='loading'&&(overlay.error?<ErrorNotice error={overlay.error} onRetry={()=>void openCreator(overlay.id,overlay.section,true)}/>:<Loading label="Loading creator…"/>)}
-        {overlay.kind==='detail'&&<>{overlay.saved&&<p role="status" className="creator-saved-message">Saved</p>}<CreatorRecord key={overlay.creator.id} api={api} creator={overlay.creator} initialSection={overlay.section} invitationActivityId={surface==='outreach'?route.id:undefined} refreshToken={overlay.creator.revision} onBack={backToActivity} onEdit={edit}/></>}
+        {overlay.kind==='detail'&&<>{overlay.saved&&<p role="status" className="creator-saved-message">Saved</p>}<CreatorRecord key={overlay.creator.id} api={api} creator={overlay.creator} initialSection={overlay.section} invitationActivityId={route.id} refreshToken={overlay.creator.revision} onBack={backToActivity} onEdit={edit}/></>}
         {overlay.kind==='editor'&&<CreatorEditor api={api} initial={overlay.initial} onSaved={saved} onCancel={cancelEdit} onNavigationGuardChange={creatorGuard} onConnectionRepair={onConnectionRepair}/>}
         {overlay.kind==='identity'&&<CreatorIdentityEditor api={api} initial={overlay.creator} onSaved={saved} onCancel={cancelEdit} onNavigationGuardChange={creatorGuard} onConnectionRepair={onConnectionRepair}/>}
       </div>}
