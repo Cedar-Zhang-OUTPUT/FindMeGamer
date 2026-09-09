@@ -15,21 +15,16 @@ it('reads a locked full preview without registering or generating and keeps crea
   const frame=screen.getByTitle('Template preview');expect(frame).toHaveAttribute('sandbox','');expect(frame).toHaveAttribute('srcdoc',expect.stringContaining('Original signature'));
   await user.click(screen.getByRole('button',{name:'Create 3 drafts'}));expect(p.onContinue).toHaveBeenCalledOnce();
 });
-it('does not offer canonical registration for a different Steam identity',async()=>{
-  const p=props(),user=userEvent.setup();render(<TemplatePicker {...p} game={{...p.game,steamAppId:'123'}}/>);
-  await user.click(screen.getByRole('button',{name:'Preview original'}));
-  expect(screen.getByRole('button',{name:'Use original for My game'})).toBeDisabled();expect(p.onRegister).not.toHaveBeenCalled();
+it('offers no arbitrary template creation or fixed-text editing',()=>{
+ const p=props();render(<TemplatePicker {...p}/>);
+ expect(screen.queryByRole('button',{name:'New version'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Create a template'})).not.toBeInTheDocument();expect(screen.queryByRole('textbox',{name:'Fixed email text'})).not.toBeInTheDocument();expect(p.onCreate).not.toHaveBeenCalled();
 });
-it('preserves a failed new-version draft and hidden detour, converting only its explicit new body',async()=>{
-  const p=props(),user=userEvent.setup(),view=render(<TemplatePicker {...p}/>);
-  await user.click(screen.getByRole('button',{name:'New version'}));
-  await user.type(screen.getByRole('textbox',{name:'Version name'}),'My version');await user.type(screen.getByRole('textbox',{name:'Subject'}),'My subject');
-  const body='Hi {{firstName}},\n{{channelName}} & {{reference}}. {{observation}}';
-  fireEvent.change(screen.getByRole('textbox',{name:'Fixed email text'}),{target:{value:body}});
-  await user.click(screen.getByRole('button',{name:'Save new version'}));
-  expect(p.onCreate).toHaveBeenCalledWith({name:'My version',subject:'My subject',fixed_fragments:['<p>Hi ',',<br>',' &amp; ','. ','</p>']});
-  await waitFor(()=>expect(screen.getByRole('button',{name:'Save new version'})).toBeEnabled());
-  view.rerender(<TemplatePicker {...p} active={false}/>);view.rerender(<TemplatePicker {...p}/>);
-  expect(screen.getByRole('textbox',{name:'Fixed email text'})).toHaveValue(body);expect(p.onDirtyChange).toHaveBeenLastCalledWith(true);
-  await user.click(screen.getByRole('button',{name:'Cancel new version'}));expect(screen.queryByRole('textbox',{name:'Fixed email text'})).not.toBeInTheDocument();expect(p.onDirtyChange).toHaveBeenLastCalledWith(false);
+it('uses the server-provided game-bound template without hardcoding a Steam identity',async()=>{
+ const p=props(),user=userEvent.setup();render(<TemplatePicker {...p} catalog={{...catalog,items:[]}} selectedId={null} game={{...p.game,steamAppId:'123'}}/>);
+ await user.click(screen.getByRole('button',{name:'Use this template'}));expect(p.onRegister).toHaveBeenCalledOnce();expect(p.onCreate).not.toHaveBeenCalled();
+});
+it('never reuses a historic arbitrary version as the current fixed template',()=>{
+ const p=props(),historic={...catalog.items[0],source_metadata:{...catalog.items[0].source_metadata,kind:'user_saved' as const}};
+ render(<TemplatePicker {...p} catalog={{...catalog,items:[historic]}}/>);
+ expect(screen.queryByRole('button',{name:'Create 3 drafts'})).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'Use this template'})).toBeEnabled();expect(p.onSelect).toHaveBeenCalledWith(null);
 });

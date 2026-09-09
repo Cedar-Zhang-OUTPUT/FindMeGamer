@@ -48,7 +48,7 @@ export function DraftsWorkspace({ controller: c, active, onRequest, onBack, onRe
     </div>}
     {retainedGame.current && <TemplatePicker key={`template:${c.editorEpoch}`} game={retainedGame.current} catalog={c.catalog} selectedId={c.selectedTemplate}
       active={visible && c.mode.kind === 'template'} busy={busy||!c.game||!c.catalog} recipientCount={c.batch?.recipient_count ?? 0}
-      onSelect={c.selectTemplate} onRegister={c.register} onCreate={c.createTemplate} onContinue={() => void c.create()}
+      onSelect={c.selectTemplate} onRegister={c.register} onContinue={() => void c.create()}
       onRetry={() => void c.refresh()} onDirtyChange={value => c.setDirty('template', value)} />}
     {!c.game && c.mode.kind === 'template' && !c.loading && <button type="button" className="button secondary" disabled={busy} onClick={() => void c.refresh()}>Load templates</button>}
     {c.composition && <div className="drafts-composition" hidden={!editing}>

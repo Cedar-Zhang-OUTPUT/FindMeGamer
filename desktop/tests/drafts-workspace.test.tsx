@@ -49,20 +49,12 @@ it('keeps the editor mounted under a people detour and opens repair without disc
   expect(screen.queryByRole('textbox', { name: 'Observation' })).not.toBeInTheDocument();
   view.rerender(<DraftsWorkspace {...p} />); expect(screen.getByRole('textbox', { name: 'Observation' })).toHaveValue('Preserved detail.');
 });
-it('retains a new-template form while credential repair invalidates game and catalog data',async()=>{
-  const {c,p}=setup(),state={...c,mode:{kind:'template' as const},composition:null};
-  const view=render(<DraftsWorkspace {...p} controller={state}/>);
-  await userEvent.click(screen.getByRole('button',{name:'New version'}));
-  fireEvent.change(screen.getByRole('textbox',{name:'Version name'}),{target:{value:'My unsaved version'}});
-  fireEvent.change(screen.getByRole('textbox',{name:'Subject'}),{target:{value:'My unsaved subject'}});
-  fireEvent.change(screen.getByRole('textbox',{name:'Fixed email text'}),{target:{value:'My {{firstName}} {{channelName}} {{reference}} {{observation}} text'}});
-  view.rerender(<DraftsWorkspace {...p} active={false} controller={{...state,game:null,catalog:null,selectedTemplate:null}}/>);
-  view.rerender(<DraftsWorkspace {...p} controller={{...state,game:null,catalog:null,selectedTemplate:null}}/>);
-  expect(screen.getByRole('textbox',{name:'Version name'})).toHaveValue('My unsaved version');
-  expect(screen.getByRole('button',{name:'Save new version'})).toBeDisabled();
-  view.rerender(<DraftsWorkspace {...p} controller={state}/>);
-  expect(screen.getByRole('textbox',{name:'Subject'})).toHaveValue('My unsaved subject');
-  expect(screen.getByRole('textbox',{name:'Fixed email text'})).toHaveValue('My {{firstName}} {{channelName}} {{reference}} {{observation}} text');
+it('blocks template actions while credential repair invalidates the catalog and restores its fixed preview',async()=>{
+ const {c,p}=setup(),state={...c,mode:{kind:'template' as const},composition:null};const view=render(<DraftsWorkspace {...p} controller={state}/>);
+ expect(screen.queryByRole('button',{name:'New version'})).not.toBeInTheDocument();
+ view.rerender(<DraftsWorkspace {...p} controller={{...state,game:null,catalog:null,selectedTemplate:null}}/>);
+ expect(screen.getByRole('button',{name:'Use this template'})).toBeDisabled();
+ view.rerender(<DraftsWorkspace {...p} controller={state}/>);expect(screen.getByTitle('Template preview')).toBeVisible();expect(screen.getByRole('button',{name:'Create 2 drafts'})).toBeEnabled();
 });
 it('shows only the selected recipient original snapshot and guards the return to people', async () => {
   const { c, p } = setup(); render(<DraftsWorkspace {...p} controller={{ ...c, selectedId: 'second-draft' }} />);
