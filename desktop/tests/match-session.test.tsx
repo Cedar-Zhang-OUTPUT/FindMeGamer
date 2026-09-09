@@ -4,6 +4,13 @@ import {afterEach,it,expect,vi} from 'vitest';
 import {useMatchSession} from '../src/renderer/components/match/useMatchSession';
 import {activityFixture,candidateFixture,matchAPIMock,planFixture,queryFixture} from './match-api-mock';
 afterEach(cleanup);
+it('reads the initialization marker after the first batch ends without starting new work',async()=>{
+ const api=matchAPIMock();const base={...activityFixture(),queries:[],initial_selection_initialized:false};
+ vi.mocked(api.activity).mockResolvedValueOnce({ok:true,data:base}).mockResolvedValue({ok:true,data:{...base,initial_selection_initialized:true}});
+ const {result}=renderHook(()=>useMatchSession(api,base.id,true));
+ await waitFor(()=>expect(result.current.activity?.initial_selection_initialized).toBe(true));
+ expect(api.createPlan).not.toHaveBeenCalled();expect(api.continueDiscovery).not.toHaveBeenCalled();
+});
 it('opens persisted activity and frozen query without starting any new work',async()=>{
   const api=matchAPIMock();const {result}=renderHook(()=>useMatchSession(api,activityFixture().id,true));
   await waitFor(()=>expect(result.current.candidates).toHaveLength(2));

@@ -20,7 +20,7 @@ export async function readSelections(api:Pick<OutreachAPI,'selections'>,activity
   }
   throw changed;
 }
-export function useOutreachSession(api:Pick<OutreachAPI,'selections'>,activityId:string,active:boolean){
+export function useOutreachSession(api:Pick<OutreachAPI,'selections'>,activityId:string,active:boolean,initialized?:boolean){
   const [items,setItems]=useState<Preparation[]>([]),[current,setCurrent]=useState(false),[loading,setLoading]=useState(false),[error,setError]=useState<PublicError|null>(null);
   const version=useRef(0),alive=useRef(true);
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;version.current++;};},[]);
@@ -33,7 +33,7 @@ export function useOutreachSession(api:Pick<OutreachAPI,'selections'>,activityId
     }catch(cause){if(alive.current&&token===version.current)setError(outreachReadError(cause));return null;}
     finally{if(alive.current&&token===version.current)setLoading(false);}
   },[api.selections,activityId]);
-  useEffect(()=>{if(active)void refresh();return()=>{version.current++;setLoading(false);setCurrent(false);};},[active,refresh]);
+  useEffect(()=>{if(active)void refresh();return()=>{version.current++;setLoading(false);setCurrent(false);};},[active,refresh,initialized]);
   // Fence old reads/actions without unmounting a person's unsaved local editor.
   const credentialsChanged=useCallback(()=>{version.current++;setCurrent(false);setLoading(false);},[]);
   const acceptReceipt=useCallback((person:Preparation)=>{if(person.activity_id!==activityId)return;setItems(previous=>person.active?previous.some(item=>item.id===person.id)?previous.map(item=>item.id===person.id?person:item):[...previous,person]:previous.filter(item=>item.id!==person.id));},[activityId]);

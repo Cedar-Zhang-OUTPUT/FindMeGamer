@@ -31,6 +31,14 @@ export function useMatchSession(api:MatchAPI,activityId:string,active:boolean){
   const candidateOptionsRef=useRef<RequiredCandidateOptions>(DEFAULT_CANDIDATE_OPTIONS),candidateCapacity=useRef(100),candidateReadVersion=useRef(0);
   const candidatePreferences=useRef(new Map<string,CandidatePreference>());
   const refresh=useCallback(()=>setRefreshToken(value=>value+1),[]);
+  const firstBatchStatus=query?.batches.find(batch=>batch.ordinal===1)?.status;
+  const initialBatchEnded=Boolean(query&&(firstBatchStatus?!busyStatus(firstBatchStatus):!queryIsRunning(query)));
+  useEffect(()=>{
+    if(!active||activity?.initial_selection_initialized!==false||!initialBatchEnded)return;
+    let alive=true;
+    void read(()=>api.activity(activityId)).then(response=>{if(!alive)return;if(response.ok)setActivity(response.data);else setErrors(previous=>({...previous,activity:response.error}));});
+    return()=>{alive=false;};
+  },[active,activityId,api,activity?.initial_selection_initialized,initialBatchEnded,query?.id]);
   const selectScope=useCallback((next:Scope)=>{
     scopeVersion.current++;candidateReadVersion.current++;lastQuery.current=null;setScope(next);setPlan(null);setQuery(null);setCandidates([]);setCandidateTotal(0);setCandidateMembershipCurrent(false);setCandidateLoading(false);setRuns([]);setEvaluationId(undefined);setEvaluation(null);setResults([]);setResultTotal(0);setResultCapacity(100);setErrors({});
   },[]);

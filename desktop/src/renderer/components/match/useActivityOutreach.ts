@@ -7,12 +7,12 @@ import {candidateSelection,excludedSelections,readCandidateMembership,visibleSel
 import {useOutreachOperation} from './useOutreachOperation';
 import {useMatchOperation} from './useMatchOperation';
 import type {OutreachCommand,OutreachReceipt} from './outreachMutation';
-type Props={api:Pick<DesktopBridge,'outreach'|'match'>;activityId:string;active:boolean;queryId:string|null;candidates:CandidateView[];candidateCurrent:boolean;options:Required<CandidateQueryOptions>;onOptions:(next:Required<CandidateQueryOptions>)=>void;blocked:boolean;onPrepared?:(batch:RecipientBatchDetail)=>void};
+type Props={api:Pick<DesktopBridge,'outreach'|'match'>;activityId:string;active:boolean;initialized?:boolean;queryId:string|null;candidates:CandidateView[];candidateCurrent:boolean;options:Required<CandidateQueryOptions>;onOptions:(next:Required<CandidateQueryOptions>)=>void;blocked:boolean;onPrepared?:(batch:RecipientBatchDetail)=>void};
 type PendingFreeze={queryId:string;recipients:RecipientChoice[]};
 type AfterWrite={kind:'ordinary'}|{kind:'filter';apply:()=>void;count:number};
 const unavailable:PublicError={code:'preparation_unavailable',message:'Reload the current people and search before continuing.',retryable:true};
-export function useActivityOutreach({api,activityId,active,queryId,candidates,candidateCurrent,options,onOptions,blocked,onPrepared}:Props){
-  const session=useOutreachSession(api.outreach,activityId,active),operation=useOutreachOperation(api.outreach),stopOperation=useMatchOperation(api.match);
+export function useActivityOutreach({api,activityId,active,initialized,queryId,candidates,candidateCurrent,options,onOptions,blocked,onPrepared}:Props){
+  const session=useOutreachSession(api.outreach,activityId,active,initialized),operation=useOutreachOperation(api.outreach),stopOperation=useMatchOperation(api.match);
   const [panel,setPanel]=useState<'candidates'|'selected'|'batch'>('candidates'),[selectedId,setSelectedId]=useState<string|null>(null);
   const [batchMode,setBatchMode]=useState<'current'|'history'>('current');
   const [batch,setBatch]=useState<RecipientBatchDetail|null>(null),[batchCurrent,setBatchCurrent]=useState(false),[notice,setNotice]=useState('');

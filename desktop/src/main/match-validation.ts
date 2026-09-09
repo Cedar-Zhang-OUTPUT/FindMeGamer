@@ -158,14 +158,14 @@ const evaluationResult = record({ candidate_id: identifier, creator_id: identifi
   needs_enrichment: boolean, stale: boolean, identity_changed: boolean }, { selected: enumeration(false), sender_watched: enumeration(false) });
 export function sameID(actual: string, expected?: string) { if (expected !== undefined && actual.toLowerCase() !== expected.toLowerCase()) fail('response'); }
 export function decodeActivity(value: unknown, expectedId?: string): DTO.ActivityView {
-  const result = record(activityFields,{campaign_brief:nullable(string(5000)),revision:count()})(value, 'response') as DTO.ActivityView; sameID(result.id, expectedId); return result;
+  const result = record(activityFields,{campaign_brief:nullable(string(5000)),revision:count(),initial_selection_initialized:boolean})(value, 'response') as DTO.ActivityView; sameID(result.id, expectedId); return result;
 }
 export function decodeQuery(value: unknown, expectedId?: string, activityId?: string): DTO.QueryView {
   const result = query(value, 'response') as DTO.QueryView; sameID(result.id, expectedId); sameID(result.activity_id, activityId);
   result.batches.forEach(item => sameID(item.query_id, result.id)); return result;
 }
 export function decodeActivityDetail(value: unknown, expectedId: string): DTO.ActivityDetail {
-  const result = record({ ...activityFields, queries: list((item) => decodeQuery(item, undefined, expectedId), 10_000, 0, item => item.id.toLowerCase()) },{campaign_brief:nullable(string(5000)),revision:count()})(value, 'response') as DTO.ActivityDetail;
+  const result = record({ ...activityFields, queries: list((item) => decodeQuery(item, undefined, expectedId), 10_000, 0, item => item.id.toLowerCase()) },{campaign_brief:nullable(string(5000)),revision:count(),initial_selection_initialized:boolean})(value, 'response') as DTO.ActivityDetail;
   sameID(result.id, expectedId); return result;
 }
 export function decodePlan(value: unknown, expectedId?: string, activityId?: string): DTO.PlanView {
