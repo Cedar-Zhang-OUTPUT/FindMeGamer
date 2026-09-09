@@ -154,10 +154,14 @@ def test_preview_never_creates_or_dispatches_discovery(
     "failure", ["timeout", "truncated", "invalid", "missing_configuration"]
 )
 def test_failed_plan_safe_and_retry_preserves_existing_ready_plan(
-    auth_client, session, monkeypatch, failure
+    auth_client, session, monkeypatch, failure, caplog
 ):
     from app.workers.planning_tasks import run_discovery_plan
     from app.integrations.errors import TransientIntegrationError
+
+    # Alembic's test-session logging setup disables pre-imported loggers.
+    import logging
+    monkeypatch.setattr(logging.getLogger("app.workers.planning_tasks"), "disabled", False)
 
     first = prepare(auth_client, monkeypatch, mode="preview")
     run_discovery_plan(
@@ -199,6 +203,11 @@ def test_failed_plan_safe_and_retry_preserves_existing_ready_plan(
     }
     assert failed["retryable"] is True
     assert failed["query_id"] is None
+    diagnostics = [json.loads(record.message) for record in caplog.records
+                   if record.name == "app.workers.planning_tasks"]
+    assert diagnostics[-1]["plan_id"] == str(second)
+    assert diagnostics[-1]["attempt"] == 1
+    assert "secret arbitrary unsafe text" not in json.dumps(diagnostics)
     assert "unsafe text" not in json.dumps(failed)
     assert get_plan(auth_client, first) == old
     retry = auth_client.post(

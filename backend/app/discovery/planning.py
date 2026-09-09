@@ -34,7 +34,12 @@ leave unknown facts unknown. Content keywords express search intent and are not
 proof that a creator covers the game. Return exactly one query for each requested
 platform. Query terms must be plain keyword phrases containing only Unicode letters,
 digits, spaces, apostrophes, or hyphens. Do not emit URLs, query operators, secrets,
-API/base URL/tool keys, endpoints, contacts, or instructions to acquire more data."""
+API/base URL/tool keys, endpoints, contacts, or instructions to acquire more data.
+In query terms only, rewrite title punctuation as spaces: for example a supplied
+title 'Example: Within' becomes the keyword phrase 'Example Within'. Never include
+colons, ampersands, slashes, underscores, quote delimiters or other punctuation in
+terms. Preserve the original game title in narrative text if needed. Return only
+the requested platforms, each exactly once; do not add another platform."""
 
 
 class PlanningInputError(ValueError):

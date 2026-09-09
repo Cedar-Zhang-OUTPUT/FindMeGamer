@@ -1,6 +1,8 @@
 """Claim once, call a bounded model outside transactions, publish one query."""
 
 from datetime import timedelta
+import json
+import logging
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -22,6 +24,26 @@ from app.schemas.activity import QueryCreate
 from app.workers.celery_app import celery_app
 
 LEASE_SECONDS = 300
+logger = logging.getLogger(__name__)
+_SAFE_FAILURE_REASONS = frozenset({
+    "planning_platform_invalid", "deepseek_model_output_invalid",
+    "deepseek_response_invalid", "deepseek_response_too_large",
+    "deepseek_unavailable", "deepseek_request_rejected",
+    "deepseek_configuration_invalid", "deepseek_input_invalid",
+    "game_context_required", "plan_platforms_invalid",
+})
+
+
+def _log_failure(plan_id, error, public_code, attempt):
+    reason = getattr(error, "code", None)
+    if isinstance(error, PlanningConfigurationMissing):
+        reason = "planning_configuration_missing"
+    elif not isinstance(reason, str) or reason not in _SAFE_FAILURE_REASONS:
+        reason = "unclassified"
+    logger.warning("%s", json.dumps({
+        "event": "discovery_planning_failed", "plan_id": str(plan_id),
+        "attempt": attempt, "public_code": public_code, "reason": reason,
+    }))
 
 
 class PlanningConfigurationMissing(Exception):
@@ -128,12 +150,13 @@ def run_discovery_plan(
                 plan.source_snapshot,
                 plan.conditions,
                 plan.model,
+                plan.attempt,
             )
     if claim is None:
         if batch_id:
             _deliver(plan_id, batch_id, session_factory, dispatch_discovery)
         return
-    token, snapshot, conditions, model = claim
+    token, snapshot, conditions, model, attempt = claim
     try:
         if plan_generator is None:
             output = production_generate(
@@ -173,6 +196,7 @@ def run_discovery_plan(
         )
     except Exception as error:
         code, retryable = _error_info(error)
+        _log_failure(plan_id, error, code, attempt)
         with session_factory() as session:
             plan = lock_plan(session, plan_id)
             if (

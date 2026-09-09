@@ -279,3 +279,45 @@ def test_generate_plan_propagates_truncated_output_without_retry() -> None:
         )
 
     assert calls == 1
+
+
+def test_keyword_repair_explains_unsafe_title_punctuation_without_weakening_validation(caplog):
+    requests = []
+    invalid = {"summary": "Supplied puzzle game.", "rationale": "Search supplied title.",
+               "queries": [{"platform": "youtube", "terms": ["LIMINAL: Within"]}]}
+    valid = invalid | {"queries": [{"platform": "youtube", "terms": ["LIMINAL Within"]}]}
+
+    def handler(request):
+        payload = json.loads(request.read())
+        requests.append(payload)
+        if len(requests) == 1:
+            return _response(json.dumps(invalid))
+        repair = payload["messages"][-1]["content"]
+        assert '"reason": "keyword_unsafe_query_syntax"' in repair
+        assert "colons" in repair
+        return _response(json.dumps(valid))
+
+    output = generate_plan({"game": {"name": "LIMINAL: Within"}},
+                           {"platforms": ["youtube"]}, gateway=_gateway(handler),
+                           model="deepseek-v4-flash")
+    assert len(requests) == 2
+    assert output.queries[0].terms == ["LIMINAL Within"]
+    assert "LIMINAL" not in caplog.text
+    assert "keyword_unsafe_query_syntax" in caplog.text
+
+
+@pytest.mark.parametrize("code,expected", [
+    ("planning_platform_invalid", "planning_platform_invalid"),
+    ("deepseek_response_invalid", "deepseek_response_invalid"),
+    ("private-model-text", "unclassified"),
+])
+def test_planning_failure_log_keeps_allowlisted_cause_without_raw_exception(code, expected, caplog):
+    from uuid import UUID
+    from app.workers.planning_tasks import _log_failure
+
+    _log_failure(UUID("00000000-0000-0000-0000-000000000001"), InvalidModelOutput(code),
+                 "planning_model_output_invalid", 1)
+    record = json.loads(caplog.records[-1].message)
+    assert record["reason"] == expected
+    assert record["attempt"] == 1
+    assert "private-model-text" not in caplog.text

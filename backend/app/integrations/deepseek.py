@@ -56,6 +56,10 @@ _VALIDATION_REASON_CODES = {
     "visual observations must reference a visual asset": "visual_asset_source_type_required",
     "text must be nonblank without surrounding whitespace": "text_blank_or_untrimmed",
     "text contains unsupported control characters": "text_control_characters",
+    "text contains control characters": "text_control_characters",
+    "keyword phrase contains unsafe query syntax": "keyword_unsafe_query_syntax",
+    "keyword phrase must contain a letter or digit": "keyword_alphanumeric_required",
+    "query terms must be unique": "keyword_duplicate_terms",
 }
 
 
@@ -578,6 +582,13 @@ def _repair_messages(
         f"Validation errors: {safe_errors_json}\n"
         f"JSON Schema: {schema_json}"
     )
+    if schema_payload["title"] == "SearchPlanOutput":
+        instruction += (
+            "\nFor query terms, use only letters, digits, spaces, apostrophes or hyphens. "
+            "Rewrite title punctuation such as colons, ampersands, slashes or underscores "
+            "as spaces; do not copy unsafe punctuation from a supplied title into terms. "
+            "Keep terms unique and emit exactly one query for each requested platform."
+        )
     return [
         {"role": "assistant", "content": context},
         {"role": "user", "content": instruction},
