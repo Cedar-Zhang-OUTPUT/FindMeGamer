@@ -32,3 +32,15 @@ Scope: finish the current front-end iteration and let the user try it. This is n
 - Default cloud origin stays `https://44.233.174.193`; no bundled workspace key, no automatic connection or writes on fresh launch.
 - Local ad-hoc signature only, not Developer ID signed or notarized. macOS 14+, Apple Silicon.
 - Coordinator task `01a05d57-6a9a-7f41-9095-d7d3e97837f0` owns GitHub integration/publication.
+
+## Final packaged evidence
+
+- Runtime source commit: `2c29e4b`.
+- Artifact root: `/Users/cedar/.codex/worktrees/c3a0/FindMeGamer/desktop/artifacts/FindMeGamer-Electron-0.2.0-internal.2-arm64-hFYFuV`.
+- App: `FindMeGamer-darwin-arm64/FindMeGamer.app`; DMG: `FindMeGamer-Electron-0.2.0-internal.2-arm64.dmg` beneath that root.
+- DMG SHA-256: `5f15869b7931706b24e3cb9bd7067c539b860fdc7b79262836e7cd6af27cb6ce`.
+- app.asar SHA-256: `0a2fb1f72cbe3a8d4f69c33427c9e92075c490213c70bfef62a205382b6705e3`.
+- Bundled `Contents/Resources/electron.icns` matches `build/AppIcon.icns`: `62aaacb8c699d1bd1c40f9c048559aaee0372844d8d992a32f323044035dbf91`. The legacy filename is expected and is referenced by CFBundleIconFile; no missing icon.
+- `codesign --verify --deep --strict` passed. Plist release internal.2 / build 20002; Electron reports packaged version `0.2.0-internal.2`.
+- Native packaged first-run test: 1 passed, isolated profile, empty key, Connect disabled, no credentials file, zero observed external requests. Screenshot visually inspected. Evidence: `output/playwright-internal2-native-first-run`.
+- Final P1/P2 and narrow Outreach screenshots visually inspected. No claim of complete native business-flow acceptance.
