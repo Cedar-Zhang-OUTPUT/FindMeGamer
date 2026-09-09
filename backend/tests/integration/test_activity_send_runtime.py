@@ -113,7 +113,7 @@ def test_http_queue_worker_smtp_capture_uses_exact_snapshot_without_cta(
         assert str(message["Subject"]) == frozen["subject"]
         html = message.get_body(preferencelist=("html",)).get_content().rstrip("\n")
         assert html == frozen["html"]
-        assert html.count("<p>") == 20 and "Choice=" not in html and "/r/" not in html
+        assert "LIMINAL" not in html and "Choice=" not in html and "/r/" not in html
         assert "Yes, I'm in" not in html
     for _, args in queued:
         run(args[0])

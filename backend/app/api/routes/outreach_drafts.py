@@ -63,7 +63,16 @@ def create_router(authenticate_workspace, *, dispatcher=None):
                 OutreachTemplateVersion.created_at, OutreachTemplateVersion.id
             )
         ).all()
-        return {"items": [template_view(item) for item in items], "builtin": builtin()}
+        from app.repositories.outreach_templates_v2 import game_builtin
+
+        return {
+            "items": [template_view(item) for item in items],
+            "builtin": (
+                game_builtin(session, _get(session, GameProfile, game_id))
+                if game_id is not None
+                else None
+            ),
+        }
 
     @router.post(
         "/outreach/template-versions/canonical",

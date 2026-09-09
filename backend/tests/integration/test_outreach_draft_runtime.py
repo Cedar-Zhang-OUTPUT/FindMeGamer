@@ -207,6 +207,7 @@ def test_source_changes_before_or_during_generation_never_become_confirmed(
     execute_fixture(session, calls, during=change)(composition["drafts"][0]["id"])
     changed = get_compose(auth_client, composition["id"])["drafts"][0]
     assert changed["source_changed"] and not changed["sender_facts_valid"]
+    template = post(auth_client, "/api/v2/outreach/template-versions/canonical", {"game_id": str(game.id)}).json()
     second = compose(auth_client, activity_id, batch, template).json()
     game.manual_overrides = game.manual_overrides | {"description": "Another change"}
     session.commit()

@@ -291,6 +291,11 @@ def test_sender_facts_require_explicit_members_and_invalidate_on_edit(
         }
     }
     session.commit()
+    template = post(
+        auth_client,
+        "/api/v2/outreach/template-versions/canonical",
+        {"game_id": template["game_id"]},
+    ).json()
     composition = compose(auth_client, activity, batch, template).json()
     draft = manual(auth_client, composition["drafts"][0]).json()
     assert not draft["sender_facts_valid"]

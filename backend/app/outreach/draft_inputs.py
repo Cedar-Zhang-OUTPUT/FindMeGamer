@@ -56,6 +56,14 @@ def current_input(session, recipient_id, template):
     state = (settings.service_connection_state if settings else {}) or {}
     smtp = state.get("smtp", {})
     sender = {k: smtp.get(k) for k in ("username", "from_name", "reply_to")}
+    from app.outreach.game_template import game_template
+
+    live_template = game_template(game, sender_name=sender.get("from_name"))
+    if (
+        template.source_metadata.get("kind") != "game_bound"
+        or template.fixed_hash != live_template["fixed_hash"]
+    ):
+        missing.append("template_context_changed")
     profile_url = fields.profile_url or creator.canonical_url
     source = {
         k: work.get(k)

@@ -61,6 +61,8 @@ def qualify(session, composition_id, exclusions):
             missing.append("sender_facts_unconfirmed")
         if not configured:
             missing.append("smtp_not_configured")
+        if not sender["name"]:
+            missing.append("sender_identity_missing")
         source_steam = template.source_metadata.get("steam_app_id")
         if template.game_id != activity.game_id or (
             source_steam and game.steam_app_id and source_steam != game.steam_app_id

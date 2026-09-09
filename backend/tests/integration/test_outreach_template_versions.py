@@ -31,12 +31,10 @@ def test_canonical_registration_is_explicit_bound_and_does_not_change_game(
     assert response.status_code == 201, response.text
     version = response.json()
     assert version["game_id"] == game["id"]
-    assert version["source_metadata"]["revision"] == 69
-    assert version["source_metadata"]["steam_app_id"] == "4952700"
-    assert (
-        version["fixed_hash"]
-        == "0aaf8eef8f697b8a79307820380960c1efa492d68583b47648b01a81ab1e9b93"
-    )
+    assert version["source_metadata"]["revision"] == 1
+    assert version["source_metadata"]["steam_app_id"] == steam_id
+    assert version["source_metadata"]["kind"] == "game_bound"
+    assert version["fixed_hash"] == listing.json()["builtin"]["fixed_hash"]
     assert (
         post(auth_client, URL + "/canonical", {"game_id": game["id"]}).json() == version
     )
@@ -48,13 +46,13 @@ def test_canonical_registration_is_explicit_bound_and_does_not_change_game(
     assert session.get(GameProfile, UUID(game["id"])).steam_app_id == steam_id
 
 
-def test_conflicting_known_steam_game_cannot_register_canonical(auth_client):
+def test_other_steam_game_registers_its_own_template(auth_client):
     game = create_game(
         auth_client, {"name": "LIMINAL: Within", "steam_app_id": "123"}
     ).json()
     response = post(auth_client, URL + "/canonical", {"game_id": game["id"]})
-    assert response.status_code == 422, response.text
-    assert auth_client.get(URL, params={"game_id": game["id"]}).json()["items"] == []
+    assert response.status_code == 201, response.text
+    assert response.json()["source_metadata"]["steam_app_id"] == "123"
 
 
 def test_explicit_new_versions_do_not_mutate_original_or_each_other(auth_client):
@@ -74,18 +72,11 @@ def test_explicit_new_versions_do_not_mutate_original_or_each_other(auth_client)
         ],
     }
     created = post(auth_client, URL, value)
-    assert created.status_code == 201, created.text
-    assert created.json()["fixed_hash"] != canonical["fixed_hash"]
-    assert post(auth_client, URL, value).json() == created.json()
-    assert post(auth_client, URL, value | {"subject": "Changed"}).status_code == 409
-    newer = post(
-        auth_client, URL, value | {"request_id": str(uuid4()), "subject": "Version two"}
-    )
-    assert newer.status_code == 201 and newer.json()["id"] != created.json()["id"]
+    assert created.status_code == 422, created.text
+    assert created.json()["error"]["code"] == "template_creation_disabled"
     assert auth_client.get(URL + f"/{canonical['id']}").json() == canonical
-    assert auth_client.get(URL + f"/{created.json()['id']}").json() == created.json()
     assert (
-        len(auth_client.get(URL, params={"game_id": game["id"]}).json()["items"]) == 3
+        len(auth_client.get(URL, params={"game_id": game["id"]}).json()["items"]) == 1
     )
 
 

@@ -99,6 +99,21 @@ def create_composition(session, activity_id, value):
             "composition_source_mismatch",
             "Choose a recipient batch and template for this Activity and game.",
         )
+    from app.repositories.outreach_templates_v2 import game_builtin
+    from app.db.models.profiles import GameProfile
+
+    current_template = game_builtin(
+        session, _get(session, GameProfile, activity.game_id)
+    )
+    if (
+        template.source_metadata.get("kind") != "game_bound"
+        or template.fixed_hash != current_template["fixed_hash"]
+    ):
+        raise _error(
+            409,
+            "template_context_changed",
+            "Register the current game-bound template before creating a new composition.",
+        )
     row = OutreachComposition(
         activity_id=activity_id,
         recipient_batch_id=batch.id,

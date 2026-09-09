@@ -38,11 +38,15 @@ class TemplateVersionCreate(CanonicalRegistration):
 
 
 class TemplateSource(BaseModel):
-    kind: Literal["canonical", "user_saved"]
+    kind: Literal["canonical", "user_saved", "game_bound"]
     document_id: str | None = None
     revision: int | None = None
     steam_app_id: str | None = None
     raw_hash: str | None = None
+    game_id: UUID | None = None
+    game_revision: int | None = None
+    game_fingerprint: str | None = None
+    sender_name: str | None = None
 
 
 class TemplateContent(BaseModel):
@@ -60,13 +64,13 @@ class TemplateVersionView(TemplateContent):
 
 
 class BuiltinTemplate(TemplateContent):
-    key: Literal["liminal-revision-69"] = "liminal-revision-69"
+    key: Literal["liminal-revision-69", "game-outreach-v1"] = "liminal-revision-69"
     requires_explicit_registration: Literal[True] = True
 
 
 class TemplateCatalog(BaseModel):
     items: list[TemplateVersionView]
-    builtin: BuiltinTemplate
+    builtin: BuiltinTemplate | None
 
 
 class SlotValues(BaseModel):

@@ -40,6 +40,11 @@ def ready_composition(
     )
     if smtp:
         configure_smtp(client)
+        template = post(
+            client,
+            "/api/v2/outreach/template-versions/canonical",
+            {"game_id": template["game_id"]},
+        ).json()
     if count > 1:
         person = session.get(CreatorProfile, UUID(choices[1]["creator_id"]))
         if duplicate_email:
@@ -93,7 +98,8 @@ def test_full_batch_qualification_keeps_n_and_explicit_exclusion_without_opening
         "needs_repair",
     ]
     assert result["members"][1]["recipient_email"] == "account-2@example.com"
-    assert result["members"][0]["html"].count("<p>") == 20
+    assert "Thought you might enjoy" in result["members"][0]["subject"]
+    assert "LIMINAL" not in result["members"][0]["html"]
     assert "Choice=" not in result["members"][0]["html"]
     assert "evaluation_missing" not in result["members"][0]["missing_fields"]
     excluded = [

@@ -56,7 +56,7 @@ def test_same_list_keeps_excluded_and_cancelled_frozen_members(
     )
 
 
-def test_creator_history_is_true_empty_then_real_activity_without_read_mutation(
+def test_creator_history_lists_default_selection_without_read_mutation(
     auth_client, session, monkeypatch
 ):
     activity, candidates = setup_selection(auth_client, session, monkeypatch, count=1)
@@ -65,7 +65,8 @@ def test_creator_history_is_true_empty_then_real_activity_without_read_mutation(
     before = session.scalar(select(func.count()).select_from(Activity))
     response = auth_client.get(path)
     assert response.status_code == 200, response.text
-    assert response.json()["total"] == 0
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["send_history"] == []
     selected = choose(auth_client, activity, candidates[0].id)
     result = auth_client.get(path).json()
     assert result["total"] == 1
@@ -336,7 +337,8 @@ def test_new_discovery_and_batch_preserve_old_mail_response_and_list_order(
     execute(session, created["batch_id"], lambda request: provider_page([2]))
     candidate = session.scalar(
         select(DiscoveryCandidate).where(
-            DiscoveryCandidate.query_id == UUID(created["query_id"])
+            DiscoveryCandidate.query_id == UUID(created["query_id"]),
+            DiscoveryCandidate.creator_id != UUID(current["creator_id"]),
         )
     )
     added = choose(auth_client, activity, candidate.id)
