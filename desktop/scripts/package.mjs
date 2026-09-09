@@ -17,7 +17,7 @@ const paths = await packager({
   appVersion: '0.2.0', buildVersion: '20001',
   // Packager rewrites package.json from appVersion; preserve full semver for
   // Electron's app.getVersion()/update checks while macOS keeps numeric metadata.
-  beforeAsar: [async (buildPath) => {
+  beforeAsar: [async ({ buildPath }) => {
     const file = path.join(buildPath, 'package.json');
     const packaged = JSON.parse(await readFile(file, 'utf8'));
     packaged.version = metadata.version;
