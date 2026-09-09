@@ -305,7 +305,8 @@ describe('desktop renderer', () => {
     expect(screen.getByText('Business')).toBeVisible();
     expect(screen.getByText('Press')).toBeVisible();
     expect(screen.queryByText('0 followers')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /send|analyze/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /send/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analyze creator' })).toBeVisible();
     await user.click(screen.getByRole('button', { name: 'Back to creators' }));
     expect(screen.getByRole('button', { name: 'Open Pixel Harbor' })).toBeVisible();
   });
