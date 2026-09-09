@@ -15,7 +15,7 @@ export class MatchClient {
   private async send<T>(request: MatchRequest, decode: (value: unknown) => T): Promise<T> {
     const valid = validateMatchRequest(request);
     const value = await this.request(valid);
-    try { return decode(value); } catch (error) { throw valid.method === 'POST' ? matchOutcomeUnknown() : error; }
+    try { return decode(value); } catch (error) { throw valid.method !== 'GET' ? matchOutcomeUnknown() : error; }
   }
   async activities(value: Input<'activities'>): Promise<DTO.ActivityPage> {
     const raw = input(value, ['offset', 'limit']);
@@ -30,6 +30,10 @@ export class MatchClient {
   }
   async activity(id: string): Promise<DTO.ActivityDetail> {
     identifier(id, 'input'); return this.send({ method: 'GET', path: `${activities}/${id}` }, value => decodeActivityDetail(value, id));
+  }
+  async updateBrief(value:Input<'updateBrief'>):Promise<DTO.ActivityView>{
+    const raw=input(value,['id','data']),id=identifier(raw.id,'input');
+    return this.send({method:'PATCH',path:`${activities}/${id}/campaign-brief`,body:raw.data as Record<string,unknown>},value=>decodeActivity(value,id));
   }
   async plans(value: Input<'plans'>): Promise<DTO.PlanPage> {
     const raw = input(value, ['activityId', 'offset', 'limit']), id = identifier(raw.activityId, 'input');

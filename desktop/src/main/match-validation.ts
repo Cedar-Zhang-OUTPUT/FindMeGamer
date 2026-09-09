@@ -94,12 +94,13 @@ const filters = record({}, {
 const options = { filters, batch_target: count(100, 1), result_limit: count(600, 1), batch_request_budget: count(40, 1),
   batch_scan_budget: count(2000, 1), total_request_budget: count(240, 1), total_scan_budget: count(12000, 1) };
 const planCreate = record({ mode: enumeration('preview', 'discover'), platforms: list(planningPlatform, 4, 1, value => value) }, { keywords: list(keyword, 20), ...options });
-const activityCreate = record({ game_id: identifier, name: string(255, 1) }, { reference_work_ids: ids(100) });
+const activityCreate = record({ game_id: identifier, name: string(255, 1) }, { reference_work_ids: ids(100),campaign_brief:nullable(string(5000)) });
+const campaignBrief = record({campaign_brief:nullable(string(5000)),expected_revision:count()});
 const continueDiscovery = record({}, { acknowledge_unknown: boolean });
 const evaluationCreate = record({}, { candidate_ids: nullable(ids(600, 1, true)) });
 const evaluationRetry = record({}, { step_ids: nullable(ids(1000, 1)) });
-export type BodyKind = 'activityCreate' | 'planCreate' | 'continueDiscovery' | 'evaluationCreate' | 'evaluationRetry';
-const bodies: Record<BodyKind, Rule> = { activityCreate, planCreate, continueDiscovery, evaluationCreate, evaluationRetry };
+export type BodyKind = 'activityCreate' | 'campaignBrief' | 'planCreate' | 'continueDiscovery' | 'evaluationCreate' | 'evaluationRetry';
+const bodies: Record<BodyKind, Rule> = { activityCreate, campaignBrief, planCreate, continueDiscovery, evaluationCreate, evaluationRetry };
 export function body(value: unknown, kind: BodyKind): Record<string, unknown> { return bodies[kind](value, 'input') as Record<string, unknown>; }
 
 const providerShape = record({ platform, query: string(512, 1) }, {
@@ -157,14 +158,14 @@ const evaluationResult = record({ candidate_id: identifier, creator_id: identifi
   needs_enrichment: boolean, stale: boolean, identity_changed: boolean }, { selected: enumeration(false), sender_watched: enumeration(false) });
 export function sameID(actual: string, expected?: string) { if (expected !== undefined && actual.toLowerCase() !== expected.toLowerCase()) fail('response'); }
 export function decodeActivity(value: unknown, expectedId?: string): DTO.ActivityView {
-  const result = record(activityFields)(value, 'response') as DTO.ActivityView; sameID(result.id, expectedId); return result;
+  const result = record(activityFields,{campaign_brief:nullable(string(5000)),revision:count()})(value, 'response') as DTO.ActivityView; sameID(result.id, expectedId); return result;
 }
 export function decodeQuery(value: unknown, expectedId?: string, activityId?: string): DTO.QueryView {
   const result = query(value, 'response') as DTO.QueryView; sameID(result.id, expectedId); sameID(result.activity_id, activityId);
   result.batches.forEach(item => sameID(item.query_id, result.id)); return result;
 }
 export function decodeActivityDetail(value: unknown, expectedId: string): DTO.ActivityDetail {
-  const result = record({ ...activityFields, queries: list((item) => decodeQuery(item, undefined, expectedId), 10_000, 0, item => item.id.toLowerCase()) })(value, 'response') as DTO.ActivityDetail;
+  const result = record({ ...activityFields, queries: list((item) => decodeQuery(item, undefined, expectedId), 10_000, 0, item => item.id.toLowerCase()) },{campaign_brief:nullable(string(5000)),revision:count()})(value, 'response') as DTO.ActivityDetail;
   sameID(result.id, expectedId); return result;
 }
 export function decodePlan(value: unknown, expectedId?: string, activityId?: string): DTO.PlanView {

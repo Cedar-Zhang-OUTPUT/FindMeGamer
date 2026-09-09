@@ -35,7 +35,7 @@ export function GameForm({ base, draft, disabled, errors, onChange, selection }:
       onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => changeField(field, event.target.value),
     };
     return <div className={`form-field game-field ${field === 'description' ? 'game-description' : ''}`} key={field}>
-      <label htmlFor={props.id}>{gameLabels[field]}{draft.resets.includes(field) && <span className="game-source-badge">Will use source</span>}</label>
+      <label htmlFor={props.id}>{gameLabels[field]}{draft.resets.includes(field)?<span className="game-source-badge">Will use source</span>:base&&['description','tags'].includes(field)&&<span className="game-source-badge">{draft.touched.includes(field)||base.overridden_fields.includes(field)?'Manually edited':'Source facts'}</span>}</label>
       {multiline ? <textarea {...props} rows={field === 'description' ? 5 : 2} placeholder={field === 'tags' ? 'One tag per line' : field === 'languages' ? 'One language per line' : undefined}/> : <input {...props} type="text" spellCheck={!['website_url', 'cover_url', 'steam_app_id'].includes(field)} placeholder={field === 'release_date' ? 'e.g. September 2026 or Coming soon' : undefined}/>}
       {errors[field] && <span id={`error-${field}`} className="game-field-error">{errors[field]}</span>}
     </div>;

@@ -12,6 +12,7 @@ export function matchAPIMock():MatchAPI {return {
   activities:vi.fn(async()=>ok({items:[activityFixture()],total:1,offset:0,limit:50})),
   activity:vi.fn(async()=>ok({...activityFixture(),queries:[queryFixture()]})),
   createActivity:vi.fn(async()=>ok(activityFixture())),
+  updateBrief:vi.fn(async input=>ok({...activityFixture(),id:input.id,campaign_brief:input.data.campaign_brief,revision:input.data.expected_revision+1})),
   plans:vi.fn(async()=>ok({items:[planFixture()],total:1,offset:0,limit:50})),
   createPlan:vi.fn(async()=>ok({plan_id:planFixture().id,status:'queued'})),
   plan:vi.fn(async()=>ok(planFixture())),retryPlan:vi.fn(async()=>ok({plan_id:planFixture().id,status:'queued'})),

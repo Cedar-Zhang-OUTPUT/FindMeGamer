@@ -3,7 +3,7 @@ import { CANDIDATE_EVIDENCE_FILTERS, CANDIDATE_SORTS } from '../shared/match';
 import { normalizeServiceUrl } from './policies';
 import { PublicFailure, type Connection, type Fetcher } from './transport';
 import { body, fail, integer, keys, object, text, UUID_PATTERN, UUID_SOURCE, type BodyKind } from './match-validation';
-export type MatchRequest = { method: 'GET'; path: string; query?: Record<string, string> } | { method: 'POST'; path: string; body?: Record<string, unknown>; idempotencyKey: string };
+export type MatchRequest = { method: 'GET'; path: string; query?: Record<string, string> } | { method: 'POST'; path: string; body?: Record<string, unknown>; idempotencyKey: string } | {method:'PATCH';path:string;body:Record<string,unknown>};
 const activities = '/api/v2/activities', discovery = '/api/v2/discovery';
 const route = (prefix: string, suffix = '') => new RegExp(`^${prefix}/${UUID_SOURCE}${suffix}$`);
 const activity = route(activities), plans = route(activities, '/discovery-plans');
@@ -48,6 +48,10 @@ export function validateMatchRequest(input: MatchRequest): MatchRequest {
     const max = path === activities || candidates.test(path) ? 100 : plans.test(path) || evaluations.test(path) || evaluationResults.test(path) ? 200 : 0;
     if (!max && !activity.test(path) && !plan.test(path) && !query.test(path) && !evaluation.test(path)) fail('input');
     return { method, path, ...(Object.hasOwn(raw, 'query') ? { query: candidates.test(path) ? exactCandidateQueryOptions(raw.query) : pagination(raw.query, max) } : {}) };
+  }
+  if(method==='PATCH'){
+    keys(raw,['method','path','body'],'input');if(!route(activities,'/campaign-brief').test(path))fail('input');
+    return {method,path,body:body(raw.body,'campaignBrief')};
   }
   if (method !== 'POST') fail('input');
   const bodyless = retryPlan.test(path) || stop.test(path);
@@ -111,12 +115,12 @@ export async function authenticatedMatchRequest(fetcher: Fetcher, connection: Co
   try { url = new URL(request.path, normalizeServiceUrl(connection.serviceUrl)); }
   catch { throw new PublicFailure('request_invalid', 'Check the workspace service address.', false); }
   if (request.method === 'GET') for (const [key, value] of Object.entries(request.query ?? {})) url.searchParams.set(key, value);
-  const mutation = request.method === 'POST';
+  const mutation = request.method !== 'GET';
   try {
     const response = await fetcher(url.href, { method: request.method,
       ...('body' in request ? { body: JSON.stringify(request.body) } : {}),
       headers: { Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(),
-        ...('body' in request ? { 'Content-Type': 'application/json' } : {}), ...(mutation ? { 'Idempotency-Key': request.idempotencyKey } : {}) },
+        ...('body' in request ? { 'Content-Type': 'application/json' } : {}), ...(request.method==='POST' ? { 'Idempotency-Key': request.idempotencyKey } : {}) },
       redirect: 'error', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw await httpFailure(response, mutation);
     try { return await boundedJSON(response); } catch (error) { throw mutation ? matchOutcomeUnknown() : error; }

@@ -156,6 +156,7 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('saved-sets:create',input=>savedSets.create(input));
   handle('match:activities',input=>match.activities(input));
   handle('match:create-activity',input=>match.createActivity(input));
+  handle('match:update-brief',input=>match.updateBrief(input));
   handle('match:activity',input=>match.activity(input));
   handle('match:plans',input=>match.plans(input));
   handle('match:create-plan',input=>match.createPlan(input));

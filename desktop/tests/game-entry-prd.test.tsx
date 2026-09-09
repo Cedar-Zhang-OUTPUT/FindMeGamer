@@ -19,6 +19,12 @@ it('P1 use game enters editable P2 and continues directly to the activity condit
  const {api,game,onCreated,user}=setup();await user.click(await screen.findByRole('button',{name:'Use game LIMINAL: Within'}));expect(await screen.findByRole('textbox',{name:'Name'})).toHaveValue(game.name);expect(api.match.createActivity).not.toHaveBeenCalled();
  await user.click(screen.getByRole('button',{name:'Continue to matching'}));await waitFor(()=>expect(onCreated).toHaveBeenCalledOnce());expect(api.match.createActivity).toHaveBeenCalledWith(expect.objectContaining({data:{name:game.name,game_id:game.id,reference_work_ids:[]}}));expect(api.match.createPlan).not.toHaveBeenCalled();
 });
+it('keeps game facts prefilled and sends only the user-written activity brief on explicit continuation',async()=>{
+ const {api,game,user}=setup();api.games.update=vi.fn();await user.click(await screen.findByRole('button',{name:'Use game LIMINAL: Within'}));await screen.findByRole('textbox',{name:'Name'});
+ expect(screen.getByRole('textbox',{name:'Description'})).toHaveValue(game.description??'');await user.click(screen.getByText('Campaign brief · Optional'));
+ const brief=screen.getByRole('textbox',{name:'Campaign brief'});expect(brief).toHaveValue('');await user.type(brief,'Highlight co-op; find cozy channels');await user.click(screen.getByRole('button',{name:'Continue to matching'}));
+ await waitFor(()=>expect(api.match.createActivity).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({game_id:game.id,campaign_brief:'Highlight co-op; find cozy channels'})})));expect(api.games.update).not.toHaveBeenCalled();
+});
 it('the game picker retains its search after reviewing and returning from P2',async()=>{
  const {user}=setup();await user.type(screen.getByRole('searchbox',{name:'Search games'}),'LIMINAL');await user.click(await screen.findByRole('button',{name:'Use game LIMINAL: Within'}));await user.click(await screen.findByRole('button',{name:'Back to games'}));expect(screen.getByRole('searchbox',{name:'Search games'})).toHaveValue('LIMINAL');
 });

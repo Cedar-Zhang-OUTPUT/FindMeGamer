@@ -59,6 +59,7 @@ const bridge: DesktopBridge = {
   match: {
     activities:input=>ipcRenderer.invoke('match:activities',input),
     createActivity:input=>ipcRenderer.invoke('match:create-activity',input),
+    updateBrief:input=>ipcRenderer.invoke('match:update-brief',input),
     activity:id=>ipcRenderer.invoke('match:activity',id),
     plans:input=>ipcRenderer.invoke('match:plans',input),
     createPlan:input=>ipcRenderer.invoke('match:create-plan',input),

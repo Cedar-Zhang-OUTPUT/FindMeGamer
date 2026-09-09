@@ -92,4 +92,5 @@
 .match-collection-actions { display:flex; gap:12px; align-items:center; flex-wrap:wrap; font-size:.8125rem; }
 .match-collection-actions > strong { color:var(--ink); font-weight:600; }
 .match-collection-actions > span { color:var(--muted); }
+.campaign-brief{margin:8px 0 18px;padding:14px 0;border-bottom:1px solid var(--line)}.campaign-brief label{display:block;margin-bottom:8px;font-weight:650}.campaign-brief textarea,.match-activity-name textarea{width:100%;resize:vertical;min-height:84px}.campaign-brief-summary{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:8px;max-width:80ch}.campaign-brief .muted{margin:10px 0;font-size:.8125rem}.campaign-brief dd{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 14px}
 @media(max-width:760px) { .match-activity-row { gap: 12px; padding: 16px; }.match-activity-row time { max-width: 100px; }.match-chosen-game { flex-wrap: wrap; }.match-context dl { grid-template-columns: minmax(0,1fr); }.match-history { align-items: flex-start; }.match-history label { flex-direction: column; align-items: flex-start; }.match-evaluate-action { flex-wrap: wrap; }.match-recovery-records > div { flex-wrap: wrap; } }

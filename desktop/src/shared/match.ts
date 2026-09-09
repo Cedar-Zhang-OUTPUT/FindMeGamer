@@ -6,8 +6,8 @@ import type { JsonObject } from './library';
 export type ApiResult<T> = Result<T>;
 export interface Pagination { offset?: number; limit?: number }
 export interface MatchPage<T> { items: T[]; total: number; offset: number; limit: number }
-export interface ActivityCreate { game_id: string; name: string; reference_work_ids?: string[] }
-export interface ActivityView { id: string; game_id: string; name: string; source_snapshot: JsonObject; created_at: string }
+export interface ActivityCreate { game_id: string; name: string; reference_work_ids?: string[]; campaign_brief?: string|null }
+export interface ActivityView { id: string; game_id: string; name: string; source_snapshot: JsonObject; created_at: string; campaign_brief?: string|null; revision?: number }
 export interface ActivityDetail extends ActivityView { queries: QueryView[] }
 export type ActivityPage = MatchPage<ActivityView>;
 export interface FollowerRange { minimum?: number | null; maximum?: number | null }
@@ -107,6 +107,7 @@ export type EvaluationResultPage = MatchPage<EvaluationResult>;
 export interface MatchAPI {
   activities(input: Pagination): Promise<ApiResult<ActivityPage>>;
   createActivity(input: { data: ActivityCreate; idempotencyKey: string }): Promise<ApiResult<ActivityView>>;
+  updateBrief(input: { id:string; data:{campaign_brief:string|null;expected_revision:number} }):Promise<ApiResult<ActivityView>>;
   activity(id: string): Promise<ApiResult<ActivityDetail>>;
   plans(input: Pagination & { activityId: string }): Promise<ApiResult<PlanPage>>;
   createPlan(input: { activityId: string; data: PlanCreate; idempotencyKey: string }): Promise<ApiResult<PlanAccepted>>;
