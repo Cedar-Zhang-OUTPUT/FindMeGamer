@@ -25,5 +25,11 @@ test('internal package shows first-run cloud origin without a key or connection'
   const traffic=await app.evaluate(()=>(globalThis as any).__firstRunNetwork);expect(traffic).toEqual([]);
   const screenshot=info.outputPath('internal-first-run.png');await page.screenshot({path:screenshot});
   await writeFile(info.outputPath('first-run.json'),JSON.stringify({status:'passed',main,executable,userData,traffic,screenshot,native:true,keyEntered:false},null,2));
+ }catch(error){
+  if(app){for(const [index,page] of app.windows().entries()){
+   await page.screenshot({path:info.outputPath(`failure-${index}.png`)}).catch(()=>{});
+   const state=await page.evaluate(()=>({url:location.href,text:document.body?.innerText,bridge:typeof window.desktop})).catch(()=>({unavailable:true}));
+   await writeFile(info.outputPath(`failure-${index}.json`),JSON.stringify(state,null,2));
+  }}throw error;
  }finally{await app?.close();}
 });
