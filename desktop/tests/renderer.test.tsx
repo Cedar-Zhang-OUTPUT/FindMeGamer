@@ -350,6 +350,7 @@ describe('desktop renderer', () => {
     const storage = vi.spyOn(Storage.prototype, 'setItem'); const { user } = start(api);
     await screen.findByRole('heading', { name: 'Connect your workspace' });
     await user.click(screen.getByRole('button', { name: 'Open Settings' }));
+    await user.clear(screen.getByRole('textbox', { name: 'Service URL' }));
     await user.type(screen.getByRole('textbox', { name: 'Service URL' }), 'https://workspace.example.com');
     const key = screen.getByLabelText('Workspace key');
     await user.type(key, 'test-only-secret');

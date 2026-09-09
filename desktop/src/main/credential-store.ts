@@ -1,3 +1,5 @@
+import { DEFAULT_SERVICE_ORIGIN } from '../shared/connection-default';
+
 export interface CryptoAdapter {
   isEncryptionAvailable(): boolean | Promise<boolean>;
   encryptString(plain: string): Buffer | Promise<Buffer>;
@@ -47,7 +49,7 @@ export class CredentialStore {
     return this.serialized(async () => {
       const stored = await this.read();
       return {
-        serviceUrl: stored?.serviceUrl ?? '',
+        serviceUrl: stored?.serviceUrl ?? DEFAULT_SERVICE_ORIGIN,
         hasKey: stored !== null,
         storageAvailable: await this.isStorageAvailable(),
       };

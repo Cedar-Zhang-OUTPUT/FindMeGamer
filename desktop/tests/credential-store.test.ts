@@ -44,9 +44,12 @@ afterEach(async () => {
 
 describe('CredentialStore', () => {
   it('starts disconnected and exposes only the settings whitelist', async () => {
-    const { store } = await fixture();
-    expect(await store.status()).toEqual({ serviceUrl: '', hasKey: false, storageAvailable: true });
+    const { store, directory, crypto } = await fixture();
+    expect(await store.status()).toEqual({ serviceUrl: 'https://44.233.174.193', hasKey: false, storageAvailable: true });
     expect(await store.getConnection()).toBeNull();
+    expect(await readdir(directory)).toEqual([]);
+    expect(crypto.encryptString).not.toHaveBeenCalled();
+    expect(crypto.decryptString).not.toHaveBeenCalled();
   });
 
   it('persists only encrypted key bytes in a private file and reloads the connection', async () => {
@@ -81,7 +84,7 @@ describe('CredentialStore', () => {
     const crypto = fakeCrypto();
     vi.mocked(crypto.isEncryptionAvailable).mockReturnValue(false);
     const { directory, store } = await fixture(crypto);
-    expect(await store.status()).toEqual({ serviceUrl: '', hasKey: false, storageAvailable: false });
+    expect(await store.status()).toEqual({ serviceUrl: 'https://44.233.174.193', hasKey: false, storageAvailable: false });
     await expect(store.save({ serviceUrl: SERVICE, key: KEY })).rejects.toThrow('Secure credential storage is unavailable.');
     expect(await readdir(directory)).toEqual([]);
     expect(crypto.encryptString).not.toHaveBeenCalled();
@@ -165,7 +168,7 @@ describe('CredentialStore', () => {
     await store.clear();
     await store.clear();
     expect(await readdir(directory)).toEqual([]);
-    expect(await store.status()).toEqual({ serviceUrl: '', hasKey: false, storageAvailable: false });
+    expect(await store.status()).toEqual({ serviceUrl: 'https://44.233.174.193', hasKey: false, storageAvailable: false });
     expect(await store.getConnection()).toBeNull();
     vi.mocked(crypto.isEncryptionAvailable).mockReturnValue(true);
     await store.save({ serviceUrl: OTHER_SERVICE, key: 'new-key' });
@@ -199,7 +202,7 @@ describe('CredentialStore', () => {
     await expect(store.save({ serviceUrl: OTHER_SERVICE, key: 'replacement' })).rejects.toMatchObject(error);
     expect(await readFile(file, 'utf8')).toBe(invalid);
     await store.clear();
-    expect(await store.status()).toEqual({ serviceUrl: '', hasKey: false, storageAvailable: true });
+    expect(await store.status()).toEqual({ serviceUrl: 'https://44.233.174.193', hasKey: false, storageAvailable: true });
   });
 
   it('clear removes only the credential file, not other application data', async () => {

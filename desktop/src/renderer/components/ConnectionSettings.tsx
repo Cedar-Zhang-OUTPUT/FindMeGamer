@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { ConnectionInput, ConnectionStatus, PublicError } from '../../shared/bridge';
 import { ConfirmDisconnect, ErrorNotice, Icon, Loading } from './Primitives';
+import { DEFAULT_SERVICE_ORIGIN } from '../../shared/connection-default';
 
 export type ConnectionPhase = 'loading' | 'disconnected' | 'saving' | 'checking' | 'connected' | 'error';
 export function ConnectionSettings({ status, phase, error, route, recovering = false, embedded = false, blocked = false, resetSignal = 0, returnLabel='Open Library', onDraftStateChange, onConnect, onTest, onDisconnect, onLibrary }: {
@@ -9,13 +10,14 @@ export function ConnectionSettings({ status, phase, error, route, recovering = f
   embedded?: boolean; blocked?: boolean; resetSignal?: number; onDraftStateChange?: (dirty:boolean)=>void;
   onConnect: (input: ConnectionInput) => Promise<void>; onTest: () => void; onDisconnect: () => void; onLibrary: () => void;
 }) {
-  const [serviceUrl, setServiceUrl] = useState(status?.serviceUrl ?? '');
+  const initialOrigin = status?.serviceUrl || (status?.hasKey ? '' : DEFAULT_SERVICE_ORIGIN);
+  const [serviceUrl, setServiceUrl] = useState(initialOrigin);
   const [key, setKey] = useState('');
   const [confirming, setConfirming] = useState(false);
-  useEffect(() => setServiceUrl(status?.serviceUrl ?? ''), [status?.serviceUrl, recovering]);
-  useEffect(() => {setServiceUrl(status?.serviceUrl ?? '');setKey('');}, [resetSignal]);
+  useEffect(() => setServiceUrl(initialOrigin), [initialOrigin, recovering]);
+  useEffect(() => {setServiceUrl(initialOrigin);setKey('');}, [resetSignal]);
   const busy = blocked || phase === 'loading' || phase === 'saving' || phase === 'checking';
-  const dirty = serviceUrl.trim() !== (status?.serviceUrl ?? '') || key.length > 0;
+  const dirty = serviceUrl.trim() !== initialOrigin || key.length > 0;
   useEffect(()=>{onDraftStateChange?.(dirty);},[dirty,onDraftStateChange]);
   const hasExistingKey = Boolean(status?.hasKey);
   return <>
