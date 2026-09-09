@@ -42,7 +42,7 @@ def test_0019_upgrade_preserves_activity_game_and_recipient_snapshot(
         with database_engine.begin() as conn:
             row = conn.execute(
                 text(
-                    "SELECT campaign_brief,revision,source_snapshot FROM activities WHERE id=:id"
+                    "SELECT campaign_brief,revision,source_snapshot,initial_selection_initialized FROM activities WHERE id=:id"
                 ),
                 {"id": activity},
             ).one()
@@ -51,6 +51,7 @@ def test_0019_upgrade_preserves_activity_game_and_recipient_snapshot(
                 and row.revision == 0
                 and row.source_snapshot == source
             )
+            assert row.initial_selection_initialized is True
             assert (
                 conn.scalar(
                     text(

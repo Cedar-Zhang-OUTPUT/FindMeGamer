@@ -107,6 +107,7 @@ class ActivityView(BaseModel):
     source_snapshot: dict[str, Any]
     campaign_brief: CampaignBrief = None
     revision: int = 0
+    initial_selection_initialized: bool = False
     created_at: datetime
 
 

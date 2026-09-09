@@ -42,6 +42,9 @@ class Activity(TimestampMixin, Base):
     source_snapshot: Mapped[dict] = json_object()
     campaign_brief: Mapped[str | None] = mapped_column(Text)
     revision: Mapped[int] = counter()
+    initial_selection_initialized: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
 
 
 class DiscoveryQuery(TimestampMixin, Base):

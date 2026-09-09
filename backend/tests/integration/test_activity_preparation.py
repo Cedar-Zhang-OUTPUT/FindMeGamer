@@ -41,7 +41,7 @@ def test_human_selection_persists_without_implying_send_readiness(
 ):
     activity_id, candidates = setup_selection(auth_client, session, monkeypatch)
     path = f"/api/v2/activities/{activity_id}/selections"
-    assert auth_client.get(path).json()["total"] == 0
+    assert auth_client.get(path).json()["total"] == len(candidates)
     selected = choose(auth_client, activity_id, candidates[0].id)
     assert selected["active"]
     assert selected["identity"]["account_id"] == candidates[0].account_id
@@ -55,7 +55,7 @@ def test_human_selection_persists_without_implying_send_readiness(
         "public_name_unconfirmed",
     }.issubset(selected["missing_fields"])
     assert choose(auth_client, activity_id, candidates[0].id)["id"] == selected["id"]
-    assert auth_client.get(path).json()["total"] == 1
+    assert auth_client.get(path).json()["total"] == len(candidates)
     assert auth_client.get(f"{path}/{selected['id']}").json() == selected
 
 
@@ -160,7 +160,7 @@ def test_cancel_readd_and_cross_query_identity_dedup(auth_client, session, monke
     assert response.status_code == 200 and not response.json()["active"]
     assert (
         auth_client.get(f"/api/v2/activities/{activity_id}/selections").json()["total"]
-        == 0
+        == len(candidates) - 1
     )
     assert choose(auth_client, activity_id, candidate.id)["id"] == selected["id"]
     assert (
@@ -321,6 +321,14 @@ def test_explicit_bulk_selection_covers_loaded_pages_without_auto_additions(
         auth_client, session, monkeypatch, count=100
     )
     path = f"/api/v2/activities/{activity_id}/selections/bulk"
+    initial = auth_client.get(
+        f"/api/v2/activities/{activity_id}/selections", params={"limit": 100}
+    ).json()
+    assert initial["total"] == 100
+    assert post(auth_client, path, {"cancel_selections": [
+        {"selection_id": item["id"], "expected_revision": item["revision"]}
+        for item in initial["items"]
+    ]}).status_code == 200
     response = post(
         auth_client, path, {"add_candidate_ids": [str(c.id) for c in candidates[:75]]}
     )

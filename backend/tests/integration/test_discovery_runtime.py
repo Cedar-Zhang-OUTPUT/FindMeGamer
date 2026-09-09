@@ -375,6 +375,13 @@ def test_committed_reservation_coordinates_independent_worker_and_stop_sessions(
             )
     finally:
         with factory.begin() as cleanup:
+            from app.db.models.activity_outreach import ActivitySelection
+
+            cleanup.execute(
+                delete(ActivitySelection).where(
+                    ActivitySelection.activity_id == activity_id
+                )
+            )
             cleanup.execute(
                 delete(DiscoveryCandidate).where(
                     DiscoveryCandidate.query_id == query_id

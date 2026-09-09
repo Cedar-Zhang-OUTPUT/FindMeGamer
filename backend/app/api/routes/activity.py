@@ -78,6 +78,7 @@ def _activity(item):
         "source_snapshot": item.source_snapshot,
         "campaign_brief": item.campaign_brief,
         "revision": item.revision,
+        "initial_selection_initialized": item.initial_selection_initialized,
         "created_at": item.created_at,
     }
 

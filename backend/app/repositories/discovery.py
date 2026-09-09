@@ -50,6 +50,15 @@ def start_batch(session, query, acknowledge_unknown=False):
     query = lock_query(session, query.id)
     if invalidate_expired(session, query):
         raise DiscoveryConflict("A provider page is still in flight.")
+    from app.repositories.initial_selection import initialize_first_batch
+
+    first_batch = session.scalar(
+        select(DiscoveryBatch).where(
+            DiscoveryBatch.query_id == query.id, DiscoveryBatch.ordinal == 1
+        )
+    )
+    if first_batch:
+        initialize_first_batch(session, first_batch.id)
     active = session.scalar(
         select(DiscoveryBatch).where(
             DiscoveryBatch.query_id == query.id,
@@ -125,6 +134,8 @@ def start_batch(session, query, acknowledge_unknown=False):
 
 
 def stop_query(session, query):
+    from app.repositories.initial_selection import initialize_first_batch
+
     query = lock_query(session, query.id)
     query.stop_requested = True
     query.status = "stopped"
@@ -135,4 +146,5 @@ def stop_query(session, query):
     ):
         batch.status = "stopped"
         batch.reason = "stopped"
+        initialize_first_batch(session, batch.id)
     session.flush()

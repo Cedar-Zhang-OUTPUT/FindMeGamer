@@ -303,11 +303,14 @@ def apply_outcome(session, attempt_id, token, page, failure):
 
 
 def run_discovery_batch(batch_id, *, session_factory, gateway_factory=None):
+    from app.repositories.initial_selection import initialize_first_batch
+
     batch_id = UUID(str(batch_id))
     gateway_factory = gateway_factory or production_gateway
     while True:
         with session_factory() as session:
             reserved = reserve(session, batch_id)
+            initialize_first_batch(session, batch_id)
             session.commit()
         if reserved is None:
             return
@@ -325,12 +328,14 @@ def run_discovery_batch(batch_id, *, session_factory, gateway_factory=None):
         with session_factory() as session:
             try:
                 keep_running = apply_outcome(session, attempt_id, token, page, failure)
+                initialize_first_batch(session, batch_id)
                 session.commit()
             except Exception:
                 # A page is indivisible: a failed import must not leave partial
                 # candidates, source changes, or an advanced cursor behind.
                 session.rollback()
                 apply_outcome(session, attempt_id, token, None, "outcome_unknown")
+                initialize_first_batch(session, batch_id)
                 session.commit()
                 keep_running = False
         if not keep_running:
