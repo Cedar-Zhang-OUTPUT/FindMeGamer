@@ -124,6 +124,12 @@ class FixtureContracts(unittest.TestCase):
             (
                 "SearchPlanOutput",
                 "deepseek-v4-flash",
+                {"conditions": {"platforms": ["youtube", "x", "twitch", "instagram"]}},
+                "queries",
+            ),
+            (
+                "SearchPlanOutput",
+                "deepseek-v4-flash",
                 {"conditions": {"platforms": ["youtube", "x"]}},
                 "queries",
             ),

@@ -9,7 +9,8 @@ import sys
 from fixture import destination_allowed, start_server
 
 ANALYZE_REVISION = "5706ad76f924991b80ee2a7fb6806528366be5ce"
-OUTREACH_REVISIONS = {"ece2e9d9558dfe057dc40ad58bd98a86e3149dd5", ANALYZE_REVISION}
+OUTREACH_REVISIONS = {"ece2e9d9558dfe057dc40ad58bd98a86e3149dd5", ANALYZE_REVISION,
+                     "28595d84805137dabbdadd31f26f9fa5b51d988b"}
 
 
 def install_smtp_capture(private, state_directory):

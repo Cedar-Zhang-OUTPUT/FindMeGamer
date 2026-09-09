@@ -128,7 +128,7 @@ def model_output(title, data):
         return values
     if title == "SearchPlanOutput":
         platforms = data["conditions"]["platforms"]
-        if not platforms or not set(platforms).issubset({"youtube", "x"}):
+        if not platforms or not set(platforms).issubset({"youtube", "x", "twitch", "instagram"}):
             raise ValueError("Unsupported platform")
         return {
             "summary": "Find creators covering cozy cooperative garden adventures.",
