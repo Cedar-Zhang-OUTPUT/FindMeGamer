@@ -19,6 +19,12 @@ it('keeps all original people, actual addresses and sender in the review',()=>{
   expect(screen.getByTitle('Email preview')).toHaveAttribute('srcdoc',expect.stringContaining('Exact email 0'));
   expect(screen.queryByRole('button',{name:'Send 1 email'})).not.toBeInTheDocument();
 });
+it('routes missing sender and stale template repairs without sending or rewriting drafts',async()=>{
+ const p=setup(),onUseCurrentTemplate=vi.fn();p.qualification.members[0].missing_fields=['sender_identity_missing','template_context_changed'];p.qualification.members[0].status='needs_repair';
+ render(<QualificationEditor {...p} onUseCurrentTemplate={onUseCurrentTemplate}/>);
+ expect(p.onOpenSettings).not.toHaveBeenCalled();expect(onUseCurrentTemplate).not.toHaveBeenCalled();
+ await userEvent.click(screen.getByRole('button',{name:'Email settings'}));expect(p.onOpenSettings).toHaveBeenCalledOnce();await userEvent.click(screen.getByRole('button',{name:'Use current template'}));expect(onUseCurrentTemplate).toHaveBeenCalledOnce();expect(p.onSend).not.toHaveBeenCalled();
+});
 it('uses explicit exclusion with a retained reason and invalidates send until rechecked',async()=>{
   const p=setup(),view=render(<QualificationEditor {...p}/>);await userEvent.click(screen.getByRole('checkbox',{name:'Exclude Person 1'}));
   expect(p.onExclusionsChange).toHaveBeenLastCalledWith([...p.exclusions,{draft_id:'draft-0',reason:''}]);

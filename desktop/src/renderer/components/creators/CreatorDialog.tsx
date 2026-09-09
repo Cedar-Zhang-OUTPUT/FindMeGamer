@@ -1,14 +1,14 @@
 import {useEffect,useRef,type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 
-export function CreatorDialog({title,children,actions,onClose}:{title:string;children:ReactNode;actions:ReactNode;onClose:()=>void}) {
+export function CreatorDialog({title,children,actions,onClose,role='dialog'}:{title:string;children:ReactNode;actions:ReactNode;onClose:()=>void;role?:'dialog'|'alertdialog'}) {
   const panel=useRef<HTMLDivElement>(null);
   useEffect(()=>{
     const previous=document.activeElement as HTMLElement|null;
     panel.current?.querySelector<HTMLElement>('button:not(:disabled),input:not(:disabled)')?.focus();
     return()=>{if(previous?.isConnected&&!previous.matches(':disabled'))previous.focus({preventScroll:true});};
   },[]);
-  return createPortal(<div className="modal-backdrop"><div ref={panel} className="confirm-dialog" role="dialog" aria-modal="true" aria-label={title} onKeyDown={event=>{
+  return createPortal(<div className="modal-backdrop"><div ref={panel} className="confirm-dialog" role={role} aria-modal="true" aria-label={title} onKeyDown={event=>{
     if(event.key==='Escape'){event.preventDefault();onClose();}
     if(event.key==='Tab'){
       const controls=panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]');

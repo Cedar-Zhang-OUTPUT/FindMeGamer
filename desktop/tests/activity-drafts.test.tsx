@@ -5,7 +5,8 @@ import {useActivityDrafts} from '../src/renderer/components/match/useActivityDra
 import {settingsBridgeMock,ok} from './settings-fixtures';
 import {gameFixture} from './game-fixtures';
 import {recipientBatchFixture,preparationFixture} from './outreach-fixtures';
-import {builtinTemplate,compositionFixture,draftFixture,draftIds,draftValues,templateVersion} from './drafts-fixtures';
+import {compositionFixture,draftFixture,draftIds,draftValues} from './drafts-fixtures';
+import {gameBoundBuiltin as builtinTemplate,gameBoundVersion as templateVersion} from './game-bound-template-fixtures';
 afterEach(()=>{cleanup();vi.useRealTimers();});
 const batch=()=>recipientBatchFixture({id:draftIds.batch,activity_id:draftIds.activity,recipients:[{id:draftIds.recipient,selection_id:draftIds.selection,snapshot:preparationFixture({id:draftIds.selection}),preparation:preparationFixture({id:draftIds.selection}),source_changed:false,current_missing_fields:[]}]});
 function setup(){const bridge=settingsBridgeMock();const api={...bridge,games:{detail:vi.fn(async()=>ok(gameFixture('Current game',draftIds.game)))}};vi.mocked(api.drafts.templates).mockResolvedValue(ok({items:[templateVersion],builtin:builtinTemplate}));vi.mocked(api.outreach.batch).mockResolvedValue(ok(batch()));return api;}

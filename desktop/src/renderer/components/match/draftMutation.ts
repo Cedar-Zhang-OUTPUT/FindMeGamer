@@ -119,7 +119,7 @@ export function reconcileDraftReadback(attempt: DraftAttempt, readback: DraftRea
   if (attempt.connectionChanged) return null;
   const command = attempt.command;
   if (command.kind === 'registerCanonical' && readback.kind === 'templates' && command.canonicalFixedHash) {
-    const matches = readback.items.filter(item => item.game_id === command.gameId && item.fixed_hash === command.canonicalFixedHash && item.source_metadata.kind === 'canonical');
+    const matches = readback.items.filter(item => item.game_id === command.gameId && item.fixed_hash === command.canonicalFixedHash && ['canonical','game_bound'].includes(item.source_metadata.kind));
     return matches.length === 1 ? { kind: 'registerCanonical', data: matches[0] } : null;
   }
   if (readback.kind !== 'composition') return null;

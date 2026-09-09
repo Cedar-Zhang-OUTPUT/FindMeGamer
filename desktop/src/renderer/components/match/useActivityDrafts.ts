@@ -111,11 +111,11 @@ export function useActivityDrafts({api,activityId,gameId,active,pollMs=4000}:Pro
     return true;
   }
   async function execute(command:DraftCommand){readSequence.current++;pendingRead.current=null;setLoading(false);return accept(await operation.execute(command));}
-  async function register(){if(busy||locked||!game||!catalog)return false;return execute({kind:'registerCanonical',gameId:game.id,canonicalFixedHash:catalog.builtin.fixed_hash});}
+  async function register(){if(busy||locked||!game||!catalog||catalog.builtin.source_metadata.kind!=='game_bound')return false;return execute({kind:'registerCanonical',gameId:game.id,canonicalFixedHash:catalog.builtin.fixed_hash});}
   async function createTemplate(data:NewTemplateText){if(busy||locked||!game)return false;return execute({kind:'createTemplate',data:{...data,game_id:game.id}});}
   async function create(){
     const original=batchRef.current,template=catalog?.items.find(item=>item.id===selectedTemplate&&item.game_id===gameId);
-    if(busy||locked||!active||!original||!template||template.source_metadata.kind!=='canonical'||template.fixed_hash!==catalog?.builtin.fixed_hash||dirty)return false;
+    if(busy||locked||!active||!original||!template||template.source_metadata.kind!=='game_bound'||template.fixed_hash!==catalog?.builtin.fixed_hash||dirty)return false;
     return execute({kind:'createComposition',activityId,data:{recipient_batch_id:original.id,template_version_id:template.id}});
   }
   function target(){return compositionRef.current?.drafts.find(row=>row.id===selectedRef.current);}

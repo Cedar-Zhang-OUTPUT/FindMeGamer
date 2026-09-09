@@ -6,9 +6,10 @@ import { SLOT_KEYS, SLOT_LABELS } from './templateText';
 import './sendingWorkspace.css';
 export interface QualificationEditorProps {
   qualification: Qualification | null; composition: CompositionView; exclusions: Exclusion[]; current: boolean; busy: boolean;
-  onExclusionsChange(value: Exclusion[]): void; onCheck(): void; onSend(): void; onRepairDraft(id: string): void; onOpenSettings?(): void;
+  onExclusionsChange(value: Exclusion[]): void; onCheck(): void; onSend(): void; onRepairDraft(id: string): void; onOpenSettings?(): void; onUseCurrentTemplate?():void;
 }
 const missingLabels: Record<string, string> = {
+  sender_identity_missing:'Set a sender name in Email settings, then create new drafts.',template_context_changed:'Game or sender details changed. Create new drafts with the current template.',
   email_not_selected: 'Choose a contact email.', email_changed: 'Review the changed contact.', email_invalid: 'Record a valid contact email.', email_missing: 'Record a contact email.',
   draft_sources_changed: 'Refresh changed draft sources.', draft_not_complete: 'Complete this draft.', sender_facts_unconfirmed: 'Confirm the sender facts.', smtp_not_configured: 'Configure the sending account.',
   template_game_mismatch: 'Choose a template for this game.', duplicate_recipient_email: 'Resolve the shared recipient address.', already_invited: 'Review the existing invitation.',
@@ -16,7 +17,7 @@ const missingLabels: Record<string, string> = {
   channel_name_missing: 'Record the channel name.', identity_changed: 'Review the creator identity.', not_selected: 'Restore this prepared person.',
 };
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
-export function QualificationEditor({ qualification, composition, exclusions, current, busy, onExclusionsChange, onCheck, onSend, onRepairDraft, onOpenSettings }: QualificationEditorProps) {
+export function QualificationEditor({ qualification, composition, exclusions, current, busy, onExclusionsChange, onCheck, onSend, onRepairDraft, onOpenSettings,onUseCurrentTemplate }: QualificationEditorProps) {
   const prefix = useId();
   const [selectedId, setSelectedId] = useState(composition.drafts[0]?.id ?? null);
   const [editedAgainst, setEditedAgainst] = useState<Qualification | null | undefined>(undefined);
@@ -73,6 +74,8 @@ export function QualificationEditor({ qualification, composition, exclusions, cu
             {excluded && !excluded.reason.trim() && <small className="qualification-error">Add a reason to exclude this person.</small>}
           </div>
           {!!member?.missing_fields.length && <ul className="qualification-missing">{member.missing_fields.map(field => <li key={field}>{missingLabels[field] ?? (field.startsWith('email_') ? 'Review the recorded contact email.' : 'Review this draft’s recorded sources.')}</li>)}</ul>}
+          {member?.missing_fields.includes('sender_identity_missing')&&onOpenSettings&&<button className="button secondary" disabled={busy} onClick={onOpenSettings}>Email settings</button>}
+          {member?.missing_fields.some(field=>['sender_identity_missing','template_context_changed'].includes(field))&&onUseCurrentTemplate&&<button className="button secondary" disabled={busy} onClick={onUseCurrentTemplate}>Use current template</button>}
           {member?.subject && <h4 className="qualification-subject">{member.subject}</h4>}
           {member?.html ? <EmailDocument html={member.html} /> : <p className="qualification-empty">{q ? 'Complete the draft to preview its email.' : 'Check recipients to review the exact email.'}</p>}
           {member && <details className="qualification-sources"><summary>Sources, identity and sender facts</summary>

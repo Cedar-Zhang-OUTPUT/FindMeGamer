@@ -9,7 +9,8 @@ import {settingsBridgeMock,ok} from './settings-fixtures';
 import {activityFixture} from './match-api-mock';
 import {gameFixture} from './game-fixtures';
 import {preparationFixture,recipientBatchFixture} from './outreach-fixtures';
-import {builtinTemplate,compositionFixture,draftFixture,draftIds,draftValues,templateVersion} from './drafts-fixtures';
+import {compositionFixture,draftFixture,draftIds,draftValues} from './drafts-fixtures';
+import {gameBoundBuiltin as builtinTemplate,gameBoundVersion as templateVersion} from './game-bound-template-fixtures';
 afterEach(cleanup);
 function setup(){
   const activity=activityFixture(),person=preparationFixture({activity_id:activity.id,name:'Fixture Channel'});

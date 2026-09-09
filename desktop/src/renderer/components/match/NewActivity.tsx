@@ -41,7 +41,7 @@ export function NewActivity({api,initialGame,onCreated,onCancel,onNavigationGuar
   const [errors,setErrors]=useState<Record<string,string>>({}),[lookup,setLookup]=useState<ActivityPage|null>(null),[lookupError,setLookupError]=useState<PublicError|null>(null),[lookupBusy,setLookupBusy]=useState(false);
   const alive=useRef(true);useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
   const operation=useMatchOperation(api.match);
-  const guard=useMatchGuard({operation,dirty:Boolean(name||game),onChange:ownGuard,onDiscard:()=>{setBrief('');setName('');setGame(null);setChoice(null);setReferences([]);setPickGame(true);}});
+  const guard=useMatchGuard({operation,dirty:Boolean(name||game||brief),onChange:ownGuard,onDiscard:()=>{setBrief('');setName('');setGame(null);setChoice(null);setReferences([]);setPickGame(true);}});
   useEffect(()=>{
     let current=true;if(!choice){setGameBusy(false);setGameError(null);return;}
     setGameBusy(true);setGameError(null);

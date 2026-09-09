@@ -6,7 +6,7 @@ import './draftEditor.css';
 export interface DraftEditorProps {
   draft: DraftView; busy: boolean; current: boolean;
   onSave(values: SlotValues): Promise<boolean>; onRefresh(): void|Promise<boolean>; onRetry(): void;
-  onOpenSource(section: 'overview' | 'contacts' | 'works'): void; onDirtyChange?(dirty: boolean): void;
+  onOpenSource(section: 'overview' | 'contacts' | 'works'): void; onDirtyChange?(dirty: boolean): void;onUseCurrentTemplate?():void;
 }
 type EditSession = { before: DraftView; initial: SlotValues; values: SlotValues };
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
@@ -22,7 +22,7 @@ const statusLabel: Record<DraftView['status'], string> = { pending: 'Queued', ru
 const missingLabel: Record<string, string> = { not_selected: 'Selection removed', identity_changed: 'Account changed',
   public_name_unconfirmed: 'Confirm public name', channel_name_missing: 'Channel name', reference_missing: 'Referenced work', observation_evidence_missing: 'Recorded observation' };
 
-export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, onOpenSource, onDirtyChange }: DraftEditorProps) {
+export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, onOpenSource, onDirtyChange,onUseCurrentTemplate }: DraftEditorProps) {
   const prefix = useId();
   const [sessions, setSessions] = useState<Record<string, EditSession>>({});
   const [saving, setSaving] = useState(false), pending = useRef(false), alive = useRef(true);
@@ -36,6 +36,7 @@ export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, 
     || JSON.stringify(before.input) !== JSON.stringify(draft.input) || before.source_changed !== draft.source_changed);
   const disabled = busy || saving || !current;
   const sourceMissing = draft.missing_fields.filter(field => !field.startsWith('email_'));
+  const templateChanged=sourceMissing.includes('template_context_changed');
   const version = `${draft.id}:${draft.revision}:${draft.context_token}:${draft.status}`;
   const fieldErrors: Partial<Record<keyof SlotValues, string>> = {};
   for (const [key, source] of [['firstName', 'public_name'], ['channelName', 'channel_name'], ['reference', 'reference']] as const) {
@@ -93,7 +94,7 @@ export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, 
       <div><h3>{draft.rendered?.subject ?? 'Personalization draft'}</h3><p role="status">{statusLabel[draft.status]}</p></div>
       <span className="draft-facts-state status-badge">{draft.sender_facts_valid ? 'Confirmations saved' : 'Confirmations needed'}</span>
     </header>
-    {draft.source_changed && <p className="draft-editor-warning">Sources changed · refresh required</p>}
+    {draft.source_changed && <p className="draft-editor-warning">{templateChanged?'Template changed · create new drafts':'Sources changed · refresh required'}</p>}
     {unknownGeneration && <p className="draft-editor-warning">Model outcome unknown · retry may repeat a charge</p>}
     {!!sourceMissing.length && <ul className="draft-missing-sources" aria-label="Sources to repair">{sourceMissing.map(field => <li key={field}>{missingLabel[field] ?? field.replaceAll('_',' ')}</li>)}</ul>}
     <div className="draft-editor-layout">
@@ -128,7 +129,7 @@ export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, 
       <button className="text-button" type="button" disabled={disabled} onClick={() => onOpenSource('contacts')}>Edit contact source</button>
     </details>
     <div className="draft-editor-actions">
-      <button className="button secondary" type="button" disabled={disabled} onClick={() => setRefreshFor(version)}>Refresh sources</button>
+      {templateChanged?(onUseCurrentTemplate&&<button className="button secondary" type="button" disabled={disabled} onClick={onUseCurrentTemplate}>Use current template</button>):<button className="button secondary" type="button" disabled={disabled} onClick={() => setRefreshFor(version)}>Refresh sources</button>}
       {draft.status === 'failed' && <>
         {unknownGeneration && <label className="draft-charge-ack"><input type="checkbox" disabled={disabled} checked={chargeFor === version} onChange={event => setChargeFor(event.target.checked ? version : null)} />I understand another model call may incur a charge.</label>}
         <button className="button secondary" type="button" disabled={disabled || !!sourceMissing.length || draft.source_changed || (unknownGeneration && chargeFor !== version)} onClick={() => { setChargeFor(null); onRetry(); }}>Retry generation</button>

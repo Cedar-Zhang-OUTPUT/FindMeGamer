@@ -2,10 +2,10 @@ import type { Result } from './bridge';
 import type { JsonObject } from './library';
 
 export interface SlotValues { firstName: string; channelName: string; reference: string; observation: string }
-export interface TemplateSource { kind: 'canonical' | 'user_saved'; document_id: string | null; revision: number | null; steam_app_id: string | null; raw_hash: string | null }
+export interface TemplateSource { kind: 'canonical' | 'user_saved' | 'game_bound'; document_id: string | null; revision: number | null; steam_app_id: string | null; raw_hash: string | null; game_id?:string|null; game_revision?:number|null; game_fingerprint?:string|null; sender_name?:string|null }
 export interface TemplateContent { name: string; subject: string; fixed_fragments: string[]; fixed_hash: string; source_metadata: TemplateSource }
 export interface TemplateVersion extends TemplateContent { id: string; game_id: string; created_at: string }
-export interface BuiltinTemplate extends TemplateContent { key: 'liminal-revision-69'; requires_explicit_registration: true }
+export interface BuiltinTemplate extends TemplateContent { key: 'liminal-revision-69' | 'game-outreach-v1'; requires_explicit_registration: true }
 export interface TemplateCatalog { items: TemplateVersion[]; builtin: BuiltinTemplate }
 export interface TemplateVersionCreate { game_id: string; request_id: string; name: string; subject: string; fixed_fragments: string[] }
 export interface CompositionCreate { request_id: string; recipient_batch_id: string; template_version_id: string }

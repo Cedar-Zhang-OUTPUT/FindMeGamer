@@ -14,6 +14,10 @@ function props(patch: Partial<DraftEditorProps> = {}): DraftEditorProps {
 const change = (label: string, value: string) => fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value } });
 
 describe('source-bound draft editor', () => {
+  it('offers a new current-template flow instead of repeatedly refreshing immutable text',async()=>{
+    const onUseCurrentTemplate=vi.fn(),p=props({draft:draftFixture({status:'needs_repair',source_changed:true,missing_fields:['template_context_changed']}),onUseCurrentTemplate});render(<DraftEditor {...p}/>);
+    expect(screen.queryByRole('button',{name:'Refresh sources'})).not.toBeInTheDocument();await userEvent.click(screen.getByRole('button',{name:'Use current template'}));expect(onUseCurrentTemplate).toHaveBeenCalledOnce();expect(p.onRefresh).not.toHaveBeenCalled();expect(p.onSave).not.toHaveBeenCalled();
+  });
   it('shows the saved email sandbox and four bound fields without authorizing any write on mount', () => {
     const p = props(); render(<DraftEditor {...p} />);
     expect(screen.getByRole('textbox', { name: 'Public name' })).toHaveValue('Ari');

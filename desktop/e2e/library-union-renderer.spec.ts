@@ -151,6 +151,16 @@ test('Library union built renderer preserves four-platform and Creator context w
     await page.getByRole('button',{name:'Back to activity',exact:true}).click();
     await expect(history).toHaveValue('plan:'+ids.plan_id);
     await expect(results.getByRole('article')).toHaveCount(8);
+    await checkpoint('source_isolation');
+    const searches=await match.plans({activityId:ACTIVITY,offset:0,limit:200});
+    for(const [queryId,count,name] of [[ids.disabled_query_id,3,'disabled-source-library'],[ids.failed_source_query_id,6,'failed-source-library']] as const){
+      const plan=searches.items.find(item=>item.query_id===queryId);
+      await history.selectOption(plan?'plan:'+plan.id:'query:'+queryId);
+      await expect(results.getByRole('article')).toHaveCount(count);
+      if(queryId===ids.failed_source_query_id)await expect(sources.getByText('YouTube · Failed',{exact:true})).toBeVisible();
+      await shot(name+'.png');
+    }
+    await history.selectOption('plan:'+ids.plan_id);await expect(results.getByRole('article')).toHaveCount(8);
     await page.setViewportSize({width:760,height:920});
     safe(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'narrow_layout');
     await shot('union-narrow.png');

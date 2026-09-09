@@ -9,7 +9,7 @@ import {DeliveryEditor} from './DeliveryEditor';
 import {ErrorNotice,Loading,analyzedDate} from '../Primitives';
 import './sendingWorkspace.css';
 
-export function SendingWorkspace({controller:c,composition,active,onRepairDraft,onSettings,onConnectionRepair}:{controller:ReturnType<typeof useActivitySending>;composition:CompositionView|null;active:boolean;onRepairDraft(id:string):void;onSettings?():void;onConnectionRepair?():void}){
+export function SendingWorkspace({controller:c,composition,active,onRepairDraft,onSettings,onConnectionRepair,onUseCurrentTemplate}:{controller:ReturnType<typeof useActivitySending>;composition:CompositionView|null;active:boolean;onRepairDraft(id:string):void;onSettings?():void;onConnectionRepair?():void;onUseCurrentTemplate?():void}){
   const visible=active&&c.mode.kind!=='drafts',state=c.operation.state,uncertain=state.phase==='uncertain';
   const error=c.error??(c.mode.kind==='review'&&c.qualificationCurrent&&!uncertain?null:state.error);
   const mayReview=uncertain&&!!c.readback&&reviewSendingReadback(state.attempt,c.readback);
@@ -28,7 +28,7 @@ export function SendingWorkspace({controller:c,composition,active,onRepairDraft,
     </section>}
     {composition&&<div hidden={c.mode.kind!=='review'}><QualificationEditor key={composition.id} composition={composition} qualification={c.qualification} exclusions={c.exclusions}
       current={visible&&c.mode.kind==='review'&&c.qualificationCurrent} busy={c.busy||c.locked||!visible||c.mode.kind!=='review'} onExclusionsChange={c.changeExclusions}
-      onCheck={()=>void c.checkQualification()} onSend={()=>void c.send()} onRepairDraft={onRepairDraft} onOpenSettings={onSettings}/></div>}
+      onCheck={()=>void c.checkQualification()} onSend={()=>void c.send()} onRepairDraft={onRepairDraft} onOpenSettings={onSettings} onUseCurrentTemplate={onUseCurrentTemplate}/></div>}
     {c.batch&&<div hidden={c.mode.kind!=='deliveries'}><DeliveryEditor key={`${c.batch.id}:${c.verificationEpoch}`} batch={c.batch} current={visible&&c.mode.kind==='deliveries'&&c.current}
       busy={c.busy||c.locked||!visible||c.mode.kind!=='deliveries'} onRetry={c.retryDelivery} onResolve={c.resolveDelivery} onDirtyChange={c.setVerificationDirty}/></div>}
   </section>;

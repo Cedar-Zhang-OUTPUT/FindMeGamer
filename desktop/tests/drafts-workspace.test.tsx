@@ -7,7 +7,8 @@ import { DraftsWorkspace, CompositionHistory } from '../src/renderer/components/
 import { useActivityDrafts } from '../src/renderer/components/match/useActivityDrafts';
 import { settingsBridgeMock, ok } from './settings-fixtures';
 import { gameFixture } from './game-fixtures';
-import { compositionFixture, draftFixture, draftIds, draftValues, templateVersion, builtinTemplate } from './drafts-fixtures';
+import { compositionFixture, draftFixture, draftIds, draftValues} from './drafts-fixtures';
+import {gameBoundBuiltin as builtinTemplate,gameBoundVersion as templateVersion} from './game-bound-template-fixtures';
 import { preparationFixture, recipientBatchFixture } from './outreach-fixtures';
 import { freezeDraftAttempt } from '../src/renderer/components/match/draftMutation';
 import type { CompositionPage } from '../src/shared/drafts';

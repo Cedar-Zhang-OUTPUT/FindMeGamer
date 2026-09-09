@@ -9,6 +9,14 @@ import {matchAPIMock,activityFixture} from './match-api-mock';
 import {gameFixture} from './game-fixtures';
 import type {NavigationGuard} from '../src/shared/games';
 afterEach(cleanup);
+it('protects a brief-only manual game draft while editing and after returning to game selection',async()=>{
+ const api={match:matchAPIMock(),games:{list:vi.fn(async()=>({ok:true,data:{items:[],total:0,offset:0,limit:20}}))},analysis:{steamImport:vi.fn(async()=>({ok:false,error:{code:'source_unavailable',message:'Unavailable',retryable:false}}))}} as unknown as DesktopBridge;
+ let guard:NavigationGuard|null=null;const cancel=vi.fn(),leave=vi.fn(),user=userEvent.setup();
+ render(<NewActivity api={api} onCreated={vi.fn()} onCancel={cancel} onNavigationGuardChange={value=>{guard=value;}}/>);
+ await user.click(screen.getByRole('tab',{name:'Steam'}));await user.type(screen.getByRole('textbox',{name:'Steam URL'}),'https://store.steampowered.com/app/123');await user.click(screen.getByRole('button',{name:'Import source'}));await user.click(await screen.findByRole('button',{name:'Enter manually'}));await user.click(screen.getByText('Campaign brief · Optional'));await user.type(screen.getByLabelText('Campaign brief'),'Only this activity');
+ act(()=>guard?.(leave));const source=await screen.findByRole('alertdialog',{name:'Leave source import'});expect(source).toBeVisible();await user.click(within(source).getByRole('button',{name:'Discard link and leave'}));const dialog=await screen.findByRole('dialog',{name:'Unsaved Match changes'});expect(dialog).toBeVisible();await user.click(within(dialog).getByRole('button',{name:'Keep working'}));expect(screen.getByLabelText('Campaign brief')).toHaveValue('Only this activity');expect(leave).not.toHaveBeenCalled();
+ await user.click(screen.getByRole('button',{name:'Back to games'}));await user.click(screen.getByRole('button',{name:'Activities'}));expect(await screen.findByRole('dialog',{name:'Unsaved Match changes'})).toBeVisible();expect(cancel).not.toHaveBeenCalled();expect(api.match.createActivity).not.toHaveBeenCalled();
+});
 it('retains Library search and Steam input across same-context tabs without importing on paste',async()=>{
  const {api,user}=setup();api.analysis={steamImport:vi.fn()} as unknown as DesktopBridge['analysis'];
  await user.type(screen.getByRole('searchbox',{name:'Search games'}),'Harbor');
