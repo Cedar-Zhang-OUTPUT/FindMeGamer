@@ -29,8 +29,9 @@ function UnsavedDialog({ locked, busy, resolving, onStay, onDiscard, onSave }: {
   }}><h2 id="game-unsaved-title">Unsaved game changes</h2><p>{locked ? 'The creation result is unknown. Resolve this request before starting another game.' : busy ? 'Your save is still in progress.' : resolving ? 'Resolve the conflicting values to save, or discard your local changes.' : 'Save your changes before leaving?'}</p><div className="game-dialog-actions"><button className="button secondary" onClick={onStay}>Continue editing</button><button className="text-button game-discard" disabled={locked || busy} onClick={onDiscard}>Discard changes</button><button className="button primary" disabled={locked || busy || resolving} onClick={onSave}>Save and leave</button></div></div></div>, document.body);
 }
 
-export function GameEditor({ api, initial, onSaved, onCancel, onNavigationGuardChange, onConnectionRepair }: {
+export function GameEditor({ api, initial, continuationLabel, onSaved, onCancel, onNavigationGuardChange, onConnectionRepair }: {
   api: DesktopBridge; initial: GameDetail | null; onSaved: (game: GameDetail) => void; onCancel: () => void;
+  continuationLabel?: string;
   onNavigationGuardChange?: (guard: NavigationGuard | null) => void;
   onConnectionRepair?: () => void;
 }) {
@@ -113,7 +114,7 @@ export function GameEditor({ api, initial, onSaved, onCancel, onNavigationGuardC
       requestAnimationFrame(() => { const element = document.getElementById(`game-${Object.keys(errors)[0]}`); const disclosure = element?.closest('details'); if (disclosure) disclosure.open = true; element?.focus(); });
       return;
     }
-    if (base && !dirty) { if (proceed) proceed(); else onCancel(); return; }
+    if (base && !dirty) { if (proceed) proceed(); else if (continuationLabel) onSaved(base); else onCancel(); return; }
     setPendingNavigation(null); latestNavigation.current = proceed ?? null;
     inFlight.current = true; setState('saving'); setError(null);
     try {
@@ -179,7 +180,7 @@ export function GameEditor({ api, initial, onSaved, onCancel, onNavigationGuardC
       {error && <ErrorNotice error={error}/>}
       {recoveryAvailable && onConnectionRepair && <button className="button secondary" type="button" onClick={onConnectionRepair}>Repair connection</button>}
       {Object.keys(fieldErrors).length > 0 && <div className="game-validation-summary" role="alert">Check the highlighted fields.</div>}
-      <form noValidate onSubmit={event => { event.preventDefault(); void save(); }}><GameForm base={base} draft={draft} disabled={busy || locked} errors={fieldErrors} onChange={next => { setDraft(next); setFieldErrors({}); setError(null); }}/><div className="game-editor-footer"><button className="button secondary" type="button" disabled={busy || locked} onClick={back}>Cancel</button><button className="button primary" type="submit" disabled={busy || locked || (Boolean(base) && !dirty)}>{busy ? 'Saving…' : base ? 'Save changes' : 'Create game'}</button></div></form>
+      <form noValidate onSubmit={event => { event.preventDefault(); void save(); }}><GameForm base={base} draft={draft} disabled={busy || locked} errors={fieldErrors} onChange={next => { setDraft(next); setFieldErrors({}); setError(null); }}/><div className="game-editor-footer"><button className="button secondary" type="button" disabled={busy || locked} onClick={back}>Cancel</button><button className="button primary" type="submit" disabled={busy || locked || (Boolean(base) && !dirty && !continuationLabel)}>{busy ? 'Saving…' : base ? continuationLabel ?? 'Save changes' : 'Create game'}</button></div></form>
     </>}
     {pendingNavigation && <UnsavedDialog locked={locked} busy={busy} resolving={state === 'conflict'} onStay={() => setPendingNavigation(null)} onDiscard={() => { const proceed = pendingNavigation; setPendingNavigation(null); setDraft(draftFrom(base)); onNavigationGuardChange?.(null); if (proceed !== onCancel) onCancel(); proceed(); }} onSave={() => void save(false, pendingNavigation)}/>}
   </div>;

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DesktopBridge } from '../../shared/bridge';
-import type { NavigationGuard } from '../../shared/games';
+import type { GameDetail, NavigationGuard } from '../../shared/games';
 import { GameLibrary } from './GameLibrary';
 import { CreatorLibrary } from './creators/CreatorLibrary';
 import {AnalyzeProvider,useAnalyze} from './analyze/AnalyzeProvider';
 
 type Kind = 'creators' | 'games';
 function AnalysisTasksButton(){const analyze=useAnalyze();return <button className="button secondary" onClick={analyze.showTasks}>Analysis tasks{analyze.activeCount>0?` · ${analyze.activeCount}`:''}</button>;}
-export function LibraryView({ api, active, onNavigationGuardChange, onConnectionRepair,onCollectionSettings }: { api: DesktopBridge; active: boolean; onNavigationGuardChange?: (guard: NavigationGuard | null) => void; onConnectionRepair?: () => void;onCollectionSettings?:()=>void }) {
+export function LibraryView({ api, active, onNavigationGuardChange, onConnectionRepair,onCollectionSettings,onUseForMatch }: { api: DesktopBridge; active: boolean; onNavigationGuardChange?: (guard: NavigationGuard | null) => void; onConnectionRepair?: () => void;onCollectionSettings?:()=>void;onUseForMatch?:(game:GameDetail)=>void }) {
   const [kind,setKind]=useState<Kind>('creators');
   const [profileRequest,setProfileRequest]=useState<{kind:Kind;id:string;nonce:number}|null>(null);
   const selected=useRef(kind);selected.current=kind;
@@ -35,5 +35,5 @@ export function LibraryView({ api, active, onNavigationGuardChange, onConnection
     if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();switchTab(event.key==='Home'?'creators':event.key==='End'?'games':kind==='creators'?'games':'creators');}
   }}>{target==='creators'?'Creators':'Games'}</button>)}</div></div>
   <div role="tabpanel" id="panel-creators" aria-labelledby="tab-creators" hidden={kind!=='creators'}><CreatorLibrary api={api} active={active&&kind==='creators'} onNavigationGuardChange={registerCreatorGuard} onConnectionRepair={onConnectionRepair} openRequest={profileRequest?.kind==='creators'?profileRequest:undefined}/></div>
-  <div role="tabpanel" id="panel-games" aria-labelledby="tab-games" hidden={kind!=='games'}><GameLibrary api={api} active={active&&kind==='games'} onNavigationGuardChange={registerGameGuard} onConnectionRepair={onConnectionRepair} openRequest={profileRequest?.kind==='games'?profileRequest:undefined}/></div></AnalyzeProvider>;
+  <div role="tabpanel" id="panel-games" aria-labelledby="tab-games" hidden={kind!=='games'}><GameLibrary api={api} active={active&&kind==='games'} onUseForMatch={onUseForMatch} onNavigationGuardChange={registerGameGuard} onConnectionRepair={onConnectionRepair} openRequest={profileRequest?.kind==='games'?profileRequest:undefined}/></div></AnalyzeProvider>;
 }

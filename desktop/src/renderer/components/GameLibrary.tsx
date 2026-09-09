@@ -21,7 +21,7 @@ function canOpen(url: string | null): url is string {
   try { const parsed = new URL(url); return parsed.protocol === 'https:' && !parsed.username && !parsed.password; } catch { return false; }
 }
 
-function GameRecord({ api, game, saved, onBack, onEdit,onImport }: { api: DesktopBridge; game: GameDetail; saved?: boolean; onBack: () => void; onEdit: () => void;onImport:()=>void }) {
+function GameRecord({ api, game, saved, onBack, onEdit,onImport,onUseForMatch }: { api: DesktopBridge; game: GameDetail; saved?: boolean; onBack: () => void; onEdit: () => void;onImport:()=>void;onUseForMatch?:(game:GameDetail)=>void }) {
   const analyze=useAnalyze();
   const [externalError, setExternalError] = useState<PublicError | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -31,7 +31,7 @@ function GameRecord({ api, game, saved, onBack, onEdit,onImport }: { api: Deskto
     catch { setExternalError({ code: 'open_failed', message: 'The link could not be opened.', retryable: false }); }
   }
   return <article className="game-record"><div className="game-editor-heading"><button className="text-button" onClick={onBack}><Icon name="arrow"/>Back to games</button>{saved && <span className="game-saved-message" role="status"><Icon name="check"/>Saved</span>}</div>
-    <section className="profile-identity"><Artwork url={game.cover_url} name={titleOf(game)} kind="games" large/><div className="identity-main"><h2 ref={heading} tabIndex={-1}>{titleOf(game)}</h2>{game.developer && <p>{game.developer}</p>}</div><button className="button primary" onClick={onEdit}>Edit game</button>
+    <section className="profile-identity"><Artwork url={game.cover_url} name={titleOf(game)} kind="games" large/><div className="identity-main"><h2 ref={heading} tabIndex={-1}>{titleOf(game)}</h2>{game.developer && <p>{game.developer}</p>}</div><div className="analysis-entry-actions">{onUseForMatch&&<button className="button primary" onClick={()=>onUseForMatch(game)}>Use for Match</button>}<button className={`button ${onUseForMatch?'secondary':'primary'}`} onClick={onEdit}>Edit game</button></div>
       <div className="profile-metrics">{game.favorite && <div><span>Collection</span><strong>Saved</strong></div>}{game.last_analyzed_at && <div><span>Analyzed</span><strong>{analyzedDate(game.last_analyzed_at)}</strong></div>}{game.release_date && <div><span>Release date</span><strong>{game.release_date}</strong></div>}</div>
     </section>
     {externalError && <ErrorNotice error={externalError}/>}
@@ -43,7 +43,7 @@ function GameRecord({ api, game, saved, onBack, onEdit,onImport }: { api: Deskto
   </article>;
 }
 
-export function GameLibrary({ api, active, onNavigationGuardChange, onConnectionRepair,openRequest }: { api: DesktopBridge; active: boolean; onNavigationGuardChange?: (guard: NavigationGuard | null) => void; onConnectionRepair?: () => void;openRequest?:{id:string;nonce:number} }) {
+export function GameLibrary({ api, active, onNavigationGuardChange, onConnectionRepair,openRequest,onUseForMatch }: { api: DesktopBridge; active: boolean; onNavigationGuardChange?: (guard: NavigationGuard | null) => void; onConnectionRepair?: () => void;openRequest?:{id:string;nonce:number};onUseForMatch?:(game:GameDetail)=>void }) {
   const [library, setLibrary] = useState<LibraryState>({ search: '', query: '', onlyCollection: false, websiteStatus: 'all', sort: 'recent_updated', page: null, busy: false, error: null, failedInput: null });
   const [route, setRoute] = useState<Route>({ kind: 'list' });
   const listState = useRef(library); listState.current = library;
@@ -115,7 +115,7 @@ export function GameLibrary({ api, active, onNavigationGuardChange, onConnection
       {page && <div className="game-pagination"><span>{shownStart}–{page.offset + page.items.length} of {page.total}</span><div><button className="button secondary" disabled={library.busy || Boolean(library.error) || page.offset === 0} onClick={() => void loadPage(pageInput(Math.max(0, page.offset - 24)))}>Previous page</button><button className="button secondary" disabled={library.busy || Boolean(library.error) || page.offset + page.limit >= page.total} onClick={() => void loadPage(pageInput(page.offset + page.limit))}>Next page</button></div></div>}
     </div>
     {route.kind === 'loading' && <section className="game-detail-loading"><button className="text-button" onClick={() => backToList()}>Back to games</button>{route.error ? <ErrorNotice error={route.error} onRetry={() => void openGame(route.id, true)}/> : <Loading label="Loading game…"/>}</section>}
-    {route.kind === 'detail' && <GameRecord api={api} game={route.game} saved={route.saved} onBack={() => backToList()} onImport={()=>setRoute({kind:'source',game:route.game})} onEdit={() => { setRoute({ kind: 'editor', game: route.game }); scrollTop(); }}/>}
+    {route.kind === 'detail' && <GameRecord api={api} game={route.game} saved={route.saved} onUseForMatch={onUseForMatch} onBack={() => backToList()} onImport={()=>setRoute({kind:'source',game:route.game})} onEdit={() => { setRoute({ kind: 'editor', game: route.game }); scrollTop(); }}/>}
     {route.kind==='source'&&<SourceImport api={api} target={{kind:'game',game:route.game}} onSaved={record=>saved(record as GameDetail)} onClose={()=>{registerGuard(null);route.game?setRoute({kind:'detail',game:route.game}):backToList();}} onNavigationGuardChange={registerGuard} onConnectionRepair={onConnectionRepair}/>}
     {route.kind === 'editor' && <GameEditor key={route.game?.id || 'new'} api={api} initial={route.game} onSaved={saved} onCancel={() => backToList(true)} onNavigationGuardChange={registerGuard} onConnectionRepair={onConnectionRepair}/>}
   </div>;

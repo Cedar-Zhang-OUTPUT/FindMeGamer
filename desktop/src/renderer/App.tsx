@@ -7,6 +7,7 @@ import { useNavigationGuard } from './hooks/useNavigationGuard';
 import { useAppearance } from './hooks/useAppearance';
 import { SettingsView } from './components/settings/SettingsView';
 import { MatchWorkspace } from './components/match/MatchWorkspace';
+import type {GameDetail} from '../shared/games';
 import './settings.css';
 import './settings-cloud.css';
 import './appearance.css';
@@ -34,6 +35,8 @@ export function App() {
   const [collectionPage,setCollectionPage]=useState<'library'|'match'>('match');
   const [collectionRequest,setCollectionRequest]=useState(0);
   const [smtpRequest,setSMTPRequest]=useState(0);
+  const [gameRequest,setGameRequest]=useState<{game:GameDetail;nonce:number}>();
+  const gameRequestSequence=useRef(0);
   const operation = useRef(0);
   const mounted = useRef(true);
   const navigationGate = useNavigationGuard();
@@ -41,6 +44,14 @@ export function App() {
   const settingsGate = useNavigationGuard();
   const taskGate=page==='match'||(page==='settings'&&(collectionReturn&&collectionPage==='match'||recoveryOrigin&&recoveryPage==='match'))?matchGate:navigationGate;
   const pageScroll = useRef<Record<Navigation, number>>({match:0,outreach:0,library:0,settings:0});
+  function useGameForMatch(game:GameDetail){
+    navigationGate.request(()=>{
+      pageScroll.current.library=document.querySelector<HTMLElement>('.main-scroll')?.scrollTop??0;
+      setPage('match');
+      // Reveal the retained Match task before it asks to discard its own draft.
+      matchGate.request(()=>setGameRequest({game,nonce:++gameRequestSequence.current}));
+    });
+  }
   function navigate(target: Navigation) {
     if (page === target) return;
     const proceed = () => {
@@ -118,7 +129,7 @@ export function App() {
       return;
     }
     const token = ++operation.current;
-    if (!recovery) { setEpoch(previous => previous + 1); setHasLibrarySession(false); }
+    if (!recovery) { setGameRequest(undefined); setEpoch(previous => previous + 1); setHasLibrarySession(false); }
     setPhase('saving'); setError(null); setRoute(null);
     try {
       const result = await api.connection.save(input);
@@ -141,7 +152,7 @@ export function App() {
   async function disconnect() {
     if (!api || recoveryOrigin || collectionReturn) return;
     const token = ++operation.current;
-    setEpoch(previous => previous + 1); setHasLibrarySession(false); setPhase('disconnected'); setError(null); setRoute(null);
+    setGameRequest(undefined); setEpoch(previous => previous + 1); setHasLibrarySession(false); setPhase('disconnected'); setError(null); setRoute(null);
     try {
       const result = await api.connection.clear();
       if (!mounted.current || operation.current !== token) return;
@@ -157,12 +168,12 @@ export function App() {
     </aside>
     <div className="main-frame"><header className="landscape-header" aria-label="FindMeGamer"><div className="landscape-shade"/></header>
       <main className="main-scroll" id="main-content">
-        <section className="page-content" hidden={page !== 'library'} aria-label="Library page">{hasLibrarySession && <div hidden={!connected}><LibraryView key={epoch} api={api} active={page === 'library' && connected} onNavigationGuardChange={navigationGate.register} onConnectionRepair={() => navigate('settings')} onCollectionSettings={openCollectionSettings}/></div>}{!connected && <>
+        <section className="page-content" hidden={page !== 'library'} aria-label="Library page">{hasLibrarySession && <div hidden={!connected}><LibraryView key={epoch} api={api} active={page === 'library' && connected} onUseForMatch={useGameForMatch} onNavigationGuardChange={navigationGate.register} onConnectionRepair={() => navigate('settings')} onCollectionSettings={openCollectionSettings}/></div>}{!connected && <>
           <div className="page-heading"><h1>Library</h1></div>
           {phase === 'loading' || phase === 'checking' || phase === 'saving' ? <Loading label={phase === 'loading' ? 'Opening workspace…' : 'Verifying connection…'}/> : <><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={() => navigate('settings')}>Open Settings</button>}/>{error && <ErrorNotice error={error} onRetry={status?.hasKey ? testConnection : () => void readStatus()}/>}</>}
         </>}</section>
         <section className="page-content" hidden={page !== 'settings'} aria-label="Settings page"><SettingsView api={api} active={page==='settings'} available={hasLibrarySession&&Boolean(status?.hasKey)} workspaceEpoch={epoch} appearance={appearance} collectionRequest={collectionRequest} smtpRequest={smtpRequest} onNavigationGuardChange={settingsGate.register} connection={{status,phase,error,route,blocked:collectionReturn,recovering:Boolean(recoveryOrigin),onConnect:connect,onTest:testConnection,onDisconnect:()=>void disconnect(),returnLabel:collectionReturn?(collectionPage==='match'?'Return to Match':'Return to Library'):recoveryOrigin&&recoveryPage==='match'?'Return to Match':undefined,onLibrary:()=>navigate(collectionReturn?collectionPage:recoveryOrigin?recoveryPage:'library')}}/></section>
-        <section className="page-content" hidden={page!=='match'} aria-label="match page">{hasLibrarySession&&<div hidden={!connected}><MatchWorkspace key={epoch} api={api} active={page==='match'&&connected} onNavigationGuardChange={matchGate.register} onConnectionRepair={()=>navigate('settings')} onCollectionSettings={openCollectionSettings} onSMTPSettings={openSMTPSettings}/></div>}{!connected&&<><div className="page-heading"><h1>Match</h1></div>{phase==='loading'||phase==='checking'||phase==='saving'?<Loading label="Opening workspace…"/>:<><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={()=>navigate('settings')}>Open Settings</button>}/>{error&&<ErrorNotice error={error} onRetry={status?.hasKey?testConnection:()=>void readStatus()}/>}</>}</>}</section>
+        <section className="page-content" hidden={page!=='match'} aria-label="match page">{hasLibrarySession&&<div hidden={!connected}><MatchWorkspace key={epoch} api={api} active={page==='match'&&connected} gameRequest={gameRequest} onGameRequestHandled={()=>setGameRequest(undefined)} onNavigationGuardChange={matchGate.register} onConnectionRepair={()=>navigate('settings')} onCollectionSettings={openCollectionSettings} onSMTPSettings={openSMTPSettings}/></div>}{!connected&&<><div className="page-heading"><h1>Match</h1></div>{phase==='loading'||phase==='checking'||phase==='saving'?<Loading label="Opening workspace…"/>:<><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={()=>navigate('settings')}>Open Settings</button>}/>{error&&<ErrorNotice error={error} onRetry={status?.hasKey?testConnection:()=>void readStatus()}/>}</>}</>}</section>
         <section className="page-content" hidden={page!=='outreach'} aria-label="outreach page"><div className="page-heading"><h1>Outreach</h1></div><div className="feature-unavailable"><span className="feature-icon"><Icon name="outreach"/></span><span className="status-badge">Not connected yet</span><button className="button primary" onClick={()=>navigate('library')}>Open Library<Icon name="chevron"/></button></div></section>
       </main>
     </div>

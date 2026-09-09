@@ -51,6 +51,18 @@ function start(api = bridge()) { window.desktop = api; render(<App />); return {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); Reflect.deleteProperty(window, 'desktop'); });
 
 describe('desktop renderer', () => {
+  it('hands a Library game into editable Match setup without creating an activity or losing the Library detail',async()=>{
+    const {api,user}=start();await screen.findByRole('button',{name:'Open Pixel Harbor'});
+    await user.click(screen.getByRole('tab',{name:'Games'}));await user.click(await screen.findByRole('button',{name:'Open A game'}));
+    await user.click(await screen.findByRole('button',{name:'Use for Match'}));
+    expect(await screen.findByRole('textbox',{name:'Name'})).toHaveValue('A game');
+    expect(api.match.createActivity).not.toHaveBeenCalled();expect(api.analysis.steamImport).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button',{name:'Use game'}));
+    expect(screen.getByRole('button',{name:'Create activity'})).toBeVisible();
+    await user.click(screen.getByRole('button',{name:'Library'}));
+    await user.click(await screen.findByRole('button',{name:'Discard changes'}));
+    expect(await screen.findByRole('button',{name:'Use for Match'})).toBeVisible();
+  });
   it('opens Collection directly and returns to retained Match conditions without discarding or starting work',async()=>{
     const api=bridge();
     vi.mocked(api.settings.collection).mockResolvedValue(ok({items:collectionSettingsFixture().items.map(item=>({...item,enabled:false,availability:'disabled' as const}))}));
@@ -104,6 +116,7 @@ describe('desktop renderer', () => {
     const {user}=start(api);await screen.findByRole('button',{name:'Open Pixel Harbor'});
     await user.click(screen.getByRole('button',{name:'Match'}));await user.click(await screen.findByRole('button',{name:'New activity'}));
     await user.type(screen.getByLabelText('Activity name'),'Retained campaign');await user.click(await screen.findByRole('button',{name:'Select game A game'}));
+    await user.click(await screen.findByRole('button',{name:'Use game'}));
     await user.click(screen.getByRole('button',{name:'Create activity'}));await user.click(await screen.findByRole('button',{name:'Retry same request'}));
     await user.click(await screen.findByRole('button',{name:'Open Settings'}));
     expect(screen.getByLabelText('Service URL')).toBeDisabled();

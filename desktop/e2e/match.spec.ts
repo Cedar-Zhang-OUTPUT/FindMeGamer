@@ -145,6 +145,7 @@ async function createActivity(h: Harness, name: string): Promise<ActivityDetail>
   await picker.getByRole('searchbox', { name: 'Search games', exact: true }).fill('Moonseed Garden Together');
   await picker.getByRole('searchbox', { name: 'Search games', exact: true }).press('Enter');
   await picker.getByRole('button', { name: 'Select game Moonseed Garden Together', exact: true }).click();
+  await h.page.getByRole('button', { name: 'Use game', exact: true }).click();
   const gameSection = h.page.getByRole('region', { name: 'Activity game', exact: true });
   await expect(gameSection.getByRole('heading', { name: 'Moonseed Garden Together', exact: true })).toBeVisible();
   const references = gameSection.locator('summary').filter({ hasText: /^Reference works$/ });

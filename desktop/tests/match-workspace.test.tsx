@@ -18,6 +18,13 @@ import {settingsBridgeMock} from './settings-fixtures';
 afterEach(cleanup);
 const ok=<T,>(data:T):Result<T>=>({ok:true,data});
 function setup(){return {...settingsBridgeMock(),match:matchAPIMock(),creators:creatorAPIMock(),games:{list:vi.fn(async()=>ok({items:[gameFixture('A game')],total:1,limit:20,offset:0})),detail:vi.fn(async()=>ok(gameFixture('A game')))},openExternal:vi.fn(async()=>ok(undefined))} as unknown as DesktopBridge;}
+it('retains an unresolved Steam request in real Match analysis history instead of a no-op archive',async()=>{
+ const api=setup(),user=userEvent.setup();vi.mocked(api.analysis.steamImport).mockResolvedValue({ok:false,error:{code:'analysis_write_unknown',message:'Not confirmed',retryable:false}});
+ render(<MatchWorkspace api={api} active/>);await user.click(screen.getByRole('button',{name:'New activity'}));await user.click(screen.getByRole('tab',{name:'Steam'}));await user.type(screen.getByRole('textbox',{name:'Steam URL'}),'https://store.steampowered.com/app/1');await user.click(screen.getByRole('button',{name:'Import source'}));
+ await screen.findByRole('button',{name:'Check same request'});expect(screen.getByRole('tab',{name:'Library'})).toBeDisabled();expect(screen.queryByRole('button',{name:'Enter manually'})).not.toBeInTheDocument();
+ await user.click(screen.getByRole('button',{name:'Keep unresolved request'}));await user.click(screen.getByRole('button',{name:'Save for review and leave'}));await user.click(screen.getByRole('button',{name:'Activities'}));await user.click(screen.getByRole('button',{name:'Analysis tasks'}));
+ const record=await screen.findByRole('article',{name:'Unconfirmed: Steam source import'});await user.click(within(record).getByText('Original request'));expect(record).toHaveTextContent('https://store.steampowered.com/app/1');expect(record).toHaveTextContent(vi.mocked(api.analysis.steamImport).mock.calls[0][0].idempotencyKey);expect(api.analysis.steamImport).toHaveBeenCalledOnce();expect(api.match.createActivity).not.toHaveBeenCalled();
+});
 it('retains the preparation navigation guard during Creator inspection and returns without discarding the draft',async()=>{
   const api=setup(),user=userEvent.setup(),person=preparationFixture({activity_id:activityFixture().id});
   vi.mocked(api.outreach.selections).mockResolvedValue(ok({items:[person],total:1,offset:0,limit:200}));
@@ -54,7 +61,7 @@ it('creates a real activity from the empty list and opens it without starting a 
   const api=setup(),user=userEvent.setup();vi.mocked(api.match.activities).mockResolvedValue(ok({items:[],total:0,limit:50,offset:0}));
   vi.mocked(api.match.activity).mockResolvedValue(ok({...activityFixture(),queries:[]}));vi.mocked(api.match.plans).mockResolvedValue(ok({items:[],total:0,offset:0,limit:50}));
   render(<MatchWorkspace api={api} active/>);await screen.findByRole('heading',{name:'No activities yet'});
-  await user.click(screen.getByRole('button',{name:'New activity'}));await user.type(screen.getByLabelText('Activity name'),'Indie launch');await user.click(await screen.findByRole('button',{name:'Select game A game'}));await user.click(screen.getByRole('button',{name:'Create activity'}));
+  await user.click(screen.getByRole('button',{name:'New activity'}));await user.type(screen.getByLabelText('Activity name'),'Indie launch');await user.click(await screen.findByRole('button',{name:'Select game A game'}));await user.click(await screen.findByRole('button',{name:'Use game'}));await user.click(screen.getByRole('button',{name:'Create activity'}));
   expect(await screen.findByRole('heading',{name:'Indie launch'})).toBeVisible();expect(await screen.findByRole('button',{name:'Find creators'})).toBeVisible();expect(api.match.activity).toHaveBeenCalledWith(activityFixture().id);expect(api.match.createPlan).not.toHaveBeenCalled();
 });
 it('reuses the actual Creator editor and returns to retained activity details with fresh candidates and focus',async()=>{
