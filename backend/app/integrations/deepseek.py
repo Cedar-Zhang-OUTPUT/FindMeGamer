@@ -60,6 +60,7 @@ _VALIDATION_REASON_CODES = {
     "keyword phrase contains unsafe query syntax": "keyword_unsafe_query_syntax",
     "keyword phrase must contain a letter or digit": "keyword_alphanumeric_required",
     "query terms must be unique": "keyword_duplicate_terms",
+    "query platforms must exactly match requested platforms": "planning_platform_mismatch",
 }
 
 
@@ -582,7 +583,7 @@ def _repair_messages(
         f"Validation errors: {safe_errors_json}\n"
         f"JSON Schema: {schema_json}"
     )
-    if schema_payload["title"] == "SearchPlanOutput":
+    if schema_payload["title"] in {"SearchPlanOutput", "RequestedSearchPlanOutput"}:
         instruction += (
             "\nFor query terms, use only letters, digits, spaces, apostrophes or hyphens. "
             "Rewrite title punctuation such as colons, ampersands, slashes or underscores "

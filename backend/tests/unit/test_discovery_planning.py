@@ -237,17 +237,40 @@ def test_search_plan_schema_rejects_invalid_shape_and_unsafe_terms(mutate) -> No
         (["youtube"], [{"platform": "x", "terms": ["Café Quest"]}]),
     ],
 )
-def test_generate_plan_rejects_platform_mismatch_after_schema_parse(platforms, queries) -> None:
+def test_generate_plan_rejects_platform_mismatch_after_one_repair(platforms, queries) -> None:
     body = _valid_output() | {"queries": queries}
-    gateway = _gateway(lambda request: _response(json.dumps(body)))
+    calls = []
+    def handler(request):
+        calls.append(request)
+        return _response(json.dumps(body))
+    gateway = _gateway(handler)
 
-    with pytest.raises(InvalidModelOutput, match="planning_platform_invalid"):
+    with pytest.raises(InvalidModelOutput, match="deepseek_model_output_invalid"):
         generate_plan(
             {"game": {"name": "Café Quest"}},
             {"platforms": platforms},
             gateway=gateway,
             model="deepseek-chat",
         )
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("wrong_platforms", [["x"], ["youtube", "x"], ["youtube", "youtube"]])
+def test_platform_mismatch_uses_existing_single_schema_repair(wrong_platforms):
+    requests = []
+    def handler(request):
+        payload = json.loads(request.read())
+        requests.append(payload)
+        platforms = wrong_platforms if len(requests) == 1 else ["youtube"]
+        body = _valid_output() | {"queries": [{"platform": p, "terms": ["LIMINAL Within"]} for p in platforms]}
+        return _response(json.dumps(body))
+    output = generate_plan(
+        {"game": {"name": "LIMINAL: Within"}}, {"platforms": ["youtube"]},
+        gateway=_gateway(handler), model="deepseek-chat",
+    )
+    assert [query.platform for query in output.queries] == ["youtube"]
+    assert len(requests) == 2
+    assert all(request["max_tokens"] == 2048 for request in requests)
 
 def test_generate_plan_propagates_gateway_timeout() -> None:
     def handler(request: httpx.Request) -> httpx.Response:

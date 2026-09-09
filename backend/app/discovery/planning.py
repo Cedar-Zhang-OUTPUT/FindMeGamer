@@ -4,9 +4,11 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
+from pydantic import ConfigDict, Field, model_validator
+
 from app.analysis.contracts import Message
 from app.integrations.errors import InvalidModelOutput
-from app.schemas.discovery_plan_output import SearchPlanOutput
+from app.schemas.discovery_plan_output import SearchPlanOutput, SearchPlanQuery
 
 _GAME_FIELDS = (
     "name",
@@ -62,6 +64,24 @@ def generate_plan(
         raise PlanningInputError("game_context_required")
 
     requested_platforms = _requested_platforms(conditions.get("platforms"))
+
+    class RequestedSearchPlanOutput(SearchPlanOutput):
+        # Validate request-specific semantics inside the gateway's existing one
+        # repair, not after it. This creates no additional model-call loop.
+        model_config = ConfigDict(title="SearchPlanOutput")
+        queries: list[SearchPlanQuery] = Field(
+            min_length=len(requested_platforms),
+            max_length=len(requested_platforms),
+            description="Exactly one query for each platform: " + ", ".join(requested_platforms),
+        )
+
+        @model_validator(mode="after")
+        def requested_platforms_only(self):
+            actual = [query.platform for query in self.queries]
+            if len(set(actual)) != len(actual) or set(actual) != set(requested_platforms):
+                raise ValueError("query platforms must exactly match requested platforms")
+            return self
+
     prompt_data = {
         "game": _pick(game, _GAME_FIELDS),
         "references": [
@@ -89,7 +109,7 @@ def generate_plan(
                 ),
             ),
         ],
-        SearchPlanOutput,
+        RequestedSearchPlanOutput,
         max_tokens=2_048,
     )
     output_platforms = [query.platform for query in output.queries]
@@ -97,7 +117,7 @@ def generate_plan(
         output_platforms
     ) != set(requested_platforms):
         raise InvalidModelOutput("planning_platform_invalid")
-    return output
+    return SearchPlanOutput.model_validate(output.model_dump())
 
 
 def provider_queries(output: SearchPlanOutput) -> dict[str, str]:

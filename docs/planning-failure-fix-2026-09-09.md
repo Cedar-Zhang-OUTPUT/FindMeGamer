@@ -44,4 +44,27 @@ database migration, original plan reset or Profile rewrite is introduced.
 - Read-only checks confirmed the original failed plan remains failed/attempt1,
   query null, with unchanged frozen Game. No diagnostic records or emails written.
 
-Deployment evidence will be recorded separately after the maintenance window.
+## Deployment exposed a concrete additional validation failure
+
+After deploying `1296f27`, a fresh read-only real planning call failed specifically
+with `planning_platform_invalid`. This proves a current platform-output failure,
+not the precise cause of the earlier historical failure. Requested-platform
+validation was outside the gateway's schema-repair boundary.
+
+The minimal follow-up uses a request-scoped SearchPlanOutput subclass to enforce
+the exact number and set of platforms inside the **same existing single repair**.
+Its JSON schema also describes the required platforms. The returned public model,
+final defensive check, output budget and worker persistence are unchanged.
+The safe reason `planning_platform_mismatch` exposes no provider output.
+
+Wrong, additional and duplicate platforms are covered by regression tests, and
+persistent invalid output must stop after exactly two HTTP calls. Six targeted
+cases first failed. The focused gate then had153 passes and one keyword-repair
+test failure because the subclass name was not yet in the repair selector; adding
+that exact name fixed it, and the complete planning unit module passed all23 tests.
+No full backend suite was repeated.
+
+With this incremental patch loaded only into an isolated process, real DeepSeek
+planning passed in one HTTP call and real YouTube returned9 accounts/10 contents
+in two requests, status `more`, no issues. The original failed plan remained intact.
+Final deployment evidence is recorded separately after the maintenance window.
