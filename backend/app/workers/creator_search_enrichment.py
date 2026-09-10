@@ -1,6 +1,8 @@
 """Reuse existing analysis and public-contact discovery, never send email."""
 
 from contextlib import ExitStack
+from copy import deepcopy
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 
@@ -30,6 +32,66 @@ def _usable(profile):
     return bool(profile.last_analyzed_at and profile.analysis)
 
 
+def _recover_failed_profile(session, unit, job, target):
+    """Prepare a new attempt atomically, never reopen the terminal source Job."""
+    from app.analysis.creator_recovery import (
+        CreatorRecoveryError,
+        RECOVERY_CORRELATION_PREFIX,
+        validate_failed_checkpoints,
+    )
+
+    if (
+        unit.platform != "youtube"
+        or not unit.owns_analysis_job
+        or not job.retryable
+        or job.target_type is not TargetType.CREATOR
+        or job.canonical_target_id != target.canonical_id
+        or job.canonical_url != target.canonical_url
+        or not (
+            job.correlation_id == f"creator-search:{unit.search_id}"
+            or (job.correlation_id or "").startswith(
+                f"{RECOVERY_CORRELATION_PREFIX}{unit.search_id}:"
+            )
+        )
+    ):
+        raise SearchFailure("search_resume_unavailable")
+    repository = JobsRepository(session)
+    if repository.active_job(target) is not None:
+        raise SearchFailure("search_profile_busy")
+    nodes = {
+        node.node_key: node
+        for node in session.scalars(
+            select(CreatorAnalysisNode).where(CreatorAnalysisNode.job_id == job.id)
+        )
+    }
+    try:
+        copied = validate_failed_checkpoints(
+            nodes,
+            channel_id=unit.account_id,
+            canonical_url=target.canonical_url,
+            now=datetime.now(UTC),
+        )
+    except CreatorRecoveryError as error:
+        raise SearchFailure(str(error)) from None
+    result = repository.create_creator_seed_job(
+        target, correlation_id=f"{RECOVERY_CORRELATION_PREFIX}{unit.search_id}:{job.id}"
+    )
+    if not result.created:
+        raise SearchFailure("search_profile_busy")
+    for key in copied:
+        node = nodes[key]
+        session.add(
+            CreatorAnalysisNode(
+                job_id=result.job.id,
+                node_key=key,
+                output_payload=deepcopy(node.output_payload),
+                created_at=node.created_at,
+                updated_at=node.updated_at,
+            )
+        )
+    return result
+
+
 def enrich_profile(unit_id, *, session_factory=session_scope, executor=None):
     with session_factory() as session:
         acquire_job_change_lock(session)
@@ -44,6 +106,8 @@ def enrich_profile(unit_id, *, session_factory=session_scope, executor=None):
             if unit.analysis_job_id
             else None
         )
+        if job is None and unit.profile_error_code is not None:
+            raise SearchFailure("search_resume_checkpoint_missing")
         if job and job.status == JobStatus.SUCCEEDED:
             raise SearchFailure("search_profile_unusable")
         if job and job.status == JobStatus.RUNNING:
@@ -55,7 +119,11 @@ def enrich_profile(unit_id, *, session_factory=session_scope, executor=None):
             else f"https://www.youtube.com/channel/{unit.account_id}"
         )
         target = canonicalize_target(TargetType.CREATOR, url)
-        if job is None or job.status == JobStatus.FAILED:
+        if job and job.status == JobStatus.FAILED:
+            result = _recover_failed_profile(session, unit, job, target)
+            job = result.job
+            unit.analysis_job_id, unit.owns_analysis_job = job.id, result.created
+        elif job is None:
             result = JobsRepository(session).create_creator_seed_job(
                 target, correlation_id=f"creator-search:{unit.search_id}"
             )

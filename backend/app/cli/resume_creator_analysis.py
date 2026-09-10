@@ -18,35 +18,25 @@ import sys
 from typing import Literal, Protocol
 from uuid import UUID
 
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.analysis.creator_map_reduce_pipeline import (
-    BATCH_NODE_PREFIX,
     BRIEF_NODE_KEY,
-    CONTACT_NODE_KEY,
     REDUCTION_NODE_KEYS,
     SOURCE_NODE_KEY,
     VISUAL_NODE_KEY,
-    CreatorContactCheckpoint,
     CreatorSourceCheckpoint,
 )
 from app.analysis.prompts.creator_map_reduce import creator_video_batch_count
+from app.analysis.creator_recovery import node_schemas as _node_schemas
 from app.analysis.targets import canonicalize_target
 from app.db.models.enums import JobMode, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob, CreatorAnalysisNode
 from app.db.models.profiles import CreatorProfile
 from app.repositories.jobs import JobsRepository, require_valid_succeeded_job_result
 from app.schemas.ai_creator import CreatorVisualAnalysis
-from app.schemas.ai_creator_map_reduce import (
-    CreatorBriefSynthesis,
-    CreatorCommercialSafetyReduction,
-    CreatorContentFormatReduction,
-    CreatorPerformanceAudienceReduction,
-    CreatorPresentationReduction,
-    CreatorVideoBatchDigest,
-)
 
 
 Mode = Literal["brief", "visual", "content-format"]
@@ -284,25 +274,6 @@ class CreatorAnalysisResumer:
             raise ResumeCreatorError(
                 f"Recovery Job {job_id} dispatch is uncertain; inspect its status before retrying."
             ) from None
-
-
-def _node_schemas(batch_count: int) -> dict[str, type[BaseModel]]:
-    return {
-        SOURCE_NODE_KEY: CreatorSourceCheckpoint,
-        VISUAL_NODE_KEY: CreatorVisualAnalysis,
-        CONTACT_NODE_KEY: CreatorContactCheckpoint,
-        BRIEF_NODE_KEY: CreatorBriefSynthesis,
-        REDUCTION_NODE_KEYS["content_format"]: CreatorContentFormatReduction,
-        REDUCTION_NODE_KEYS["presentation"]: CreatorPresentationReduction,
-        REDUCTION_NODE_KEYS[
-            "performance_audience"
-        ]: CreatorPerformanceAudienceReduction,
-        REDUCTION_NODE_KEYS["commercial_safety"]: CreatorCommercialSafetyReduction,
-        **{
-            f"{BATCH_NODE_PREFIX}{index:02d}": CreatorVideoBatchDigest
-            for index in range(batch_count)
-        },
-    }
 
 
 def build_production_service() -> CreatorAnalysisResumer:

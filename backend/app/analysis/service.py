@@ -565,6 +565,29 @@ class CreatorAnalysisService:
                     "vision_available": publication.visual.status == "available",
                 }
             )
+            from app.analysis.creator_recovery import RECOVERY_CORRELATION_PREFIX
+
+            if (job.correlation_id or "").startswith(RECOVERY_CORRELATION_PREFIX):
+                from app.db.models.jobs import CreatorAnalysisNode
+
+                source_job_id = UUID(job.correlation_id.rsplit(":", 1)[1])
+                reused_keys = list(
+                    session.scalars(
+                        select(CreatorAnalysisNode.node_key)
+                        .where(CreatorAnalysisNode.job_id == source_job_id)
+                        .order_by(CreatorAnalysisNode.node_key)
+                    )
+                )
+                profile.model_metadata = public_json_object(
+                    {
+                        **profile.model_metadata,
+                        "checkpoint_recovery": {
+                            "source_job_id": str(source_job_id),
+                            "reused_node_keys": reused_keys,
+                            "model_fields_scope": "Configured models for new calls only; reused checkpoint model versions were not recorded.",
+                        },
+                    }
+                )
             profile.prompt_metadata = public_json_object(
                 {
                     "metadata_prompt_version": CREATOR_METADATA_PROMPT_VERSION,

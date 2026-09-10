@@ -189,7 +189,10 @@ def _enrich(identity, token, sessions, runner, phase, concurrency):
             for uid in wave:
                 unit = session.get(CreatorSearchUnit, uid)
                 setattr(unit, field, "running")
-                setattr(unit, error_field, None)
+                # Preserve prior profile failure until the runner decides whether
+                # this is a recoverable attempt; a missing job must not refetch.
+                if phase != "profiles":
+                    setattr(unit, error_field, None)
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             futures = {pool.submit(runner, uid): uid for uid in wave}
             for future in as_completed(futures):
