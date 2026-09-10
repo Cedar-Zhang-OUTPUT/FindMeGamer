@@ -5,6 +5,7 @@ import type {PublicError} from '../../../shared/bridge';
 import {ErrorNotice,Loading,friendlyLabel} from '../Primitives';
 import {creatorSearchRunning,type SearchReadErrors} from './useCreatorSearchSession';
 import {platformLabel,taskLabel} from './matchStatus';
+import './reviewTable.css';
 const stages={planning:'Planning your search',discovery:'Finding creators',profiles:'Preparing creator profiles',emails:'Finding contact details',screening:'Checking audience fit',deep_match:'Evaluating matches',ranking:'Organizing results',complete:'Organizing results'};
 const emails={pending:'Email pending',running:'Finding email',available:'Email available',missing:'Email not found',failed:'Email lookup failed'};
 interface Props {
@@ -37,14 +38,19 @@ export function CreatorSearchView({search,loading,current,people,results,candida
    {!running&&!current&&loading&&<Loading label="Loading organized results…"/>}
    {!running&&(current||ordered.length>0)&&<section className="match-results creator-search-results" aria-label="Creator matches">
      {!current&&<p role="status">Partial or saved results · Selection unavailable until reload completes.</p>}
-     {!ordered.length?<p>No creators to review.</p>:<ul className="match-result-list">{ordered.map(id=>{const result=matched.get(id),candidate=members.get(id),person=people.find(row=>row.candidate_id===id),creatorId=result?.creator_id||person?.creator_id||candidate?.creator_id;
+     {!ordered.length?<p>No creators to review.</p>:<div className="review-table-scroll" tabIndex={0} role="region" aria-label="Scrollable match results"><table className="review-table" aria-label="Creator matches"><thead><tr>{['Select','Creator','Platform','Recorded work','Match','Email','Languages','Details'].map(label=><th key={label} scope="col">{label}</th>)}</tr></thead><tbody>{ordered.map(id=>{const result=matched.get(id),candidate=members.get(id),person=people.find(row=>row.candidate_id===id),creatorId=result?.creator_id||person?.creator_id||candidate?.creator_id;
        if(!creatorId)return null;const name=result?.name||candidate?.creator?.name||candidate?.account_id||'Creator';const stale=Boolean(result?.stale||result?.identity_changed||candidate?.identity_changed);
-       return <li key={id}><article className="match-card creator-search-card" aria-label={name}><header><div className="creator-search-person">{candidate&&<input type="checkbox" aria-label={`Select ${name}`} disabled={disabled||selectionDisabled||!current||stale} checked={isSelected(candidate)} onChange={()=>onToggle(candidate)}/>}<div><span className="eyebrow">{platformLabel(result?.platform||person?.platform||candidate?.platform||'')}</span><h3>{name}</h3></div></div><div className="match-card-badges"><span className={`match-badge fit ${result?.fit_group??'unranked'}`}>{result?friendlyLabel(result.fit_group):current?'Not evaluated':'Match details unavailable'}</span><span className={`match-badge ${person?.email_status==='available'?'neutral':'warning'}`}>{person?emails[person.email_status]:'Email status unavailable'}</span>{stale&&<span className="match-badge warning">Needs refresh</span>}</div><button className="text-button" onClick={()=>onOpenCreator(creatorId)}>View {name}</button></header>
-       {result?.match_brief&&<p className="match-summary">{result.match_brief.summary}</p>}
-       {result?.evidence.length? <div className="creator-search-works"><strong>Related works</strong><ul>{result.evidence.slice(0,2).map(work=><li key={work.work_id}>{work.content_title||'Work record'}{work.source_url?.startsWith('https://')&&<button className="text-button" onClick={()=>onOpenExternal(work.source_url!)}>View source</button>}</li>)}</ul></div>:<button className="text-button" onClick={()=>onOpenCreator(creatorId,'works')}>View known works</button>}
-       {result?.match_brief&&<details className="match-details"><summary>Match details</summary><p>{result.match_brief.content_fit}</p><p>{result.match_brief.audience_fit}</p>{result.match_brief.limitations.length>0&&<ul>{result.match_brief.limitations.map((item,index)=><li key={index}>{item}</li>)}</ul>}</details>}
-       </article></li>;
-     })}</ul>}
+       return <tr key={id} data-candidate-id={id}>
+         <td>{candidate?<input type="checkbox" aria-label={`Select ${name}`} disabled={disabled||selectionDisabled||!current||stale} checked={isSelected(candidate)} onChange={()=>onToggle(candidate)}/>:<span className="review-table-muted">Unavailable</span>}</td>
+         <th scope="row"><button className="text-button review-person" aria-label={`View ${name}`} onClick={()=>onOpenCreator(creatorId)}>{name}</button>{stale&&<span className="review-table-muted">Needs refresh</span>}</th>
+         <td>{platformLabel(result?.platform||person?.platform||candidate?.platform||'')}</td>
+         <td><span>{result?.evidence[0]?.content_title||'Not recorded'}</span>{!!result?.evidence.length&&result.evidence.length>1&&<span className="review-table-muted">+{result.evidence.length-1} works</span>}<button className="text-button" onClick={()=>onOpenCreator(creatorId,'works')}>View known works</button></td>
+         <td><span className={`match-badge fit ${result?.fit_group??'unranked'}`}>{result?friendlyLabel(result.fit_group):current?'Not evaluated':'Match details unavailable'}</span></td>
+         <td><span className={`match-badge ${person?.email_status==='available'?'neutral':'warning'}`}>{person?emails[person.email_status]:'Email status unavailable'}</span></td>
+         <td>{candidate?.creator?.languages.length?candidate.creator.languages.join(', '):'Unknown'}</td>
+         <td>{result?<details className="review-row-details"><summary aria-label={`Match details for ${name}`}>Match details</summary>{result.match_brief&&<><p>{result.match_brief.summary}</p><p>{result.match_brief.content_fit}</p><p>{result.match_brief.audience_fit}</p>{result.match_brief.limitations.length>0&&<ul>{result.match_brief.limitations.map((item,index)=><li key={index}>{item}</li>)}</ul>}</>}{result.evidence.length>0&&<ul>{result.evidence.map(work=><li key={work.work_id}>{work.content_title||'Work record'}{work.source_url?.startsWith('https://')&&<button className="text-button" onClick={()=>onOpenExternal(work.source_url!)}>View source</button>}</li>)}</ul>}</details>:<span className="review-table-muted">Not available</span>}</td>
+       </tr>;
+     })}</tbody></table></div>}
    </section>}
  </section>;
 }

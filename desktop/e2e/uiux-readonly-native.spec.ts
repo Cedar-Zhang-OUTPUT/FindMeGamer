@@ -28,18 +28,17 @@ test('read-only current-task visual audit',async({},info)=>{
   await page.getByRole('button',{name:'Connect',exact:true}).click();await expect(page.getByText('Connection verified',{exact:true})).toBeVisible();await expect(page.getByLabel('Workspace key',{exact:true})).toHaveValue('');
   const shots:Record<string,unknown>[]=[];
   async function shot(name:string){await page.screenshot({path:info.outputPath(name+'.png')});shots.push({name,headings:await page.getByRole('heading').allTextContents(),buttons:await page.getByRole('button').allTextContents(),tabs:await page.getByRole('tab').allTextContents(),overflow:await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1)});}
-  await page.getByRole('button',{name:'Library',exact:true}).click();await expect(page.getByRole('list',{name:'Creators',exact:true}).getByRole('button').first()).toBeVisible();await shot('library');
-  await page.getByRole('list',{name:'Creators',exact:true}).getByRole('button').first().click();await expect(page.getByRole('article').filter({has:page.getByRole('button',{name:'Back to creators',exact:true})})).toBeVisible();await shot('creator');
+  await page.getByRole('button',{name:'Library',exact:true}).click();await expect(page.getByRole('table',{name:'Creators',exact:true}).getByRole('button').first()).toBeVisible();await shot('library');
+  await page.getByRole('table',{name:'Creators',exact:true}).getByRole('button').first().click();await expect(page.getByRole('article').filter({has:page.getByRole('button',{name:'Back to creators',exact:true})})).toBeVisible();await shot('creator');
   const emails=page.getByRole('button',{name:'Emails',exact:true});await emails.focus();await emails.press('Enter');await expect(emails).toHaveAttribute('aria-expanded','true');await emails.press('Enter');
   const works=page.getByRole('button',{name:'Known works',exact:true});await works.focus();await works.press('Space');await expect(works).toHaveAttribute('aria-expanded','true');await expect(page.locator('.creator-work-list > li')).toHaveCount(1);await shot('creator-works');
   await page.getByRole('button',{name:'Match',exact:true}).click();await expect(page.getByRole('list',{name:'Activities',exact:true}).getByRole('button').first()).toBeVisible();await shot('match-list');
-  await page.getByRole('list',{name:'Activities',exact:true}).getByRole('button').first().click();await expect(page.getByRole('region',{name:'Creator matches',exact:true}).getByRole('article')).toHaveCount(6);await shot('match-results');
+  await page.getByRole('list',{name:'Activities',exact:true}).getByRole('button').first().click();await expect(page.getByRole('region',{name:'Creator matches',exact:true}).locator('tbody > tr')).toHaveCount(6);await shot('match-results');
   await page.getByRole('region',{name:'Creator matches',exact:true}).getByRole('button',{name:/^View Synthetic/}).first().click();await expect(page.getByRole('button',{name:'Edit profile',exact:true})).toBeVisible();await shot('match-creator');
-  await page.getByRole('button',{name:'Outreach',exact:true}).click();await expect(page.getByRole('list',{name:'Invitation relationships',exact:true}).getByRole('button').first()).toBeVisible();await shot('outreach-activity');
-  const roster=page.getByRole('complementary',{name:'Invitation list'}),current=page.getByRole('region',{name:'Current invitation'});
-  await expect(current.getByRole('button',{name:'Edit progress',exact:true})).toBeEnabled();
-  const rosterBox=await roster.boundingBox(),detailBox=await current.boundingBox();expect(detailBox!.x).toBeGreaterThan(rosterBox!.x+rosterBox!.width);expect(Math.abs(detailBox!.y-rosterBox!.y)).toBeLessThan(2);
-  const secondInvitation=roster.getByRole('list').getByRole('button').nth(1);await secondInvitation.focus();await secondInvitation.press('Enter');await expect(secondInvitation).toHaveAttribute('aria-pressed','true');await expect(current.getByRole('button',{name:'Edit progress',exact:true})).toBeEnabled();
+  await page.getByRole('button',{name:'Outreach',exact:true}).click();await expect(page.getByRole('table',{name:'Invitation relationships',exact:true}).getByRole('button').first()).toBeVisible();await shot('outreach-activity');
+  const roster=page.getByRole('table',{name:'Invitation relationships'}),current=page.getByRole('region',{name:'Current invitation'});
+  await expect(current).toHaveCount(0);
+  const secondInvitation=roster.getByRole('button',{name:/^Update relationship/}).nth(1);await secondInvitation.focus();await secondInvitation.press('Enter');await expect(secondInvitation).toHaveAttribute('aria-expanded','true');await expect(current.getByRole('button',{name:'Edit progress',exact:true})).toBeEnabled();
   await current.getByRole('button',{name:'Edit progress',exact:true}).click();const notes=current.getByRole('textbox',{name:'Notes',exact:true}),priorNotes=await notes.inputValue();await notes.fill(priorNotes+' Local unsaved audit');await shot('outreach-editing');
   await test.step('Creator detour preserves invitation notes',async()=>{
    await current.getByRole('button',{name:'Open creator',exact:true}).click();
@@ -51,11 +50,11 @@ test('read-only current-task visual audit',async({},info)=>{
    await current.getByRole('button',{name:'Cancel',exact:true}).click();
   });
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(760,920));await shot('outreach-narrow');
-  expect((await roster.getByRole('list').boundingBox())!.height).toBeLessThanOrEqual(192);expect((await current.boundingBox())!.y).toBeLessThan(850);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
   await app.evaluate(()=>(globalThis as any).__failInvitationDetail=true);await secondInvitation.click();await expect(current.getByRole('button',{name:'Edit progress',exact:true})).toBeDisabled();await expect(page.getByRole('alert')).toBeVisible();await shot('outreach-read-failure-narrow');
   await app.evaluate(()=>(globalThis as any).__failInvitationDetail=false);await page.getByRole('button',{name:'Refresh invitations',exact:true}).click();await expect(current.getByRole('button',{name:'Edit progress',exact:true})).toBeEnabled();await expect(page.getByRole('alert')).toHaveCount(0);
-  await page.getByRole('combobox',{name:'Response',exact:true}).selectOption('accepted');await expect(roster.getByText('No matching invitations',{exact:true})).toBeVisible();await expect(current.getByRole('button',{name:'Edit progress',exact:true})).toBeEnabled();await shot('outreach-empty-filter-narrow');
-  await page.getByRole('combobox',{name:'Response',exact:true}).selectOption('');await expect(roster.getByRole('list').getByRole('button')).toHaveCount(6);
+  await page.getByRole('combobox',{name:'Response',exact:true}).selectOption('accepted');await expect(page.getByText('No matching invitations',{exact:true})).toBeVisible();await expect(current.getByRole('button',{name:'Edit progress',exact:true})).toBeEnabled();await shot('outreach-empty-filter-narrow');
+  await page.getByRole('combobox',{name:'Response',exact:true}).selectOption('');await expect(roster.getByRole('button',{name:/^Update relationship/})).toHaveCount(6);
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1440,1000));
   await page.getByRole('button',{name:'Activities',exact:true}).click();await expect(page.getByRole('heading',{name:'Outreach',exact:true})).toBeVisible();await shot('outreach');
   await page.getByRole('button',{name:'Settings',exact:true}).click();await expect(page.getByRole('tab',{name:'Workspace',exact:true})).toBeVisible();await shot('settings');
@@ -83,9 +82,9 @@ test('read-only current-task visual audit',async({},info)=>{
   await expect(page.locator('html')).toHaveAttribute('data-theme','dark');await page.getByRole('button',{name:'Library',exact:true}).click();await shot('creator-dark-narrow');
   await page.getByRole('button',{name:'Back to creators',exact:true}).click();await expect(page.getByRole('heading',{name:'Library',exact:true})).toBeVisible();await shot('library-dark-narrow');
   await page.getByRole('button',{name:'Match',exact:true}).click();await expect(page.getByRole('heading',{name:'Match',exact:true})).toBeVisible();await shot('match-list-dark-narrow');
-  await page.getByRole('list',{name:'Activities',exact:true}).getByRole('button').first().click();await expect(page.getByRole('region',{name:'Creator matches',exact:true}).getByRole('article')).toHaveCount(6);await shot('match-results-dark-narrow');
+  await page.getByRole('list',{name:'Activities',exact:true}).getByRole('button').first().click();await expect(page.getByRole('region',{name:'Creator matches',exact:true}).locator('tbody > tr')).toHaveCount(6);await shot('match-results-dark-narrow');
   await expect(page.getByRole('button',{name:'Analysis tasks',exact:true})).toHaveCount(1);
-  await page.getByRole('button',{name:'Outreach',exact:true}).click();await expect(current.getByRole('button',{name:'Edit progress',exact:true})).toBeEnabled();await shot('outreach-dark-narrow');
+  await page.getByRole('button',{name:'Outreach',exact:true}).click();await roster.getByRole('button',{name:/^Update relationship/}).first().click();await expect(current.getByRole('button',{name:'Edit progress',exact:true})).toBeEnabled();await shot('outreach-dark-narrow');
   await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('tab',{name:'Services',exact:true}).click();await shot('settings-services-dark-narrow');
   await page.getByRole('tab',{name:'Appearance',exact:true}).click();await page.getByLabel('Text size',{exact:true}).selectOption('extra-large');await expect(page.locator('html')).toHaveCSS('font-size','20px');await page.getByRole('tab',{name:'Services',exact:true}).click();await shot('settings-services-large-text');
   await page.getByRole('tab',{name:'Appearance',exact:true}).click();await page.getByLabel('Text size',{exact:true}).selectOption('default');

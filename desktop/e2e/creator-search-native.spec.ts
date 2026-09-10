@@ -61,13 +61,13 @@ for(const stopEarly of [false,true])test(`automatic search through native IPC an
    await search.getByRole('button',{name:'Retry unfinished work',exact:true}).click();
   }
   await expect(search.getByRole('heading',{name:'Complete',exact:true})).toBeVisible({timeout:90000});
-  const results=search.getByRole('region',{name:'Creator matches',exact:true});await expect(results.getByRole('article')).toHaveCount(6,{timeout:20000});
+  const results=search.getByRole('region',{name:'Creator matches',exact:true});await expect(results.locator('tbody > tr')).toHaveCount(6,{timeout:20000});
   await expect(results.getByText('Email available',{exact:true})).toHaveCount(4);await expect(results.getByText('Email not found',{exact:true})).toHaveCount(2);
   await expect(results.locator('.match-badge.fit')).toHaveCount(6);await expect(results.getByText('Not evaluated',{exact:true})).toHaveCount(0);
   await expect(page.getByRole('button',{name:/Evaluate.*loaded/})).toHaveCount(0);
   await expect(page.getByRole('button',{name:/Review selected/})).toBeEnabled();
   await page.screenshot({path:info.outputPath('complete.png')});
-  await page.getByRole('button',{name:'Activities',exact:true}).click();await page.getByRole('button',{name:'Open '+name,exact:true}).click();await expect(page.getByRole('region',{name:'Creator matches'}).getByRole('article')).toHaveCount(6);
+  await page.getByRole('button',{name:'Activities',exact:true}).click();await page.getByRole('button',{name:'Open '+name,exact:true}).click();await expect(page.getByRole('region',{name:'Creator matches'}).locator('tbody > tr')).toHaveCount(6);
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(760,920));
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath('narrow.png')});
   const evidence=await app.evaluate(()=>(globalThis as any).__searchNative);expect(evidence.posts).toEqual(['/api/v2/activities',`/api/v2/activities/${owned}/creator-searches`,...(stoppedId?[`/api/v2/creator-searches/${stoppedId}/stop`,`/api/v2/creator-searches/${stoppedId}/retry`]:[])]);expect(pageErrors).toBe(0);

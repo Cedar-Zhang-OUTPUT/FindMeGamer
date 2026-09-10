@@ -8,6 +8,13 @@ import {GameLibrary} from '../src/renderer/components/GameLibrary';
 import {gameFixture} from './game-fixtures';
 const ok=<T,>(data:T):Result<T>=>({ok:true,data});
 afterEach(cleanup);
+it('offers direct row edit and Match actions without a read-only detail stop',async()=>{
+ const game=gameFixture(),games={list:vi.fn(async()=>ok({items:[game],total:1,limit:24,offset:0})),detail:vi.fn(async()=>ok(game)),create:vi.fn(),update:vi.fn()};
+ const api={games,openExternal:vi.fn()} as unknown as DesktopBridge,onUseForMatch=vi.fn(),user=userEvent.setup();
+ render(<GameLibrary api={api} active onUseForMatch={onUseForMatch}/>);expect(await screen.findByRole('table',{name:'Games'})).toBeVisible();
+ await user.click(screen.getByRole('button',{name:'Use A game for Match'}));await waitFor(()=>expect(onUseForMatch).toHaveBeenCalledExactlyOnceWith(game));
+  await user.click(screen.getByRole('button',{name:'Edit A game'}));expect(await screen.findByRole('button',{name:'Save changes'})).toBeVisible();expect(games.detail).toHaveBeenCalledTimes(2);
+});
 function start(){
   const games={list:vi.fn<DesktopBridge['games']['list']>(async()=>ok({items:[gameFixture()],total:49,limit:24,offset:0})),detail:vi.fn(async()=>ok(gameFixture())),create:vi.fn(),update:vi.fn()};
   const api={games,openExternal:vi.fn()} as unknown as DesktopBridge;

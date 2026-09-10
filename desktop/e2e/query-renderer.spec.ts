@@ -342,7 +342,7 @@ test('built React query UI uses real production clients against the pinned HTTP 
     expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
     await expect(page.locator('[data-testid="vite-error-overlay"], vite-error-overlay')).toHaveCount(0);
 
-    const creatorList = page.getByRole('list', { name: 'Creators' });
+    const creatorList = page.getByRole('table', { name: 'Creators' });
     await expect(creatorList).toBeVisible();
     const languageButton = page.getByRole('button', { name: 'Languages: Any' });
     const creatorListReads = () => records.filter(record => record.method === 'GET' && record.path === '/api/v2/library/creators').length;
@@ -382,7 +382,7 @@ test('built React query UI uses real production clients against the pinned HTTP 
     const gameTab = page.getByRole('tab', { name: 'Games' });
     await expect(gameTab).toHaveAttribute('aria-selected', 'true');
     await expect(gameTab).toBeFocused();
-    const gamesList = page.getByRole('list', { name: 'Games' });
+    const gamesList = page.getByRole('table', { name: 'Games' });
     await expect(gamesList).toBeVisible();
     const website = page.getByLabel('Website');
     await website.selectOption('available');

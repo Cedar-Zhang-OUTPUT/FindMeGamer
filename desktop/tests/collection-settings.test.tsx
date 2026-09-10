@@ -272,6 +272,8 @@ it("re-reads the preserved Collection panel when global Settings becomes active 
   const props = viewProps(1);
   const view = render(<SettingsView {...props} />);
   await waitFor(() => expect(props.api.settings.collection).toHaveBeenCalledTimes(1));
+  // Finish the explicit initial category navigation before testing a later return.
+  await waitFor(() => expect(screen.getByRole('tab', {name:'Collection'})).toHaveFocus());
   const youtube = await screen.findByRole("switch", { name: "Collect from YouTube" });
   youtube.focus();
 

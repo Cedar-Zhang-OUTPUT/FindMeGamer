@@ -70,7 +70,7 @@ it('shows recorded recent titles and current email availability without claiming
   };
   vi.mocked(api.creators.list).mockResolvedValue(ok(page([creator], 0, 1)));
   render(<CreatorLibrary api={api} active />);
-  const row = await screen.findByRole('button', { name: 'Open Creator fixture' });
+  const row = (await screen.findByRole('button', { name: 'Open Creator fixture' })).closest('tr')!;
   expect(within(row).getByText('Cozy stream · Update notes')).toBeVisible();
   expect(within(row).getByText('2 active emails')).toBeVisible();
   expect(within(row).queryByText(/gameplay|qualified|watched/i)).not.toBeInTheDocument();

@@ -1,0 +1,14 @@
+.review-table-scroll{max-width:100%;min-width:0;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);overscroll-behavior:contain}
+.review-table{width:100%;min-width:980px;border-collapse:collapse;text-align:left;font-size:.875rem;line-height:1.5}
+.review-table th,.review-table td{padding:16px 14px;vertical-align:top;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.review-table thead th{background:var(--canvas);color:var(--muted);font-size:.75rem;font-weight:600;white-space:nowrap}
+.review-table tbody th{min-width:135px;max-width:220px;font-weight:600}
+.review-table tr:last-child td,.review-table tr:last-child th{border-bottom:0}
+.review-table tbody tr:focus-within{background:var(--selected)}
+.review-table td{min-width:100px;max-width:230px}.review-table td:first-child:has(input){min-width:24px;width:36px}
+.review-table .text-button{display:block;text-align:left;font-size:inherit;padding:0;line-height:1.5}
+.review-table .review-person{font-weight:650;color:var(--ink)}
+.review-table-muted{display:block;font-size:.75rem;color:var(--muted);font-weight:400}
+.review-row-details{min-width:105px}.review-row-details summary{cursor:pointer;color:var(--teal)}
+.review-row-details[open]{min-width:260px;max-width:360px}.review-row-details p{white-space:pre-wrap}.review-row-details ul{padding-left:18px}
+.review-table-scroll:focus-visible,.review-table button:focus-visible,.review-table summary:focus-visible{outline:2px solid var(--teal);outline-offset:2px}

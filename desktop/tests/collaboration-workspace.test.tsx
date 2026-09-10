@@ -16,7 +16,8 @@ it('keeps invitation edits and its parent exit guard through Creator inspection 
  const api={...settingsBridgeMock(),openExternal:vi.fn()} as unknown as DesktopBridge,user=userEvent.setup(),row=invitationFixture({activity_id:activityFixture().id});
  vi.mocked(api.collaboration.list).mockResolvedValue(ok({items:[row],total:1,offset:0,limit:50}));vi.mocked(api.collaboration.detail).mockResolvedValue(ok(row));let guard:NavigationGuard|null=null;
  render(<MatchWorkspace api={api} active surface="outreach" onNavigationGuardChange={g=>{guard=g;}}/>);await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));await user.click(screen.getByRole('tab',{name:'Invitations'}));
- await user.click(await screen.findByRole('button',{name:'Edit progress'}));await user.type(screen.getByLabelText('Notes'),'Keep my notes');await user.click(screen.getByRole('button',{name:'Open creator'}));expect(await screen.findByRole('tab',{name:'Invitations'})).toHaveAttribute('aria-selected','true');await user.click(screen.getByRole('tab',{name:'Profile'}));await screen.findByRole('button',{name:'Edit profile'});
+ expect(await screen.findByRole('table',{name:'Invitation relationships'})).toBeVisible();expect(screen.queryByRole('region',{name:'Current invitation'})).not.toBeInTheDocument();
+ await user.click(screen.getByRole('button',{name:/Update relationship for/}));await user.click(await screen.findByRole('button',{name:'Edit progress'}));await user.type(screen.getByLabelText('Notes'),'Keep my notes');await user.click(screen.getByRole('button',{name:'Open creator'}));expect(await screen.findByRole('tab',{name:'Invitations'})).toHaveAttribute('aria-selected','true');await user.click(screen.getByRole('tab',{name:'Profile'}));await screen.findByRole('button',{name:'Edit profile'});
  const exit=vi.fn();act(()=>guard?.(exit));await user.click(await screen.findByRole('button',{name:'Keep working'}));expect(exit).not.toHaveBeenCalled();await user.click(screen.getByRole('button',{name:'Back to activity'}));
  await waitFor(()=>expect(screen.getByLabelText('Notes')).toBeEnabled());expect(screen.getByLabelText('Notes')).toHaveValue('Keep my notes');
  await user.click(screen.getByRole('tab',{name:'Prepare & send'}));await user.click(screen.getByRole('tab',{name:'Invitations'}));expect(screen.getByLabelText('Notes')).toHaveValue('Keep my notes');
@@ -27,6 +28,15 @@ it('loads Creator history only on demand and offers no writes, including histori
  render(<CreatorInvitationHistory api={api} creatorId="original-creator" active/>);expect(api.creatorHistory).not.toHaveBeenCalled();await user.click(screen.getByText('Invitation history'));await user.click(await screen.findByRole('button',{name:'C synthetic Activity · not invited'}));
  expect(screen.getByRole('region',{name:'Invitation relationship'})).toBeVisible();expect(screen.queryByRole('button',{name:'Record response'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Edit progress'})).not.toBeInTheDocument();expect(api.update).not.toHaveBeenCalled();
 });
+it('moves keyboard focus to the requested editor and back to its table row',async()=>{
+ const api={...settingsBridgeMock(),openExternal:vi.fn()} as unknown as DesktopBridge,user=userEvent.setup(),row=invitationFixture({activity_id:activityFixture().id});
+ const rows=Array.from({length:50},(_,index)=>({...row,selection_id:`selection-${index}`,display_name:`Creator ${index}`}));
+ vi.mocked(api.collaboration.list).mockResolvedValue(ok({items:rows,total:50,offset:0,limit:50}));vi.mocked(api.collaboration.detail).mockImplementation(async input=>ok(rows.find(item=>item.selection_id===input.selectionId)!));
+ render(<MatchWorkspace api={api} active surface="outreach"/>);await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));await user.click(screen.getByRole('tab',{name:'Invitations'}));
+ const opener=await screen.findByRole('button',{name:'Update relationship for Creator 0'});opener.focus();await user.keyboard('{Enter}');
+ await waitFor(()=>expect(screen.getByRole('region',{name:'Current invitation'})).toHaveFocus());
+ await user.click(screen.getByRole('button',{name:'Close relationship'}));expect(opener).toHaveFocus();expect(screen.queryByRole('region',{name:'Current invitation'})).not.toBeInTheDocument();
+});
 it('clears only a specifically confirmed edit while preserving another relationship draft',async()=>{
  const user=userEvent.setup(),first=invitationFixture(),second=invitationFixture({selection_id:'second',display_name:'Second'}),props={current:true,busy:false,onUpdate:vi.fn(async()=>false),onRespond:vi.fn(async()=>false),onDirtyChange:vi.fn()};
  const view=render(<CollaborationEditor {...props} invitation={first}/>);await user.click(screen.getByRole('button',{name:'Edit progress'}));await user.type(screen.getByLabelText('Notes'),'First');
@@ -36,7 +46,7 @@ it('clears only a specifically confirmed edit while preserving another relations
 });
 it('returns keyboard focus to the current workspace tab while the original Creator opener is reloading',async()=>{
  const api={...settingsBridgeMock(),openExternal:vi.fn()} as unknown as DesktopBridge,user=userEvent.setup(),row=invitationFixture({activity_id:activityFixture().id});vi.mocked(api.collaboration.list).mockResolvedValue(ok({items:[row],total:1,offset:0,limit:50}));vi.mocked(api.collaboration.detail).mockResolvedValue(ok(row));
- render(<MatchWorkspace api={api} active surface="outreach"/>);await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));await user.click(screen.getByRole('tab',{name:'Invitations'}));await user.click(await screen.findByRole('button',{name:'Open creator'}));expect(await screen.findByRole('tab',{name:'Invitations'})).toHaveAttribute('aria-selected','true');await user.click(screen.getByRole('tab',{name:'Profile'}));await screen.findByRole('button',{name:'Edit profile'});
+ render(<MatchWorkspace api={api} active surface="outreach"/>);await user.click(await screen.findByRole('button',{name:'Open Indie launch'}));await user.click(screen.getByRole('tab',{name:'Invitations'}));await user.click(await screen.findByRole('button',{name:/Update relationship for/}));await user.click(await screen.findByRole('button',{name:'Open creator'}));expect(await screen.findByRole('tab',{name:'Invitations'})).toHaveAttribute('aria-selected','true');await user.click(screen.getByRole('tab',{name:'Profile'}));await screen.findByRole('button',{name:'Edit profile'});
  vi.mocked(api.collaboration.detail).mockImplementationOnce(()=>new Promise(()=>{}));await user.click(screen.getByRole('button',{name:'Back to activity'}));
  await waitFor(()=>expect(screen.getByRole('tab',{name:'Invitations'})).toHaveFocus());expect(screen.getByRole('button',{name:'Open creator'})).toBeDisabled();
 });

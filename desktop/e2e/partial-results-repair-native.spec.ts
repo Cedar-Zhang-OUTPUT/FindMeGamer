@@ -31,7 +31,7 @@ test('native partial results and needs-repair mail stay visible without writes',
   await page.getByRole('button',{name:'Connect',exact:true}).click();await expect(page.getByText('Connection verified',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Match',exact:true}).click();await page.getByRole('list',{name:'Activities',exact:true}).getByRole('button').first().click();
   const matches=page.getByRole('region',{name:'Creator matches',exact:true});
-  await expect(matches.getByRole('article')).toHaveCount(6);await expect(page.getByRole('region',{name:'Result loading issues'})).toContainText('Selection data');
+  await expect(matches.locator('tbody > tr')).toHaveCount(6);await expect(page.getByRole('region',{name:'Result loading issues'})).toContainText('Selection data');
   await expect(page.getByRole('button',{name:'Find more creators'})).toBeDisabled();await page.screenshot({path:info.outputPath('partial-results.png')});
   await app.evaluate(()=>(globalThis as any).__repair.fail=null);
   await page.getByRole('button',{name:'Reload results',exact:true}).click();await expect(page.getByRole('region',{name:'Result loading issues'})).toHaveCount(0);

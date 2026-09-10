@@ -15,34 +15,37 @@ function setup(empty=false){
  function Harness(){const controller=useActivityCollaboration({api,activityId:first.activity_id,active:true});return <CollaborationWorkspace controller={controller} active onOpenCreator={vi.fn()} onChoosePeople={choose}/>;}
  render(<Harness/>);return {api,first,second,choose,user:userEvent.setup()};
 }
-it('connects compact relationship choices to a persistent current invitation and retains drafts on selection',async()=>{
- const {api,user}=setup();const list=screen.getByRole('complementary',{name:'Invitation list'}),detail=screen.getByRole('region',{name:'Current invitation'});
+it('opens relationship editing on demand and retains drafts on selection',async()=>{
+ const {api,user}=setup();const list=screen.getByRole('table',{name:'Invitation relationships'});
+ expect(screen.queryByRole('region',{name:'Current invitation'})).not.toBeInTheDocument();
+ const first=await within(list).findByRole('button',{name:'Update relationship for Synthetic creator'});await user.click(first);
+ const detail=screen.getByRole('region',{name:'Current invitation'});
  await within(detail).findByRole('heading',{name:'Synthetic creator'});
- const first=within(list).getByRole('button',{name:/Synthetic creator/});expect(first).toHaveAttribute('aria-controls',detail.id);expect(first).toHaveAttribute('aria-pressed','true');
- expect(within(first).getByLabelText('Sending: queued')).toBeVisible();expect(within(first).getByLabelText('Response: not invited')).toBeVisible();expect(within(first).getByLabelText('Follow-up: not followed up')).toBeVisible();
+ expect(first).toHaveAttribute('aria-controls',detail.id);expect(first).toHaveAttribute('aria-expanded','true');
+ const row=first.closest('tr')!;expect(within(row).getByLabelText('Sending: queued')).toBeVisible();expect(within(row).getByLabelText('Response: not invited')).toBeVisible();expect(within(row).getByLabelText('Follow-up: not followed up')).toBeVisible();
  await user.click(within(detail).getByRole('button',{name:'Edit progress'}));await user.type(within(detail).getByLabelText('Notes'),'Retained draft');
- await user.click(within(list).getByRole('button',{name:/Second creator/}));await within(detail).findByRole('heading',{name:'Second creator'});
+ await user.click(within(list).getByRole('button',{name:'Update relationship for Second creator'}));await within(detail).findByRole('heading',{name:'Second creator'});
  await user.click(first);await waitFor(()=>expect(within(detail).getByLabelText('Notes')).toHaveValue('Retained draft'));
  await user.click(within(detail).getByRole('button',{name:'Cancel'}));expect(within(detail).queryByLabelText('Notes')).not.toBeInTheDocument();expect(api.update).not.toHaveBeenCalled();expect(api.respond).not.toHaveBeenCalled();
 });
 it('keeps unconfirmed save recovery beside the current invitation, with edits intact',async()=>{
- const {api,user}=setup();const detail=screen.getByRole('region',{name:'Current invitation'});
+ const {api,user}=setup();await user.click(await screen.findByRole('button',{name:'Update relationship for Synthetic creator'}));const detail=screen.getByRole('region',{name:'Current invitation'});
  await user.click(await within(detail).findByRole('button',{name:'Edit progress'}));await user.type(within(detail).getByLabelText('Notes'),'Do not lose');
  vi.mocked(api.update).mockResolvedValue({ok:false,error:{code:'collaboration_write_unknown',message:'Save outcome unknown',retryable:false}});
- await user.click(within(detail).getByRole('button',{name:'Save progress'}));await within(detail).findByRole('button',{name:'Retry original request'});
- expect(within(detail).getByLabelText('Notes')).toHaveValue('Do not lose');expect(within(detail).getByRole('button',{name:'Check current record'})).toBeEnabled();
- expect(screen.getByRole('complementary',{name:'Invitation list'}).querySelector('li button')).toBeDisabled();expect(api.update).toHaveBeenCalledTimes(1);
+ await user.click(within(detail).getByRole('button',{name:'Save progress'}));await screen.findByRole('button',{name:'Retry original request'});
+ expect(within(detail).getByLabelText('Notes')).toHaveValue('Do not lose');expect(screen.getByRole('button',{name:'Check current record'})).toBeEnabled();
+ expect(screen.getByRole('button',{name:'Update relationship for Synthetic creator'})).toBeDisabled();expect(screen.getByRole('button',{name:'Close relationship'})).toBeDisabled();expect(api.update).toHaveBeenCalledTimes(1);
 });
 it('keeps the empty-state start action in the invitation list',async()=>{
- const {choose,user}=setup(true);const list=screen.getByRole('complementary',{name:'Invitation list'});
- await user.click(await within(list).findByRole('button',{name:'Choose creators'}));expect(choose).toHaveBeenCalledOnce();
+ const {choose,user}=setup(true);
+ await user.click(await screen.findByRole('button',{name:'Choose creators'}));expect(choose).toHaveBeenCalledOnce();
  expect(screen.queryByRole('button',{name:'Record response'})).not.toBeInTheDocument();
 });
 it('keeps old context disabled while a newly selected relationship is loading',async()=>{
- const {api,user,second}=setup();await screen.findByRole('heading',{name:'Synthetic creator'});
+ const {api,user,second}=setup();await user.click(await screen.findByRole('button',{name:'Update relationship for Synthetic creator'}));await screen.findByRole('heading',{name:'Synthetic creator'});
  let resolve!:(value:ReturnType<typeof ok<typeof second>>)=>void;
  vi.mocked(api.detail).mockImplementationOnce(()=>new Promise(done=>resolve=done));
- await user.click(screen.getByRole('button',{name:/Second creator/}));
+ await user.click(screen.getByRole('button',{name:'Update relationship for Second creator'}));
  expect(screen.getByText('Loading relationship…')).toBeVisible();expect(screen.getByRole('button',{name:'Edit progress'})).toBeDisabled();
  resolve(ok(second));await screen.findByRole('heading',{name:'Second creator'});expect(screen.getByRole('button',{name:'Edit progress'})).toBeEnabled();
 });

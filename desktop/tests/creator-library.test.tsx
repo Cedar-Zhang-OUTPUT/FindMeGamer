@@ -15,6 +15,14 @@ const ok = <T,>(data:T):Result<T> => ({ok:true,data});
 const page = (name='Creator fixture',offset=0,total=1):CreatorPage => ({items:[creatorFixture(name)],offset,total,limit:50});
 const apiMock = () => ({creators:creatorAPIMock(),openExternal:vi.fn(async()=>ok(undefined))} as unknown as DesktopBridge);
 afterEach(cleanup);
+it('compares creators in columns and opens row editing directly with a fresh record',async()=>{
+ const api=apiMock(),user=userEvent.setup();render(<CreatorLibrary api={api} active/>);
+ expect(await screen.findByRole('table',{name:'Creators'})).toBeVisible();
+ await user.click(screen.getByRole('button',{name:'Edit Creator fixture'}));
+ expect(api.creators.detail).toHaveBeenCalledOnce();expect(await screen.findByRole('button',{name:'Save changes'})).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Edit profile'})).not.toBeInTheDocument();
+ await user.click(screen.getByRole('button',{name:'Cancel'}));expect(screen.getByRole('table',{name:'Creators'})).toBeVisible();
+});
 it('submits search explicitly with platform, language and saved filters using offset pages', async()=>{
   const api=apiMock(); vi.mocked(api.creators.list).mockImplementation(async input=>ok(page('Creator fixture',input.offset,51)));
   render(<CreatorLibrary api={api} active/>); const user=userEvent.setup();
@@ -166,8 +174,8 @@ it('labels source platforms and manual discovery truthfully',async()=>{
   const api=apiMock();const twitch=creatorFixture('Manual Twitch'),instagram=creatorFixture('Manual Instagram','instagram-record');
   vi.mocked(api.creators.list).mockResolvedValue(ok({items:[{...twitch,source_identity:{...twitch.source_identity,platform:'twitch'}},{...instagram,source_identity:{...instagram.source_identity,platform:'instagram'}}],total:2,offset:0,limit:50}));
   render(<CreatorLibrary api={api} active/>);
-  const row=await screen.findByRole('button',{name:'Open Manual Twitch'});expect(within(row).getByText('Twitch')).toBeVisible();expect(within(row).getByText('Manual · discovery unavailable')).toBeVisible();
-  expect(within(screen.getByRole('button',{name:'Open Manual Instagram'})).getByText('Instagram')).toBeVisible();
+  const row=(await screen.findByRole('button',{name:'Open Manual Twitch'})).closest('tr')!;expect(within(row).getByText('Twitch')).toBeVisible();expect(within(row).getByText('Manual · discovery unavailable')).toBeVisible();
+  expect(within(screen.getByRole('button',{name:'Open Manual Instagram'}).closest('tr')!).getByText('Instagram')).toBeVisible();
   expect(screen.queryByRole('button',{name:/fetch|analy[sz]e/i})).not.toBeInTheDocument();
 });
 it('restores separate tab scroll positions and selected list row focus',async()=>{

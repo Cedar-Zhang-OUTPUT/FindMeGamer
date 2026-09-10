@@ -124,6 +124,7 @@ test('C built renderer saves only explicit notes and retains unsaved collaborati
     if(!globalReadOnly)await page.getByRole('button',{name:'Open in Outreach',exact:true}).click();
     await page.getByRole('tab', { name: 'Invitations', exact: true }).click();
     const workspace = page.getByRole('region', { name: 'Invitations', exact: true }), editor = workspace.getByRole('region', { name: 'Invitation relationship', exact: true });
+    await workspace.getByRole('button',{name:/^Update relationship/}).first().click();
     await expect(editor).toBeVisible(); await checkpoint('response_filter'); const responseFilter = workspace.locator('.collaboration-filters').getByRole('combobox', { name:'Response', exact: true }); await responseFilter.selectOption('accepted'); await expect(editor).toBeVisible();
     if(globalReadOnly){
       await checkpoint('global_outreach_read_only');
