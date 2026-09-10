@@ -30,7 +30,8 @@ EvidenceSourceType = Literal[
     "intermediate_output",
 ]
 MAX_GAME_BRIEF_JSON_BYTES = 16_000
-MAX_CREATOR_BRIEF_JSON_BYTES = 4_500
+# CreatorBrief has its own aggregate guard, separate from downstream prompt limits.
+MAX_CREATOR_BRIEF_JSON_BYTES = 8_000
 MAX_SCREENING_PROMPT_OVERHEAD_BYTES = 100_000
 
 

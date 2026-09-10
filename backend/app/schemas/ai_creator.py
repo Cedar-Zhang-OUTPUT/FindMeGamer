@@ -51,12 +51,12 @@ def _unique_creator_brief_values(values: tuple[str, ...]) -> tuple[str, ...]:
 
 CreatorBriefText = Annotated[
     str,
-    Field(min_length=1, max_length=144),
+    Field(min_length=1, max_length=4000),
     AfterValidator(_creator_brief_text),
 ]
 CreatorBriefItem = Annotated[
     str,
-    Field(min_length=1, max_length=64),
+    Field(min_length=1, max_length=512),
     AfterValidator(_creator_brief_text),
 ]
 CreatorBriefValues = Annotated[

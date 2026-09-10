@@ -20,12 +20,15 @@ from app.schemas.ai_game import (
     StrictAIModel,
 )
 
-MAX_CREATOR_VIDEO_BATCH_DIGEST_JSON_BYTES = 12_000
-MAX_CREATOR_CONTENT_FORMAT_JSON_BYTES = 8_000
-MAX_CREATOR_PRESENTATION_JSON_BYTES = 3_500
-MAX_CREATOR_PERFORMANCE_AUDIENCE_JSON_BYTES = 6_000
-MAX_CREATOR_COMMERCIAL_SAFETY_JSON_BYTES = 4_000
-MAX_CREATOR_BRIEF_SYNTHESIS_JSON_BYTES = 7_500
+# Concision is a prompt preference, not a reason to reject ordinary prose.
+# Keep a bounded response and align individual fields with CreatorSynthesis.
+MAX_CREATOR_STAGE_JSON_BYTES = 32_000
+MAX_CREATOR_VIDEO_BATCH_DIGEST_JSON_BYTES = MAX_CREATOR_STAGE_JSON_BYTES
+MAX_CREATOR_CONTENT_FORMAT_JSON_BYTES = MAX_CREATOR_STAGE_JSON_BYTES
+MAX_CREATOR_PRESENTATION_JSON_BYTES = MAX_CREATOR_STAGE_JSON_BYTES
+MAX_CREATOR_PERFORMANCE_AUDIENCE_JSON_BYTES = MAX_CREATOR_STAGE_JSON_BYTES
+MAX_CREATOR_COMMERCIAL_SAFETY_JSON_BYTES = MAX_CREATOR_STAGE_JSON_BYTES
+MAX_CREATOR_BRIEF_SYNTHESIS_JSON_BYTES = MAX_CREATOR_STAGE_JSON_BYTES
 
 
 def _bounded_text(value: str) -> str:
@@ -44,12 +47,12 @@ def _unique_values(values: tuple[str, ...]) -> tuple[str, ...]:
 
 ReducerTextValue = Annotated[
     str,
-    Field(min_length=1, max_length=320),
+    Field(min_length=1, max_length=4000),
     AfterValidator(_bounded_text),
 ]
 ReducerListItem = Annotated[
     str,
-    Field(min_length=1, max_length=64),
+    Field(min_length=1, max_length=512),
     AfterValidator(_bounded_text),
 ]
 ReducerValues = Annotated[
@@ -59,7 +62,7 @@ ReducerValues = Annotated[
 ]
 ReducerStyleItem = Annotated[
     str,
-    Field(min_length=1, max_length=128),
+    Field(min_length=1, max_length=512),
     AfterValidator(_bounded_text),
 ]
 ReducerStyleValues = Annotated[
@@ -69,18 +72,18 @@ ReducerStyleValues = Annotated[
 ]
 ReducerUnavailableReason = Annotated[
     str,
-    Field(min_length=1, max_length=240),
+    Field(min_length=1, max_length=4000),
     AfterValidator(_bounded_text),
 ]
 ReducerObservation = Annotated[
     str,
-    Field(min_length=1, max_length=160),
+    Field(min_length=1, max_length=4000),
     AfterValidator(_bounded_text),
 ]
 
 
 class ReducerEvidenceReference(EvidenceReference):
-    """Evidence reference with a deliberately small observation budget."""
+    """Bounded observations with unchanged source-reference validation."""
 
     reference: BriefReferenceText
     observation: ReducerObservation
