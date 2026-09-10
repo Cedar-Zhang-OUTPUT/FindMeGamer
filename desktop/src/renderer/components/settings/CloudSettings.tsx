@@ -231,7 +231,7 @@ function Provider({
   );
   return (
     <article className="cloud-provider">
-      <div className="cloud-row">
+      <div className="cloud-row" role="group" aria-label={`${label} connection controls`}>
         <div>
           <h3>{label}</h3>
           <span>
@@ -244,13 +244,22 @@ function Provider({
                 : "Loading…"}
           </span>
         </div>
+        <div className="cloud-provider-actions">
+        {name !== "steam" && <button
+          className="cloud-test-action"
+          aria-label={name === "x" ? "Test usage access" : `Test ${label}`}
+          disabled={!saved?.configured || !!secret || op.busy || op.phase === "failure"}
+          onClick={() => void op.run(() => api.testConnection(name), setSaved)}
+        >{name === "x" ? "Test usage access" : "Test"}</button>}
         <button
           disabled={op.busy || !saved}
           onClick={onToggle}
           aria-expanded={expanded}
+          aria-label={`Replace ${label} credential`}
         >
-          Replace {label} credential
+          Replace credential
         </button>
+        </div>
       </div>
       {(loadFailed || op.phase === "failure") && (
         <>
@@ -296,24 +305,8 @@ function Provider({
           </button>
         </form>
       )}
-      <div className="cloud-actions">
-        {name === "steam" ? (
-          <span>Credential testing unavailable</span>
-        ) : (
-          <button
-            disabled={
-              !saved?.configured ||
-              !!secret ||
-              op.busy ||
-              op.phase === "failure"
-            }
-            onClick={() =>
-              void op.run(() => api.testConnection(name), setSaved)
-            }
-          >
-            {name === "x" ? "Test usage access" : `Test ${label}`}
-          </button>
-        )}
+      <div className="cloud-actions cloud-provider-status">
+        {name === "steam" && <span>Credential testing unavailable</span>}
         <span role="status">
           {op.busy
             ? "Working…"

@@ -41,6 +41,9 @@
 .settings-pending-notice { display:flex;gap:20px;align-items:center;justify-content:space-between;padding:12px 0;font-size:.8125rem;color:var(--muted); }
 .settings-workspace .cloud-settings > section { padding:25px;border:1px solid var(--line);border-radius:14px;background:var(--surface); }
 .settings-workspace .cloud-settings h2 { margin-bottom:20px; }
+.settings-workspace .cloud-provider-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.settings-workspace .cloud-provider-actions .cloud-test-action { border-color:transparent; background:transparent; color:var(--teal); }
+.settings-workspace .cloud-provider-status:not(:has(span:not(:empty))) { margin:0; }
 .settings-workspace .cloud-settings button { border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:8px 12px;border-radius:7px;font-size:.8125rem;font-weight:600;line-height:1.4; }
 .settings-workspace .cloud-settings button:hover:not(:disabled) { border-color:var(--teal);background:var(--selected); }
 .settings-workspace .cloud-settings form > button:not([type=button]),.settings-workspace .cloud-modal .cloud-actions button:last-child { background:var(--primary);color:#fff;border-color:transparent; }
@@ -64,5 +67,6 @@
 .refresh-activity-category time { overflow-wrap:anywhere; }
 .refresh-activity-category p { color:var(--muted);margin:12px 0;line-height:1.5; }
 .refresh-activity-category button { color:var(--teal);background:transparent;border:1px solid var(--line);padding:8px 12px;border-radius:7px; }
-@media(max-width:1000px) { .settings-layout { grid-template-columns:minmax(0,1fr);gap:20px; }.settings-categories { position:static;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px; }.settings-categories button { padding:11px; }.settings-card,.settings-workspace .settings-panel { padding:20px; } }
+@media(max-width:1000px) { .settings-layout { grid-template-columns:140px minmax(0,1fr);gap:20px; }.settings-categories button { padding:11px; flex-wrap:wrap; gap:5px; }.settings-card,.settings-workspace .settings-panel { padding:20px; } }
 @media(max-width:760px) { .appearance-options { gap:9px; }.appearance-thumbnail { height:72px; }.settings-categories button { font-size:.8125rem; }.settings-card,.settings-workspace .settings-panel { padding:17px; } }
+@media(max-width:700px) { .settings-layout { grid-template-columns:minmax(0,1fr); }.settings-categories { position:static; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); } }

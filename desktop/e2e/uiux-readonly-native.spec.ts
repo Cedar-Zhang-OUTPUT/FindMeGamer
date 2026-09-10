@@ -59,7 +59,25 @@ test('read-only current-task visual audit',async({},info)=>{
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1440,1000));
   await page.getByRole('button',{name:'Activities',exact:true}).click();await expect(page.getByRole('heading',{name:'Outreach',exact:true})).toBeVisible();await shot('outreach');
   await page.getByRole('button',{name:'Settings',exact:true}).click();await expect(page.getByRole('tab',{name:'Workspace',exact:true})).toBeVisible();await shot('settings');
+  await page.getByRole('tab',{name:'Workspace',exact:true}).focus();await page.getByRole('tab',{name:'Workspace',exact:true}).press('ArrowDown');await expect(page.getByRole('tab',{name:'Services',exact:true})).toHaveAttribute('aria-selected','true');await expect(page.getByRole('button',{name:'Replace YouTube credential',exact:true})).toBeEnabled();await shot('settings-services');
+  await page.getByRole('button',{name:'Replace YouTube credential',exact:true}).click();await expect(page.getByLabel('YouTube replacement credential',{exact:true})).toBeVisible();await shot('settings-service-editor');await page.getByRole('button',{name:'Replace YouTube credential',exact:true}).click();
+  await page.getByRole('tab',{name:'Auto-refresh',exact:true}).click();const interval=page.getByRole('spinbutton',{name:'Games interval (days)',exact:true});await expect(interval).toBeEnabled();const originalInterval=await interval.inputValue(),draftInterval=String(Number(originalInterval)===90?89:Number(originalInterval)+1);await interval.fill(draftInterval);
+  await page.getByRole('tab',{name:'Appearance',exact:true}).click();await page.getByRole('tab',{name:'Auto-refresh',exact:true}).click();await expect(interval).toHaveValue(draftInterval);
+  await page.getByRole('button',{name:'Save intervals',exact:true}).click();const sharedConfirmation=page.getByRole('dialog',{name:'Confirm change',exact:true});await expect(sharedConfirmation).toContainText('everyone using this workspace');await shot('settings-shared-confirmation');await sharedConfirmation.getByRole('button',{name:'Cancel',exact:true}).click();
+  await page.getByRole('button',{name:'Library',exact:true}).click();const settingsLeave=page.getByRole('dialog',{name:'Unsaved settings',exact:true});await expect(settingsLeave).toBeVisible();await shot('settings-unsaved-guard');await settingsLeave.getByRole('button',{name:'Keep editing',exact:true}).click();await expect(interval).toHaveValue(draftInterval);await interval.fill(originalInterval);await expect(page.getByRole('button',{name:'Save intervals',exact:true})).toBeDisabled();
+  await page.getByRole('tab',{name:'Workspace',exact:true}).click();
   await app.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(760,920));await shot('settings-narrow');
+  const categoriesBox=await page.getByRole('tablist',{name:'Settings categories',exact:true}).boundingBox(),connectionBox=await page.getByRole('region',{name:'Workspace connection',exact:true}).boundingBox();expect(connectionBox!.x).toBeGreaterThan(categoriesBox!.x+categoriesBox!.width);expect(Math.abs(connectionBox!.y-categoriesBox!.y)).toBeLessThan(2);
+  for(const category of ['Services','Collection','Auto-refresh','Email','Updates','Appearance']){
+   await page.getByRole('tab',{name:category,exact:true}).click();await expect(page.getByRole('tab',{name:category,exact:true})).toHaveAttribute('aria-selected','true');
+   if(category==='Services')await expect(page.getByRole('button',{name:'Replace YouTube credential',exact:true})).toBeEnabled();
+   if(category==='Collection')await expect(page.getByRole('switch',{name:'Collect from YouTube',exact:true})).toBeVisible();
+   if(category==='Auto-refresh')await expect(interval).toBeEnabled();
+   if(category==='Email')await expect(page.getByLabel('SMTP host',{exact:true})).toBeEnabled();
+   if(category==='Updates')await expect(page.getByRole('button',{name:'Check for updates',exact:true})).toBeEnabled();
+   if(category==='Appearance')await expect(page.getByLabel('Text size',{exact:true})).toBeEnabled();
+   await shot('settings-'+category.toLowerCase()+'-narrow');
+  }
   await page.getByRole('button',{name:'Library',exact:true}).click();await expect(page.getByRole('button',{name:'Known works',exact:true})).toHaveAttribute('aria-expanded','true');await shot('creator-narrow');
   await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('tab',{name:'Appearance',exact:true}).click();await page.getByRole('radio',{name:'Dark',exact:true}).check();
   await expect(page.locator('html')).toHaveAttribute('data-theme','dark');await page.getByRole('button',{name:'Library',exact:true}).click();await shot('creator-dark-narrow');
@@ -68,6 +86,9 @@ test('read-only current-task visual audit',async({},info)=>{
   await page.getByRole('list',{name:'Activities',exact:true}).getByRole('button').first().click();await expect(page.getByRole('region',{name:'Creator matches',exact:true}).getByRole('article')).toHaveCount(6);await shot('match-results-dark-narrow');
   await expect(page.getByRole('button',{name:'Analysis tasks',exact:true})).toHaveCount(1);
   await page.getByRole('button',{name:'Outreach',exact:true}).click();await expect(current.getByRole('button',{name:'Edit progress',exact:true})).toBeEnabled();await shot('outreach-dark-narrow');
+  await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('tab',{name:'Services',exact:true}).click();await shot('settings-services-dark-narrow');
+  await page.getByRole('tab',{name:'Appearance',exact:true}).click();await page.getByLabel('Text size',{exact:true}).selectOption('extra-large');await expect(page.locator('html')).toHaveCSS('font-size','20px');await page.getByRole('tab',{name:'Services',exact:true}).click();await shot('settings-services-large-text');
+  await page.getByRole('tab',{name:'Appearance',exact:true}).click();await page.getByLabel('Text size',{exact:true}).selectOption('default');
   const writes=await app.evaluate(()=>(globalThis as any).__auditWrites);expect(writes).toEqual([]);expect(errors).toBe(0);
   expect(shots.every(shot=>shot.overflow===false)).toBe(true);
   await writeFile(info.outputPath('audit.json'),JSON.stringify({native:true,readOnly:true,writes,errors,shots},null,2));

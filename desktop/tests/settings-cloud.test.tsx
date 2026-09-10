@@ -56,6 +56,18 @@ function apiMock(): SettingsAPI {
   };
 }
 afterEach(cleanup);
+it('groups each service status and its actions without repeating the service name visually',async()=>{
+ const api=apiMock(),user=userEvent.setup();render(<CloudSettings api={api} connected section="services"/>);
+ const controls=await screen.findByRole('group',{name:'YouTube connection controls'});
+ expect(within(controls).getByRole('heading',{name:'YouTube'})).toBeVisible();
+ expect(within(controls).getByText('Configured')).toBeVisible();
+ expect(within(controls).getByRole('button',{name:'Test YouTube'})).toHaveTextContent('Test');
+ const replace=within(controls).getByRole('button',{name:'Replace YouTube credential'});expect(replace).toHaveTextContent('Replace credential');
+ await user.click(replace);await user.type(screen.getByLabelText('YouTube replacement credential'),'synthetic-only');
+ expect(within(controls).getByRole('button',{name:'Test YouTube'})).toBeDisabled();
+ await user.click(screen.getByRole('button',{name:'Save YouTube credential'}));expect(screen.getByRole('dialog')).toHaveTextContent('for everyone using this workspace');
+ await user.click(screen.getByRole('button',{name:'Cancel'}));expect(screen.getByLabelText('YouTube replacement credential')).toHaveValue('synthetic-only');expect(api.replaceConnection).not.toHaveBeenCalled();
+});
 it("keeps service test limits discoverable without showing repeated explanatory text", async () => {
   const user = userEvent.setup();
   render(<CloudSettings api={apiMock()} connected section="services" />);
