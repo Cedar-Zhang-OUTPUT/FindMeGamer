@@ -117,7 +117,7 @@ test('Library union built renderer preserves four-platform and Creator context w
       } });
     });
     await checkpoint('open_activity'); await page.goto(origin);
-    await expect(page.getByText('Workspace connected', {exact:true})).toBeVisible();
+    await expect(page.getByText('Workspace linked', {exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Match',exact:true}).click();
     await page.getByRole('button',{name:`Open ${activity.name}`,exact:true}).click();
     const history=page.getByRole('combobox',{name:'Search history',exact:true});

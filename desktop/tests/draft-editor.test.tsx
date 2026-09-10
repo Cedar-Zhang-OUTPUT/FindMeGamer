@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, cleanup, waitFor } from '@testing-library/react';
+import { fireEvent, render as renderRaw, screen, cleanup, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DraftEditor, type DraftEditorProps } from '../src/renderer/components/match/DraftEditor';
-import { draftFixture, draftValues, builtinTemplate } from './drafts-fixtures';
+import { draftFixture, draftValues, builtinTemplate, templateVersion } from './drafts-fixtures';
 
 afterEach(cleanup);
+// Existing field-editing cases explicitly open the now on-demand editor.
+const render=(...args:Parameters<typeof renderRaw>)=>{const view=renderRaw(...args);const button=screen.queryByRole('button',{name:'Edit personalization'});if(button)fireEvent.click(button);return view;};
 function props(patch: Partial<DraftEditorProps> = {}): DraftEditorProps {
   return { draft: draftFixture({ status: 'succeeded', values: { ...draftValues }, rendered: { subject: 'Saved subject', html: '<p>Saved mail</p>', text: 'Saved mail', fixed_hash: builtinTemplate.fixed_hash } }),
     busy: false, current: true, onSave: vi.fn(async () => true), onRefresh: vi.fn(), onRetry: vi.fn(), onOpenSource: vi.fn(), onDirtyChange: vi.fn(), ...patch };
@@ -14,6 +16,38 @@ function props(patch: Partial<DraftEditorProps> = {}): DraftEditorProps {
 const change = (label: string, value: string) => fireEvent.change(screen.getByRole('textbox', { name: label }), { target: { value } });
 
 describe('source-bound draft editor', () => {
+  it.each(['needs_repair','failed'] as const)('shows the actual fixed template rather than a loading skeleton for %s',status=>{
+    const p=props({draft:draftFixture({status,rendered:null,values:null,missing_fields:['public_name_unconfirmed','reference_missing','observation_evidence_missing']}),previewTemplate:templateVersion});
+    render(<DraftEditor {...p}/>);
+    const preview=screen.getByTitle('Template preview — not ready to send');
+    expect(preview).toHaveAttribute('srcdoc',expect.stringContaining(builtinTemplate.fixed_fragments[0]));
+    expect(preview).toHaveAttribute('srcdoc',expect.stringContaining('Public name · unconfirmed'));
+    expect(preview).toHaveAttribute('srcdoc',expect.stringContaining('Observation · unconfirmed'));
+    expect(preview).toHaveAttribute('srcdoc',expect.stringContaining('Fixture Channel'));
+    expect(preview).not.toHaveAttribute('srcdoc',expect.stringContaining('connected the two scenes.'));
+    expect(screen.getByRole('button',{name:'Save changes'})).toBeDisabled();
+    expect(screen.getByRole('button',{name:'Edit public name source'})).toBeEnabled();
+    expect(document.querySelector('.draft-preview-empty')).toBeNull();
+  });
+  it.each(['pending','running'] as const)('shows truthful %s status and no fake indefinite skeleton',status=>{
+    render(<DraftEditor {...props({draft:draftFixture({status}),previewTemplate:templateVersion})}/>);
+    expect(screen.getByText(status==='pending'?'Queued':'Generating…')).toBeVisible();
+    expect(screen.getByTitle('Template preview — not ready to send')).toBeVisible();expect(document.querySelector('.draft-preview-empty')).toBeNull();
+  });
+  it('distinguishes a pending template read, its failure, and saved rendered mail',()=>{
+    const p=props({draft:draftFixture({status:'needs_repair'}),previewLoading:true});const view=render(<DraftEditor {...p}/>);
+    expect(screen.getByText('Loading original template…')).toBeVisible();
+    const reload=vi.fn();view.rerender(<DraftEditor {...p} previewLoading={false} previewError={{code:'access_denied',message:'Template access denied',retryable:false}} onReloadPreview={reload}/>);
+    expect(screen.getByText('Template access denied')).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'Reload original template'}));expect(reload).toHaveBeenCalledOnce();
+    view.rerender(<DraftEditor {...props()} previewTemplate={templateVersion}/>);expect(screen.getByTitle('Saved email preview')).toBeVisible();expect(screen.queryByTitle('Template preview — not ready to send')).not.toBeInTheDocument();
+  });
+  it('starts with the email focus and keeps an opened dirty editor expanded',()=>{
+    renderRaw(<DraftEditor {...props()}/>);
+    expect(screen.queryByRole('textbox',{name:'Observation'})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'Edit personalization'}));change('Observation','My pending observation.');
+    expect(screen.getByRole('button',{name:'Edit personalization'})).toHaveAttribute('aria-expanded','true');
+    expect(screen.getByRole('button',{name:'Edit personalization'})).toBeDisabled();expect(screen.getByRole('textbox',{name:'Observation'})).toHaveValue('My pending observation.');
+  });
   it('offers a new current-template flow instead of repeatedly refreshing immutable text',async()=>{
     const onUseCurrentTemplate=vi.fn(),p=props({draft:draftFixture({status:'needs_repair',source_changed:true,missing_fields:['template_context_changed']}),onUseCurrentTemplate});render(<DraftEditor {...p}/>);
     expect(screen.queryByRole('button',{name:'Refresh sources'})).not.toBeInTheDocument();await userEvent.click(screen.getByRole('button',{name:'Use current template'}));expect(onUseCurrentTemplate).toHaveBeenCalledOnce();expect(p.onRefresh).not.toHaveBeenCalled();expect(p.onSave).not.toHaveBeenCalled();

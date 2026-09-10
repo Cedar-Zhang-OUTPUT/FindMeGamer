@@ -102,7 +102,7 @@ test('F8 built renderer retains full N and local edits through source and people
         drafts: group('drafts', ['templates', 'template', 'registerCanonical', 'createTemplate', 'compositions', 'composition', 'createComposition', 'edit', 'refresh', 'retry', 'senderFacts']), openExternal: (v: string) => (window as any).__fmgInvoke('openExternal', v),
       } });
     });
-    report.stage = 'open_history'; await page.goto(origin); await expect(page.getByText('Workspace connected', { exact: true })).toBeVisible();
+    report.stage = 'open_history'; await page.goto(origin); await expect(page.getByText('Workspace linked', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Match', exact: true }).click();
     await expect(page.getByRole('button', { name: /^Open / }).first()).toBeVisible();
     let located = false; for (let i = 0; i < 10; i++) { const open = page.getByRole('button', { name: `Open ${activity.name}`, exact: true }); if (await open.count()) { await open.click(); located = true; break; } const next = page.getByRole('button', { name: 'Next page', exact: true }); await expect(next).toBeEnabled(); await next.click(); }
@@ -111,6 +111,7 @@ test('F8 built renderer retains full N and local edits through source and people
     await expect(page.getByRole('button', { name: 'Draft history', exact: true })).toHaveAttribute('aria-expanded', 'false');
     const workspace = page.getByRole('region', { name: 'Outreach drafts', exact: true }); const roster = workspace.getByRole('navigation', { name: 'Draft people' });
     await expect(roster.getByRole('button')).toHaveCount(3); await roster.getByRole('button').nth(1).click();
+    await workspace.getByRole('button', { name: 'Edit personalization', exact: true }).click();
     const observation = workspace.getByRole('textbox', { name: 'Observation', exact: true }); await expect(observation).toHaveValue(completed.values!.observation);
     const preview = workspace.getByTitle('Saved email preview'); await expect(preview).toHaveAttribute('sandbox', '');
     requireSafe((await preview.getAttribute('srcdoc'))?.includes(completed.rendered!.html), 'exact_server_html');

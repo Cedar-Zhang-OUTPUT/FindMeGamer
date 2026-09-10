@@ -1,9 +1,11 @@
 .draft-editor{container-type:inline-size;min-width:0;color:var(--ink,#172a42)}
+.draft-missing-sources button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}.draft-missing-sources button:disabled{cursor:default;opacity:.65}
+.draft-preview-unavailable{display:grid;gap:12px;align-content:center;justify-items:start;min-height:240px;padding:24px;border:1px solid var(--line,#dce2e8);border-radius:12px;color:var(--text-secondary,#586578);font-size:.875rem}
 .draft-editor-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-bottom:16px}
 .draft-editor-heading h3{font-size:1.125rem;line-height:1.4;margin:0 0 5px}
 .draft-editor-heading p{font-size:0.8125rem;margin:0;color:var(--text-secondary,#586578)}
 .draft-facts-state{max-width:230px;text-align:right}
-.draft-editor-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(260px,1fr);gap:24px;align-items:start}
+.draft-editor-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}.draft-edit-disclosure{min-width:0}.draft-edit-disclosure>.text-button{margin-bottom:12px}.draft-fields[hidden]{display:none}
 .draft-editor-mail{min-width:0}.draft-editor .email-document{width:100%;min-height:570px;border:1px solid var(--line,#dce2e8);border-radius:12px;background:#fffdf9}
 .draft-editing-note{font-size:0.75rem;color:var(--text-secondary,#586578);margin:0 0 10px}.draft-preview-empty{padding:32px 20px;background:var(--surface-subtle,#f5f7f9);border-radius:12px;color:var(--text-secondary,#586578)}
 .draft-fields{display:grid;gap:15px}.draft-field{display:grid;gap:5px;border-left:4px solid var(--slot-color);padding-left:12px}

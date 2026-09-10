@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render as renderRaw, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, it, vi } from 'vitest';
 import { DraftsWorkspace, CompositionHistory } from '../src/renderer/components/match/DraftsWorkspace';
@@ -14,6 +14,7 @@ import { freezeDraftAttempt } from '../src/renderer/components/match/draftMutati
 import type { CompositionPage } from '../src/shared/drafts';
 import type { DesktopBridge, Result } from '../src/shared/bridge';
 afterEach(cleanup);
+const render=(...args:Parameters<typeof renderRaw>)=>{const view=renderRaw(...args);const button=screen.queryByRole('button',{name:'Edit personalization'});if(button)fireEvent.click(button);return view;};
 function setup() {
   const api: DesktopBridge = { ...settingsBridgeMock(),
     connection: { status: vi.fn(), save: vi.fn(), test: vi.fn(), clear: vi.fn() },
@@ -28,6 +29,18 @@ function setup() {
     create: vi.fn(async () => true), saveDraft: vi.fn(async () => false), setSelectedId: vi.fn(), setDirty: vi.fn(), regenerate: vi.fn(async () => true), retry: vi.fn(async () => true), check: vi.fn(async () => {}), reviewCurrent: vi.fn() };
   return { api, c, p: { api, controller: c, active: true, onRequest: vi.fn((action: () => void) => action()), onBack: vi.fn(), onRepairPerson: vi.fn() } };
 }
+it('loads a historical fixed version independently, once for the whole roster, without blocking editing',async()=>{
+ const {api,c,p}=setup();let finish!:(value:ReturnType<typeof ok<typeof templateVersion>>)=>void;
+ vi.mocked(api.drafts.template).mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const original={...c,catalog:null,selectedId:'second-draft'};
+ const view=render(<DraftsWorkspace {...p} controller={original}/>);
+ expect(screen.getByText('Loading original template…')).toBeVisible();expect(screen.getByRole('button',{name:'Edit observation source'})).toBeEnabled();
+ expect(api.drafts.template).toHaveBeenCalledWith(c.composition.template_version_id);
+ view.rerender(<DraftsWorkspace {...p} controller={{...original,selectedId:c.composition.drafts[0].id}}/>);
+ view.rerender(<DraftsWorkspace {...p} controller={original}/>);expect(api.drafts.template).toHaveBeenCalledOnce();
+ await act(()=>finish(ok(templateVersion)));expect(screen.getByTitle('Template preview — not ready to send')).toHaveAttribute('srcdoc',expect.stringContaining(templateVersion.fixed_fragments[0]));
+ expect(c.regenerate).not.toHaveBeenCalled();expect(c.create).not.toHaveBeenCalled();
+});
 it('creates drafts only through the explicit selected-template button, with no registration on mount', async () => {
   const { api, c, p } = setup(); render(<DraftsWorkspace {...p} controller={{ ...c, mode: { kind: 'template' }, composition: null }} />);
   expect(c.create).not.toHaveBeenCalled(); expect(api.drafts.registerCanonical).not.toHaveBeenCalled();

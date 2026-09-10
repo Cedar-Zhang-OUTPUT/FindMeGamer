@@ -338,7 +338,7 @@ test('built React query UI uses real production clients against the pinned HTTP 
     await page.goto(rendererOrigin, { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveTitle(/FindMeGamer/);
     await expect(page.getByRole('heading', { name: 'Library', level: 1 })).toBeVisible();
-    await expect(page.getByText('Workspace connected', { exact: true })).toBeVisible();
+    await expect(page.getByText('Workspace linked', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
     await expect(page.locator('[data-testid="vite-error-overlay"], vite-error-overlay')).toHaveCount(0);
 

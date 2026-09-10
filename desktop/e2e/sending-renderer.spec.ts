@@ -123,7 +123,7 @@ test('P7 built renderer reads frozen deliveries and retains exclusion through SM
         drafts: group('drafts', ['templates', 'template', 'registerCanonical', 'createTemplate', 'compositions', 'composition', 'createComposition', 'edit', 'refresh', 'retry', 'senderFacts']), sending: group('sending', ['qualify', 'send', 'batches', 'batch', 'retry', 'resolve']), openExternal: (v: string) => (window as any).__fmgInvoke('openExternal', v),
       } });
     });
-    report.stage = 'sending_history'; await page.goto(origin); await expect(page.getByText('Workspace connected', { exact: true })).toBeVisible();
+    report.stage = 'sending_history'; await page.goto(origin); await expect(page.getByText('Workspace linked', { exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Match', exact: true }).click(); await expect(page.getByRole('button', { name: /^Open / }).first()).toBeVisible();
     let located = false; for (let i = 0; i < 10; i++) { const open = page.getByRole('button', { name: `Open ${activity.name}`, exact: true }); if (await open.count()) { await open.click(); located = true; break; } const next = page.getByRole('button', { name: 'Next page', exact: true }); await expect(next).toBeEnabled(); await next.click(); }
     safe(located, 'own_activity_visible');

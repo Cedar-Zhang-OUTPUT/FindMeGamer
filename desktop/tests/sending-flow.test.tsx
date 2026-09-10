@@ -47,6 +47,6 @@ it('keeps exclusion reason through SMTP detour, opens Email directly and blocks 
   await user.click(screen.getByRole('button',{name:'Check recipients'}));await waitFor(()=>expect(api.sending.qualify).toHaveBeenCalledTimes(2));expect(api.sending.send).not.toHaveBeenCalled();
 });
 it('keeps unsaved text in place and does not qualify it as saved mail',async()=>{
-  const {api,user,activity}=setup();await openDrafts(user,activity.name);fireEvent.change(screen.getByRole('textbox',{name:'Observation'}),{target:{value:'Still editing this observation'}});
+  const {api,user,activity}=setup();await openDrafts(user,activity.name);await user.click(screen.getByRole('button',{name:'Edit personalization'}));fireEvent.change(screen.getByRole('textbox',{name:'Observation'}),{target:{value:'Still editing this observation'}});
   expect(screen.getByRole('button',{name:'Review sending'})).toBeDisabled();expect(api.sending.qualify).not.toHaveBeenCalled();
 });

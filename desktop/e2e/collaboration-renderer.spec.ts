@@ -119,7 +119,7 @@ test('C built renderer saves only explicit notes and retains unsaved collaborati
         drafts: group('drafts', ['templates', 'template', 'registerCanonical', 'createTemplate', 'compositions', 'composition', 'createComposition', 'edit', 'refresh', 'retry', 'senderFacts']), sending: group('sending', ['qualify', 'send', 'batches', 'batch', 'retry', 'resolve']), collaboration: group('collaboration', ['list', 'detail', 'creatorHistory', 'update', 'respond']), openExternal: (v: string) => (window as any).__fmgInvoke('openExternal', v),
       } });
     });
-    await checkpoint('open_activity'); await page.goto(origin); await expect(page.getByText('Workspace connected', { exact: true })).toBeVisible(); await page.getByRole('button', { name: globalReadOnly ? 'Outreach' : 'Match', exact: true }).click();
+    await checkpoint('open_activity'); await page.goto(origin); await expect(page.getByText('Workspace linked', { exact: true })).toBeVisible(); await page.getByRole('button', { name: globalReadOnly ? 'Outreach' : 'Match', exact: true }).click();
     let located = false; for (let n = 0; n < 10; n++) { const button = page.getByRole('button', { name: `Open ${activity.name}`, exact: true }); await expect(page.getByRole('button', { name: /^Open / }).first()).toBeVisible(); if (await button.count()) { await button.click(); located = true; break; } await page.getByRole('button', { name: 'Next page', exact: true }).click(); } safe(located, 'activity_found');
     if(!globalReadOnly)await page.getByRole('button',{name:'Open in Outreach',exact:true}).click();
     await page.getByRole('tab', { name: 'Invitations', exact: true }).click();

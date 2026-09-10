@@ -28,10 +28,20 @@ it('retains previously loaded results after a read failure but disables selectio
  render(<CreatorSearchView {...props} search={{...task,status:'partial',stage:'complete'}} error={{code:'network_error',message:'Could not refresh.',retryable:true}} candidates={[candidate]} people={[{candidate_id:candidate.id,creator_id:candidate.creator_id,platform:'youtube',profile_status:'failed',email_status:'missing'}]}/>);
  expect(screen.getByRole('region',{name:'Creator matches'})).toBeVisible();
  expect(screen.getByRole('checkbox',{name:/Select/})).toBeDisabled();
- expect(screen.getByText('Not evaluated')).toBeVisible();expect(screen.getByText('Could not refresh.')).toBeVisible();
+ expect(screen.getByText('Match details unavailable')).toBeVisible();expect(screen.getByText('Could not refresh.')).toBeVisible();
 });
 it('keeps strong fit separate from missing email and exposes the existing creator',()=>{
  const candidate=candidateFixture();const result:any={candidate_id:candidate.id,creator_id:candidate.creator_id,name:'Creator 1',platform:'youtube',fit_group:'strong_fit',match_brief:{summary:'Fits the atmospheric games audience.',limitations:[]},evidence:[],stale:false,identity_changed:false};
  render(<CreatorSearchView {...props} current search={{...task,status:'completed',stage:'complete',counts:{...task.counts,evaluated:68,matched:1}}} candidates={[candidate]} results={[result]} people={[{candidate_id:candidate.id,creator_id:candidate.creator_id,platform:'youtube',profile_status:'ready',email_status:'missing'}]}/>);
  expect(screen.getByText('Strong fit')).toBeVisible();expect(screen.getByText('Email not found')).toBeVisible();expect(screen.getByText('Fits the atmospheric games audience.')).toBeVisible();expect(screen.getByRole('button',{name:'View Creator 1'})).toBeVisible();expect(screen.queryByRole('tab',{name:'Candidates'})).not.toBeInTheDocument();
+});
+it('shows local failures with read-only reload while protecting selection and business retry',async()=>{
+ const user=userEvent.setup(),candidate=candidateFixture(),onRefresh=vi.fn(),onRetry=vi.fn(),onToggle=vi.fn();
+ render(<CreatorSearchView {...props} onRefresh={onRefresh} onRetry={onRetry} onToggle={onToggle} search={{...task,status:'partial',stage:'complete',retryable:true,outcome_unknown:true}} readErrors={{people:{code:'service_error',message:'Contact details unavailable',retryable:true}}} candidates={[candidate]} results={[{candidate_id:candidate.id,creator_id:candidate.creator_id,name:'Available match',platform:'youtube',fit_group:'strong_fit',evidence:[]}]}/>);
+ expect(screen.getByRole('article',{name:'Available match'})).toBeVisible();
+ expect(screen.getByRole('region',{name:'Result loading issues'})).toHaveTextContent('Profiles & email status');
+ expect(screen.getByRole('checkbox',{name:'Select Available match'})).toBeDisabled();
+ expect(screen.getByRole('button',{name:'Retry unfinished work'})).toBeDisabled();
+ await user.click(screen.getByRole('button',{name:'Reload results'}));
+ expect(onRefresh).toHaveBeenCalledTimes(1);expect(onRetry).not.toHaveBeenCalled();expect(onToggle).not.toHaveBeenCalled();
 });

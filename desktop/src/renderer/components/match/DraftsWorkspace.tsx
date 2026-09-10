@@ -5,19 +5,22 @@ import type { useActivityDrafts } from './useActivityDrafts';
 import { TemplatePicker } from './TemplatePicker';
 import { DraftEditor } from './DraftEditor';
 import { SenderFactsEditor } from './SenderFactsEditor';
+import { useDraftTemplatePreview } from './useDraftTemplatePreview';
 import { PreparationSnapshot } from './PreparationEditor';
 import { ErrorNotice, Loading, analyzedDate } from '../Primitives';
 import './draftsWorkspace.css';
 export interface DraftsWorkspaceProps { api: DesktopBridge; controller: ReturnType<typeof useActivityDrafts>; active: boolean; onRequest(action: () => void): void; onBack(): void; onRepairPerson(selectionId: string, section: 'overview' | 'contacts' | 'works'): void; onConnectionRepair?(): void; onReviewSending?():void; sendingDisabled?:boolean;onUseCurrentTemplate?():void }
 export interface CompositionHistoryProps { api: DraftsAPI; activityId: string; active: boolean; epoch: number; disabled: boolean; onOpen(id: string): void }
 const labels: Record<DraftView['status'], string> = { pending: 'Queued', running: 'Generating', succeeded: 'Complete', failed: 'Failed', needs_repair: 'Needs repair' };
-export function DraftsWorkspace({ controller: c, active, onRequest, onBack, onRepairPerson, onConnectionRepair, onReviewSending,onUseCurrentTemplate, sendingDisabled=false }: DraftsWorkspaceProps) {
+export function DraftsWorkspace({ api,controller: c, active, onRequest, onBack, onRepairPerson, onConnectionRepair, onReviewSending,onUseCurrentTemplate, sendingDisabled=false }: DraftsWorkspaceProps) {
   // Keep the form owner mounted while credential repair invalidates fetched data.
   // The retained game is display context only; writes stay disabled until reread.
   const retainedGame=useRef(c.game);if(c.game)retainedGame.current=c.game;
   const heading=useRef<HTMLHeadingElement>(null),focusedSet=useRef<string|null>(null);
   const visible = active && c.mode.kind !== 'people';
   const editing = visible && c.mode.kind === 'composition';
+  const templateId=c.composition?.template_version_id??null;
+  const preview=useDraftTemplatePreview(api.drafts,templateId,editing&&!!c.composition?.drafts.some(row=>!row.rendered),c.catalog?.items.find(item=>item.id===templateId));
   const selected = c.composition?.drafts.find(row => row.id === c.selectedId);
   const original = selected && c.batch?.recipients.find(row => row.id === selected.recipient_snapshot_id && row.selection_id === selected.selection_id);
   const busy = c.busy || c.locked || !visible;
@@ -63,6 +66,7 @@ export function DraftsWorkspace({ controller: c, active, onRequest, onBack, onRe
         })}</ol></nav>
         <div className="drafts-selected-mail">
           {selected ? <><DraftEditor key={`editor:${c.editorEpoch}:${c.composition.id}`} draft={selected} busy={busy} current={editing && c.current}
+            previewTemplate={preview.template} previewLoading={preview.loading} previewError={preview.error} onReloadPreview={preview.reload}
             onUseCurrentTemplate={onUseCurrentTemplate} onSave={c.saveDraft} onRefresh={() => c.regenerate('refresh')} onRetry={() => void c.regenerate('retry')}
             onOpenSource={section => onRepairPerson(selected.selection_id, section)} onDirtyChange={value => c.setDirty('editor', value)} />
             {original && <details className="drafts-original"><summary>Original recipient snapshot</summary><PreparationSnapshot preparation={original.snapshot} /></details>}

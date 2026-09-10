@@ -443,7 +443,7 @@ test('production renderer prepares explicit outreach people and preserves immuta
 
     await page.goto(rendererOrigin, { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveTitle(/FindMeGamer/);
-    await expect(page.getByText('Workspace connected', { exact: true })).toBeVisible();
+    await expect(page.getByText('Workspace linked', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
     await expect(page.locator('[data-testid="vite-error-overlay"], vite-error-overlay')).toHaveCount(0);
 

@@ -30,6 +30,7 @@ function setup(){
 async function createDrafts(user:ReturnType<typeof userEvent.setup>){
   await user.click(await screen.findByRole('button',{name:'Draft 1 emails'}));
   await user.click(await screen.findByRole('button',{name:'Create 1 drafts'}));
+  await user.click(await screen.findByRole('button',{name:'Edit personalization'}));
   await screen.findByRole('textbox',{name:'Observation'});
 }
 it('connects selected people → frozen preparation → explicit template → draft editing without extra business writes',async()=>{

@@ -98,7 +98,7 @@ test('Missing sender remains a qualification-only gate with local repair navigat
    Object.defineProperty(window,'desktop',{value:bridge});
   },{allowed});
   async function shot(name:string){const file=info.outputPath(name+'.png');await page!.screenshot({path:file});report.screenshots.push(file);}
-  await page.goto(origin);await expect(page.getByText('Workspace connected',{exact:true})).toBeVisible();
+  await page.goto(origin);await expect(page.getByText('Workspace linked',{exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Match',exact:true}).click();
   await page.getByRole('button',{name:'Open '+originalActivity.name,exact:true}).click();
   await checkpoint('missing_sender');
