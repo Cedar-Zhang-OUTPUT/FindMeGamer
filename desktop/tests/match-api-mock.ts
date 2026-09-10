@@ -9,6 +9,13 @@ export const queryFixture=(status='paused'):QueryView=>({id:planFixture().query_
 export const evaluationFixture=():EvaluationView=>({id:'10000000-0000-4000-8000-000000000006',query_id:queryFixture().id,status:'completed',stage:'completed',method_version:'v2',models:{screening:'Flash',evaluation:'Pro'},conditions:{},source_snapshot:{},candidate_count:2,matched_count:0,retryable:false,usage:{model_operations_started:1,succeeded_steps:1,failed_steps:0,pending_steps:0,running_steps:0},steps:[],created_at:'2026-09-08T02:00:00Z'});
 export const candidateFixture=(suffix=1):CandidateView=>({id:`20000000-0000-4000-8000-${String(suffix).padStart(12,'0')}`,creator_id:`30000000-0000-4000-8000-${String(suffix).padStart(12,'0')}`,platform:'youtube',account_id:`UC_${suffix}`,account:{display_name:`Creator ${suffix}`,follower_count:12000,country:'US',languages:['en']},creator:{...creatorFixture(`Creator ${suffix}`),id:`30000000-0000-4000-8000-${String(suffix).padStart(12,'0')}`},filter_notes:{},identity_revision:1,identity_changed:false,added_at:'2026-09-08T01:00:00Z',selected:false});
 export function matchAPIMock():MatchAPI {return {
+  creatorSearches:vi.fn(async()=>ok({items:[],total:0,offset:0,limit:50})),
+  createCreatorSearch:vi.fn(async()=>ok({search_id:activityFixture().id,status:'queued' as const})),
+  creatorSearch:vi.fn(async()=>({ok:false as const,error:{code:'creator_search_not_found',message:'Not found',retryable:false}})),
+  creatorSearchPeople:vi.fn(async()=>ok({items:[],total:0,offset:0,limit:100})),
+  stopCreatorSearch:vi.fn(async input=>ok({search_id:input.id,status:'stopping' as const})),
+  retryCreatorSearch:vi.fn(async input=>ok({search_id:input.id,status:'queued' as const})),
+  appendCreatorSearch:vi.fn(async()=>ok({search_id:activityFixture().id,status:'queued' as const})),
   activities:vi.fn(async()=>ok({items:[activityFixture()],total:1,offset:0,limit:50})),
   activity:vi.fn(async()=>ok({...activityFixture(),queries:[queryFixture()]})),
   createActivity:vi.fn(async()=>ok(activityFixture())),

@@ -1,4 +1,5 @@
 import type * as DTO from '../shared/match';
+import {decodeCreatorSearch,decodeCreatorSearchAccepted,decodeCreatorSearchPerson} from './match-validation';
 import { decodeActivity, decodeActivityDetail, decodeCandidate, decodeDiscoveryAccepted, decodeEvaluation, decodeEvaluationAccepted, decodeEvaluationResult, decodePage, decodePlan, decodePlanAccepted, decodeQuery, decodeStopped, identifier, integer, keys, object, sameID } from './match-validation';
 import { exactCandidateQueryOptions, matchOutcomeUnknown, validateMatchRequest, type MatchRequest } from './match-transport';
 export type { MatchRequest } from './match-transport';
@@ -12,6 +13,13 @@ function pagination(raw: Record<string, unknown>, max: number) {
 /** Main-only narrow client. IPC's existing publicResult supplies the Result envelope. */
 export class MatchClient {
   constructor(private readonly request: (input: MatchRequest) => Promise<unknown>) {}
+  async creatorSearches(value:Input<'creatorSearches'>){const raw=input(value,['activityId','offset','limit']),id=identifier(raw.activityId,'input');return this.send({method:'GET',path:`${activities}/${id}/creator-searches`,query:pagination(raw,100)},v=>decodePage(v,item=>decodeCreatorSearch(item,undefined,id),100,item=>item.id));}
+  async createCreatorSearch(value:Input<'createCreatorSearch'>){const raw=input(value,['activityId','data','idempotencyKey']),id=identifier(raw.activityId,'input');return this.send({method:'POST',path:`${activities}/${id}/creator-searches`,body:raw.data as Record<string,unknown>,idempotencyKey:raw.idempotencyKey as string},decodeCreatorSearchAccepted);}
+  async creatorSearch(id:string){identifier(id,'input');return this.send({method:'GET',path:`/api/v2/creator-searches/${id}`},v=>decodeCreatorSearch(v,id));}
+  async creatorSearchPeople(value:Input<'creatorSearchPeople'>){const raw=input(value,['id','offset','limit']),id=identifier(raw.id,'input');return this.send({method:'GET',path:`/api/v2/creator-searches/${id}/creators`,query:pagination(raw,100)},v=>decodePage(v,decodeCreatorSearchPerson,100,item=>item.candidate_id));}
+  async stopCreatorSearch(value:Input<'stopCreatorSearch'>){const raw=input(value,['id','idempotencyKey']),id=identifier(raw.id,'input');return this.send({method:'POST',path:`/api/v2/creator-searches/${id}/stop`,body:{},idempotencyKey:raw.idempotencyKey as string},v=>decodeCreatorSearchAccepted(v,id));}
+  async retryCreatorSearch(value:Input<'retryCreatorSearch'>){const raw=input(value,['id','data','idempotencyKey']),id=identifier(raw.id,'input');return this.send({method:'POST',path:`/api/v2/creator-searches/${id}/retry`,body:raw.data as Record<string,unknown>,idempotencyKey:raw.idempotencyKey as string},v=>decodeCreatorSearchAccepted(v,id));}
+  async appendCreatorSearch(value:Input<'appendCreatorSearch'>){const raw=input(value,['id','idempotencyKey']),id=identifier(raw.id,'input');return this.send({method:'POST',path:`/api/v2/creator-searches/${id}/append`,body:{},idempotencyKey:raw.idempotencyKey as string},decodeCreatorSearchAccepted);}
   private async send<T>(request: MatchRequest, decode: (value: unknown) => T): Promise<T> {
     const valid = validateMatchRequest(request);
     const value = await this.request(valid);

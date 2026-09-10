@@ -1,6 +1,7 @@
 import type { Result } from './bridge';
 import type { CreatorDetail, CreatorPlatform } from './creators';
 import type { JsonObject } from './library';
+import type { CreatorSearchAPI } from './creatorSearch';
 
 /** Accepted v2 Activity / Discovery / Evaluation DTOs; never the v1 score schema. */
 export type ApiResult<T> = Result<T>;
@@ -104,7 +105,7 @@ export interface EvaluationResult {
   needs_enrichment: boolean; stale: boolean; identity_changed: boolean; selected: false; sender_watched: false;
 }
 export type EvaluationResultPage = MatchPage<EvaluationResult>;
-export interface MatchAPI {
+export interface MatchAPI extends CreatorSearchAPI {
   activities(input: Pagination): Promise<ApiResult<ActivityPage>>;
   createActivity(input: { data: ActivityCreate; idempotencyKey: string }): Promise<ApiResult<ActivityView>>;
   updateBrief(input: { id:string; data:{campaign_brief:string|null;expected_revision:number} }):Promise<ApiResult<ActivityView>>;

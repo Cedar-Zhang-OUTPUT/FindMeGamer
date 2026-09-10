@@ -1,4 +1,5 @@
 import type * as DTO from '../shared/match';
+import type {CreatorSearch,CreatorSearchPerson,CreatorSearchAccepted} from '../shared/creatorSearch';
 import { decodeCreator, timestamp as creatorTimestamp, UUID_PATTERN, UUID_SOURCE } from './creator-validation';
 import { PublicFailure } from './transport';
 export { UUID_PATTERN, UUID_SOURCE };
@@ -99,9 +100,16 @@ const campaignBrief = record({campaign_brief:nullable(string(5000)),expected_rev
 const continueDiscovery = record({}, { acknowledge_unknown: boolean });
 const evaluationCreate = record({}, { candidate_ids: nullable(ids(600, 1, true)) });
 const evaluationRetry = record({}, { step_ids: nullable(ids(1000, 1)) });
-export type BodyKind = 'activityCreate' | 'campaignBrief' | 'planCreate' | 'continueDiscovery' | 'evaluationCreate' | 'evaluationRetry';
-const bodies: Record<BodyKind, Rule> = { activityCreate, campaignBrief, planCreate, continueDiscovery, evaluationCreate, evaluationRetry };
+export type BodyKind = 'activityCreate' | 'campaignBrief' | 'planCreate' | 'continueDiscovery' | 'evaluationCreate' | 'evaluationRetry' | 'creatorSearchCreate' | 'empty' | 'creatorSearchRetry';
+const creatorSearchCreate:Rule=(v,m)=>{const result=planCreate(v,m) as DTO.PlanCreate;if(result.mode!=='discover')fail(m);return result;};
+const bodies: Record<BodyKind, Rule> = { activityCreate, campaignBrief, planCreate, continueDiscovery, evaluationCreate, evaluationRetry,creatorSearchCreate,empty:record({}),creatorSearchRetry:record({},{acknowledge_unknown:boolean}) };
 export function body(value: unknown, kind: BodyKind): Record<string, unknown> { return bodies[kind](value, 'input') as Record<string, unknown>; }
+
+const creatorSearchStatus=enumeration('queued','running','stopping','stopped','completed','partial','failed');
+const creatorSearchShape=record({id:identifier,activity_id:identifier,plan_id:identifier,query_id:nullable(identifier),evaluation_id:nullable(identifier),parent_search_id:nullable(identifier),status:creatorSearchStatus,stage:enumeration('planning','discovery','profiles','emails','screening','deep_match','ranking','complete'),counts:record(Object.fromEntries(['discovered','profile_ready','profile_reused','profile_failed','email_available','email_missing','email_failed','evaluated','matched'].map(key=>[key,count(600)]))),stop_requested:boolean,retryable:boolean,outcome_unknown:boolean,error_code:nullable(string(255)),created_at:time,updated_at:time});
+export function decodeCreatorSearch(v:unknown,id?:string,activityId?:string):CreatorSearch{const r=creatorSearchShape(v,'response') as CreatorSearch;if(id)sameID(r.id,id);if(activityId)sameID(r.activity_id,activityId);return r;}
+export function decodeCreatorSearchAccepted(v:unknown,id?:string):CreatorSearchAccepted{const r=record({search_id:identifier,status:creatorSearchStatus})(v,'response') as CreatorSearchAccepted;if(id)sameID(r.search_id,id);return r;}
+export function decodeCreatorSearchPerson(v:unknown):CreatorSearchPerson{return record({candidate_id:identifier,creator_id:identifier,platform,profile_status:enumeration('pending','running','ready','reused','failed'),email_status:enumeration('pending','running','available','missing','failed'),analysis_job_id:nullable(identifier),profile_error_code:nullable(string(255)),email_error_code:nullable(string(255))})(v,'response') as CreatorSearchPerson;}
 
 const providerShape = record({ platform, query: string(512, 1) }, {
   search_mode: enumeration('video', 'channel'), region_hint: nullable(pattern(/^[A-Z]{2}$/, 2)),

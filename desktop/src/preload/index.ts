@@ -57,6 +57,13 @@ const bridge: DesktopBridge = {
     create:input=>ipcRenderer.invoke('saved-sets:create',input),
   },
   match: {
+    creatorSearches:input=>ipcRenderer.invoke('match:creator-searches',input),
+    createCreatorSearch:input=>ipcRenderer.invoke('match:create-creator-search',input),
+    creatorSearch:input=>ipcRenderer.invoke('match:creator-search',input),
+    creatorSearchPeople:input=>ipcRenderer.invoke('match:creator-search-people',input),
+    stopCreatorSearch:input=>ipcRenderer.invoke('match:stop-creator-search',input),
+    retryCreatorSearch:input=>ipcRenderer.invoke('match:retry-creator-search',input),
+    appendCreatorSearch:input=>ipcRenderer.invoke('match:append-creator-search',input),
     activities:input=>ipcRenderer.invoke('match:activities',input),
     createActivity:input=>ipcRenderer.invoke('match:create-activity',input),
     updateBrief:input=>ipcRenderer.invoke('match:update-brief',input),

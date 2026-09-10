@@ -14,6 +14,7 @@ const stop = route(`${discovery}/queries`, '/stop'), resume = route(`${discovery
 const evaluations = route(`${discovery}/queries`, '/evaluations'), evaluation = route(`${discovery}/evaluations`);
 const evaluationResults = route(`${discovery}/evaluations`, '/results'), retryEvaluation = route(`${discovery}/evaluations`, '/retry');
 const LIMIT = 8 * 1024 * 1024;
+const creatorSearches=route(activities,'/creator-searches'),creatorSearch=route('/api/v2/creator-searches'),searchPeople=route('/api/v2/creator-searches','/creators'),searchStop=route('/api/v2/creator-searches','/stop'),searchRetry=route('/api/v2/creator-searches','/retry'),searchAppend=route('/api/v2/creator-searches','/append');
 export function matchOutcomeUnknown(): PublicFailure {
   return new PublicFailure('save_outcome_unknown', 'The Match request may have completed. Check its records or explicitly retry the same request and key; do not start a duplicate operation.', false);
 }
@@ -46,8 +47,8 @@ export function validateMatchRequest(input: MatchRequest): MatchRequest {
   const raw = object(input, 'input'); const { method, path } = raw; if (typeof path !== 'string') fail('input');
   if (method === 'GET') {
     keys(raw, ['method', 'path', 'query'], 'input');
-    const max = path === activities || candidates.test(path) ? 100 : plans.test(path) || evaluations.test(path) || evaluationResults.test(path) ? 200 : 0;
-    if (!max && !activity.test(path) && !plan.test(path) && !query.test(path) && !evaluation.test(path)) fail('input');
+    const max = path === activities || candidates.test(path) || creatorSearches.test(path) || searchPeople.test(path) ? 100 : plans.test(path) || evaluations.test(path) || evaluationResults.test(path) ? 200 : 0;
+    if (!max && !activity.test(path) && !plan.test(path) && !query.test(path) && !evaluation.test(path) && !creatorSearch.test(path)) fail('input');
     return { method, path, ...(Object.hasOwn(raw, 'query') ? { query: candidates.test(path) ? exactCandidateQueryOptions(raw.query) : pagination(raw.query, max) } : {}) };
   }
   if(method==='PATCH'){
@@ -61,6 +62,9 @@ export function validateMatchRequest(input: MatchRequest): MatchRequest {
   if (bodyless) return { method, path, idempotencyKey: raw.idempotencyKey };
   let kind: BodyKind;
   if (path === activities) kind = 'activityCreate';
+  else if(creatorSearches.test(path))kind='creatorSearchCreate';
+  else if(searchStop.test(path)||searchAppend.test(path))kind='empty';
+  else if(searchRetry.test(path))kind='creatorSearchRetry';
   else if (plans.test(path)) kind = 'planCreate';
   else if (resume.test(path)) kind = 'continueDiscovery';
   else if (evaluations.test(path)) kind = 'evaluationCreate';
@@ -82,6 +86,10 @@ async function boundedJSON(response: Response, limit = LIMIT): Promise<unknown> 
   try { return JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { fail('response'); }
 }
 const safeErrors: Record<string, string> = {
+  search_running:'This creator search is still running. Stop it or wait before starting another operation.',
+  search_not_retryable:'Refresh this search to check which unfinished work can be retried.',
+  search_outcome_unknown:'Review the unknown provider or model outcome and explicitly acknowledge possible repeated charges.',
+  search_not_found:'This creator search is no longer available.',
   discovery_not_found: 'This Activity, plan, or discovery query is no longer available.',
   evaluation_not_found: 'This evaluation is no longer available.',
   game_not_found: 'The chosen game is no longer available. Choose a current game.',

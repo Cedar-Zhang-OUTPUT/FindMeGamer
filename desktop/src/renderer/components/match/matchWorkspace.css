@@ -94,3 +94,22 @@
 .match-collection-actions > span { color:var(--muted); }
 .campaign-brief{margin:8px 0 18px;padding:14px 0;border-bottom:1px solid var(--line)}.campaign-brief label{display:block;margin-bottom:8px;font-weight:650}.campaign-brief textarea,.match-activity-name textarea{width:100%;resize:vertical;min-height:84px}.campaign-brief-summary{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:8px;max-width:80ch}.campaign-brief .muted{margin:10px 0;font-size:.8125rem}.campaign-brief dd{white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 14px}
 @media(max-width:760px) { .match-activity-row { gap: 12px; padding: 16px; }.match-activity-row time { max-width: 100px; }.match-chosen-game { flex-wrap: wrap; }.match-context dl { grid-template-columns: minmax(0,1fr); }.match-history { align-items: flex-start; }.match-history label { flex-direction: column; align-items: flex-start; }.match-evaluate-action { flex-wrap: wrap; }.match-recovery-records > div { flex-wrap: wrap; } }
+.match-activity > .page-heading { margin-block: 12px 16px; min-height: 0; }
+.match-activity > .page-heading h1 { font-size: 1.5rem; margin: 0; }
+.match-task-context,.match-task-history { padding: 10px 0; border-bottom: 1px solid var(--line); margin-bottom: 12px; font-size: .8125rem; }
+.match-task-context > summary,.match-task-history > summary { cursor: pointer; color: var(--muted); }
+.match-task-context .campaign-brief { margin: 8px 0; }
+.match-context-snapshot { max-width: 80ch; margin: 12px 0; color: var(--muted); }
+.match-task-history .match-support-tools { grid-template-columns: repeat(4,minmax(0,1fr)); border: 0; margin: 10px 0 0; }
+.creator-search-progress { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 96px; }
+.creator-search-progress h2 { margin: 0 0 8px; font-size: 1.375rem; }
+.creator-search-progress p { margin: 0; color: var(--muted); font-size: .875rem; }
+.creator-search-details { padding: 10px 0; border: 0; background: transparent; margin: 4px 0 18px; }
+.creator-search-retry { display: grid; gap: 12px; justify-items: start; }
+.creator-search-card > header { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; }
+.creator-search-person { display: flex; gap: 12px; align-items: center; margin-right: auto; }
+.creator-search-person h3 { margin: 4px 0 0; }
+.creator-search-works { margin: 12px 0; font-size: .875rem; }
+.creator-search-works ul { list-style: none; padding: 0; margin: 8px 0; }
+.creator-search-works li { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; }
+@media(max-width:760px) { .match-task-history .match-support-tools { grid-template-columns: 1fr; }.creator-search-progress { align-items: flex-start; padding-top: 12px; flex-wrap: wrap; }.creator-search-card > header { gap: 10px; } }

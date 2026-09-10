@@ -5,7 +5,7 @@ import {queryIsRunning} from './useMatchSession';
 import {canContinueWithCollection,collectionLabel,eligiblePlatforms} from './collectionPolicy';
 import type {useCollectionPolicy} from './useCollectionPolicy';
 
-export function CollectionSources({selected,query,policy,onSettings}:{selected:readonly string[];query?:QueryView|null;policy:ReturnType<typeof useCollectionPolicy>;onSettings?:()=>void}){
+export function CollectionSources({selected,query,policy,onSettings,showError=true}:{selected:readonly string[];query?:QueryView|null;policy:ReturnType<typeof useCollectionPolicy>;onSettings?:()=>void;showError?:boolean}){
   const running=queryIsRunning(query??null);
   const unavailable=policy.phase==='ready'&&(!query?eligiblePlatforms(selected,policy.data).length===0:
     query.status!=='completed'&&!running&&(eligiblePlatforms(selected,policy.data).length===0||(canContinueQuery(query)&&!canContinueWithCollection(query,policy.data))));
@@ -26,6 +26,6 @@ export function CollectionSources({selected,query,policy,onSettings}:{selected:r
       </div>;
     })}</div>
     <div className="match-collection-actions">{unavailable&&<strong role="status">No available sources</strong>}{policy.phase==='failed'&&<span>Showing last known settings</span>}{onSettings&&<button className="text-button" onClick={onSettings}>Collection settings</button>}</div>
-    {policy.error&&<ErrorNotice error={policy.error} onRetry={policy.refresh}/>}
+    {showError&&policy.error&&<ErrorNotice error={policy.error} onRetry={policy.refresh}/>}
   </section>;
 }

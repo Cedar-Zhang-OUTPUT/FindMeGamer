@@ -155,6 +155,13 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('saved-sets:results',input=>savedSets.results(input));
   handle('saved-sets:create',input=>savedSets.create(input));
   handle('match:activities',input=>match.activities(input));
+  handle('match:creator-searches',input=>match.creatorSearches(input));
+  handle('match:create-creator-search',input=>match.createCreatorSearch(input));
+  handle('match:creator-search',input=>match.creatorSearch(input));
+  handle('match:creator-search-people',input=>match.creatorSearchPeople(input));
+  handle('match:stop-creator-search',input=>match.stopCreatorSearch(input));
+  handle('match:retry-creator-search',input=>match.retryCreatorSearch(input));
+  handle('match:append-creator-search',input=>match.appendCreatorSearch(input));
   handle('match:create-activity',input=>match.createActivity(input));
   handle('match:update-brief',input=>match.updateBrief(input));
   handle('match:activity',input=>match.activity(input));
