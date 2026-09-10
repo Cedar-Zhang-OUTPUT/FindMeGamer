@@ -153,6 +153,35 @@ def fixture_executor(calls, *, fail_kind=None, fail_candidate=None, select_none=
     return execute
 
 
+def test_failed_deep_records_safe_diagnostic_but_preserves_public_contract(
+    auth_client, session, monkeypatch, caplog
+):
+    from app.integrations.errors import InvalidModelOutput
+    from app.workers.evaluation_tasks import run_evaluation, logger
+
+    # Alembic fileConfig in preceding migration tests disables existing loggers.
+    monkeypatch.setattr(logger, "disabled", False)
+
+    identity = start(auth_client, seed_query(auth_client, session, monkeypatch))
+    normal = fixture_executor([])
+
+    def execute(kind, payload):
+        if kind == "deep_match":
+            raise InvalidModelOutput("evaluation_evidence_invalid")
+        return normal(kind, payload)
+
+    run_evaluation(identity, session_factory=sessions_for(session), execute_model=execute)
+    events = [json.loads(record.getMessage()) for record in caplog.records
+              if record.name == "app.workers.evaluation_tasks"]
+    assert len(events) == 2
+    assert all(event["reason"] == "evaluation_evidence_invalid" for event in events)
+    assert all(event["run_id"] == identity for event in events)
+    assert len({event["step_id"] for event in events}) == 2
+    assert all(event["error_code"] == "evaluation_model_output_invalid" for event in events)
+    assert read(auth_client, identity)["status"] == "failed"
+    assert all(row["match_brief"] is None for row in results(auth_client, identity))
+
+
 def test_progressive_http_model_worker_db_and_idempotent_delivery(
     auth_client, session, monkeypatch
 ):

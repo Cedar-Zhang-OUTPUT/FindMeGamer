@@ -1,5 +1,7 @@
 """Bounded progressive evaluation with child checkpoints and explicit recovery."""
 
+import json
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 from uuid import UUID, uuid4
@@ -28,6 +30,38 @@ from app.workers.celery_app import celery_app
 
 CONCURRENCY = 4
 LEASE_SECONDS = 300
+logger = logging.getLogger(__name__)
+_SAFE_FAILURE_REASONS = frozenset(
+    {
+        "evaluation_screen_ids_invalid",
+        "evaluation_candidate_id_invalid",
+        "evaluation_work_ids_invalid",
+        "evaluation_evidence_invalid",
+        "evaluation_narrative_invalid",
+        "evaluation_rank_ids_invalid",
+        "deepseek_model_output_invalid",
+        "deepseek_response_invalid",
+    }
+)
+
+
+def _log_failure(run_id, step_id, kind, failure):
+    # Fixed codes only: exception text and model responses may contain contacts
+    # or credentials. Keep the existing public API error contract unchanged.
+    reason = getattr(failure, "code", None)
+    logger.warning(
+        "%s",
+        json.dumps(
+            {
+                "event": "evaluation_step_failed",
+                "run_id": str(run_id),
+                "step_id": str(step_id),
+                "kind": kind,
+                "error_code": error_code(failure),
+                "reason": reason if reason in _SAFE_FAILURE_REASONS else "unclassified",
+            }
+        ),
+    )
 
 
 class EvaluationConfigurationMissing(Exception):
@@ -166,6 +200,7 @@ def _publish(session, run_id, claim, output, failure):
         return
     if failure:
         step.status, step.error_code = "failed", error_code(failure)
+        _log_failure(run_id, step_id, kind, failure)
     else:
         data = output.model_dump(mode="json")
         members = [i for i in items_for(session, run_id) if str(i.id) in step.item_ids]
