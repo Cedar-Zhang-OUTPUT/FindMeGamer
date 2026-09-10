@@ -111,7 +111,7 @@ test('Missing sender remains a qualification-only gate with local repair navigat
   await review.getByRole('button',{name:'Email settings',exact:true}).click();await expect(page.getByRole('tab',{name:/^Email/})).toHaveAttribute('aria-selected','true');await shot('email-settings');
   await page.getByRole('button',{name:'Return to Match',exact:true}).click();await expect(review).toBeVisible();
   await review.getByRole('button',{name:'Use current template',exact:true}).click();
-  await page.getByRole('alertdialog').getByRole('button',{name:'Discard changes',exact:true}).click();
+  await page.getByRole('dialog',{name:'Unsaved Match changes',exact:true}).getByRole('button',{name:'Discard changes',exact:true}).click();
   const template=page.getByRole('region',{name:'Email template',exact:true});await expect(template).toBeVisible();
   const preview=await template.getByTitle('Template preview').getAttribute('srcdoc');
   safe(preview?.includes(game.name!)&&!preview.includes('Synthetic Demo Sender')&&!preview.includes('Toki'),'neutral_preview');

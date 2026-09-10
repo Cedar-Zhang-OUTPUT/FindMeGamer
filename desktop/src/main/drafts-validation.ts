@@ -74,7 +74,24 @@ function content(v: unknown, extra: string[]): Record<string, unknown> {
 export function decodeTemplate(v: unknown, id?: string, gameId?: string): DTO.TemplateVersion { const r = content(v, ['id', 'game_id', 'created_at']); const actual = identifier(r.id, 'response'), game = identifier(r.game_id, 'response'); if ((id && !same(id, actual)) || (gameId && !same(gameId, game))) fail('response'); if((r.source_metadata as DTO.TemplateSource).kind==='game_bound'&&!same((r.source_metadata as DTO.TemplateSource).game_id!,game))fail('response'); stamp(r.created_at); return r as unknown as DTO.TemplateVersion; }
 export function decodeCatalog(v: unknown, gameId: string): DTO.TemplateCatalog { const r = exact(v, ['items', 'builtin'], 'response'); const items = list(r.items, 'response', 10_000, v => decodeTemplate(v, undefined, gameId)); unique(items.map(v => v.id), 'response'); const builtin = content(r.builtin, ['key', 'requires_explicit_registration']); const source=builtin.source_metadata as DTO.TemplateSource; if(builtin.requires_explicit_registration!==true)fail('response');if(source.kind==='game_bound'){if(builtin.key!=='game-outreach-v1'||!same(source.game_id!,gameId))fail('response');}else if(builtin.key!=='liminal-revision-69'||source.kind!=='canonical')fail('response'); return { items, builtin: builtin as unknown as DTO.BuiltinTemplate }; }
 export function jsonObject(v: unknown): JsonObject { let nodes = 0; const seen = new WeakSet<object>(); function check(v: unknown, depth: number): void { if (++nodes > 20_000 || depth > 20) fail('response'); if (v === null || typeof v === 'boolean') return; if (typeof v === 'string') { text(v, 'response', 1_000_000); return; } if (typeof v === 'number') { if (!Number.isFinite(v)) fail('response'); return; } if (typeof v !== 'object' || seen.has(v)) fail('response'); seen.add(v); if (Array.isArray(v)) { if (v.length > 10_000) fail('response'); v.forEach(i => check(i, depth + 1)); } else for (const [k, item] of Object.entries(object(v, 'response'))) { if (['__proto__', 'constructor', 'prototype'].includes(k)) fail('response'); text(k, 'response', 512); check(item, depth + 1); } seen.delete(v); } object(v, 'response'); check(v, 0); return v as JsonObject; }
-function work(v: unknown) { const r = exact(v, ['id', 'source_url', 'content_title', 'work_name', 'evidence_excerpt', 'verification_notes', 'timestamp_seconds'], 'response'); if (r.id !== null) identifier(r.id, 'response'); for (const k of ['source_url', 'content_title', 'work_name', 'evidence_excerpt', 'verification_notes']) nullable(r[k], 'response'); if (r.timestamp_seconds !== null && (typeof r.timestamp_seconds !== 'number' || !Number.isFinite(r.timestamp_seconds) || r.timestamp_seconds < 0)) fail('response'); return r; }
+function work(v: unknown) {
+  const base = ['id', 'source_url', 'content_title', 'work_name', 'evidence_excerpt', 'verification_notes', 'timestamp_seconds'];
+  const metadata = ['game_id', 'relation', 'evidence_status', 'evidence_tier'];
+  const raw = object(v, 'response');
+  // Immutable historical snapshots have seven fields; new snapshots carry all metadata.
+  const extended = metadata.some(key => Object.hasOwn(raw, key));
+  const r = exact(raw, extended ? [...base, ...metadata] : base, 'response');
+  if (r.id !== null) identifier(r.id, 'response');
+  for (const k of ['source_url', 'content_title', 'work_name', 'evidence_excerpt', 'verification_notes']) nullable(r[k], 'response');
+  if (r.timestamp_seconds !== null && (typeof r.timestamp_seconds !== 'number' || !Number.isFinite(r.timestamp_seconds) || r.timestamp_seconds < 0)) fail('response');
+  if (extended) {
+    if (r.game_id !== null) identifier(r.game_id, 'response');
+    if (r.relation !== null && !['current_game', 'reference_game', 'related_content'].includes(r.relation as string)) fail('response');
+    if (r.evidence_status !== null && !['recorded_evidence', 'metadata_only'].includes(r.evidence_status as string)) fail('response');
+    if (!['current_game', 'reference_game', 'related_content', 'unverified'].includes(r.evidence_tier as string)) fail('response');
+  }
+  return r;
+}
 export function sources(v: unknown) { const r = exact(v, SLOT_KEYS, 'response'), first = exact(r.firstName, ['source_url', 'confirmed'], 'response'), channel = exact(r.channelName, ['source_url'], 'response'); nullable(first.source_url, 'response', 2048); bool(first.confirmed, 'response'); nullable(channel.source_url, 'response', 2048); work(r.reference); work(r.observation); return r; }
 function recordedGame(v: unknown) {
   const r = object(v, 'response'); keys(r, [...GAME_FIELDS, 'id', 'revision', 'favorite', 'reference_works', 'source_fields', 'manual_overrides', 'overridden_fields', 'source_identity', 'last_analyzed_at', 'next_analysis_at', 'created_at', 'updated_at'], 'response');

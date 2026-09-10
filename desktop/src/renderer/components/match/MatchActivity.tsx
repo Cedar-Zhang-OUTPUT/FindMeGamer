@@ -69,7 +69,11 @@ export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavi
   }
   function execute(command:MatchCommand){if(command.kind==='continueDiscovery')setKnownBatches(query?.batches.map(batch=>batch.id)??[]);void operation.execute(command).then(complete);}
   function startDiscovery(){const conditions=draft??defaultConditions();if(policy.phase!=='ready'||!eligiblePlatforms(conditions.platforms,policy.data).length||Object.keys(validateConditions(conditions)).length)return;execute({kind:'createPlan',activityId,data:{...conditions,mode:'discover'}});}
-  function useCurrentTemplate(){guard.request(()=>{sending.backToDrafts();drafts.discardEdits();if(drafts.batch)void drafts.begin(drafts.batch);});}
+  const templateRepair=useRef(()=>{});
+  templateRepair.current=()=>{sending.backToDrafts();drafts.discardEdits();if(drafts.batch)void drafts.begin(drafts.batch);};
+  // A guard may remain open while the return-from-settings read finishes.
+  // Confirm against current controllers, not the busy render that opened it.
+  function useCurrentTemplate(){guard.request(()=>templateRepair.current());}
   function refresh(){session.refresh();policy.refresh();void outreach.refresh();void drafts.refresh();sending.invalidate();if(sending.mode.kind==='deliveries')void sending.refreshBatch();if(workspacePanel==='invitations'){void collaboration.refresh();void collaboration.checkCurrent();}}
   const locked=briefGuard.dirty||briefGuard.busy||briefGuard.locked||operation.busy||operation.locked||savedOperation.busy||savedOperation.locked||outreach.busy||outreach.locked||drafts.busy||drafts.locked||sending.busy||sending.locked||collaboration.busy||collaboration.locked;
   function savedList(metadata:SavedSetView|null){if(!metadata)return;setListDraft(null);setCheckingSet(false);setRecoveredSet(null);setOpenedSetId(metadata.id);setSetsRefresh(value=>value+1);}
