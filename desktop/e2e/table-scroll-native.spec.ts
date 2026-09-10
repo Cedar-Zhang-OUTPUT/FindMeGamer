@@ -116,6 +116,8 @@ for(const kind of ['creators','games','matches','invitations'] as const) test(`5
    if(width===760){await page.keyboard.press('ArrowRight');await expect.poll(()=>region.evaluate(el=>el.scrollLeft)).toBeGreaterThan(0);}
    for(let i=0;i<30;i++){await page.keyboard.press('PageDown');if(await main.evaluate(el=>el.scrollTop+el.clientHeight>=el.scrollHeight-2))break;}
    await expect.poll(lastVerticallyVisible).toBe(true);if(kind!=='matches')await expect(footer).toBeInViewport({ratio:1});
+   await page.keyboard.press('Home');await expect.poll(()=>main.evaluate(el=>el.scrollTop)).toBe(0);
+   await page.keyboard.press('End');await expect.poll(lastVerticallyVisible).toBe(true);
    measurements.push({width,height:680,rows:50,wheelStart:before,wheelBottom:bottom,keyboardBottom:await main.evaluate(el=>el.scrollTop),horizontal:await region.evaluate(el=>el.scrollLeft)});
   }
   const writes=await app.evaluate(()=>(globalThis as any).__scrollWrites);expect(writes).toEqual([]);expect(pageErrors).toBe(0);
