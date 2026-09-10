@@ -39,3 +39,13 @@ Targeted tests cover gateway parsing/names/failure, dedup/manual preservation/de
 Synthetic actual API DTOs are exported by `test_steam_reference_import.py` and `test_steam_reference_compat.py` when `FMG_STEAM_DTO_EXPORT_DIR` is set. No production edits or real email are needed for these checks.
 
 Deployment requires the coordinator's window: normal existing backup/build/restart workflow, no schema upgrade beyond current 0021. Old clients keep working without the feature header; the new desktop package enables provenance/status UI. Do not backfill the user's current LIMINAL record or start a new import/analysis without explicit direction.
+
+## Deployment evidence — 2026-09-10
+
+The coordinator granted the maintenance window after exact internal.5 package and compatibility checks. Backend commit `97f3c19d2694c0a158d461791e4616a153f4a413` was deployed using the existing deployment script; migration remains `20260909_0021`. The prior `684a120` API/Worker/Beat images are retained as `rollback-684a120`, and Git ref `rollback-steam-684a120` retains the previous code. Root-only configuration archive: `/var/backups/find-me-gamer/20260910-steam-references/config.tgz`.
+
+No active work was present before maintenance. All six services recovered healthy. All 42 database tables had identical counts and full-record SHA256 fingerprints before and after deployment, including the user's new Game `c14b93f0-bbae-4709-a327-818f22bc5001`, 22 Creators and four encrypted service configurations.
+
+Pre-maintenance database backup (including the user's new Game and X configuration): `s3://zhangyue-data-493392056671-us-west-2/backups/20260910T044457Z-97f3c19d2694-pre-migration.dump`. The dump and checksum were downloaded to the root-only server backup directory; SHA256 validation passed. No full restore drill was repeated. Subsequent colleague writes must not be overwritten by a blind full restore.
+
+External authenticated HTTPS GET checks passed: readiness/session, existing Game without the header (legacy shape), the same Game with opt-in (not_fetched/null source/null fetched_at), and 22 visible Creators. Existing references remain empty; no automatic source fetch, reanalysis, backfill, new activity, SMTP or AI call was initiated. Real recommendation content verification occurred earlier against Steam without Profile persistence.
