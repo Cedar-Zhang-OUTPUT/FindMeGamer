@@ -1,4 +1,5 @@
-import {test,expect,_electron as electron,type ElectronApplication} from '@playwright/test';
+import {launchElectronTarget,electronTargetEvidence} from './electron-target';
+import {test,expect,type ElectronApplication} from '@playwright/test';
 import {mkdtemp,readFile,writeFile} from 'node:fs/promises';
 import {isolatedPreferences} from './preferences';
 import {compositionFixture,draftFixture,draftIds,templateVersion} from '../tests/drafts-fixtures';
@@ -13,7 +14,7 @@ test('native partial results and needs-repair mail stay visible without writes',
  const env=Object.fromEntries(Object.entries(process.env).filter(([key,value])=>value!==undefined&&!/^(https?_proxy|all_proxy|no_proxy|ELECTRON_RUN_AS_NODE)$/i.test(key))) as Record<string,string>;
  let app:ElectronApplication|undefined;
  try{
-  app=await electron.launch({args:['.',`--user-data-dir=${userData}`],cwd:process.cwd(),env,chromiumSandbox:true});const page=await app.firstWindow();page.setDefaultTimeout(12000);
+  app=await launchElectronTarget(userData,env);const target=await electronTargetEvidence(app);const page=await app.firstWindow();page.setDefaultTimeout(12000);
   await app.evaluate(({session,BrowserWindow},origin)=>{
    BrowserWindow.getAllWindows()[0].setSize(1440,1000);
    (globalThis as any).__repair={fail:'candidates',writes:[],reads:[]};
@@ -69,6 +70,6 @@ test('native partial results and needs-repair mail stay visible without writes',
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:info.outputPath('needs-repair-narrow.png')});
   await page.getByRole('button',{name:'Edit personalization',exact:true}).click();await expect(page.getByRole('button',{name:'Save changes',exact:true})).toBeDisabled();
   const evidence=await app.evaluate(()=>(globalThis as any).__repair);expect(evidence.writes).toEqual([]);expect(evidence.reads.filter((path:string)=>path==='drafts:template')).toHaveLength(1);expect(pageErrors).toBe(0);
-  await writeFile(info.outputPath('verification.json'),JSON.stringify({status:'passed',native:true,packaged:false,syntheticDraftIPC:true,realProviders:false,userData,evidence,pageErrors},null,2));
+  await writeFile(info.outputPath('verification.json'),JSON.stringify({status:'passed',native:true,packaged:target.packaged,target,syntheticDraftIPC:true,realProviders:false,userData,evidence,pageErrors},null,2));
  }finally{await app?.close();}
 });

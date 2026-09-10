@@ -1,4 +1,5 @@
-import {test,expect,_electron as electron,type ElectronApplication} from '@playwright/test';
+import {launchElectronTarget,electronTargetEvidence} from './electron-target';
+import {test,expect,type ElectronApplication} from '@playwright/test';
 import {mkdtemp,readFile,writeFile} from 'node:fs/promises';
 import {isolatedPreferences} from './preferences';
 test.use({trace:'off',screenshot:'off',video:'off'});
@@ -8,7 +9,7 @@ test('PRD P4 P9 P12 tables preserve direct actions in native Electron',async({},
  if(config.base_url!==origin)throw Error('fixture_origin');const userData=await mkdtemp('/tmp/fmg-table-audit-');await isolatedPreferences(userData);
  const env=Object.fromEntries(Object.entries(process.env).filter(([key,value])=>value!==undefined&&!/^(https?_proxy|all_proxy|no_proxy|ELECTRON_RUN_AS_NODE)$/i.test(key))) as Record<string,string>;let app:ElectronApplication|undefined;
  try{
-  app=await electron.launch({args:['.',`--user-data-dir=${userData}`],cwd:process.cwd(),env,chromiumSandbox:true});const page=await app.firstWindow();page.setDefaultTimeout(12000);
+  app=await launchElectronTarget(userData,env);const target=await electronTargetEvidence(app);const page=await app.firstWindow();page.setDefaultTimeout(12000);
   await app.evaluate(({session,BrowserWindow},origin)=>{BrowserWindow.getAllWindows()[0].setSize(1440,1000);(globalThis as any).__tableWrites=[];for(const partition of ['workspace-network','renderer','updates-network'])session.fromPartition(partition).webRequest.onBeforeRequest((details,callback)=>{
    if(!/^https?:/.test(details.url)){callback({cancel:false});return;}const write=details.method!=='GET';if(write)(globalThis as any).__tableWrites.push(details.method+' '+new URL(details.url).pathname);callback({cancel:write||new URL(details.url).origin!==origin});
   });},origin);
@@ -31,7 +32,7 @@ test('PRD P4 P9 P12 tables preserve direct actions in native Electron',async({},
   const update=invitations.getByRole('button',{name:/^Update relationship/}).first();await update.focus();await update.press('Enter');const editor=page.getByRole('region',{name:'Current invitation'});await expect(editor).toBeFocused();await expect(editor.getByRole('button',{name:'Edit progress',exact:true})).toBeEnabled();
   await editor.getByRole('button',{name:'Edit progress',exact:true}).click();const notes=editor.getByRole('textbox',{name:'Notes',exact:true});const original=await notes.inputValue();await notes.fill(original+' Local unsaved table audit');await expect(page.getByRole('button',{name:'Close relationship'})).toBeDisabled();
   await editor.getByRole('button',{name:'Open creator',exact:true}).click();await page.getByRole('button',{name:'Back to activity',exact:true}).click();await expect(notes).toHaveValue(original+' Local unsaved table audit');await expect(notes).toBeEnabled();await editor.getByRole('button',{name:'Cancel',exact:true}).click();await page.getByRole('button',{name:'Close relationship'}).click();await expect(update).toBeFocused();
-  const writes=await app.evaluate(()=>(globalThis as any).__tableWrites);expect(writes).toEqual([]);expect(errors).toBe(0);await writeFile(info.outputPath('verification.json'),JSON.stringify({status:'passed',native:true,packaged:false,userData,shots,writes,pageErrors:errors},null,2));
+  const writes=await app.evaluate(()=>(globalThis as any).__tableWrites);expect(writes).toEqual([]);expect(errors).toBe(0);await writeFile(info.outputPath('verification.json'),JSON.stringify({status:'passed',native:true,packaged:target.packaged,target,userData,shots,writes,pageErrors:errors},null,2));
  }catch(error){if(app){await app.firstWindow().then(page=>page.screenshot({path:info.outputPath('failure.png')})).catch(()=>{});}throw error;
  }finally{if(app){await app.evaluate(({BrowserWindow})=>{for(const window of BrowserWindow.getAllWindows())window.destroy();}).catch(()=>{});await app.close();}}
 });

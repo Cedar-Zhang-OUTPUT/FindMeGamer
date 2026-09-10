@@ -1,4 +1,5 @@
-import {test,expect,_electron as electron,type ElectronApplication} from '@playwright/test';
+import {launchElectronTarget,electronTargetEvidence} from './electron-target';
+import {test,expect,type ElectronApplication} from '@playwright/test';
 import {mkdtemp,readFile,writeFile} from 'node:fs/promises';
 import {isolatedPreferences} from './preferences';
 test.use({trace:'off',video:'off',screenshot:'off'});
@@ -8,7 +9,7 @@ test('native rapid local toggles survive reload and Prepare replays only the unk
  if(config.base_url!==origin)throw Error('fixture_origin');const userData=await mkdtemp('/tmp/fmg-local-selection-native-');await isolatedPreferences(userData);
  const env=Object.fromEntries(Object.entries(process.env).filter(([key,value])=>value!==undefined&&!/^(https?_proxy|all_proxy|no_proxy|ELECTRON_RUN_AS_NODE)$/i.test(key))) as Record<string,string>;let app:ElectronApplication|undefined;
  try{
-  app=await electron.launch({args:['.',`--user-data-dir=${userData}`],cwd:process.cwd(),env,chromiumSandbox:true});const page=await app.firstWindow();page.setDefaultTimeout(10000);
+  app=await launchElectronTarget(userData,env);const target=await electronTargetEvidence(app);const page=await app.firstWindow();page.setDefaultTimeout(10000);
   await app.evaluate(({session,BrowserWindow},origin)=>{BrowserWindow.getAllWindows()[0].setSize(1440,1000);(globalThis as any).__localHTTPWrites=[];for(const partition of ['workspace-network','renderer','updates-network'])session.fromPartition(partition).webRequest.onBeforeRequest((details,callback)=>{if(!/^https?:/.test(details.url)){callback({cancel:false});return;}const write=details.method!=='GET';if(write)(globalThis as any).__localHTTPWrites.push(details.method+' '+new URL(details.url).pathname);callback({cancel:write||new URL(details.url).origin!==origin});});},origin);
   await page.emulateMedia({reducedMotion:'reduce'});let errors=0;page.on('pageerror',()=>errors++);
   await page.getByRole('button',{name:'Open Settings',exact:true}).click();await page.getByLabel('Service URL').fill(origin);try{await page.getByLabel('Workspace key',{exact:true}).fill(config.workspace_key);}catch{throw Error('credential_entry');}
@@ -39,6 +40,6 @@ test('native rapid local toggles survive reload and Prepare replays only the unk
   await page.screenshot({path:info.outputPath('unknown-freeze-preserved.png')});await page.getByRole('button',{name:'Retry original preparation',exact:true}).click();await expect(page.getByRole('button',{name:'Retry original preparation',exact:true})).toHaveCount(0);
   const evidence=await app.evaluate(()=>{const g=globalThis as any;return {calls:g.__localCalls,bulk:g.__bulkInput,freezeAttempts:g.__freezeAttempts,httpWrites:g.__localHTTPWrites};});
   expect(evidence.calls.filter((v:string)=>v==='bulk')).toHaveLength(1);expect(evidence.freezeAttempts).toHaveLength(2);expect(evidence.freezeAttempts[0]).toEqual(evidence.freezeAttempts[1]);expect(evidence.bulk.data.cancel_selections).toHaveLength(1);expect(evidence.httpWrites).toEqual([]);expect(errors).toBe(0);
-  await writeFile(info.outputPath('verification.json'),JSON.stringify({status:'passed',native:true,packaged:false,syntheticPreparationIPC:true,perClickHTTPWrites:0,perClickSelectionReads:0,toggleCount:31,toggleDurationsMs:timings,reloadedLocalDraft:true,bulkCalls:1,identicalFreezeReplays:true,pageErrors:errors,userData,evidence},null,2));
+  await writeFile(info.outputPath('verification.json'),JSON.stringify({status:'passed',native:true,packaged:target.packaged,target,syntheticPreparationIPC:true,perClickHTTPWrites:0,perClickSelectionReads:0,toggleCount:31,toggleDurationsMs:timings,reloadedLocalDraft:true,bulkCalls:1,identicalFreezeReplays:true,pageErrors:errors,userData,evidence},null,2));
  }catch(error){if(app)await app.firstWindow().then(page=>page.screenshot({path:info.outputPath('failure.png')})).catch(()=>{});throw error;}finally{if(app){await app.evaluate(({BrowserWindow})=>{for(const window of BrowserWindow.getAllWindows())window.destroy();}).catch(()=>{});await app.close();}}
 });

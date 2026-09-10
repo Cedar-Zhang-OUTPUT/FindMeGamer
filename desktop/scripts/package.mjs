@@ -14,7 +14,8 @@ const output = await mkdtemp(path.resolve('artifacts', `FindMeGamer-Electron-${m
 const paths = await packager({
   dir: '.', out: output, name: 'FindMeGamer', appBundleId: 'com.findmegamer.desktop',
   platform: 'darwin', arch: process.arch, electronVersion: '44.2.0',
-  appVersion: '0.2.0', buildVersion: '20008',
+  ...(process.env.FMG_ELECTRON_ZIP_DIR?{electronZipDir:path.resolve(process.env.FMG_ELECTRON_ZIP_DIR)}:{}),
+  appVersion: '0.2.0', buildVersion: '20009',
   // Packager rewrites package.json from appVersion; preserve full semver for
   // Electron's app.getVersion()/update checks while macOS keeps numeric metadata.
   beforeAsar: [async ({ buildPath }) => {
