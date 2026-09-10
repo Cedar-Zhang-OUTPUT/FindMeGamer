@@ -61,14 +61,19 @@ non-fixture HTTP and any writes outside owned activity creation/search creation
 and, for the second journey, its exact task's stop/retry routes. No evaluation or
 sending POST is allowed. Reports list only route paths, never credentials.
 
-Evidence is under `desktop/output/playwright/`:
+The workflow runs emitted evidence under the following per-run
+`desktop/output/playwright/` locations (Playwright replaces this directory on
+subsequent runs, including package first-launch verification):
 
 - `creator-search-native-auto-e3208-s-email-independent-matches/`
 - `creator-search-native-auto-3c12f-ated-HTTP-stops-and-retries/`
 
-Each contains `verification.json`, conditions/processing/complete/narrow PNGs;
-the stop/retry journey also contains `stopped.png`. Main-agent visual inspection
-covered completion, narrow layout and stopped state.
+Each run emitted `verification.json`, conditions/processing/complete/narrow PNGs;
+the stop/retry journey also emitted `stopped.png`. Main-agent visual inspection
+covered completion, narrow layout and stopped state, with results reported to the
+coordinator before packaging. These workflow output files were subsequently
+replaced by the package test; the recorded pass counts above remain the acceptance
+record. Package first-launch evidence is retained separately in its artifact root.
 
 ## Boundaries
 
