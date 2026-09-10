@@ -1,3 +1,4 @@
+import { STEAM_REFERENCES_OPT_IN } from './steam-reference-opt-in';
 import { randomUUID } from 'node:crypto';
 import type { SavedSetCreate } from '../shared/savedSets';
 import { exactCandidateQueryOptions } from './match-transport';
@@ -77,7 +78,7 @@ export async function authenticatedSavedSetRequest(fetcher: Fetcher, connection:
   try {
     const response = await fetcher(url.href, {
       method: request.method, ...(mutation ? { body: JSON.stringify(request.body) } : {}),
-      headers: { Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(),
+      headers: { ...STEAM_REFERENCES_OPT_IN, Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(),
         ...(mutation ? { 'Content-Type': 'application/json', 'Idempotency-Key': request.idempotencyKey } : {}) },
       redirect: 'error', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20_000),
     });

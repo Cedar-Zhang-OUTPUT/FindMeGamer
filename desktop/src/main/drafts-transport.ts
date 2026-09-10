@@ -1,3 +1,4 @@
+import { STEAM_REFERENCES_OPT_IN } from './steam-reference-opt-in';
 import { randomUUID } from 'node:crypto';
 import { normalizeServiceUrl } from './policies';
 import { PublicFailure, type Connection, type Fetcher } from './transport';
@@ -71,7 +72,7 @@ export async function authenticatedDraftsRequest(fetcher: Fetcher, connection: C
   try { url = new URL(request.path, normalizeServiceUrl(connection.serviceUrl)); } catch { throw new PublicFailure('request_invalid', 'Check the workspace service address.', false); }
   if (request.method === 'GET') for (const [k, v] of Object.entries(request.query ?? {})) url.searchParams.set(k, v);
   const mutation = request.method !== 'GET';
-  try { const response = await fetcher(url.href, { method: request.method, ...(mutation ? { body: JSON.stringify(request.body) } : {}), headers: { Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(), ...(mutation ? { 'Content-Type': 'application/json', ...(request.idempotencyKey ? { 'Idempotency-Key': request.idempotencyKey } : {}) } : {}) }, redirect: 'error', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20_000) });
+  try { const response = await fetcher(url.href, { method: request.method, ...(mutation ? { body: JSON.stringify(request.body) } : {}), headers: { ...STEAM_REFERENCES_OPT_IN, Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(), ...(mutation ? { 'Content-Type': 'application/json', ...(request.idempotencyKey ? { 'Idempotency-Key': request.idempotencyKey } : {}) } : {}) }, redirect: 'error', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw await httpFailure(response, mutation); try { return await boundedJSON(response); } catch (error) { throw mutation ? draftWriteUnknown() : error; }
   } catch (error) { if (error instanceof PublicFailure) throw error; if (mutation) throw draftWriteUnknown(); throw new PublicFailure('network_error', 'Could not reach the service. Check the connection and service address.', true); }
 }

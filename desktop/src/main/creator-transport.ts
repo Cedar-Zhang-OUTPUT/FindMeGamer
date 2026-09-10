@@ -1,3 +1,4 @@
+import { STEAM_REFERENCES_OPT_IN } from './steam-reference-opt-in';
 import { randomUUID } from 'node:crypto';
 import { normalizeServiceUrl } from './policies';
 import { PublicFailure, type Connection, type Fetcher } from './transport';
@@ -121,7 +122,7 @@ export async function authenticatedCreatorRequest(fetcher: Fetcher, connection: 
   try {
     const response = await fetcher(url.href, { method: request.method,
       ...('body' in request ? { body: JSON.stringify(request.body) } : {}),
-      headers: { Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(),
+      headers: { ...STEAM_REFERENCES_OPT_IN, Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(),
         ...(mutation ? { 'Content-Type': 'application/json' } : {}), ...(request.method === 'POST' ? { 'Idempotency-Key': request.idempotencyKey } : {}) },
       redirect: 'error', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw await httpFailure(response, mutation);

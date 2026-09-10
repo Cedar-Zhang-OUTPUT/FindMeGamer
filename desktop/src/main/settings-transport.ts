@@ -1,3 +1,4 @@
+import { STEAM_REFERENCES_OPT_IN } from './steam-reference-opt-in';
 import { randomUUID } from 'node:crypto';
 import { isIP } from 'node:net';
 import type { CollectionPlatform, ServiceName } from '../shared/settings';
@@ -102,7 +103,7 @@ export async function authenticatedSettingsRequest(fetcher: Fetcher, connection:
   const send = request.path === `${smtpPath}/test-email`;
   try {
     const response = await fetcher(url, { method: request.method, ...('body' in request ? { body: JSON.stringify(request.body) } : {}),
-      headers: { Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(), ...('body' in request ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { ...STEAM_REFERENCES_OPT_IN, Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(), ...('body' in request ? { 'Content-Type': 'application/json' } : {}) },
       redirect: 'error', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20_000) });
     if (!response.ok) {
       if (send && (response.status >= 500 || response.status === 409)) { await response.body?.cancel(); throw deliveryOutcomeUnknown(); }

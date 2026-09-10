@@ -1,3 +1,4 @@
+import { STEAM_REFERENCES_OPT_IN } from './steam-reference-opt-in';
 import { randomUUID } from 'node:crypto';
 import type { PublicError, Result } from '../shared/bridge';
 import { normalizeServiceUrl } from './policies';
@@ -134,7 +135,7 @@ async function perform(fetcher: Fetcher, connection: Connection, url: URL, init:
   try {
     const response = await fetcher(url.href, {
       ...init,
-      headers: { ...init.headers, Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID() },
+      headers: { ...STEAM_REFERENCES_OPT_IN, ...init.headers, Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID() },
       redirect: 'error', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20_000),
     });
     if (!response.ok) throw await httpFailure(response, isWrite, isGame);

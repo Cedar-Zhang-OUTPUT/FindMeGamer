@@ -1,3 +1,4 @@
+import { STEAM_REFERENCES_OPT_IN } from './steam-reference-opt-in';
 import { randomUUID } from 'node:crypto';
 import { CANDIDATE_EVIDENCE_FILTERS, CANDIDATE_SORTS } from '../shared/match';
 import { normalizeServiceUrl } from './policies';
@@ -119,7 +120,7 @@ export async function authenticatedMatchRequest(fetcher: Fetcher, connection: Co
   try {
     const response = await fetcher(url.href, { method: request.method,
       ...('body' in request ? { body: JSON.stringify(request.body) } : {}),
-      headers: { Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(),
+      headers: { ...STEAM_REFERENCES_OPT_IN, Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(),
         ...('body' in request ? { 'Content-Type': 'application/json' } : {}), ...(request.method==='POST' ? { 'Idempotency-Key': request.idempotencyKey } : {}) },
       redirect: 'error', credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(20_000) });
     if (!response.ok) throw await httpFailure(response, mutation);

@@ -1,3 +1,4 @@
+import { STEAM_REFERENCES_OPT_IN } from './steam-reference-opt-in';
 import { randomUUID } from 'node:crypto';
 import { normalizeServiceUrl } from './policies';
 import { PublicFailure, type Connection, type Fetcher } from './transport';
@@ -46,7 +47,7 @@ export async function authenticatedAnalysisRequest(fetcher: Fetcher, connection:
   const r = validateAnalysisRequest(input); let url: URL; try { url = new URL(r.path, normalizeServiceUrl(connection.serviceUrl)); } catch { throw new PublicFailure('request_invalid', 'Check the service address.', false); }
   if (r.method === 'GET') for (const [k,v] of Object.entries(r.query ?? {})) url.searchParams.set(k,v); const mutation = isAnalysisWrite(r);
   try {
-    const response = await fetcher(url.href, { method: r.method, ...(r.method === 'POST' && r.body !== undefined ? { body: JSON.stringify(r.body) } : {}), headers: { Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(), ...(r.method === 'POST' ? { 'Idempotency-Key': r.idempotencyKey, ...(r.body !== undefined ? { 'Content-Type': 'application/json' } : {}) } : {}) }, credentials: 'omit', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(20000) });
+    const response = await fetcher(url.href, { method: r.method, ...(r.method === 'POST' && r.body !== undefined ? { body: JSON.stringify(r.body) } : {}), headers: { ...STEAM_REFERENCES_OPT_IN, Authorization: `Bearer ${connection.key}`, Accept: 'application/json', 'X-Correlation-ID': randomUUID(), ...(r.method === 'POST' ? { 'Idempotency-Key': r.idempotencyKey, ...(r.body !== undefined ? { 'Content-Type': 'application/json' } : {}) } : {}) }, credentials: 'omit', redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(20000) });
     if (!response.ok) throw await failure(response, mutation); try { return await json(response); } catch (e) { throw mutation ? analysisWriteUnknown() : e; }
   } catch (e) { if (e instanceof PublicFailure) throw e; if (mutation) throw analysisWriteUnknown(); throw new PublicFailure('network_error', 'Could not reach the analysis service.', true); }
 }
