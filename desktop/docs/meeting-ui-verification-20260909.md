@@ -1,4 +1,4 @@
-# Meeting UI changes — verification in progress
+# Meeting UI changes — verification record
 
 ## Scope
 
@@ -45,3 +45,11 @@ Missing-sender test remains incomplete. The missing-name qualification showed Em
 New backend `29fe65b` evidence-priority contract was read, but compatibility is NOT implemented or verified. `drafts-validation.ts` work exact decoder currently rejects the added `game_id`, `relation`, `evidence_status`, `evidence_tier` fields; the same decoder is shared by qualification/delivery source validation. Backend was asked for actual sanitized new-version DTOs, without upgrading the owned 60016 fixture. Preserve old seven-field historical snapshots while validating the new metadata explicitly. Do not claim old 60016 proves this contract.
 
 Quota snapshot: Codex used 89%, remaining 11%; coordinator relayed user stop boundary at remaining 10%. No further broad tests/package work started. Version stays internal.3/build20003. Internal.4/build20004 is reserved, not built. Pending: finish missing-sender guard test, narrowly implement/test new evidence DTO compatibility, final combined gates, native internal.4 package/first-launch evidence, then coordinator integration/upload. No release approval has been given.
+
+## September 10 resumed acceptance (supersedes pending items above)
+
+User resumed the finite release work. `aecd922` accepts complete new evidence metadata while preserving old seven-field snapshots. New metadata requires all four fields, validates nullable Game UUID/relation/status and the explicit evidence-tier enum, and continues rejecting unknown fields. The actual backend `29fe65b` API-exported synthetic draft, unverified draft, composition and qualification in `.local/frontend-contract-29fe65b` (coordinator workspace) passed unchanged through the production decoders. Tests were first red (9 failures) before the compatibility change, then 29 targeted tests passed. This is real DTO decoding, not a claim that 60016 runs 29fe65b.
+
+Missing-sender recovery passed actual renderer/API acceptance: qualification blocks sending; Email settings and Return to Match work; confirming the unsaved-changes guard opens the current neutral template; Create drafts remains enabled without fabricating sender identity. No SMTP send occurred. The guard held an old busy controller closure while the settings-return read finished; confirmation now reads the latest controller through a ref. Regression failed before this runtime fix and passed after it. Final ledger: `/var/folders/p4/5cgpbz2n2hj98xdvs3_b1hlc0000gn/T/fmg-match-frontend-3g7w9lta/private/prd-ui-6a6e1d8b-8591-4a1c-beb1-727ecd3ec74f.json`. Synthetic sender was restored with the fixture's sender-configured helper (exit 0); fixture pins remain unchanged. Neutral-template screenshot visually inspected.
+
+Release metadata commit `64a7c87` selects internal.4/build20004. Native-package evidence and final regression results are recorded separately in `internal4-verification.md`. Only the coordinator publishes/deploys. No backend files were changed by this frontend unit.
