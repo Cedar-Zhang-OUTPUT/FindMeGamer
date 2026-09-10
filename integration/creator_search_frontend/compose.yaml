@@ -1,0 +1,50 @@
+# Dedicated synthetic fixture; no production credentials, no worker/SMTP or egress.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: creator_search_fixture
+      POSTGRES_USER: fixture
+      POSTGRES_PASSWORD: synthetic-database-only
+    volumes: ["database:/var/lib/postgresql/data"]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U fixture -d creator_search_fixture]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+  api:
+    image: backend-test:latest
+    working_dir: /app
+    command: [python, /harness/runtime.py]
+    environment:
+      DATABASE_URL: postgresql+psycopg://fixture:synthetic-database-only@postgres:5432/creator_search_fixture
+      REDIS_URL: redis://127.0.0.1:9/0
+      MASTER_KEY_FILE: /private/master.key
+      WORKSPACE_RATE_LIMIT: "10000"
+      EXTERNAL_BASE_URL: http://127.0.0.1:18093
+      AWS_EC2_METADATA_DISABLED: "true"
+      ARTIFACT_STORE: filesystem
+      ARTIFACT_DIRECTORY: /tmp/fixture-artifacts
+      PYTHONPATH: /app
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - ${FMG_SEARCH_SOURCE:-../../backend}:/app:ro
+      - .:/harness:ro
+      - ${FMG_SEARCH_PRIVATE:?isolated private directory required}:/private:ro
+    depends_on:
+      postgres: {condition: service_healthy}
+  relay:
+    image: python:3.13-slim
+    command: [python, /relay.py]
+    ports: ["127.0.0.1:18093:8000"]
+    volumes: ["../match_frontend/relay.py:/relay.py:ro"]
+    networks: [default, ingress]
+    depends_on: [api]
+networks:
+  default:
+    internal: true
+  ingress:
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+volumes:
+  database:

@@ -19,6 +19,7 @@ from app.discovery.evaluation_snapshot import (
     digest,
     evidence_rows,
     game_data,
+    game_brief,
 )
 from app.repositories.library_v2 import game_detail
 
@@ -29,6 +30,90 @@ MODELS = {
     "ranking": "deepseek-v4-pro",
 }
 CHUNK_SIZE = 20
+
+
+def create_run(session, query, candidates):
+    """Freeze a complete explicit candidate scope, independent of UI pagination."""
+    run = EvaluationRun(
+        id=uuid4(),
+        query_id=query.id,
+        source_snapshot=query.source_snapshot,
+        conditions=query.conditions,
+        game_brief=game_brief(query.source_snapshot),
+        game_fingerprint=digest(game_data(query.source_snapshot)),
+        method_version=METHOD_VERSION,
+        models=MODELS,
+    )
+    session.add(run)
+    session.flush()
+    extend_run(session, run, candidates)
+    return run
+
+
+def extend_run(session, run, candidates):
+    """Add newly usable units on explicit retry without redoing successful steps."""
+    previous = items_for(session, run.id)
+    existing = {item.candidate_id for item in previous}
+    eligible = []
+    for candidate in candidates:
+        if candidate.id in existing:
+            continue
+        creator = session.get(CreatorProfile, candidate.creator_id)
+        snapshot, fingerprint = creator_snapshot(
+            creator, candidate.id, source=run.source_snapshot
+        )
+        frozen = {
+            "platform": candidate.platform,
+            "account_id": candidate.account_id,
+            "revision": candidate.identity_revision,
+        }
+        changed = snapshot["identity"] != frozen
+        if changed:
+            snapshot = {
+                "candidate_id": str(candidate.id),
+                "identity": frozen,
+                "creator_brief": {},
+                "creator_detail": {},
+                "analysis": {},
+                "works": [],
+                "analysis_available": False,
+            }
+        item = EvaluationItem(
+            id=uuid4(),
+            run_id=run.id,
+            candidate_id=candidate.id,
+            creator_id=creator.id,
+            input_order=len(previous),
+            snapshot=snapshot,
+            fingerprint=fingerprint,
+            identity_changed=changed,
+        )
+        session.add(item)
+        previous.append(item)
+        existing.add(candidate.id)
+        if not changed:
+            eligible.append(item.id)
+    # Existing keys and successful model outputs are immutable on retry.
+    generation = (
+        max(
+            (
+                int(step.step_key.split(":")[1])
+                for step in steps_for(session, run.id)
+                if step.kind == "screening"
+            ),
+            default=-CHUNK_SIZE,
+        )
+        + CHUNK_SIZE
+    )
+    for index in range(0, len(eligible), CHUNK_SIZE):
+        add_step(
+            session,
+            run.id,
+            f"screening:{generation + index:04d}",
+            "screening",
+            eligible[index : index + CHUNK_SIZE],
+        )
+    session.flush()
 
 
 def lock_run(session, identity):

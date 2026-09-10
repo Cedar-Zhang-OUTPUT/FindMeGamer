@@ -1,4 +1,5 @@
 from app.db.models.discovery_plan import DiscoveryPlan
+from app.db.models.creator_search import CreatorSearch, CreatorSearchUnit
 from app.db.models.saved_candidate_set import SavedCandidateSet
 from app.db.models.outreach_drafts import OutreachTemplateVersion, OutreachComposition, OutreachDraft
 from app.db.models.activity_sending import ActivitySendBatch, ActivityDelivery

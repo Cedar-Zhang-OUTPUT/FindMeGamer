@@ -21,6 +21,7 @@ def create_celery_app(*, broker_url: str | None = None) -> Celery:
             "app.workers.discovery_tasks",
             "app.workers.planning_tasks",
             "app.workers.evaluation_tasks",
+            "app.workers.creator_search_tasks",
             "app.workers.schedules",
         ],
     )

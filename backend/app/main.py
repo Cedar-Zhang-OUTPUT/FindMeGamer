@@ -196,6 +196,9 @@ def create_app(
     )
     app.include_router(session.create_router(authenticate_workspace))
     app.include_router(library_v2.create_router(authenticate_workspace))
+    from app.api.routes import creator_search
+
+    app.include_router(creator_search.create_router(authenticate_workspace))
     app.include_router(creator_library.create_router(authenticate_workspace))
     app.include_router(
         activity.create_router(authenticate_workspace, dispatcher=discovery_dispatcher)

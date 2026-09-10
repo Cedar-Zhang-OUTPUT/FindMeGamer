@@ -183,10 +183,19 @@ def _publish(session, run_id, claim, output, failure):
     step.lease_token, step.lease_expires_at = None, None
 
 
-def run_evaluation(run_id, *, session_factory=session_scope, execute_model=None):
+def run_evaluation(
+    run_id, *, session_factory=session_scope, execute_model=None, should_continue=None
+):
     run_id = UUID(str(run_id))
     execute_model = execute_model or production_execute
     while True:
+        if should_continue is not None and not should_continue():
+            with session_factory() as session:
+                run = lock_run(session, run_id)
+                if run and run.status in {"queued", "running"}:
+                    run.status = "partial"
+                    run.stage = "stopped"
+            return
         with session_factory() as session:
             claims = _claims(session, run_id)
         if not claims:

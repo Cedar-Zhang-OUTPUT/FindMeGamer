@@ -4,7 +4,7 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -206,7 +206,12 @@ def _request_payload(
         (
             "Research this specific creator:",
             f"Name: {_clean_field(source.title, 'Unknown')}",
-            "Platform: YouTube",
+            (
+                "Platform: X"
+                if urlsplit(source.canonical_url).hostname
+                in {"x.com", "www.x.com", "twitter.com", "www.twitter.com"}
+                else "Platform: YouTube"
+            ),
             f"Profile URL: {_clean_field(source.canonical_url, 'Not provided')}",
             "Existing public contact entry: "
             f"{_clean_field(contact_entry, 'Not provided')}",

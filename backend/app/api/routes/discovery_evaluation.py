@@ -1,5 +1,5 @@
 from typing import Annotated
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Query
 from fastapi.responses import JSONResponse
@@ -11,18 +11,8 @@ from app.core.database import get_session
 from app.core.errors import APIError
 from app.db.models.discovery import DiscoveryCandidate, DiscoveryQuery
 from app.db.models.discovery_evaluation import EvaluationRun, EvaluationItem
-from app.db.models.profiles import CreatorProfile
-from app.discovery.evaluation_snapshot import (
-    creator_snapshot,
-    digest,
-    game_brief,
-    game_data,
-)
 from app.repositories.discovery_evaluation import (
-    CHUNK_SIZE,
-    METHOD_VERSION,
-    MODELS,
-    add_step,
+    create_run,
     expired,
     items_for,
     lock_run,
@@ -106,62 +96,7 @@ def create_router(authenticate_workspace, *, dispatcher=None):
                     "evaluation_candidates_invalid",
                     "Choose one through 600 existing candidates from this query.",
                 )
-            run = EvaluationRun(
-                id=uuid4(),
-                query_id=query_id,
-                source_snapshot=query.source_snapshot,
-                conditions=query.conditions,
-                game_brief=game_brief(query.source_snapshot),
-                game_fingerprint=digest(game_data(query.source_snapshot)),
-                method_version=METHOD_VERSION,
-                models=MODELS,
-            )
-            session.add(run)
-            session.flush()
-            eligible = []
-            for index, candidate in enumerate(candidates):
-                creator = _get(session, CreatorProfile, candidate.creator_id)
-                snapshot, fingerprint = creator_snapshot(
-                    creator, candidate.id, source=query.source_snapshot
-                )
-                frozen_identity = {
-                    "platform": candidate.platform,
-                    "account_id": candidate.account_id,
-                    "revision": candidate.identity_revision,
-                }
-                changed = snapshot["identity"] != frozen_identity
-                if changed:
-                    snapshot = {
-                        "candidate_id": str(candidate.id),
-                        "identity": frozen_identity,
-                        "creator_brief": {},
-                        "creator_detail": {},
-                        "analysis": {},
-                        "works": [],
-                        "analysis_available": False,
-                    }
-                item = EvaluationItem(
-                    id=uuid4(),
-                    run_id=run.id,
-                    candidate_id=candidate.id,
-                    creator_id=creator.id,
-                    input_order=index,
-                    snapshot=snapshot,
-                    fingerprint=fingerprint,
-                    identity_changed=changed,
-                )
-                session.add(item)
-                if not changed:
-                    eligible.append(item.id)
-            for index in range(0, len(eligible), CHUNK_SIZE):
-                add_step(
-                    session,
-                    run.id,
-                    f"screening:{index:04d}",
-                    "screening",
-                    eligible[index : index + CHUNK_SIZE],
-                )
-            session.flush()
+            run = create_run(session, query, candidates)
             return {"evaluation_id": run.id, "status": run.status}
 
         return send(
