@@ -56,7 +56,14 @@ only supplied facts and cite only supplied work record IDs. Do not invent facts,
 citations, URLs, contacts, timestamps, countries, or enrichment. Never claim that a
 creator or sender played or watched anything, or that viewing was confirmed. Describe
 available support as recorded evidence. Metadata, titles, posts, and thumbnails alone
-remain limited and need evidence; unknown audience countries remain unknown."""
+remain limited and need evidence; unknown audience countries remain unknown.
+Confidence is an evidence flag, not a measure of thematic fit. Set confidence='limited'
+unless cited_work_ids includes at least one ID from supported_evidence_work_ids.
+The server builds that list only from works with BOTH nonblank evidence_excerpt and
+verification_notes. If the list is empty, confidence='supported' is forbidden; use
+confidence='limited' even for a strong thematic fit or a detailed existing analysis.
+Use confidence='supported' only when citing a work from that eligible list. Do not
+invent or infer missing evidence fields from analysis, titles or public metadata."""
 _RANK_SYSTEM = """Score each supplied validated match brief independently against one
 common absolute rubric in English: 75-100 strong fit, 40-74 potential, 0-39 limited.
 Campaign intent expresses preferences, not verified game or creator facts.
@@ -133,6 +140,12 @@ class EvaluationAI:
                 "creator_detail": _without_contacts(candidate.get("creator_detail")),
                 "analysis": _without_contacts(candidate.get("analysis")),
                 "works": projected_works,
+                "supported_evidence_work_ids": [
+                    str(work_id)
+                    for work_id, work in known_works.items()
+                    if _nonblank(work.get("evidence_excerpt"))
+                    and _nonblank(work.get("verification_notes"))
+                ],
                 "analysis_available": candidate.get("analysis_available") is True,
             },
         }

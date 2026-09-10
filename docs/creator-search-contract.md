@@ -72,3 +72,29 @@ Task errors: `search_planning_failed`, `search_discovery_incomplete`,
   of a real-provider production deployment.
 - Production deployment, live small-sample acceptance and client release remain
   coordinator-owned. No existing user task has been executed by this change.
+
+### Additional broker and live-model evidence
+
+- Opt-in `FMG_RUN_BROKER_TEST=1` / `test_creator_search_broker.py`: three tests
+  passed with real Redis delivery and a real Celery Worker, each using its own
+  random PostgreSQL database and queue. Normal completion/consumed duplicate,
+  partial→retry preserving successful units/briefs, and Stop→retry preserving the
+  in-flight wave were verified. Providers and models remain synthetic.
+- One separate real-model sample used existing read-only cloud Game and analyzed
+  YouTube snapshots, one candidate, and no acquisition/Gemini/SMTP/production write.
+  Exactly three actual HTTP attempts: screening Flash (success), Deep Match Pro
+  (rejected), explicit failed Deep Match retry Pro (rejected). All HTTP responses
+  were 200; total reported usage was 13,751 tokens. Ranking was not reached.
+- Precise failure: valid candidate/citation IDs and safe narratives, but the model
+  returned `supported` without any cited work containing both an excerpt and
+  verification notes. Original cloud source check found 12 works, zero nonblank
+  verification notes; this was not introduced by snapshot redaction.
+- Minimal correction aligns the existing Deep Match prompt with its strict
+  validator and supplies server-derived `supported_evidence_work_ids`. Strong
+  topic fit can still be `limited`. Validation is not relaxed and no extra model
+  call is added. Bounded independent review found no blocking issue.
+- The initial sample is **not** a successful live end-to-end acceptance and does
+  not validate live X acquisition or email enhancement. The isolated database and
+  minimal local report are retained for coordinated follow-up; no automatic paid
+  rerun is allowed. A corrected Deep Match/ranking live check requires a separately
+  approved request budget. Do not deploy based only on synthetic tests.

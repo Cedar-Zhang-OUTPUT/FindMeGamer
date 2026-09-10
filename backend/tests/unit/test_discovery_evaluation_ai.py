@@ -170,6 +170,35 @@ def test_supported_requires_cited_record_with_excerpt_and_verification():
         ai.deep({"name": "Game"}, candidate)
 
 
+def test_deep_prompt_defines_supported_as_cited_evidence_not_thematic_fit():
+    # Real-model regression: correct IDs and no unsafe narrative, but supported
+    # was returned for metadata-only works. Keep rejection, align the prompt.
+    candidate = _candidate(evidence=False)
+    ai, requests = _gateway([_brief(candidate, confidence="limited")])
+    assert ai.deep({"name": "Game"}, candidate).confidence == "limited"
+    system = "\n".join(
+        message["content"]
+        for message in requests[0]["messages"]
+        if message["role"] == "system"
+    )
+    assert "confidence='limited'" in system
+    assert "confidence='supported'" in system
+    assert "evidence_excerpt" in system and "verification_notes" in system
+    assert "not a measure of thematic fit" in system
+    payload = json.loads(requests[0]["messages"][-1]["content"])
+    assert payload["candidate"]["supported_evidence_work_ids"] == []
+
+
+def test_deep_supported_evidence_ids_are_derived_only_from_both_source_fields():
+    candidate = _candidate(evidence=True)
+    ai, requests = _gateway([_brief(candidate)])
+    ai.deep({"name": "Game"}, candidate)
+    payload = json.loads(requests[0]["messages"][-1]["content"])
+    assert payload["candidate"]["supported_evidence_work_ids"] == [
+        candidate["works"][0]["id"]
+    ]
+
+
 def test_metadata_only_limited_confidence_is_accepted():
     candidate = _candidate(evidence=False, analysis_available=False)
     brief = _brief(candidate, confidence="limited")
