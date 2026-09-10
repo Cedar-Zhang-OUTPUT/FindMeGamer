@@ -1,4 +1,5 @@
-.review-table-scroll{max-width:100%;min-width:0;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);overscroll-behavior:contain}
+/* Tables own horizontal overflow; vertical scrolling belongs to .main-scroll. */
+.review-table-scroll{max-width:100%;min-width:0;overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface);overscroll-behavior-x:contain;overscroll-behavior-y:auto}
 .review-table{width:100%;min-width:980px;border-collapse:collapse;text-align:left;font-size:.875rem;line-height:1.5}
 .review-table th,.review-table td{padding:16px 14px;vertical-align:top;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .review-table thead th{background:var(--canvas);color:var(--muted);font-size:.75rem;font-weight:600;white-space:nowrap}

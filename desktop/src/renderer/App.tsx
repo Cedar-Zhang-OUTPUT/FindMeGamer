@@ -7,6 +7,7 @@ import { useNavigationGuard } from './hooks/useNavigationGuard';
 import { useAppearance } from './hooks/useAppearance';
 import { SettingsView } from './components/settings/SettingsView';
 import { MatchWorkspace } from './components/match/MatchWorkspace';
+import {tableScrollKeys} from './components/match/tableScrollKeys';
 import type {GameDetail} from '../shared/games';
 import './settings.css';
 import './settings-cloud.css';
@@ -169,7 +170,7 @@ export function App() {
       <div className="sidebar-bottom"><div className="sidebar-connection" title={connected ? 'Last connection check succeeded; individual requests may still fail.' : 'Workspace not connected'}><span className={`status-dot ${connected ? 'is-connected' : ''}`}/><span>{connected ? 'Workspace linked' : 'Not connected'}</span></div><button className={`nav-button ${page === 'settings' ? 'selected' : ''}`} aria-label="Settings" aria-current={page === 'settings' ? 'page' : undefined} title="Settings" onClick={() => navigate('settings')}><Icon name="settings"/><span>Settings</span></button></div>
     </aside>
     <div className="main-frame"><header className="landscape-header" aria-label="FindMeGamer"><div className="landscape-shade"/></header>
-      <main className="main-scroll" id="main-content">
+      <main className="main-scroll" id="main-content" onKeyDown={tableScrollKeys}>
         <section className="page-content" hidden={page !== 'library'} aria-label="Library page">{hasLibrarySession && <div hidden={!connected}><LibraryView key={epoch} api={api} active={page === 'library' && connected} onUseForMatch={useGameForMatch} onNavigationGuardChange={navigationGate.register} onConnectionRepair={() => navigate('settings')} onCollectionSettings={openCollectionSettings}/></div>}{!connected && <>
           <div className="page-heading"><h1>Library</h1></div>
           {phase === 'loading' || phase === 'checking' || phase === 'saving' ? <Loading label={phase === 'loading' ? 'Opening workspace…' : 'Verifying connection…'}/> : <><EmptyState title="Connect your workspace" action={<button className="button primary" onClick={() => navigate('settings')}>Open Settings</button>}/>{error && <ErrorNotice error={error} onRetry={status?.hasKey ? testConnection : () => void readStatus()}/>}</>}
