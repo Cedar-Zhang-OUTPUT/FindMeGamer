@@ -29,6 +29,21 @@ class SteamMovie(_SourceModel):
     webm_urls: tuple[str, ...] = ()
 
 
+class SteamRecommendedItem(_SourceModel):
+    app_id: str
+    name: str
+    url: str
+
+
+class SteamRecommendations(_SourceModel):
+    status: Literal["not_fetched", "available", "partial", "unavailable"] = (
+        "not_fetched"
+    )
+    source_url: str | None = None
+    fetched_at: datetime | None = None
+    items: tuple[SteamRecommendedItem, ...] = ()
+
+
 class SteamGameSource(_SourceModel):
     app_id: str
     canonical_url: str
@@ -53,6 +68,9 @@ class SteamGameSource(_SourceModel):
     cover_image_url: str | None = None
     screenshots: tuple[SteamScreenshot, ...] = ()
     movies: tuple[SteamMovie, ...] = ()
+    steam_recommendations: SteamRecommendations = Field(
+        default_factory=SteamRecommendations
+    )
     raw: dict[str, Any]
 
 

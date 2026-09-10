@@ -173,6 +173,9 @@ def create_app(
                 correlation_id,
             )
         response.headers["X-Correlation-ID"] = correlation_id
+        from app.api.steam_reference_compat import negotiate_steam_references
+
+        response = await negotiate_steam_references(request, response)
         route = request.scope.get("route")
         route_template = getattr(route, "path", "<unmatched>")
         log_request(

@@ -19,6 +19,7 @@ from app.schemas.library_v2 import (
     GamePatch,
     ReferenceWork,
     SourceIdentity,
+    SteamRecommendationStatus,
     reference_key,
 )
 
@@ -81,6 +82,15 @@ def game_detail(profile: GameProfile) -> GameDetail:
         revision=profile.manual_revision,
         favorite=profile.favorite,
         reference_works=profile.reference_works or [],
+        steam_recommendations=SteamRecommendationStatus.model_validate(
+            {
+                key: value
+                for key, value in (
+                    (profile.source_status or {}).get("steam_recommendations") or {}
+                ).items()
+                if key in SteamRecommendationStatus.model_fields
+            }
+        ),
         source_fields=source_fields(profile),
         manual_overrides=manual,
         overridden_fields=sorted(manual),
@@ -101,6 +111,7 @@ def effective_sort_name(profile: GameProfile) -> str:
 
 
 def _reference_values(works: list[ReferenceWork], existing: list[dict]) -> list[dict]:
+    existing_by_id = {str(value["id"]): value for value in existing}
     existing_by_key = {
         reference_key(ReferenceWork.model_validate(value)): value["id"]
         for value in existing
@@ -115,7 +126,15 @@ def _reference_values(works: list[ReferenceWork], existing: list[dict]) -> list[
         identifier = str(work.id or existing_by_key.get(key) or uuid4())
         if identifier in ids:
             raise _error(422, "request_invalid", "The request is invalid.")
-        result.append(work.model_dump(mode="json") | {"id": identifier})
+        previous = existing_by_id.get(identifier, {})
+        result.append(
+            work.model_dump(mode="json")
+            | {
+                "id": identifier,
+                "source": previous.get("source", "manual"),
+                "source_url": previous.get("source_url"),
+            }
+        )
         seen.add(key)
         ids.add(identifier)
     return result
@@ -266,6 +285,10 @@ class LibraryGamesRepository:
             else profile.reference_works
         )
         profile.manual_overrides = manual
+        if "reference_works" in fields:
+            from app.repositories.steam_references import remember_reference_removals
+
+            remember_reference_removals(profile, references)
         profile.reference_works = references
         if "favorite" in fields:
             profile.favorite = value.favorite

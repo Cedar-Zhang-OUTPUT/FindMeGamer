@@ -244,6 +244,7 @@ class GameAnalysisService:
             }
             brief = synthesis["game_brief"]
             source_status = {
+                **(profile.source_status or {}),
                 "steam": "available",
                 "visual_analysis": publication.visual.status,
             }
@@ -269,6 +270,11 @@ class GameAnalysisService:
             profile.analysis = public_json_object(analysis)
             profile.brief = public_json_object(brief)
             profile.source_status = public_json_object(source_status)
+            from app.repositories.steam_references import merge_steam_references
+
+            merge_steam_references(profile, source.steam_recommendations)
+            if source.steam_recommendations.status != "not_fetched":
+                profile.manual_revision = (profile.manual_revision or 0) + 1
             profile.model_metadata = public_json_object(model_metadata)
             profile.prompt_metadata = public_json_object(prompt_metadata)
             profile.last_analyzed_at = analyzed_at

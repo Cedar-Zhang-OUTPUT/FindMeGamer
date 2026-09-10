@@ -11,6 +11,7 @@ from app.repositories.library_v2 import (
 )
 from app.schemas.profiles import public_json_object
 from app.core.idempotency import utc_now
+from app.repositories.steam_references import merge_steam_references
 
 
 def import_target(session, value, app_id, *, for_update=False):
@@ -77,6 +78,7 @@ def publish_source(session, value, source):
         "steam": "available",
         "steam_imported_at": utc_now().isoformat(),
     }
+    merge_steam_references(profile, source.steam_recommendations)
     profile.manual_revision += 1
     profile.sort_name = effective_sort_name(profile)
     session.flush()

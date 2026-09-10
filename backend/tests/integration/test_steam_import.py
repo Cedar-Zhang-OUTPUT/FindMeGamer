@@ -21,6 +21,8 @@ def steam_fixture(client, *, handler=None):
     calls = []
 
     def handle(request):
+        if request.url.path.startswith("/recommended/morelike/"):
+            return httpx.Response(200, text='<div id="released"></div>')
         calls.append(request)
         assert request.url.host == "store.steampowered.com"
         assert dict(request.url.params) == {

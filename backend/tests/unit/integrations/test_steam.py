@@ -62,7 +62,7 @@ def test_steam_fetches_english_us_store_data_and_maps_public_fields() -> None:
     client = httpx.Client(transport=httpx.MockTransport(handler))
     source = SteamGateway(http_client=client).fetch_game("1245620")
 
-    assert len(requests) == 1
+    assert len(requests) == 2  # Base source plus best-effort recommendations page.
     assert requests[0].url.path == "/api/appdetails"
     assert dict(requests[0].url.params) == {
         "appids": "1245620",

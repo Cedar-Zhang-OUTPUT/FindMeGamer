@@ -98,6 +98,8 @@ class ReferenceWork(BaseModel):
     url: WebURL = None
     similarities: Labels = Field(default_factory=list)
     reason: LongText = None
+    source: Literal["manual", "steam_more_like_this"] = "manual"
+    source_url: WebURL = None
 
     @model_validator(mode="after")
     def require_identity(self) -> Self:
@@ -164,11 +166,22 @@ class SourceIdentity(BaseModel):
     canonical_url: str | None
 
 
+class SteamRecommendationStatus(BaseModel):
+    status: Literal["not_fetched", "available", "partial", "unavailable"] = (
+        "not_fetched"
+    )
+    source_url: str | None = None
+    fetched_at: datetime | None = None
+
+
 class GameDetail(GameFields):
     id: UUID
     revision: int
     favorite: bool
     reference_works: list[ReferenceWork]
+    steam_recommendations: SteamRecommendationStatus = Field(
+        default_factory=SteamRecommendationStatus
+    )
     source_fields: GameFields
     manual_overrides: PublicJSONObject
     overridden_fields: list[GameFieldName]

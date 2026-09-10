@@ -50,6 +50,22 @@ class SteamGateway:
         self.close()
 
     def fetch_game(self, app_id: str) -> SteamGameSource:
+        source = self._fetch_details(app_id)
+        from app.integrations.steam_recommendations import (
+            fetch_recommendations,
+            RECOMMENDATION_TIMEOUT,
+        )
+
+        recommendations = fetch_recommendations(
+            self._client,
+            app_id,
+            lambda target_id: self._fetch_details(
+                target_id, timeout=RECOMMENDATION_TIMEOUT
+            ),
+        )
+        return source.model_copy(update={"steam_recommendations": recommendations})
+
+    def _fetch_details(self, app_id: str, *, timeout=HTTP_TIMEOUT) -> SteamGameSource:
         _validate_app_id(app_id)
         try:
             with streaming_response(
@@ -57,7 +73,7 @@ class SteamGateway:
                 "GET",
                 f"{self._base_url}/appdetails",
                 params={"appids": app_id, "l": "english", "cc": "US"},
-                timeout=HTTP_TIMEOUT,
+                timeout=timeout,
                 follow_redirects=False,
             ) as response:
                 _raise_for_status(response)
