@@ -51,6 +51,11 @@ button { -webkit-app-region: no-drag; }
 .eyebrow { display: block; color: var(--primary); text-transform: uppercase; font-size: 0.625rem; font-weight: 750; letter-spacing: 1.6px; margin-bottom: 8px; }
 .read-only-label { color: var(--muted); font-size: 0.75rem; border: 1px solid var(--line); padding: 6px 9px; border-radius: 5px; white-space: nowrap; }
 .library-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 18px 22px; margin-bottom: 20px; }
+.library-topbar { display:flex; align-items:center; flex-wrap:wrap; gap:12px 22px; margin-bottom:20px; }
+.library-topbar .library-navigation { margin:0; }
+.library-topbar .library-title h1 { margin:0; }
+.library-topbar > .button { margin-left:auto; }
+.library-topbar.is-record .library-title { color:var(--muted); font-size:.8125rem; }
 .segmented { display: inline-flex; padding: 4px; background: #e8edef; border-radius: 10px; gap: 4px; }
 .segmented button { border: 0; background: transparent; color: var(--muted); padding: 10px 23px; border-radius: 7px; font-size: 0.875rem; font-weight: 550; }
 .segmented button[aria-selected=true] { color: var(--navy); background: var(--surface); box-shadow: 0 1px 3px #061b3e13; font-weight: 700; }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { DesktopBridge, PublicError } from '../../shared/bridge';
 import { GAME_FIELDS, type GameDetail, type GameListInput, type GamePage, type GameSort, type GameWebsiteStatus, type NavigationGuard } from '../../shared/games';
 import { GameEditor } from './GameEditor';
@@ -44,9 +44,10 @@ function GameRecord({ api, game, saved, onBack, onEdit,onImport,onUseForMatch }:
   </article>;
 }
 
-export function GameLibrary({ api, active, onNavigationGuardChange, onConnectionRepair,openRequest,onUseForMatch }: { api: DesktopBridge; active: boolean; onNavigationGuardChange?: (guard: NavigationGuard | null) => void; onConnectionRepair?: () => void;openRequest?:{id:string;nonce:number};onUseForMatch?:(game:GameDetail)=>void }) {
+export function GameLibrary({ api, active, onNavigationGuardChange, onConnectionRepair,openRequest,onUseForMatch,onViewChange }: { api: DesktopBridge; active: boolean; onNavigationGuardChange?: (guard: NavigationGuard | null) => void; onConnectionRepair?: () => void;openRequest?:{id:string;nonce:number};onUseForMatch?:(game:GameDetail)=>void;onViewChange?:(view:'list'|'record')=>void }) {
   const [library, setLibrary] = useState<LibraryState>({ search: '', query: '', onlyCollection: false, websiteStatus: 'all', sort: 'recent_updated', page: null, busy: false, error: null, failedInput: null });
   const [route, setRoute] = useState<Route>({ kind: 'list' });
+  useLayoutEffect(()=>{onViewChange?.(route.kind==='list'?'list':'record');},[route.kind,onViewChange]);
   const listState = useRef(library); listState.current = library;
   const generation = useRef(0);
   const detailGeneration = useRef(0);

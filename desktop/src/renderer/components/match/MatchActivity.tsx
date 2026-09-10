@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useRef,useState,type ReactNode} from 'react';
 import type {DesktopBridge,PublicError} from '../../../shared/bridge';
 import type {SavedSetView} from '../../../shared/savedSets';
 import type {NavigationGuard} from '../../../shared/games';
@@ -40,7 +40,7 @@ function ResultTabs({value,onChange,count}:{value:'candidates'|'briefs';onChange
   }}><button role="tab" tabIndex={value==='candidates'?0:-1} aria-selected={value==='candidates'} onClick={()=>onChange('candidates')}>Candidates</button><button role="tab" tabIndex={value==='briefs'?0:-1} aria-selected={value==='briefs'} onClick={()=>onChange('briefs')}>Match briefs{count!==undefined?` · ${count}`:''}</button></div>;
 }
 
-export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavigationGuardChange,onConnectionRepair,onCollectionSettings,onSMTPSettings,surface='match',onShowMatch,onShowOutreach}:{api:DesktopBridge;activityId:string;active:boolean;onBack:()=>void;onOpenCreator:(id:string,section?:'overview'|'contacts'|'works')=>void;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void;onSMTPSettings?:()=>void;surface?:'match'|'outreach';onShowMatch?:()=>void;onShowOutreach?:()=>void}){
+export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavigationGuardChange,onConnectionRepair,onCollectionSettings,onSMTPSettings,surface='match',onShowMatch,onShowOutreach,contextTools}:{api:DesktopBridge;activityId:string;active:boolean;onBack:()=>void;onOpenCreator:(id:string,section?:'overview'|'contacts'|'works')=>void;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;onCollectionSettings?:()=>void;onSMTPSettings?:()=>void;surface?:'match'|'outreach';onShowMatch?:()=>void;onShowOutreach?:()=>void;contextTools?:ReactNode}){
   const [briefGuard,setBriefGuard]=useState<BriefGuardState>({dirty:false,busy:false,locked:false}),[briefDiscard,setBriefDiscard]=useState(0);
   const session=useMatchSession(api.match,activityId,active),operation=useMatchOperation(api.match);
   const automatic=useCreatorSearchSession(api.match,activityId,active);
@@ -115,7 +115,7 @@ export function MatchActivity({api,activityId,active,onBack,onOpenCreator,onNavi
     setChecking(false);setRecoveredId('');
   }
   return <section className="match-activity">
-    <div className="match-breadcrumb"><button className="text-button" onClick={()=>guard.request(onBack)}><Icon name="arrow"/>Activities</button><span>{gameName}</span><button className="icon-button" title="Refresh activity" aria-label="Refresh activity" onClick={refresh} disabled={session.loading}><Icon name="refresh"/></button></div>
+    <div className="match-breadcrumb"><button className="text-button" onClick={()=>guard.request(onBack)}><Icon name="arrow"/>Activities</button><span>{gameName}</span><div className="workspace-context-actions">{contextTools}<button className="icon-button" title="Refresh activity" aria-label="Refresh activity" onClick={refresh} disabled={session.loading}><Icon name="refresh"/></button></div></div>
     <div className="page-heading"><h1>{activity?.name??'Activity'}</h1>{surface==='match'&&onShowOutreach&&<button className="text-button" disabled={locked} onClick={onShowOutreach}>Open in Outreach <span aria-hidden="true">↗</span></button>}{surface==='outreach'&&onShowMatch&&<button className="button secondary" onClick={onShowMatch}>Continue in Match</button>}</div>
     {!activity&&!session.errors.activity&&<Loading label="Loading activity…"/>}{session.errors.activity&&<ErrorNotice error={session.errors.activity} onRetry={session.refresh}/>}
     {activity&&<>

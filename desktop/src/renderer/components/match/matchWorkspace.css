@@ -1,5 +1,9 @@
 .match-workspace { min-width: 0; position:relative; }
 .match-workspace > .analysis-entry-actions { display:flex; justify-content:flex-end; gap:12px; margin-bottom:8px; }
+.workspace-tools, .workspace-heading-actions, .workspace-context-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; }
+.workspace-tools .button { border:0; background:transparent; color:var(--muted); font-size:.8125rem; }
+.workspace-context-actions { margin-left:auto; }
+.match-workspace-heading, .match-breadcrumb { flex-wrap:wrap; }
 .match-workspace > .analysis-entry-actions .button { border:0; background:transparent; padding:4px 0; font-size:.8125rem; color:var(--muted); }
 .match-support-tools { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:12px; align-items:start; padding:10px 0; margin-bottom:10px; border-bottom:1px solid var(--line); }
 .match-support-tools > .match-context,.match-support-tools > .drafts-history,.match-support-tools > details { margin:0; padding:0; border:0; background:transparent; font-size:.8125rem; }

@@ -41,6 +41,10 @@ test('read-only current-task visual audit',async({},info)=>{
   await page.getByRole('button',{name:'Library',exact:true}).click();await expect(page.getByRole('button',{name:'Known works',exact:true})).toHaveAttribute('aria-expanded','true');await shot('creator-narrow');
   await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('tab',{name:'Appearance',exact:true}).click();await page.getByRole('radio',{name:'Dark',exact:true}).check();
   await expect(page.locator('html')).toHaveAttribute('data-theme','dark');await page.getByRole('button',{name:'Library',exact:true}).click();await shot('creator-dark-narrow');
+  await page.getByRole('button',{name:'Back to creators',exact:true}).click();await expect(page.getByRole('heading',{name:'Library',exact:true})).toBeVisible();await shot('library-dark-narrow');
+  await page.getByRole('button',{name:'Match',exact:true}).click();await expect(page.getByRole('heading',{name:'Match',exact:true})).toBeVisible();await shot('match-list-dark-narrow');
+  await page.getByRole('list',{name:'Activities',exact:true}).getByRole('button').first().click();await expect(page.getByRole('region',{name:'Creator matches',exact:true}).getByRole('article')).toHaveCount(6);await shot('match-results-dark-narrow');
+  await expect(page.getByRole('button',{name:'Analysis tasks',exact:true})).toHaveCount(1);
   const writes=await app.evaluate(()=>(globalThis as any).__auditWrites);expect(writes).toEqual([]);expect(errors).toBe(0);
   expect(shots.every(shot=>shot.overflow===false)).toBe(true);
   await writeFile(info.outputPath('audit.json'),JSON.stringify({native:true,readOnly:true,writes,errors,shots},null,2));

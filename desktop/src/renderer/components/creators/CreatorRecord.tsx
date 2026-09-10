@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { DesktopBridge, PublicError } from '../../../shared/bridge';
 import type { ContactDetail, CreatorDetail, OtherContact, WorkDetail } from '../../../shared/creators';
 import { Artwork, ErrorNotice, friendlyLabel, Icon } from '../Primitives';
@@ -27,6 +27,7 @@ export interface CreatorRecordProps {
   creator: CreatorDetail;
   onBack: () => void;
   backLabel?: string;
+  contextTools?: ReactNode;
   onEdit: (target: { kind: 'creator' | 'contact' | 'work' | 'identity'; base?: ContactDetail | WorkDetail }) => void;
   refreshToken?: number;
   initialSection?: Section | 'invitations';
@@ -55,7 +56,7 @@ function Profile({ api, creator, onEdit }: { api: DesktopBridge; creator: Creato
   </section>;
 }
 
-export function CreatorRecord({ api, creator, onBack, backLabel='Back to creators', onEdit,onAnalyze,onBindYouTube, invitationActivityId, refreshToken = 0, initialSection = 'profile' }: CreatorRecordProps) {
+export function CreatorRecord({ api, creator, onBack, backLabel='Back to creators', contextTools, onEdit,onAnalyze,onBindYouTube, invitationActivityId, refreshToken = 0, initialSection = 'profile' }: CreatorRecordProps) {
   const [recordPage,setRecordPage]=useState<RecordPage>(initialSection==='invitations'?'invitations':'profile');
   const [emailsOpen,setEmailsOpen]=useState(initialSection==='emails');
   const [worksOpen,setWorksOpen]=useState(initialSection==='works');
@@ -76,7 +77,7 @@ export function CreatorRecord({ api, creator, onBack, backLabel='Back to creator
     catch { setHeaderError({ code: 'open_failed', message: 'This profile link could not be opened.', retryable: false }); }
   }
   return <article className="creator-record">
-    <button className="text-button back-button" onClick={onBack}><Icon name="arrow"/>{backLabel}</button>
+    <div className="creator-context-bar"><button className="text-button back-button" onClick={onBack}><Icon name="arrow"/>{backLabel}</button>{contextTools}</div>
     <header className="creator-record-header"><Artwork url={creator.avatar_url} name={name} kind="creators" large/><div className="creator-record-title"><span className="eyebrow">{friendlyLabel(creator.platform)} creator</span><h1 ref={title} tabIndex={-1}>{name}</h1>{creator.handle && <p>{creator.handle}</p>}</div><div className="creator-header-actions">{safeHTTPS(creator.profile_url) && <button className="button secondary" onClick={() => void openProfile()}>Open profile<Icon name="external"/></button>}{onAnalyze&&<button className="button secondary" onClick={onAnalyze}>Analyze creator</button>}{onBindYouTube&&<button className="button secondary" onClick={onBindYouTube}>Bind YouTube channel</button>}</div><dl className="creator-headline-metrics"><div><dt>Followers</dt><dd>{creator.follower_count === null ? 'Followers unknown' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(creator.follower_count)}</dd></div><div><dt>Known works</dt><dd>{creator.work_count.toLocaleString('en')}</dd></div></dl></header>
     {headerError && <ErrorNotice error={headerError}/>} 
     <div className="creator-tabs" role="tablist" aria-label="Creator record sections">{(['profile','invitations'] as const).map(page=><button key={page} ref={node=>{if(node)pageTabs.current.set(page,node);else pageTabs.current.delete(page);}} role="tab" id={`creator-page-tab-${page}`} aria-controls={`creator-page-${page}`} aria-selected={recordPage===page} tabIndex={recordPage===page?0:-1} onClick={()=>setRecordPage(page)} onKeyDown={event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const next=event.key==='Home'?'profile':event.key==='End'?'invitations':page==='profile'?'invitations':'profile';setRecordPage(next);pageTabs.current.get(next)?.focus();}}>{page==='profile'?'Profile':'Invitations'}</button>)}</div>

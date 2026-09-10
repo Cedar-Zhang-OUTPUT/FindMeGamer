@@ -36,3 +36,5 @@
   .creator-header-actions { grid-column: 1/-1; grid-row: auto; }
   .creator-headline-metrics { grid-column: 1/-1; grid-row: auto; }
 }
+.creator-context-bar { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 16px; margin-bottom:12px; }
+.creator-context-bar > .back-button { margin-bottom:0; }

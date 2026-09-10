@@ -29,7 +29,7 @@ function emailSummary(creator:CreatorDetail){
   return 'Email availability unknown';
 }
 
-export function CreatorLibrary({api,active,onNavigationGuardChange,onConnectionRepair,openRequest}:{api:DesktopBridge;active:boolean;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;openRequest?:{id:string;nonce:number}}) {
+export function CreatorLibrary({api,active,onNavigationGuardChange,onConnectionRepair,openRequest,onViewChange}:{api:DesktopBridge;active:boolean;onNavigationGuardChange?:(guard:NavigationGuard|null)=>void;onConnectionRepair?:()=>void;openRequest?:{id:string;nonce:number};onViewChange?:(view:'list'|'record')=>void}) {
   const analyze=useAnalyze();
   const [filters,setFilters]=useState<Filters>(emptyFilters);
   const [desiredFilters,setDesiredFilters]=useState<Filters>(emptyFilters);
@@ -37,6 +37,7 @@ export function CreatorLibrary({api,active,onNavigationGuardChange,onConnectionR
   const [page,setPage]=useState<CreatorPage|null>(null),[busy,setBusy]=useState(false);
   const [error,setError]=useState<PublicError|null>(null),[failedInput,setFailedInput]=useState<CreatorListInput|null>(null);
   const [route,setRoute]=useState<Route>({kind:'list'});
+  useLayoutEffect(()=>{onViewChange?.(route.kind==='list'?'list':'record');},[route.kind,onViewChange]);
   const alive=useRef(true),loaded=useRef(false),generation=useRef(0),detailGeneration=useRef(0);
   const listRoot=useRef<HTMLDivElement>(null),listScroll=useRef(0),selectedId=useRef<string|null>(null);
   const restoreFrame=useRef<number|null>(null);
