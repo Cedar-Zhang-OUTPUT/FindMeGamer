@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { GAME_FIELDS, type GameDetail, type GameField } from '../../shared/games';
 import { comparisonValue, displayField, gameLabels, newReference, validateDraft, type GameDraft, type ReferenceDraft } from './gameDraft';
+import type { DesktopBridge } from '../../shared/bridge';
+import { SteamReferenceSource, SteamRecommendationsStatus } from './SteamReferenceSource';
 
 function AddReference({draft,onAdd,onCancel}:{draft:GameDraft;onAdd:(reference:ReferenceDraft)=>void;onCancel:()=>void}){
   const [reference,setReference]=useState(newReference),[errors,setErrors]=useState<Record<string,string>>({});
@@ -18,9 +20,10 @@ function AddReference({draft,onAdd,onCancel}:{draft:GameDraft;onAdd:(reference:R
   </form></div>,document.body);
 }
 
-export function GameForm({ base, draft, disabled, errors, onChange, selection }: {
+export function GameForm({ base, draft, disabled, errors, onChange, selection, api }: {
   base: GameDetail | null; draft: GameDraft; disabled: boolean; errors: Record<string, string>; onChange: (draft: GameDraft) => void;
   selection?: {ids:string[];onChange:(ids:string[])=>void};
+  api?: Pick<DesktopBridge, 'openExternal'>;
 }) {
   const [expandedReferences, setExpandedReferences] = useState<Set<string>>(new Set());
   const [adding,setAdding]=useState(false);
@@ -55,6 +58,7 @@ export function GameForm({ base, draft, disabled, errors, onChange, selection }:
       <label className="game-favorite"><input type="checkbox" checked={draft.favorite} onChange={event => onChange({ ...draft, favorite: event.target.checked })}/>Saved</label>
     </section>
     <section className="game-references" aria-label="Reference works"><div className="game-section-title"><h3>Reference works <span className="count">{draft.references.length}</span></h3><button className="button secondary" type="button" disabled={draft.references.length >= 100} onClick={()=>setAdding(true)}>Add reference</button></div>
+      <SteamRecommendationsStatus state={base?.steam_recommendations}/>
       {adding&&<AddReference draft={draft} onCancel={()=>setAdding(false)} onAdd={reference=>{const existing=draft.references.find(item=>reference.url.trim()?item.url.trim()===reference.url.trim():item.name.trim().toLocaleLowerCase()===reference.name.trim().toLocaleLowerCase());setAdding(false);if(existing){setExpandedReferences(previous=>new Set([...previous,existing.localId]));requestAnimationFrame(()=>document.getElementById(`game-reference-${existing.localId}-name`)?.focus());}else onChange({...draft,referencesTouched:true,references:[...draft.references,reference]});}}/>}
       {errors.references && <p className="game-field-error">{errors.references}</p>}
       {draft.references.map((reference, index) => {
@@ -63,6 +67,7 @@ export function GameForm({ base, draft, disabled, errors, onChange, selection }:
         const expanded = expandedReferences.has(reference.localId) || hasError;
         const selectionKey=reference.id||reference.localId;
         return <div className="game-reference-card" key={reference.localId}><div className="game-reference-header">{selection&&<input type="checkbox" aria-label={`Use reference ${label}`} checked={selection.ids.includes(selectionKey)} onChange={event=>selection.onChange(event.target.checked?[...selection.ids,selectionKey]:selection.ids.filter(id=>id!==selectionKey))}/>}<button className="text-button game-reference-toggle" type="button" aria-label={`Edit reference ${label}`} aria-expanded={expanded} aria-controls={`reference-editor-${reference.localId}`} onClick={() => setExpandedReferences(previous => { const next = new Set(previous); if (next.has(reference.localId)) next.delete(reference.localId); else next.add(reference.localId); return next; })}>{label}<span aria-hidden="true">{expanded ? '−' : '+'}</span></button><button className="text-button game-remove-reference" type="button" aria-label={`Remove reference ${label}`} title="Remove this reference, not its Library record" onClick={() => onChange({ ...draft, referencesTouched: true, references: draft.references.filter(item => item.localId !== reference.localId) })}>Remove</button></div>
+          <SteamReferenceSource reference={reference.id ? base?.reference_works.find(item=>item.id===reference.id) : undefined} api={api}/>
           {expanded && <div id={`reference-editor-${reference.localId}`} className="game-reference-fields" role="group" aria-label={`Reference ${index + 1}`}>{referenceField(reference, 'name', 'Reference name')}{referenceField(reference, 'url', 'Reference URL')}{referenceField(reference, 'similarities', 'Similarities')}{referenceField(reference, 'reason', 'Reason')}</div>}
         </div>;
       })}

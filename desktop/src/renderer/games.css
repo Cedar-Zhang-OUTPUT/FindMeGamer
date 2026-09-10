@@ -112,3 +112,4 @@
 .reference-similarities legend { margin-bottom:10px; font-weight:600; font-size:.875rem; }
 .reference-similarities label { display:flex; align-items:center; gap:7px; font-size:.875rem; }
 .match-new-activity .game-start-search-field input:not([type=checkbox]) { border:0; background:transparent; padding-inline:0; }
+.game-reference-provenance { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-block: 6px; }

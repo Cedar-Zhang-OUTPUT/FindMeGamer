@@ -4,6 +4,7 @@ import type { CreateGameInput, GameDetail, GameField, GameFields, GameListInput,
 import type { JsonObject, JsonValue } from '../shared/library';
 import { PublicFailure, saveOutcomeUnknown } from './transport';
 import type { GameRequest } from './transport';
+import { decodeSteamRecommendations, validateReferenceSource } from './game-provenance-validation';
 
 type Mode = 'input' | 'response';
 export type GameRequestHandler = (input: GameRequest) => Promise<unknown>;
@@ -12,7 +13,7 @@ const uuid = /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
 const steamId = /^[1-9][0-9]{0,19}$/;
 const fieldNames: readonly string[] = GAME_FIELDS;
 const metadata = ['id', 'revision', 'favorite', 'reference_works', 'source_fields', 'manual_overrides',
-  'overridden_fields', 'source_identity', 'last_analyzed_at', 'next_analysis_at', 'created_at', 'updated_at'];
+  'overridden_fields', 'source_identity', 'last_analyzed_at', 'next_analysis_at', 'created_at', 'updated_at', 'steam_recommendations'];
 
 function fail(mode: Mode): never {
   throw new PublicFailure(mode === 'input' ? 'request_invalid' : 'invalid_response', mode === 'input'
@@ -90,8 +91,9 @@ function fields(raw: Record<string, unknown>): GameFields {
 
 function reference(value: unknown, mode: Mode): ReferenceWork {
   const raw = object(value, mode);
-  keys(raw, ['id', 'name', 'url', 'similarities', 'reason'], mode);
+  keys(raw, ['id', 'name', 'url', 'similarities', 'reason', ...(mode === 'response' ? ['source', 'source_url'] : [])], mode);
   const output: Record<string, unknown> = {};
+  if (mode === 'response') { validateReferenceSource(raw); for (const key of ['source', 'source_url']) if (Object.hasOwn(raw, key)) output[key] = raw[key]; }
   for (const field of ['name', 'url', 'reason']) {
     if (Object.hasOwn(raw, field)) output[field] = scalar(raw[field], field, mode);
     else if (mode === 'response') output[field] = null;
@@ -156,6 +158,7 @@ export function decodeDetail(value: unknown, expectedId?: string): GameDetail {
   if (!Array.isArray(raw.overridden_fields) || raw.overridden_fields.some(field => !fieldNames.includes(field))) fail('response');
   return { ...fields(raw), id, revision: integer(raw.revision, 0, Number.MAX_SAFE_INTEGER, 'response'),
     favorite: boolean(raw.favorite, 'response'), reference_works: references(raw.reference_works, 'response'),
+    ...(Object.hasOwn(raw, 'steam_recommendations') ? { steam_recommendations: decodeSteamRecommendations(raw.steam_recommendations) } : {}),
     source_fields: fields(source), manual_overrides: jsonObject(raw.manual_overrides),
     overridden_fields: [...raw.overridden_fields] as GameField[],
     // Acquisition binding must not be reconstructed from editable website/Steam values.

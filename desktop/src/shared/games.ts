@@ -14,12 +14,14 @@ export interface GameFields {
 }
 export type GameField = keyof GameFields;
 export const GAME_FIELDS: GameField[] = ['name', 'website_url', 'steam_app_id', 'developer', 'description', 'tags', 'languages', 'release_date', 'cover_url'];
-export interface ReferenceWork { id?: string | null; name?: string | null; url?: string | null; similarities: string[]; reason?: string | null }
+export interface ReferenceWork { id?: string | null; name?: string | null; url?: string | null; similarities: string[]; reason?: string | null; source?: 'manual' | 'steam_more_like_this'; source_url?: string | null }
+export interface SteamRecommendations { status: 'not_fetched' | 'available' | 'partial' | 'unavailable'; source_url: string | null; fetched_at: string | null }
 export interface GameDetail extends GameFields {
   id: string;
   revision: number;
   favorite: boolean;
   reference_works: ReferenceWork[];
+  steam_recommendations?: SteamRecommendations;
   source_fields: GameFields;
   manual_overrides: JsonObject;
   overridden_fields: GameField[];

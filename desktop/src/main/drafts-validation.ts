@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type * as DTO from '../shared/drafts';
 import type { JsonObject } from '../shared/library';
 import { GAME_FIELDS } from '../shared/games';
+import { decodeSteamRecommendations, validateReferenceSource } from './game-provenance-validation';
 import { PublicFailure } from './transport';
 export { identifier, integer, object, keys } from './outreach-validation';
 import { identifier, integer, object, keys } from './outreach-validation';
@@ -94,13 +95,14 @@ function work(v: unknown) {
 }
 export function sources(v: unknown) { const r = exact(v, SLOT_KEYS, 'response'), first = exact(r.firstName, ['source_url', 'confirmed'], 'response'), channel = exact(r.channelName, ['source_url'], 'response'); nullable(first.source_url, 'response', 2048); bool(first.confirmed, 'response'); nullable(channel.source_url, 'response', 2048); work(r.reference); work(r.observation); return r; }
 function recordedGame(v: unknown) {
-  const r = object(v, 'response'); keys(r, [...GAME_FIELDS, 'id', 'revision', 'favorite', 'reference_works', 'source_fields', 'manual_overrides', 'overridden_fields', 'source_identity', 'last_analyzed_at', 'next_analysis_at', 'created_at', 'updated_at'], 'response');
+  const r = object(v, 'response'); keys(r, [...GAME_FIELDS, 'id', 'revision', 'favorite', 'reference_works', 'source_fields', 'manual_overrides', 'overridden_fields', 'source_identity', 'last_analyzed_at', 'next_analysis_at', 'created_at', 'updated_at', 'steam_recommendations'], 'response');
+  if (Object.hasOwn(r, 'steam_recommendations')) decodeSteamRecommendations(r.steam_recommendations);
   identifier(r.id, 'response'); integer(r.revision, 'response'); bool(r.favorite, 'response');
   function fields(v: unknown) { const f = object(v, 'response'); keys(f, GAME_FIELDS, 'response'); for (const k of GAME_FIELDS) if (Object.hasOwn(f, k)) { if (k === 'tags' || k === 'languages') list(f[k], 'response', 100, v => text(v, 'response', 255, 1)); else nullable(f[k], 'response'); } }
   fields(Object.fromEntries(GAME_FIELDS.filter(k => Object.hasOwn(r, k)).map(k => [k, r[k]]))); fields(r.source_fields); jsonObject(r.manual_overrides);
   list(r.overridden_fields, 'response', 9, v => { if (!GAME_FIELDS.includes(v as typeof GAME_FIELDS[number])) fail('response'); return v; });
   const identity = exact(r.source_identity, ['steam_app_id', 'canonical_url'], 'response'); Object.values(identity).forEach(v => nullable(v, 'response', 2048));
-  list(r.reference_works, 'response', 10_000, v => { const ref = object(v, 'response'); keys(ref, ['id', 'name', 'url', 'similarities', 'reason'], 'response'); if (ref.id != null) identifier(ref.id, 'response'); for (const k of ['name', 'url', 'reason']) if (Object.hasOwn(ref, k)) nullable(ref[k], 'response'); list(ref.similarities, 'response', 100, v => text(v, 'response', 255)); return ref; });
+  list(r.reference_works, 'response', 10_000, v => { const ref = object(v, 'response'); keys(ref, ['id', 'name', 'url', 'similarities', 'reason', 'source', 'source_url'], 'response'); validateReferenceSource(ref); if (ref.id != null) identifier(ref.id, 'response'); for (const k of ['name', 'url', 'reason']) if (Object.hasOwn(ref, k)) nullable(ref[k], 'response'); list(ref.similarities, 'response', 100, v => text(v, 'response', 255)); return ref; });
   for (const k of ['last_analyzed_at', 'next_analysis_at', 'created_at', 'updated_at']) if (r[k] != null) stamp(r[k]);
 }
 function recordedContact(v: unknown) { const r = exact(v, ['id', 'email', 'purpose', 'source_url', 'source_type', 'source_fields', 'manual_overrides', 'validation_state', 'identity_revision', 'updated_at', 'status'], 'response'); identifier(r.id, 'response'); text(r.email, 'response', 254, 3); nullable(r.purpose, 'response', 512); nullable(r.source_url, 'response', 2048); text(r.source_type, 'response', 255, 1); text(r.validation_state, 'response', 255, 1); jsonObject(r.source_fields); jsonObject(r.manual_overrides); integer(r.identity_revision, 'response'); stamp(r.updated_at); if (!['eligible', 'inactive', 'invalid', 'historical'].includes(r.status as string)) fail('response'); }

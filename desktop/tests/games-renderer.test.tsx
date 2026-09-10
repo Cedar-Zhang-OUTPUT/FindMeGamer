@@ -34,6 +34,24 @@ async function edit(user: ReturnType<typeof userEvent.setup>) {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('editable Games Library', () => {
+  it('shows Steam provenance and partial failure beside references while retaining edit/remove', async () => {
+    const source='https://store.steampowered.com/recommended/morelike/app/12345/';
+    const reference={id:'00000000-0000-4000-8000-000000000002',name:'Steam peer',url:'https://store.steampowered.com/app/67890/',similarities:[],reason:null,source:'steam_more_like_this' as const,source_url:source};
+    const data=game({reference_works:[reference],steam_recommendations:{status:'partial',source_url:source,fetched_at:'2026-09-10T00:00:00Z'}});
+    const api=apiMock();vi.mocked(api.games.detail).mockResolvedValue(ok(data));const {user}=start(api);
+    await user.click(await screen.findByRole('button',{name:'Open Harbor Lights'}));
+    expect(await screen.findByText('Steam recommendation')).toBeVisible();expect(screen.getByText('Some Steam recommendations could not be loaded.')).toBeVisible();
+    await user.click(screen.getByRole('button',{name:'View Steam source for Steam peer'}));expect(api.openExternal).toHaveBeenCalledWith(source);
+    await user.click(screen.getByRole('button',{name:'Edit game'}));expect(screen.getByText('Steam recommendation')).toBeVisible();
+    await user.click(screen.getByRole('button',{name:'Edit reference Steam peer'}));expect(screen.getByLabelText('Reference name')).toHaveValue('Steam peer');
+    await user.click(screen.getByRole('button',{name:'Remove reference Steam peer'}));expect(screen.queryByText('Steam recommendation')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button',{name:'Save changes'}));expect(api.games.update).toHaveBeenCalledWith({id:data.id,data:{expected_revision:data.revision,reference_works:[]}});
+  });
+  it('keeps a recommendations failure visible even with zero references', async () => {
+    const api=apiMock();vi.mocked(api.games.detail).mockResolvedValue(ok(game({steam_recommendations:{status:'unavailable',source_url:null,fetched_at:null}})));
+    const {user}=start(api);await user.click(await screen.findByRole('button',{name:'Open Harbor Lights'}));
+    expect(await screen.findByText('Steam recommendations unavailable. Existing references are unchanged.')).toBeVisible();
+  });
   it('keeps an empty game focused on editing without empty metadata panels', async () => {
     const api=apiMock();vi.mocked(api.games.detail).mockResolvedValue(ok(game({description:null,developer:null,website_url:null,tags:[],languages:[]})));
     const {user}=start(api);await user.click(await screen.findByRole('button',{name:'Open Harbor Lights'}));
