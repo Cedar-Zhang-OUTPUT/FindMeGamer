@@ -109,13 +109,13 @@ describe('CreatorRecord', () => {
     expect(screen.queryByText('Source identity is retained separately from editable profile values.')).not.toBeInTheDocument();
     expect(screen.queryByText('No profile summary recorded.')).not.toBeInTheDocument();
     expect(screen.queryByText('None recorded.')).not.toBeInTheDocument();
-    await user.click(screen.getByRole('tab', { name: 'Emails' }));
+    await user.click(screen.getByRole('button', { name: 'Emails' }));
     const validation = screen.getByText('What validation means', { selector: 'summary' });
     expect(validation).toBeVisible();
     expect(screen.getByText('Validation describes recorded checks; it does not prove mailbox deliverability.')).not.toBeVisible();
     await user.click(validation);
     expect(screen.getByText('Validation describes recorded checks; it does not prove mailbox deliverability.')).toBeVisible();
-    await user.click(screen.getByRole('tab', { name: 'Known works' }));
+    await user.click(screen.getByRole('button', { name: 'Known works' }));
     const listHelp = screen.getByText('About this list', { selector: 'summary' });
     expect(listHelp).toBeVisible();
     expect(screen.getByText('Known works are saved records, not a complete viewing or play history.')).not.toBeVisible();
@@ -146,18 +146,17 @@ describe('CreatorRecord', () => {
     expect(api.openExternal).not.toHaveBeenCalledWith('mailto:unsafe@pixel.example');
   });
 
-  it('uses one keyboard-reachable tab stop and fetches works only when Known works is active', async () => {
+  it('keeps two page tabs and fetches work records only when their group is expanded', async () => {
     const { api, user } = start();
     expect(api.creators.works).not.toHaveBeenCalled();
-    const profile = screen.getByRole('tab', { name: 'Overview' });
+    const profile = screen.getByRole('tab', { name:'Profile' });
     expect(profile).toHaveAttribute('tabindex', '0');
-    expect(screen.getByRole('tab', { name: 'Emails' })).toHaveAttribute('tabindex', '-1');
-    profile.focus();
-    await user.keyboard('{ArrowRight}');
-    expect(screen.getByRole('tab', { name: 'Emails' })).toHaveFocus();
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Emails' })).toHaveAttribute('aria-expanded', 'false');
+    await user.click(screen.getByRole('button', { name: 'Emails' }));
     expect(api.creators.works).not.toHaveBeenCalled();
-    await user.keyboard('{End}');
-    expect(screen.getByRole('tab', { name: 'Known works' })).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: 'Known works' }));
+    await waitFor(()=>expect(screen.getByRole('button', { name: 'Known works' })).toHaveAttribute('aria-expanded','true'));
     expect(screen.getByRole('heading', { name: 'Known works' })).toHaveClass('sr-only');
     await waitFor(() => expect(api.creators.works).toHaveBeenCalledWith({ creatorId: 'creator-one', includePreviousIdentity: false, limit: 50, offset: 0 }));
   });
@@ -264,7 +263,7 @@ describe('CreatorRecord', () => {
     const add = screen.getByRole('button', { name: 'Add work' }); add.focus();
     view.rerender(<CreatorRecord api={api} creator={creator({ id: 'creator-two', revision: 9, source_identity: { platform: 'x', account_id: 'x-two', canonical_url: null, revision: 9 } })} onBack={onBack} onEdit={onEdit} initialSection="profile" refreshToken={1}/>);
     await waitFor(() => expect(api.creators.works).toHaveBeenCalledTimes(3));
-    expect(screen.getByRole('tab', { name: 'Known works' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('button', { name: 'Known works' })).toHaveAttribute('aria-expanded', 'true');
     expect(add).toHaveFocus();
   });
 

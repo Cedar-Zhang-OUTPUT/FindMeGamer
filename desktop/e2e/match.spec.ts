@@ -288,7 +288,7 @@ test('Match v2 real planning, retained discovery pages, explicit six-candidate e
     await expect(h.page.getByRole('heading', { name: creatorName, exact: true, level: 1 })).toBeVisible();
     await expect(h.page.getByRole('button', { name: 'Edit profile', exact: true })).toBeVisible();
     await h.page.getByRole('tab', { name: 'Profile', exact: true }).focus(); await h.page.keyboard.press('ArrowRight');
-    await expect(h.page.getByRole('tab', { name: 'Emails', exact: true })).toHaveAttribute('aria-selected', 'true');
+    await expect(h.page.getByRole('button', { name: 'Emails', exact: true })).toHaveAttribute('aria-expanded', 'true');
     await screenshot(h, 'match-current-creator');
     await h.page.getByRole('button', { name: 'Back to activity', exact: true }).click();
     await expect(evaluations.getByRole('article')).toHaveCount(6);

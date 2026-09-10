@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { DesktopBridge, PublicError } from '../../../shared/bridge';
 import type { ContactDetail, CreatorDetail, OtherContact, WorkDetail } from '../../../shared/creators';
 import { Artwork, ErrorNotice, friendlyLabel, Icon } from '../Primitives';
@@ -10,7 +10,6 @@ import {AnalysisInsights} from '../analyze/AnalysisInsights';
 
 type Section = 'profile' | 'emails' | 'works';
 type RecordPage = 'profile' | 'invitations';
-const sections: { id: Section; label: string }[] = [{ id: 'profile', label: 'Overview' }, { id: 'emails', label: 'Emails' }, { id: 'works', label: 'Known works' }];
 
 function safeHTTPS(value: string | null): value is string {
   if (!value) return false;
@@ -27,6 +26,7 @@ export interface CreatorRecordProps {
   api: DesktopBridge;
   creator: CreatorDetail;
   onBack: () => void;
+  backLabel?: string;
   onEdit: (target: { kind: 'creator' | 'contact' | 'work' | 'identity'; base?: ContactDetail | WorkDetail }) => void;
   refreshToken?: number;
   initialSection?: Section | 'invitations';
@@ -55,12 +55,12 @@ function Profile({ api, creator, onEdit }: { api: DesktopBridge; creator: Creato
   </section>;
 }
 
-export function CreatorRecord({ api, creator, onBack, onEdit,onAnalyze,onBindYouTube, invitationActivityId, refreshToken = 0, initialSection = 'profile' }: CreatorRecordProps) {
+export function CreatorRecord({ api, creator, onBack, backLabel='Back to creators', onEdit,onAnalyze,onBindYouTube, invitationActivityId, refreshToken = 0, initialSection = 'profile' }: CreatorRecordProps) {
   const [recordPage,setRecordPage]=useState<RecordPage>(initialSection==='invitations'?'invitations':'profile');
-  const [section, setSection] = useState<Section>(initialSection==='invitations'?'profile':initialSection);
+  const [emailsOpen,setEmailsOpen]=useState(initialSection==='emails');
+  const [worksOpen,setWorksOpen]=useState(initialSection==='works');
   const pageTabs=useRef(new Map<RecordPage,HTMLButtonElement>());
   const [headerError, setHeaderError] = useState<PublicError | null>(null);
-  const tabs = useRef(new Map<Section, HTMLButtonElement>());
   const title = useRef<HTMLHeadingElement>(null);
   const focusedCreatorId = useRef<string | null>(null);
   const name = creatorName(creator);
@@ -69,14 +69,6 @@ export function CreatorRecord({ api, creator, onBack, onEdit,onAnalyze,onBindYou
     focusedCreatorId.current = creator.id;
     title.current?.focus({ preventScroll: true });
   }, [creator.id]);
-  function choose(next: Section, focus = false) { setSection(next); if (focus) tabs.current.get(next)?.focus({ preventScroll: true }); }
-  function keyNavigation(event: KeyboardEvent, current: Section) {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    event.preventDefault();
-    const index = sections.findIndex(item => item.id === current);
-    const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? sections.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + sections.length) % sections.length;
-    choose(sections[nextIndex].id, true);
-  }
   async function openProfile() {
     if (!safeHTTPS(creator.profile_url)) return;
     setHeaderError(null);
@@ -84,17 +76,24 @@ export function CreatorRecord({ api, creator, onBack, onEdit,onAnalyze,onBindYou
     catch { setHeaderError({ code: 'open_failed', message: 'This profile link could not be opened.', retryable: false }); }
   }
   return <article className="creator-record">
-    <button className="text-button back-button" onClick={onBack}><Icon name="arrow"/>Back to creators</button>
-    <header className="creator-record-header"><Artwork url={creator.avatar_url} name={name} kind="creators" large/><div className="creator-record-title"><span className="eyebrow">{friendlyLabel(creator.platform)} creator</span><h1 ref={title} tabIndex={-1}>{name}</h1>{creator.handle && <p>{creator.handle}</p>}</div><div className="creator-header-actions">{safeHTTPS(creator.profile_url) && <button className="button secondary" onClick={() => void openProfile()}>Open profile<Icon name="external"/></button>}</div><dl className="creator-headline-metrics"><div><dt>Followers</dt><dd>{creator.follower_count === null ? 'Followers unknown' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(creator.follower_count)}</dd></div><div><dt>Known works</dt><dd>{creator.work_count.toLocaleString('en')}</dd></div></dl></header>
+    <button className="text-button back-button" onClick={onBack}><Icon name="arrow"/>{backLabel}</button>
+    <header className="creator-record-header"><Artwork url={creator.avatar_url} name={name} kind="creators" large/><div className="creator-record-title"><span className="eyebrow">{friendlyLabel(creator.platform)} creator</span><h1 ref={title} tabIndex={-1}>{name}</h1>{creator.handle && <p>{creator.handle}</p>}</div><div className="creator-header-actions">{safeHTTPS(creator.profile_url) && <button className="button secondary" onClick={() => void openProfile()}>Open profile<Icon name="external"/></button>}{onAnalyze&&<button className="button secondary" onClick={onAnalyze}>Analyze creator</button>}{onBindYouTube&&<button className="button secondary" onClick={onBindYouTube}>Bind YouTube channel</button>}</div><dl className="creator-headline-metrics"><div><dt>Followers</dt><dd>{creator.follower_count === null ? 'Followers unknown' : new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(creator.follower_count)}</dd></div><div><dt>Known works</dt><dd>{creator.work_count.toLocaleString('en')}</dd></div></dl></header>
     {headerError && <ErrorNotice error={headerError}/>} 
-    {(onAnalyze||onBindYouTube)&&<div className="analysis-entry-actions">{onAnalyze&&<button className="button primary" onClick={onAnalyze}>Analyze creator</button>}{onBindYouTube&&<button className="button primary" onClick={onBindYouTube}>Bind YouTube channel</button>}</div>}
     <div className="creator-tabs" role="tablist" aria-label="Creator record sections">{(['profile','invitations'] as const).map(page=><button key={page} ref={node=>{if(node)pageTabs.current.set(page,node);else pageTabs.current.delete(page);}} role="tab" id={`creator-page-tab-${page}`} aria-controls={`creator-page-${page}`} aria-selected={recordPage===page} tabIndex={recordPage===page?0:-1} onClick={()=>setRecordPage(page)} onKeyDown={event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const next=event.key==='Home'?'profile':event.key==='End'?'invitations':page==='profile'?'invitations':'profile';setRecordPage(next);pageTabs.current.get(next)?.focus();}}>{page==='profile'?'Profile':'Invitations'}</button>)}</div>
     <div role="tabpanel" id="creator-page-profile" aria-labelledby="creator-page-tab-profile" hidden={recordPage!=='profile'}>
-    {section==='profile'&&<AnalysisInsights brief={creator.brief} analysis={creator.analysis} sourceStatus={creator.source_status}/>}
-    <div className="creator-tabs creator-profile-tabs" role="tablist" aria-label="Profile details">{sections.map(item => <button key={item.id} ref={node => { if (node) tabs.current.set(item.id, node); else tabs.current.delete(item.id); }} type="button" role="tab" id={`creator-tab-${item.id}`} aria-controls={`creator-panel-${item.id}`} aria-selected={section === item.id} tabIndex={section === item.id ? 0 : -1} onClick={() => choose(item.id)} onKeyDown={event => keyNavigation(event, item.id)}>{item.label}</button>)}</div>
-    <div role="tabpanel" id="creator-panel-profile" aria-labelledby="creator-tab-profile" hidden={section !== 'profile'}><Profile api={api} creator={creator} onEdit={onEdit}/></div>
-    <div role="tabpanel" id="creator-panel-emails" aria-labelledby="creator-tab-emails" hidden={section !== 'emails'}><CreatorContacts api={api} contacts={creator.contacts} onEdit={onEdit}/></div>
-    <div role="tabpanel" id="creator-panel-works" aria-labelledby="creator-tab-works" hidden={section !== 'works'}><CreatorWorks api={api} creatorId={creator.id} identityRevision={creator.source_identity.revision} active={recordPage==='profile'&&section === 'works'} onEdit={onEdit} refreshToken={refreshToken}/></div>
+    <div className="creator-information-layout">
+      <aside className="creator-resource-groups" aria-label="Contact and work records">
+        <details className="creator-resource-group" open={emailsOpen} onToggle={event=>setEmailsOpen(event.currentTarget.open)}>
+          <summary role="button" aria-label="Emails" aria-expanded={emailsOpen} aria-controls="creator-email-records"><strong>Emails <span className="count">{creator.contacts.length}</span></strong>{!emailsOpen&&<span>{creator.contacts.find(contact=>contact.is_current_identity&&contact.is_active)?.email??'No current email'}</span>}</summary>
+          <div id="creator-email-records"><CreatorContacts api={api} contacts={creator.contacts} onEdit={onEdit}/></div>
+        </details>
+        <details className="creator-resource-group" open={worksOpen} onToggle={event=>setWorksOpen(event.currentTarget.open)}>
+          <summary role="button" aria-label="Known works" aria-expanded={worksOpen} aria-controls="creator-work-records"><strong>Known works <span className="count">{creator.work_count.toLocaleString('en')}</span></strong>{!worksOpen&&<span>{creator.recent_works?.[0]?.work_name||creator.recent_works?.[0]?.content_title||'Saved work records'}</span>}</summary>
+          <div id="creator-work-records"><CreatorWorks api={api} creatorId={creator.id} identityRevision={creator.source_identity.revision} active={recordPage==='profile'&&worksOpen} onEdit={onEdit} refreshToken={refreshToken}/></div>
+        </details>
+      </aside>
+      <div className="creator-information-main"><Profile api={api} creator={creator} onEdit={onEdit}/><AnalysisInsights brief={creator.brief} analysis={creator.analysis} sourceStatus={creator.source_status}/></div>
+    </div>
     </div>
     <div role="tabpanel" id="creator-page-invitations" aria-labelledby="creator-page-tab-invitations" hidden={recordPage!=='invitations'}><CreatorInvitationHistory key={creator.id} api={api.collaboration} creatorId={creator.id} initialActivityId={invitationActivityId} active={recordPage==='invitations'} embedded/></div>
   </article>;

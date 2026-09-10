@@ -56,7 +56,7 @@ test('complete Settings against accepted API, closed provider fixtures and captu
     await page.getByRole('button',{name:'Library',exact:true}).click();
     await page.getByRole('button',{name:'Open Fixture Cozy Gamer',exact:true}).click();
     await expect(page.getByRole('heading',{name:'Fixture Cozy Gamer',exact:true})).toBeVisible();
-    await page.getByRole('tab',{name:'Emails',exact:true}).click();
+    await page.getByRole('button', { name: 'Emails',exact:true}).click();
     await expect(page.getByText('fixture@example.com',{exact:true}).first()).toBeVisible();
     await expect(page.getByText('Loading creator…',{exact:true})).not.toBeVisible();
     await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

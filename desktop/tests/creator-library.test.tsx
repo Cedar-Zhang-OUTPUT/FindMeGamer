@@ -58,9 +58,9 @@ it('preserves selection, section and list filters across outer visibility change
   const api=apiMock();const {rerender}=render(<CreatorLibrary api={api} active/>);const user=userEvent.setup();
   await screen.findByRole('button',{name:'Open Creator fixture'});await user.type(screen.getByRole('searchbox'),'saved{Enter}');
   await user.click(await screen.findByRole('button',{name:'Open Creator fixture'}));await screen.findByRole('heading',{name:'Creator fixture'});
-  await user.click(screen.getByRole('tab',{name:'Emails'}));
+  await user.click(screen.getByRole('button', { name: 'Emails'}));
   rerender(<CreatorLibrary api={api} active={false}/>);rerender(<CreatorLibrary api={api} active/>);
-  expect(screen.getByRole('tab',{name:'Emails'})).toHaveAttribute('aria-selected','true');
+  expect(screen.getByRole('button', { name: 'Emails'})).toHaveAttribute('aria-expanded','true');
   expect(api.creators.detail).toHaveBeenCalledOnce();expect(api.creators.list).toHaveBeenCalledTimes(2);
   await user.click(screen.getByRole('button',{name:'Back to creators'}));expect(screen.getByRole('searchbox')).toHaveValue('saved');
   await waitFor(()=>expect(screen.getByRole('button',{name:'Open Creator fixture'})).toHaveFocus());
@@ -91,11 +91,11 @@ it('keeps a save successful when list refresh fails and returns email edits to E
   vi.mocked(api.creators.detail).mockResolvedValueOnce(ok(creatorFixture())).mockResolvedValue(ok(changed));
   vi.mocked(api.creators.updateContact).mockResolvedValue(ok(changed));
   render(<CreatorLibrary api={api} active/>);const user=userEvent.setup();
-  await user.click(await screen.findByRole('button',{name:'Open Creator fixture'}));await user.click(await screen.findByRole('tab',{name:'Emails'}));
+  await user.click(await screen.findByRole('button',{name:'Open Creator fixture'}));await user.click(await screen.findByRole('button', { name: 'Emails'}));
   await user.click(screen.getByRole('button',{name:'Edit creator@example.com'}));
   const email=screen.getByRole('textbox',{name:'Email'});await user.clear(email);await user.type(email,'changed@example.com');
-  await user.click(screen.getByRole('button',{name:'Save changes'}));await screen.findByRole('tab',{name:'Emails'});
-  expect(screen.getByRole('tab',{name:'Emails'})).toHaveAttribute('aria-selected','true');expect(screen.getByText('changed@example.com')).toBeVisible();
+  await user.click(screen.getByRole('button',{name:'Save changes'}));await screen.findByRole('button', { name: 'Emails'});
+  expect(screen.getByRole('button', { name: 'Emails'})).toHaveAttribute('aria-expanded','true');expect(screen.getByText('changed@example.com')).toBeVisible();
   expect(screen.getByRole('status')).toHaveTextContent('Saved');await user.click(screen.getByRole('button',{name:'Back to creators'}));
   expect(screen.getByRole('alert')).toHaveTextContent('Refresh unavailable');expect(api.creators.updateContact).toHaveBeenCalledOnce();
 });

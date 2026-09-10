@@ -310,7 +310,7 @@ describe('desktop renderer', () => {
     expect(screen.getByText(/<script>not executable<\/script>/)).toBeVisible();
     expect(screen.getByText(/arbitrary_future_field/)).toBeVisible();
     expect(screen.getByRole('button',{name:'Edit profile'})).toBeEnabled();
-    await user.click(screen.getByRole('tab',{name:'Emails'}));
+    await user.click(screen.getByRole('button', { name: 'Emails'}));
     expect(screen.getByText('hello@example.com')).toBeVisible();
     expect(screen.getByText('press@example.com')).toBeVisible();
     expect(screen.getByText('Business')).toBeVisible();

@@ -93,10 +93,10 @@ it('does not reopen a creator after leaving its pending read',async()=>{
 it('returns contact edits to Emails and reuses identity confirmation without mutating on cancel',async()=>{
   const api=setup(),user=userEvent.setup();const changed={...creatorFixture(),revision:4,contacts:[{...creatorFixture().contacts[0],email:'changed@example.com'}]};
   vi.mocked(api.creators.detail).mockResolvedValueOnce(ok(creatorFixture())).mockResolvedValue(ok(changed));vi.mocked(api.creators.updateContact).mockResolvedValue(ok(changed));
-  render(<MatchWorkspace api={api} active/>);await openCandidate(user);await user.click(await screen.findByRole('tab',{name:'Emails'}));await user.click(screen.getByRole('button',{name:'Edit creator@example.com'}));
+  render(<MatchWorkspace api={api} active/>);await openCandidate(user);await user.click(await screen.findByRole('button', { name: 'Emails'}));await user.click(screen.getByRole('button',{name:'Edit creator@example.com'}));
   await user.clear(screen.getByRole('textbox',{name:'Email'}));await user.type(screen.getByRole('textbox',{name:'Email'}),'changed@example.com');await user.click(screen.getByRole('button',{name:'Save changes'}));
-  expect(await screen.findByRole('tab',{name:'Emails'})).toHaveAttribute('aria-selected','true');expect(screen.getByRole('button',{name:'Edit changed@example.com'})).toBeVisible();
-  await user.click(screen.getByRole('tab',{name:'Overview'}));await user.click(screen.getByLabelText('Account identity',{selector:'summary'}));await user.click(screen.getByRole('button',{name:'Change identity'}));
+  expect(await screen.findByRole('button', { name: 'Emails'})).toHaveAttribute('aria-expanded','true');expect(screen.getByRole('button',{name:'Edit changed@example.com'})).toBeVisible();
+  await user.click(screen.getByRole('tab',{name:'Profile'}));await user.click(screen.getByLabelText('Account identity',{selector:'summary'}));await user.click(screen.getByRole('button',{name:'Change identity'}));
   expect(await screen.findByRole('heading',{name:'Change account identity'})).toBeVisible();await user.type(screen.getByLabelText('New account ID'),'UCnew');await user.click(screen.getByRole('button',{name:'Back to activity'}));
   expect(await screen.findByRole('dialog',{name:'Unsaved identity change'})).toBeVisible();await user.click(screen.getByRole('button',{name:'Discard changes'}));expect(await screen.findByRole('article',{name:'Creator 1'})).toBeVisible();expect(api.creators.rebind).not.toHaveBeenCalled();
 });

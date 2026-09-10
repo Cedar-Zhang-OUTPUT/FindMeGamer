@@ -5,3 +5,5 @@
 [data-theme=dark] .source-import,[data-theme=dark] .analysis-insights{background:linear-gradient(125deg,#29322c,#253534);color:#e4ece5}
 [data-theme=dark] .analysis-insights h3{color:#b7cbc0}
 @media(prefers-reduced-motion:reduce){.source-import,.analysis-insights{transition:none;animation:none}}
+.insight-unavailable { margin: 14px 0 0; padding: 12px 0; color: var(--muted); }
+.insight-unavailable > summary .status-badge { margin-left: 12px; }

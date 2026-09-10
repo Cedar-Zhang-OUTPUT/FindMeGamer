@@ -4,3 +4,35 @@
 .creator-profile-card,.creator-disclosure{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px}.creator-disclosure{padding:0}.creator-disclosure>summary{display:flex;justify-content:space-between;gap:16px;padding:17px 20px;cursor:pointer}.creator-disclosure>summary:focus-visible{outline:2px solid var(--teal);outline-offset:-3px;border-radius:8px}.creator-disclosure>summary strong{display:flex;align-items:center;gap:8px}.creator-disclosure>summary span{color:var(--muted);font-size:.75rem}.creator-disclosure-chevron{width:16px;height:16px;flex:0 0 auto;transition:transform .16s ease}.creator-disclosure[open]>summary .creator-disclosure-chevron{transform:rotate(90deg)}.creator-disclosure-body{padding:0 20px 20px;border-top:1px solid var(--line)}.creator-disclosure-actions{display:flex;justify-content:flex-end;padding-top:14px}.creator-help{align-self:flex-start;color:var(--muted);font-size:.75rem}.creator-help>summary{cursor:pointer;color:var(--teal);font-weight:650}.creator-help>p{max-width:580px;margin-top:8px;line-height:1.5}.creator-work-tools{display:flex;align-items:center;flex-wrap:wrap;gap:12px 22px}.creator-card-purpose{margin-top:13px;color:var(--muted);font-size:.8125rem}.creator-contact-details,.creator-work-details{padding:0 15px 15px}.creator-raw-details{margin-top:14px}.creator-raw-details>summary{cursor:pointer;color:var(--muted);font-size:.75rem;font-weight:650}.creator-work-facts{grid-template-columns:repeat(3,minmax(0,1fr))}.creator-metrics{flex-wrap:wrap}.creator-metrics li{min-width:0;overflow-wrap:anywhere}
 :root[data-theme=dark] .creator-disclosure{background:var(--surface);border-color:var(--line)}
 @media(max-width:650px){.creator-disclosure>summary{align-items:flex-start;flex-direction:column}.creator-work-facts{grid-template-columns:minmax(0,1fr)}}
+
+/* The person is the page; contact/work records stay visible beside their profile. */
+.creator-record { gap: 14px; }
+.creator-record-header { padding: 18px 20px; gap: 12px 18px; }
+.creator-record-title h1 { font-size: 1.5rem; line-height: 1.25; overflow-wrap: anywhere; }
+.creator-headline-metrics { padding-top: 0; border-top: 0; gap: 24px; }
+.creator-header-actions { flex-wrap: wrap; justify-content: flex-end; }
+.creator-information-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(300px, .85fr); gap: 18px; align-items: start; }
+.creator-information-main { grid-column: 1; grid-row: 1; min-width: 0; }
+.creator-resource-groups { grid-column: 2; grid-row: 1; display: grid; gap: 12px; min-width: 0; }
+.creator-resource-group { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); min-width: 0; }
+.creator-resource-group > summary { cursor: pointer; padding: 16px; color: var(--teal); overflow-wrap: anywhere; }
+.creator-resource-group > summary > span { display: block; margin: 8px 0 0 16px; color: var(--muted); font-size: .8125rem; }
+.creator-resource-group > summary:focus-visible { outline: 2px solid var(--teal); outline-offset: -3px; border-radius: 8px; }
+.creator-resource-group > div { border-top: 1px solid var(--line); padding: 16px; }
+.creator-resource-group .creator-section-heading { flex-wrap: wrap; }
+.creator-resource-group .creator-contact-list > li, .creator-resource-group .creator-work-list > li > article { padding: 12px; }
+.creator-resource-group .creator-card-heading, .creator-resource-group .creator-source-row, .creator-resource-group .creator-pagination { flex-wrap: wrap; }
+.creator-resource-group .creator-detail-grid { grid-template-columns: minmax(0, 1fr); }
+.creator-information-main .analysis-insights { margin-block: 16px 0; padding: 20px; border-radius: 12px; }
+@media(max-width:1050px) {
+  .creator-information-layout { grid-template-columns: minmax(0,1fr); }
+  .creator-resource-groups, .creator-information-main { grid-column: 1; grid-row: auto; }
+  .creator-resource-groups { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .creator-resource-groups:has(details[open]) { grid-template-columns: minmax(0,1fr); }
+}
+@media(max-width:650px) {
+  .creator-resource-groups { grid-template-columns: minmax(0,1fr); }
+  .creator-record-header { padding: 16px; }
+  .creator-header-actions { grid-column: 1/-1; grid-row: auto; }
+  .creator-headline-metrics { grid-column: 1/-1; grid-row: auto; }
+}
