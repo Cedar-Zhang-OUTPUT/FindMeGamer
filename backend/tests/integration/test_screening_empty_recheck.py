@@ -110,7 +110,7 @@ class RecheckAI(CapacityAI):
     def complete_structured(self, model, messages, schema):
         if schema is not ScreeningOutput:
             return super().complete_structured(model, messages, schema)
-        assert model == "deepseek-v4-flash"
+        assert model == "deepseek-flash"
         assert self.outputs, "Screening exceeded its one additional recheck."
         self.before_screening()
         self.calls.append((model, schema, messages))

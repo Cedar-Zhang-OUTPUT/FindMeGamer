@@ -209,7 +209,7 @@ def test_pairwise_uses_only_locked_inputs_and_exact_creator_identity() -> None:
     assert _service(repository, ai).run(TASK_ID, CREATOR_ID) == _brief()
     model, messages, schema = ai.calls[0]
     payload = parse_prompt_payload(messages)
-    assert model == PAIRWISE_MODEL == "deepseek-v4-pro"
+    assert model == PAIRWISE_MODEL == "deepseek-flash"
     assert schema is PairwiseMatchBrief
     assert "LOCKED-GAME-CANARY" in str(payload["game_brief"])
     assert payload["creator_profile"]["creator_id"] == str(CREATOR_ID)

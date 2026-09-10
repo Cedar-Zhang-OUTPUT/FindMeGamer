@@ -93,7 +93,7 @@ def create_router(authenticate_workspace):
                 activity_id=activity_id,
                 source_snapshot=activity_context(activity),
                 conditions=value.model_dump(mode="json"),
-                model="deepseek-v4-flash",
+                model="deepseek-flash",
             )
             session.add(plan)
             session.flush()

@@ -34,7 +34,7 @@ from app.matching.prompts import build_ranking_prompt
 from app.schemas.ai_match import FinalRankingOutput, PairwiseMatchBrief, RankingItem
 
 
-RANKING_MODEL = "deepseek-v4-pro"
+RANKING_MODEL = "deepseek-flash"
 SCORE_QUANTUM = Decimal("0.0001")
 _PUBLIC_INTERNAL_MECHANIC_PATTERNS = (
     re.compile(r"\b(?:total|dimension)[\s_-]*scores?\b", re.IGNORECASE),

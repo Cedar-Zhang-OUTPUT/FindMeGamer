@@ -36,7 +36,7 @@ class DraftAI:
             },
         }
         result = self.gateway.complete_structured(
-            "deepseek-v4-flash",
+            "deepseek-flash",
             [
                 Message(role="system", content=SYSTEM),
                 Message(role="user", content=json.dumps(payload, ensure_ascii=False)),

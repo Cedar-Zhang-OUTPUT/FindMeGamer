@@ -44,9 +44,9 @@ from app.schemas.ai_game import (
 )
 
 
-METADATA_MODEL = "deepseek-v4-flash"
-VISION_MODEL = "deepseek-v4-flash-vision-exp"
-SYNTHESIS_MODEL = "deepseek-v4-pro"
+METADATA_MODEL = "deepseek-flash"
+VISION_MODEL = "deepseek-flash"
+SYNTHESIS_MODEL = "deepseek-flash"
 RAW_CHANNEL_ARTIFACT_NAME = "youtube-channel.json"
 RAW_PLAYLIST_ARTIFACT_NAME = "youtube-playlist-pages.json"
 RAW_VIDEOS_ARTIFACT_NAME = "youtube-video-responses.json"

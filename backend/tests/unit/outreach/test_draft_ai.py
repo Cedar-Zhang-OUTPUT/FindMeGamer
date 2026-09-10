@@ -60,7 +60,7 @@ def test_four_slot_http_generation_is_bounded_and_has_no_contact_or_sender_paylo
     assert ai.generate(data()).model_dump() == output()
     assert (
         requests[0]["max_tokens"] == 2048
-        and requests[0]["model"] == "deepseek-v4-flash"
+        and requests[0]["model"] == "deepseek-flash"
     )
     encoded = json.dumps(requests)
     assert "private@example.com" not in encoded and "sender@example.com" not in encoded

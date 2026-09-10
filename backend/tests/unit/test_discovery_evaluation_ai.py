@@ -89,9 +89,9 @@ def test_successful_three_stage_flow_uses_bounded_models_and_prompts():
     assert deep.candidate_id == UUID(candidate["candidate_id"])
     assert ranked.items[0].score == 82
     assert [request["model"] for request in requests] == [
-        "deepseek-v4-flash",
-        "deepseek-v4-pro",
-        "deepseek-v4-pro",
+        "deepseek-flash",
+        "deepseek-flash",
+        "deepseek-flash",
     ]
     assert [request["max_tokens"] for request in requests] == [2048, 4096, 2048]
     screen_input = json.loads(requests[0]["messages"][-1]["content"])

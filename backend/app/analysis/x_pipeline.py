@@ -10,7 +10,7 @@ from app.analysis.targets import creator_account_id
 from app.repositories.collection_settings import guard_collection
 from app.schemas.x_analysis import XAnalysisSignals, require_x_citations
 
-MODEL = "deepseek-v4-flash"
+MODEL = "deepseek-flash"
 PROMPT_VERSION = "x-creator-analysis-v1"
 
 

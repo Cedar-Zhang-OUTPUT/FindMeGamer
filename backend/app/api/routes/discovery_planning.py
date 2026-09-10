@@ -15,7 +15,7 @@ from app.db.models.discovery_plan import DiscoveryPlan
 from app.repositories.discovery_plan import expired, lock_plan, plan_view
 from app.schemas.discovery_planning import PlanAccepted, PlanCreate, PlanPage, PlanView
 
-PLANNING_MODEL = "deepseek-v4-flash"
+PLANNING_MODEL = "deepseek-flash"
 
 
 class CeleryPlanningDispatcher:

@@ -111,7 +111,7 @@ class XCreatorAnalysisService(CreatorAnalysisService):
                 "visual_analysis": "not_performed",
                 "sender_viewing_verified": False,
             }
-            profile.model_metadata = {"analysis": "deepseek-v4-flash"}
+            profile.model_metadata = {"analysis": "deepseek-flash"}
             profile.prompt_metadata = {"analysis": "x-creator-analysis-v1"}
             profile.last_analyzed_at = now
             profile.next_analysis_at = now + timedelta(days=interval)

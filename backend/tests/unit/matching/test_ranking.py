@@ -163,7 +163,7 @@ def test_ranking_calls_pro_once_with_only_screening_ordered_successful_briefs() 
     assert _service(repository, ai).run(TASK_ID) == 2
     assert len(ai.calls) == 1
     model, messages, schema = ai.calls[0]
-    assert model == RANKING_MODEL == "deepseek-v4-pro"
+    assert model == RANKING_MODEL == "deepseek-flash"
     assert schema is FinalRankingOutput
     payload = parse_prompt_payload(messages)
     assert set(payload) == {"match_briefs", "recommended_match_threshold"}

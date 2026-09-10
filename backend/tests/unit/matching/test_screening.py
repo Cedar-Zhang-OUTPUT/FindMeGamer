@@ -188,7 +188,7 @@ def test_screening_prompts_every_locked_creator_once_in_locked_order() -> None:
     assert len(ai.calls) == 1
     model, messages, schema = ai.calls[0]
     payload = parse_prompt_payload(messages)
-    assert model == "deepseek-v4-flash"
+    assert model == "deepseek-flash"
     assert schema is ScreeningOutput
     assert [item["creator_id"] for item in payload["creators"]] == [
         str(item.creator_id) for item in creators
@@ -310,7 +310,7 @@ def test_empty_screening_rechecks_complete_unchanged_input_once(
     assert len(ai.calls) == 2
     first_model, initial_messages, first_schema = ai.calls[0]
     second_model, recheck_messages, second_schema = ai.calls[1]
-    assert first_model == second_model == "deepseek-v4-flash"
+    assert first_model == second_model == "deepseek-flash"
     assert first_schema is second_schema is ScreeningOutput
     assert len(recheck_messages) == len(initial_messages) + 1
     assert recheck_messages[:-1] == initial_messages

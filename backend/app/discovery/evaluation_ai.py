@@ -16,9 +16,9 @@ from app.schemas.discovery_evaluation_output import (
     EvaluationScreenOutput,
 )
 
-_SCREEN_MODEL = "deepseek-v4-flash"
-_DEEP_MODEL = "deepseek-v4-pro"
-_RANK_MODEL = "deepseek-v4-pro"
+_SCREEN_MODEL = "deepseek-flash"
+_DEEP_MODEL = "deepseek-flash"
+_RANK_MODEL = "deepseek-flash"
 _WORK_FIELDS = (
     "id",
     "title",

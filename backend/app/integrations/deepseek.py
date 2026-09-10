@@ -222,6 +222,14 @@ class DeepSeekGateway:
         *,
         max_tokens: int | None,
     ) -> str:
+        # Existing saved plans may carry historical model names. Route only the
+        # known old aliases without rewriting their persisted audit records.
+        if model in {
+            "deepseek-v4-flash",
+            "deepseek-v4-flash-vision-exp",
+            "deepseek-v4-pro",
+        }:
+            model = "deepseek-flash"
         payload = {
             "model": model,
             "messages": messages,

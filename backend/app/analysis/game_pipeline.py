@@ -29,9 +29,9 @@ from app.schemas.ai_game import (
 )
 
 
-EXTRACTION_MODEL = "deepseek-v4-flash"
-VISION_MODEL = "deepseek-v4-flash-vision-exp"
-SYNTHESIS_MODEL = "deepseek-v4-pro"
+EXTRACTION_MODEL = "deepseek-flash"
+VISION_MODEL = "deepseek-flash"
+SYNTHESIS_MODEL = "deepseek-flash"
 RAW_STEAM_ARTIFACT_NAME = "steam-source.json"
 _NO_IMAGES_REASON = "No usable public static game images were supplied."
 _VISION_FAILURE_REASON = "Visual analysis was unavailable after bounded attempts."
