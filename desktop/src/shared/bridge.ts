@@ -10,6 +10,7 @@ import type { DraftsAPI } from './drafts';
 import type { SendingAPI } from './sending';
 import type { CollaborationAPI } from './collaboration';
 import type { AnalysisAPI } from './analyze';
+import type {LocalSelectionsAPI} from './localSelections';
 
 export interface ConnectionStatus {
   serviceUrl: string;
@@ -23,6 +24,7 @@ export interface ConnectionCheck { authenticated: true; proxy: 'system'; route: 
 
 /** Business methods only. No generic request, filesystem, shell, or IPC channel access. */
 export interface DesktopBridge {
+  localSelections?:LocalSelectionsAPI;
   analysis: AnalysisAPI;
   collaboration: CollaborationAPI;
   sending: SendingAPI;

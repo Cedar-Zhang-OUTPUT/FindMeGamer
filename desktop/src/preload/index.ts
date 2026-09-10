@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { DesktopBridge } from '../shared/bridge';
 
 const bridge: DesktopBridge = {
+  localSelections:{read:input=>ipcRenderer.invoke('local-selections:read',input),write:input=>ipcRenderer.invoke('local-selections:write',input)},
   analysis: Object.freeze({
     steamImport: (input: Parameters<DesktopBridge['analysis']['steamImport']>[0]) => ipcRenderer.invoke('analysis:steamImport', input),
     bindYouTube: (input: Parameters<DesktopBridge['analysis']['bindYouTube']>[0]) => ipcRenderer.invoke('analysis:bindYouTube', input),

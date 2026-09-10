@@ -7,12 +7,14 @@ import {candidateSelection,excludedSelections,readCandidateMembership,visibleSel
 import {useOutreachOperation} from './useOutreachOperation';
 import {useMatchOperation} from './useMatchOperation';
 import type {OutreachCommand,OutreachReceipt} from './outreachMutation';
-type Props={api:Pick<DesktopBridge,'outreach'|'match'>;activityId:string;active:boolean;initialized?:boolean;queryId:string|null;candidates:CandidateView[];candidateCurrent:boolean;options:Required<CandidateQueryOptions>;onOptions:(next:Required<CandidateQueryOptions>)=>void;blocked:boolean;onPrepared?:(batch:RecipientBatchDetail)=>void};
+import {useLocalSelection} from './useLocalSelection';
+type Props={api:Pick<DesktopBridge,'outreach'|'match'|'localSelections'>;activityId:string;active:boolean;initialized?:boolean;queryId:string|null;candidates:CandidateView[];candidateCurrent:boolean;options:Required<CandidateQueryOptions>;onOptions:(next:Required<CandidateQueryOptions>)=>void;blocked:boolean;onPrepared?:(batch:RecipientBatchDetail)=>void};
 type PendingFreeze={queryId:string;recipients:RecipientChoice[]};
 type AfterWrite={kind:'ordinary'}|{kind:'filter';apply:()=>void;count:number};
 const unavailable:PublicError={code:'preparation_unavailable',message:'Reload the current people and search before continuing.',retryable:true};
 export function useActivityOutreach({api,activityId,active,initialized,queryId,candidates,candidateCurrent,options,onOptions,blocked,onPrepared}:Props){
   const session=useOutreachSession(api.outreach,activityId,active,initialized),operation=useOutreachOperation(api.outreach),stopOperation=useMatchOperation(api.match);
+  const local=useLocalSelection(api,activityId,queryId,session.items,session.current);
   const [panel,setPanel]=useState<'candidates'|'selected'|'batch'>('candidates'),[selectedId,setSelectedId]=useState<string|null>(null);
   const [batchMode,setBatchMode]=useState<'current'|'history'>('current');
   const [batch,setBatch]=useState<RecipientBatchDetail|null>(null),[batchCurrent,setBatchCurrent]=useState(false),[notice,setNotice]=useState('');
@@ -21,7 +23,7 @@ export function useActivityOutreach({api,activityId,active,initialized,queryId,c
   const pendingFreeze=useRef<PendingFreeze|null>(null),afterWrite=useRef<AfterWrite>({kind:'ordinary'}),version=useRef(0),alive=useRef(true),actionPending=useRef(false);
   const batchRef=useRef(batch),wasActive=useRef(active);batchRef.current=batch;
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;version.current++;};},[]);
-  const busy=processing||readBusy||operation.busy||stopOperation.busy,locked=operation.locked||stopOperation.locked;
+  const busy=processing||readBusy||operation.busy||stopOperation.busy||local.busy,locked=operation.locked||stopOperation.locked||local.locked;
   const unavailableNow=blocked||busy||locked;
   const loadBatch=useCallback(async(id:string)=>{
     const token=++version.current;setReadBusy(true);setBatchCurrent(false);setProblem(null);
@@ -36,7 +38,7 @@ export function useActivityOutreach({api,activityId,active,initialized,queryId,c
     // Opening/freezing already supplies a current batch; only a detour return needs another read.
     if(returning&&panel==='batch'&&batch?.id)void loadBatch(batch.id);
   },[active,panel,batch?.id,loadBatch]);
-  const credentialsChanged=useCallback(()=>{version.current++;session.credentialsChanged();operation.credentialsChanged();stopOperation.credentialsChanged();setBatchCurrent(false);setReadBusy(false);setProcessing(false);},[session.credentialsChanged,operation.credentialsChanged,stopOperation.credentialsChanged]);
+  const credentialsChanged=useCallback(()=>{version.current++;local.credentialsChanged();session.credentialsChanged();operation.credentialsChanged();stopOperation.credentialsChanged();setBatchCurrent(false);setReadBusy(false);setProcessing(false);},[local.credentialsChanged,session.credentialsChanged,operation.credentialsChanged,stopOperation.credentialsChanged]);
   async function refresh(){await session.refresh();if(batchRef.current)await loadBatch(batchRef.current.id);}
   async function complete(receipt:OutreachReceipt|null):Promise<boolean>{
     if(!receipt)return false;
@@ -58,11 +60,13 @@ export function useActivityOutreach({api,activityId,active,initialized,queryId,c
   }
   async function mutate(command:OutreachCommand){setProblem(null);return complete(await operation.execute(command));}
   async function toggle(candidate:CandidateView,current=candidateCurrent){
+    if(local.enabled){if(!unavailableNow&&local.ready&&current&&!candidate.identity_changed)local.toggle(candidate);return;}
     if(unavailableNow||actionPending.current||!session.current||!current||candidate.identity_changed)return;
     afterWrite.current={kind:'ordinary'};const selected=candidateSelection(candidate,session.items);
     await mutate(selected?{kind:'cancel',activityId,id:selected.id,data:{expected_revision:selected.revision}}:{kind:'add',activityId,data:{candidate_id:candidate.id}});
   }
   async function selectLoaded(loaded:CandidateView[]=candidates,current=candidateCurrent){
+    if(local.enabled){if(!unavailableNow&&local.ready&&current)for(const item of loaded)if(!local.isSelected(item))local.toggle(item);return;}
     if(unavailableNow||actionPending.current||!session.current||!current)return;
     const ids=loaded.filter(item=>!item.identity_changed&&!candidateSelection(item,session.items)).map(item=>item.id);
     if(!ids.length)return;if(ids.length>600){setProblem({code:'selection_limit',message:'Choose up to 600 people at a time.',retryable:false});return;}
@@ -73,6 +77,7 @@ export function useActivityOutreach({api,activityId,active,initialized,queryId,c
   }
   async function changeProjection({next,previous,visible,current,read,apply}:{next:Required<CandidateQueryOptions>;previous:Required<CandidateQueryOptions>;visible:CandidateView[];current:boolean;read:()=>Promise<CandidateView[]>;apply:()=>void}){
     if(unavailableNow||actionPending.current)return;
+    if(local.enabled){apply();return;}
     if(next.evidence===previous.evidence){apply();return;}
     if(!session.current||!current){setProblem(unavailable);return;}
     const projection=visibleSelections(visible,session.items);
@@ -96,7 +101,7 @@ export function useActivityOutreach({api,activityId,active,initialized,queryId,c
       ?person.contact_options.find(contact=>contact.id===data.contact_id&&contact.status==='eligible'):undefined;
     return mutate({kind:'update',activityId,id,data,...(observedContact?{observedContact}:{} )});
   }
-  async function remove(person:Preparation){if(unavailableNow||!session.current)return;afterWrite.current={kind:'ordinary'};await mutate({kind:'cancel',activityId,id:person.id,data:{expected_revision:person.revision}});}
+  async function remove(person:Preparation){if(unavailableNow||!session.current)return;if(local.enabled){const member=local.state?.draft.members[person.candidate_id];if(member)local.change(member,false);return;}afterWrite.current={kind:'ordinary'};await mutate({kind:'cancel',activityId,id:person.id,data:{expected_revision:person.revision}});}
   async function freezePending(){
     const pending=pendingFreeze.current;if(!pending)return;
     await mutate({kind:'freeze',activityId,data:{recipients:pending.recipients}});
@@ -107,6 +112,7 @@ export function useActivityOutreach({api,activityId,active,initialized,queryId,c
     if(receipt&&'stop_requested' in receipt.data&&receipt.data.stop_requested&&receipt.data.query_id===pending.queryId)await freezePending();
   }
   async function prepare(ids:string[]){
+    if(local.enabled){if(blocked||dirty||processing||readBusy||operation.busy||operation.locked||stopOperation.busy||stopOperation.locked)return;const receipt=await local.prepare();if(receipt)await complete({kind:'freeze',data:receipt});return;}
     if(unavailableNow||actionPending.current||dirty)return;
     if(!session.current||!queryId||ids.length<1||ids.length>600||new Set(ids).size!==ids.length){setProblem(unavailable);return;}
     const byId=new Map(session.items.map(p=>[p.id,p]));
@@ -145,9 +151,9 @@ export function useActivityOutreach({api,activityId,active,initialized,queryId,c
       }
     }catch(error){if(alive.current&&token===version.current)setProblem(outreachReadError(error));}finally{if(alive.current)setReadBusy(false);}
   }
-  return {session,operation,stopOperation,panel,setPanel,batch,batchCurrent,batchMode,selectedId,setSelectedId,chosenIds,setChosenIds,dirty,setDirty,historyEpoch,pendingCount,
+  return {session,local,selectionReady:local.enabled?local.ready:session.current,selectionCount:local.enabled?local.desired.length:session.items.length,operation,stopOperation,panel,setPanel,batch,batchCurrent,batchMode,selectedId,setSelectedId,chosenIds,setChosenIds,dirty,setDirty,historyEpoch,pendingCount,
     busy,locked,problem,notice,credentialsChanged,refresh,toggle,selectLoaded,changeOptions,changeProjection,prepare,openSelected,openBatch,openCurrentBatch,updatePerson,remove,reconcile,checkStop,
-    retryStop:()=>submitStop(true),retry:()=>operation.retry().then(complete),isSelected:(candidate:CandidateView)=>Boolean(candidateSelection(candidate,session.items)),
+    retryStop:()=>submitStop(true),retry:()=>operation.retry().then(complete),isSelected:(candidate:CandidateView)=>local.enabled?local.isSelected(candidate):Boolean(candidateSelection(candidate,session.items)),
     cancelPending:()=>{if(!busy&&!locked){pendingFreeze.current=null;setPendingCount(0);}},
   };
 }

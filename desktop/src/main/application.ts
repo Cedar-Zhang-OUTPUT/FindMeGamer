@@ -15,6 +15,7 @@ import { SendingClient } from './sending-client';
 import { CollaborationClient } from './collaboration-client';
 import { AnalysisClient } from './analyze-client';
 import { PreferencesStore } from './preferences-store';
+import {LocalSelectionStore} from './local-selection-store';
 import { UpdateChecker } from './update-checker';
 import { APP_URL, CONTENT_POLICY, externalUrl, isTrustedFrame, resourcePath } from './policies';
 import { PublicFailure, publicResult } from './transport';
@@ -45,6 +46,10 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   const collaboration = new CollaborationClient(input => gateway.collaborationRequest(input));
   const analysis = new AnalysisClient(input => gateway.analysisRequest(input));
   const preferences = new PreferencesStore(options.userDataDirectory ?? app.getPath('userData'));
+  const localSelections=new LocalSelectionStore(options.userDataDirectory??app.getPath('userData'),()=>store.getConnection());
+  let localQuitFlushed=false;
+  const flushLocalChoicesBeforeQuit=(event:Electron.Event)=>{if(localQuitFlushed){localQuitFlushed=false;return;}event.preventDefault();void localSelections.flush().then(()=>{localQuitFlushed=true;app.quit();});};
+  app.on('before-quit',flushLocalChoicesBeforeQuit);
   // A separate ephemeral session follows the system proxy without workspace headers.
   const updateNetwork = session.fromPartition('updates-network');
   await updateNetwork.setProxy({mode:'system'});
@@ -199,6 +204,8 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   handle('settings:test-smtp', () => settings.testSMTP());
   handle('settings:send-test-email', input => settings.sendTestEmail(input));
   handle('preferences:read', () => preferences.read());
+  handle('local-selections:read',async input=>{const result=await localSelections.read(input);if(!result.ok)throw new PublicFailure(result.error.code,result.error.message);return result.data;});
+  handle('local-selections:write',async input=>{const result=await localSelections.write(input);if(!result.ok)throw new PublicFailure(result.error.code,result.error.message);return result.data;});
   handle('preferences:update', input => preferences.update(input));
   handle('preferences:restore-appearance', () => preferences.restoreAppearance());
   handle('updates:status', () => updates.status());
@@ -210,7 +217,7 @@ export async function createApplication(options: { show?: boolean; userDataDirec
   });
   const automaticCheck = () => {void updates.checkAutomatically().catch(()=>{});};
   app.on('activate',automaticCheck);
-  window.on('closed', () => { app.removeListener('activate',automaticCheck);for (const channel of channels) ipcMain.removeHandler(channel); rendererSession.protocol.unhandle('fmg'); });
+  window.on('closed', () => { app.removeListener('before-quit',flushLocalChoicesBeforeQuit);app.removeListener('activate',automaticCheck);for (const channel of channels) ipcMain.removeHandler(channel); rendererSession.protocol.unhandle('fmg'); });
   Menu.setApplicationMenu(Menu.buildFromTemplate([
     { role: 'appMenu' }, { role: 'editMenu' },
     { label: 'View', submenu: [{ role: 'reload' }, { role: 'togglefullscreen' }] }, { role: 'windowMenu' },

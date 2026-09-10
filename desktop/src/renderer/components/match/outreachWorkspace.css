@@ -7,3 +7,7 @@
 .outreach-history{font-size:13px;color:var(--muted);margin:12px 0}.outreach-history summary{cursor:pointer;width:fit-content}.outreach-history li>button{display:flex;align-items:center;gap:24px;padding:12px 0}.outreach-history li>button span{font-size:12px}.outreach-roster input{accent-color:var(--teal)}
 @media(max-width:950px){.outreach-columns.has-detail{grid-template-columns:1fr}.outreach-detail{border-left:0;border-top:1px solid var(--line);padding:18px 0 0}.outreach-columns.has-detail .outreach-roster{max-height:280px;overflow:auto}.outreach-person-status>span{font-size:12px}}
 @media(prefers-reduced-motion:reduce){.outreach-roster li{transition:none}}
+.local-selection-review{list-style:none;padding:0;margin:12px 0;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.local-selection-review>li{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.local-selection-review>li:last-child{border-bottom:0}.local-selection-review>li>div:first-child{min-width:0;overflow-wrap:anywhere}.local-selection-review .button-row{flex-shrink:0;flex-wrap:wrap}
+@media(max-width:800px){.local-selection-review>li{align-items:flex-start;flex-wrap:wrap}}
