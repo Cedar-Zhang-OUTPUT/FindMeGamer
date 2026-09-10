@@ -1,9 +1,9 @@
 import {expect,it,vi} from 'vitest';
-import {emptySelectionDraft,mergeSelectionRead,setDesiredSelection,prepareLocalSelection,type LocalPrepareState} from '../src/renderer/components/match/localSelectionPrepare';
+import {emptySelectionDraft,mergeSelectionRead,setDesiredSelection,prepareLocalSelection,reconcileLocalBulk,type LocalPrepareState} from '../src/renderer/components/match/localSelectionPrepare';
 import {preparationFixture,recipientBatchFixture} from './outreach-fixtures';
 import {settingsBridgeMock,ok} from './settings-fixtures';
 
-const a=preparationFixture(),b=preparationFixture({id:'selection-b',candidate_id:'candidate-b',creator_id:'creator-b'});
+const a=preparationFixture(),b=preparationFixture({id:'selection-b',candidate_id:'candidate-b',creator_id:'creator-b',identity:{platform:'youtube',account_id:'UC_b',revision:1}});
 function draft(){return mergeSelectionRead(emptySelectionDraft('workspace-a',a.activity_id),[a,b]);}
 function ports(initial=[a,b]){
  const api=settingsBridgeMock().outreach;let rows=initial;
@@ -60,7 +60,7 @@ it('does not dispatch when durable checkpoint persistence fails',async()=>{
  expect(result.stage).not.toBe('done');expect(p.api.bulk).not.toHaveBeenCalled();expect(p.api.freeze).not.toHaveBeenCalled();
 });
 it('preserves hidden selections while adding a locally selected candidate from another query',async()=>{
- const p=ports(),newPerson=preparationFixture({id:'selection-c',candidate_id:'candidate-c',creator_id:'creator-c'});
+ const p=ports(),newPerson=preparationFixture({id:'selection-c',candidate_id:'candidate-c',creator_id:'creator-c',identity:{platform:'youtube',account_id:'UC_c',revision:1}});
  const d=setDesiredSelection(draft(),{candidateId:newPerson.candidate_id,creatorId:newPerson.creator_id,identity:newPerson.identity,name:newPerson.name,queryId:'query-two'},true);
  vi.mocked(p.api.bulk).mockImplementationOnce(async input=>{expect(input.data).toEqual({add_candidate_ids:[newPerson.candidate_id],cancel_selections:[]});p.setRows([a,b,newPerson]);return ok({added_selection_ids:[newPerson.id],cancelled_selection_ids:[]});});
  const result=await prepareLocalSelection({stage:'ready',draft:d},p);expect(result.stage).toBe('done');
@@ -82,4 +82,31 @@ it('keeps an expired bulk outcome pending and requires recovery without issuing 
  const p=ports(),d=draft(),input={activityId:a.activity_id,idempotencyKey:'stable',data:{add_candidate_ids:['candidate-c']}};
  const result=await prepareLocalSelection({stage:'bulk_pending',draft:d,input,startedAt:0},{...p,now:()=>86_400_001});
  expect(result.stage).toBe('bulk_pending');expect(result.error?.code).toBe('local_selection_retry_expired');expect(p.api.bulk).not.toHaveBeenCalled();expect(p.api.freeze).not.toHaveBeenCalled();
+});
+it('reuses an existing account selection across query candidate aliases without duplicate desired or bulk',async()=>{
+ const p=ports(),alias={candidateId:'new-query-candidate',creatorId:a.creator_id,identity:a.identity,name:a.name,queryId:'new-query'};
+ const d=setDesiredSelection(draft(),alias,true);
+ expect(d.desired).toEqual([b.candidate_id,a.candidate_id]);
+ const result=await prepareLocalSelection({stage:'ready',draft:d},p);expect(result.stage).toBe('done');expect(p.api.bulk).not.toHaveBeenCalled();
+ expect(vi.mocked(p.api.freeze).mock.calls[0][0].data.recipients.map(r=>r.selection_id)).toEqual([b.id,a.id]);
+});
+it('resolves a reactivated selection by account when the backend retains an older candidate ID',async()=>{
+ const p=ports([b]),alias={candidateId:'new-query-candidate',creatorId:a.creator_id,identity:a.identity,name:a.name,queryId:'new-query'};
+ const initial=mergeSelectionRead(emptySelectionDraft('workspace-a',a.activity_id),[b]),d=setDesiredSelection(initial,alias,true);
+ expect(reconcileLocalBulk({stage:'bulk_pending',draft:d,startedAt:0,input:{activityId:a.activity_id,idempotencyKey:'same',data:{add_candidate_ids:[alias.candidateId]}}},[a,b])).toBe(true);
+ vi.mocked(p.api.bulk).mockImplementationOnce(async()=>{p.setRows([b,a]);return ok({added_selection_ids:[a.id],cancelled_selection_ids:[]});});
+ const result=await prepareLocalSelection({stage:'ready',draft:d},p);expect(result.stage).toBe('done');expect(p.api.bulk).toHaveBeenCalledOnce();
+ expect(vi.mocked(p.api.freeze).mock.calls[0][0].data.recipients.map(r=>r.selection_id)).toEqual([b.id,a.id]);
+});
+it('allows an explicitly acknowledged removal of an identity-changed old selection without adding the new identity',async()=>{
+ const changed={...a,revision:a.revision+1,identity_changed:true};const p=ports([changed,b]);
+ const unconfirmed=setDesiredSelection(draft(),draft().members[a.candidate_id],false);expect((await prepareLocalSelection({stage:'ready',draft:unconfirmed},p)).stage).toBe('conflict');expect(p.api.bulk).not.toHaveBeenCalled();
+ const d=setDesiredSelection(draft(),{...draft().members[a.candidate_id],removal:{selectionId:a.id,revision:changed.revision}},false);
+ const result=await prepareLocalSelection({stage:'ready',draft:d},p);expect(result.stage).toBe('done');
+ expect(p.api.bulk).toHaveBeenCalledWith(expect.objectContaining({data:{add_candidate_ids:[],cancel_selections:[{selection_id:a.id,expected_revision:changed.revision}]}}));
+ expect(vi.mocked(p.api.freeze).mock.calls[0][0].data.recipients.map(r=>r.selection_id)).toEqual([b.id]);
+});
+it('keeps a deleted activity journal without recreating server records after a 404',async()=>{
+ const p=ports(),d=draft();vi.mocked(p.api.selections).mockResolvedValue({ok:false,error:{code:'outreach_not_found',message:'Activity no longer exists',retryable:false}});
+ const result=await prepareLocalSelection({stage:'ready',draft:d},p);expect(result.error?.code).toBe('outreach_not_found');expect(result.draft.desired).toEqual(d.desired);expect(p.api.bulk).not.toHaveBeenCalled();expect(p.api.freeze).not.toHaveBeenCalled();
 });

@@ -27,6 +27,7 @@ export class LocalSelectionStore implements LocalSelectionsAPI {
     if(state.draft.desired.length>10000||state.draft.removed.length>10000||Object.keys(state.draft.members).length>10000)return false;
     if(new Set(state.draft.desired).size!==state.draft.desired.length||state.draft.desired.some(id=>!uuid.test(id)||!Object.hasOwn(state.draft.members,id)))return false;
     for(const member of Object.values(state.draft.members))if(!member||!uuid.test(member.candidateId)||!uuid.test(member.creatorId)||!member.identity||!['youtube','x','twitch','instagram'].includes(member.identity.platform)||typeof member.identity.account_id!=='string'||!Number.isInteger(member.identity.revision)||member.identity.revision<0)return false;
+    for(const member of Object.values(state.draft.members))if(member.removal&&(!uuid.test(member.removal.selectionId)||!revision(member.removal.revision)))return false;
     if(state.stage==='bulk_pending'||state.stage==='freeze_pending'){
       if(!state.input||state.input.activityId!==activityId||!uuid.test(state.input.idempotencyKey)||!state.input.data)return false;
       if(state.stage==='bulk_pending'){

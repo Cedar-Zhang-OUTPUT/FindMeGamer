@@ -6,6 +6,7 @@ import {outreachReadError,readSelections} from './useOutreachSession';
 export interface LocalSelectionMember {
   candidateId:string;creatorId:string;name:string|null;identity:SelectionIdentity;queryId:string|null;
   observed?:{selectionId:string;revision:number};
+  removal?:{selectionId:string;revision:number};
 }
 export interface LocalSelectionDraft {
   version:1;scope:string;activityId:string;initialized:boolean;
@@ -27,6 +28,10 @@ export interface LocalPreparePorts {
 const conflict:PublicError={code:'local_selection_conflict',message:'Selection or account data changed. Review current records before preparing again.',retryable:false};
 const diskError:PublicError={code:'local_selection_storage_failed',message:'Could not save preparation recovery data on this Mac. No new request was started.',retryable:true};
 const sameIdentity=(a:SelectionIdentity,b:SelectionIdentity)=>a.platform===b.platform&&a.account_id===b.account_id&&a.revision===b.revision;
+const samePerson=(a:LocalSelectionMember,b:LocalSelectionMember)=>a.creatorId===b.creatorId&&sameIdentity(a.identity,b.identity);
+export function findLocalMember(draft:LocalSelectionDraft,member:LocalSelectionMember){return draft.members[member.candidateId]??Object.values(draft.members).find(value=>samePerson(value,member));}
+export function isLocalMemberSelected(draft:LocalSelectionDraft,member:LocalSelectionMember){return draft.desired.some(id=>draft.members[id]&&samePerson(draft.members[id],member));}
+function uniqueDesired(draft:LocalSelectionDraft){const seen:LocalSelectionMember[]=[];return draft.desired.filter(id=>{const member=draft.members[id];if(!member||seen.some(other=>samePerson(other,member)))return false;seen.push(member);return true;});}
 const memberOf=(p:Preparation):LocalSelectionMember=>({candidateId:p.candidate_id,creatorId:p.creator_id,name:p.name,identity:structuredClone(p.identity),queryId:null,observed:{selectionId:p.id,revision:p.revision}});
 
 export function emptySelectionDraft(scope:string,activityId:string):LocalSelectionDraft {
@@ -39,31 +44,41 @@ export function mergeSelectionRead(draft:LocalSelectionDraft,rows:Preparation[])
   for(const row of rows){
     if(row.activity_id!==draft.activityId)throw conflict;
     if(!row.active)continue;
-    if(!Object.hasOwn(next.members,row.candidate_id))next.members[row.candidate_id]=memberOf(row);
-    if(!next.removed.includes(row.candidate_id)&&!next.desired.includes(row.candidate_id))next.desired.push(row.candidate_id);
+    const incoming=memberOf(row),known=Object.values(next.members).find(member=>member.observed?.selectionId===row.id||samePerson(member,incoming));
+    const id=known?.candidateId??row.candidate_id;if(!known)next.members[id]=incoming;
+    const removed=next.removed.some(id=>{const member=next.members[id];return member&&(member.observed?.selectionId===row.id||member.removal?.selectionId===row.id||samePerson(member,incoming));});
+    if(!removed&&!isLocalMemberSelected(next,next.members[id]))next.desired.push(id);
   }
-  next.initialized=true;return next;
+  next.desired=uniqueDesired(next);next.initialized=true;return next;
 }
 /** Pure and synchronous: neither this action nor pagination/filter changes write HTTP. */
 export function setDesiredSelection(draft:LocalSelectionDraft,member:LocalSelectionMember,selected:boolean):LocalSelectionDraft {
-  const next=structuredClone(draft),existing=next.members[member.candidateId];
-  if(existing&&!sameIdentity(existing.identity,member.identity))throw conflict;
-  next.members[member.candidateId]=existing??structuredClone(member);
-  next.desired=next.desired.filter(id=>id!==member.candidateId);
-  if(selected){next.desired.push(member.candidateId);next.removed=next.removed.filter(id=>id!==member.candidateId);}
-  else if(!next.removed.includes(member.candidateId))next.removed.push(member.candidateId);
+  const next=structuredClone(draft),existing=findLocalMember(next,member);
+  if(existing&&!samePerson(existing,member))throw conflict;
+  const id=existing?.candidateId??member.candidateId;
+  next.members[id]=existing??structuredClone(member);
+  if(!selected&&member.removal)next.members[id].removal=structuredClone(member.removal);
+  next.desired=next.desired.filter(key=>key!==id&&!samePerson(next.members[key],member));
+  if(selected){delete next.members[id].removal;next.desired.push(id);next.removed=next.removed.filter(key=>key!==id&&!samePerson(next.members[key],member));}
+  else if(!next.removed.includes(id))next.removed.push(id);
   return next;
 }
 function currentMembers(draft:LocalSelectionDraft,rows:Preparation[],afterBulk:boolean):Map<string,Preparation>{
-  const active=new Map<string,Preparation>();
+  const active=new Map<string,Preparation>(),server:Preparation[]=[];
   for(const row of rows){
     if(row.activity_id!==draft.activityId)throw conflict;
     if(!row.active)continue;
-    if(active.has(row.candidate_id))throw conflict;
-    active.set(row.candidate_id,row);
-    // A new, unseen colleague selection is not permission to cancel it.
-    if(!draft.desired.includes(row.candidate_id)&&!draft.removed.includes(row.candidate_id))throw conflict;
+    if(server.some(other=>other.id===row.id||sameIdentity(other.identity,row.identity)))throw conflict;
+    server.push(row);
   }
+  for(const id of new Set([...draft.desired,...draft.removed])){
+    const member=draft.members[id];if(!member)throw conflict;
+    const knownId=draft.removed.includes(id)?member.removal?.selectionId??member.observed?.selectionId:member.observed?.selectionId;
+    const row=server.find(value=>value.id===knownId)??server.find(value=>value.candidate_id===member.candidateId)??server.find(value=>samePerson(member,memberOf(value)));
+    if(row)active.set(id,row);
+  }
+  // Unrepresented colleagues' selections are never implicit cancellations.
+  if(server.some(row=>![...active.values()].some(known=>known.id===row.id)))throw conflict;
   for(const id of draft.desired){
     const local=draft.members[id],row=active.get(id);
     if(!local)throw conflict;
@@ -75,7 +90,8 @@ function currentMembers(draft:LocalSelectionDraft,rows:Preparation[],afterBulk:b
   }
   for(const id of draft.removed){
     const row=active.get(id),local=draft.members[id];
-    if(row&&(!local?.observed||row.id!==local.observed.selectionId||row.revision!==local.observed.revision||row.identity_changed||!sameIdentity(row.identity,local.identity)))throw conflict;
+    const explicitlyAcknowledged=local?.removal?.selectionId===row?.id&&local?.removal?.revision===row?.revision;
+    if(row&&!explicitlyAcknowledged&&(!local?.observed||row.id!==local.observed.selectionId||row.revision!==local.observed.revision||row.identity_changed||!sameIdentity(row.identity,local.identity)))throw conflict;
   }
   return active;
 }
@@ -83,11 +99,17 @@ function failure(state:LocalPrepareState,error:PublicError):LocalPrepareState {
   if(state.stage==='conflict'||state.stage==='done')return state;
   return {stage:'conflict',draft:state.draft,error,previous:state};
 }
+export function reconcileLocalBulk(state:Extract<LocalPrepareState,{stage:'bulk_pending'}>,rows:Preparation[]):boolean{
+  const {data}=state.input;
+  return (data.add_candidate_ids??[]).every(id=>{const member=state.draft.members[id];return member&&rows.filter(row=>row.activity_id===state.draft.activityId&&row.active&&!row.identity_changed&&samePerson(member,memberOf(row))).length===1;})
+    &&(data.cancel_selections??[]).every(choice=>rows.filter(row=>row.activity_id===state.draft.activityId&&row.id===choice.selection_id&&!row.active&&row.revision===choice.expected_revision+1).length===1);
+}
 /** The caller must serialize runs and lock conflicting local edits. Every outbound
  * request has its exact payload/key durably checkpointed before dispatch. A caller
  * may recreate this state after restart; pending stages replay, never recompute. */
 export async function prepareLocalSelection(initial:LocalPrepareState,ports:LocalPreparePorts):Promise<LocalPrepareState>{
   let state=structuredClone(initial);
+  if(state.stage==='ready')state.draft.desired=uniqueDesired(state.draft);
   const persist=async(next:LocalPrepareState)=>{await ports.persist(structuredClone(next));state=next;};
   if(state.stage==='done'||state.stage==='conflict')return state;
   if(!state.draft.initialized||!state.draft.desired.length||state.draft.desired.length>600||new Set(state.draft.desired).size!==state.draft.desired.length)return failure(state,conflict);
@@ -96,7 +118,9 @@ export async function prepareLocalSelection(initial:LocalPrepareState,ports:Loca
       const rows=await readSelections(ports.api,state.draft.activityId,true);
       const active=currentMembers(state.draft,rows,false);
       const add=state.draft.desired.filter(id=>!active.has(id));
-      const cancel=[...active.values()].filter(row=>!state.draft.desired.includes(row.candidate_id)).map(row=>({selection_id:row.id,expected_revision:row.revision}));
+      const desiredIds=new Set(state.draft.desired.map(id=>active.get(id)?.id));
+      const cancelRows=new Map(state.draft.removed.map(id=>active.get(id)).filter((row):row is Preparation=>Boolean(row)&&!desiredIds.has(row!.id)).map(row=>[row.id,row]));
+      const cancel=[...cancelRows.values()].map(row=>({selection_id:row.id,expected_revision:row.revision}));
       if(add.length>600||cancel.length>600)throw conflict;
       const next:LocalPrepareState=add.length||cancel.length?{stage:'bulk_pending',draft:state.draft,startedAt:(ports.now??Date.now)(),input:{activityId:state.draft.activityId,idempotencyKey:crypto.randomUUID(),data:{add_candidate_ids:add,cancel_selections:cancel}}}:{stage:'readback',draft:state.draft};
       try{await persist(next);}catch{return {...state,error:diskError};}
@@ -116,7 +140,7 @@ export async function prepareLocalSelection(initial:LocalPrepareState,ports:Loca
       for(const id of draft.desired){const row=active.get(id)!;draft.members[id].observed={selectionId:row.id,revision:row.revision};}
       // An acknowledged local cancellation must be selectable again later;
       // retain its tombstone, but no longer claim it is server-active.
-      for(const id of draft.removed)if(!active.has(id)&&draft.members[id])delete draft.members[id].observed;
+      for(const id of draft.removed)if(!active.has(id)&&draft.members[id]){delete draft.members[id].observed;delete draft.members[id].removal;}
       try{await persist({stage:'freeze_pending',draft,input:{activityId:state.draft.activityId,idempotencyKey:crypto.randomUUID(),data:{request_id:crypto.randomUUID(),recipients}}});}catch{return {...state,error:diskError};}
     }
     if(state.stage==='freeze_pending'){

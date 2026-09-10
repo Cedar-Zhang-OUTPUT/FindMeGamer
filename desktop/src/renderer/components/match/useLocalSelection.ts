@@ -2,9 +2,9 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import type {DesktopBridge,PublicError} from '../../../shared/bridge';
 import type {CandidateView} from '../../../shared/match';
 import type {Preparation} from '../../../shared/outreach';
-import {emptySelectionDraft,mergeSelectionRead,prepareLocalSelection,setDesiredSelection,type LocalPrepareState,type LocalSelectionMember} from './localSelectionPrepare';
+import {emptySelectionDraft,findLocalMember,isLocalMemberSelected,mergeSelectionRead,prepareLocalSelection,reconcileLocalBulk,setDesiredSelection,type LocalPrepareState,type LocalSelectionMember} from './localSelectionPrepare';
 import {outreachReadError,readSelections} from './useOutreachSession';
-import {reconcileOutreachSelections,reconcileOutreachBatch} from './outreachMutation';
+import {reconcileOutreachBatch} from './outreachMutation';
 
 export function useLocalSelection(api:Pick<DesktopBridge,'outreach'|'localSelections'>,activityId:string,queryId:string|null,rows:Preparation[],current:boolean){
  const enabled=Boolean(api.localSelections),[state,setState]=useState<LocalPrepareState|null>(null),[loading,setLoading]=useState(enabled),[busy,setBusy]=useState(false),[error,setError]=useState<PublicError|null>(null);
@@ -35,12 +35,14 @@ export function useLocalSelection(api:Pick<DesktopBridge,'outreach'|'localSelect
  const locked=Boolean(state&&!['ready','done'].includes(state.stage));
  function change(member:LocalSelectionMember,selected:boolean){
   const previous=live.current;if(!previous||inFlight.current||!['ready','done'].includes(previous.stage))return;
+  if(!selected){const known=findLocalMember(previous.draft,member);const row=rows.find(row=>row.id===known?.observed?.selectionId)||rows.find(row=>row.candidate_id===known?.candidateId);if(row)member={...member,removal:{selectionId:row.id,revision:row.revision}};}
   try{const next:LocalPrepareState={stage:'ready',draft:setDesiredSelection(previous.draft,member,selected)};update(next);setError(null);const token=generation.current;void persist(next).catch(cause=>{if(token===generation.current)setError(outreachReadError(cause));});}catch(cause){setError(outreachReadError(cause));}
  }
  function toggle(candidate:CandidateView){
   if(candidate.identity_changed||!['youtube','x','twitch','instagram'].includes(candidate.platform))return;
-  change({candidateId:candidate.id,creatorId:candidate.creator_id,name:candidate.creator?.name??null,queryId,identity:{platform:candidate.platform as LocalSelectionMember['identity']['platform'],account_id:candidate.account_id,revision:candidate.identity_revision}},!live.current?.draft.desired.includes(candidate.id));
+  const member=memberFrom(candidate);change(member,!live.current||!isLocalMemberSelected(live.current.draft,member));
  }
+ function memberFrom(candidate:CandidateView):LocalSelectionMember{return {candidateId:candidate.id,creatorId:candidate.creator_id,name:candidate.creator?.name??null,queryId,identity:{platform:candidate.platform as LocalSelectionMember['identity']['platform'],account_id:candidate.account_id,revision:candidate.identity_revision}};}
  async function prepare(){
   const previous=live.current;if(!previous||inFlight.current||loading)return null;
   if(previous.stage==='done')return previous.batch;
@@ -73,8 +75,7 @@ export function useLocalSelection(api:Pick<DesktopBridge,'outreach'|'localSelect
    let next:LocalPrepareState|undefined;
    if(previous.stage==='bulk_pending'){
     const all=await readSelections(api.outreach,activityId,true);
-    const attempt={command:{kind:'bulk' as const,activityId,data:previous.input.data},input:previous.input,startedAt:previous.startedAt,connectionChanged:false};
-    if(reconcileOutreachSelections(attempt,all))next={stage:'readback',draft:previous.draft};
+    if(reconcileLocalBulk(previous,all))next={stage:'readback',draft:previous.draft};
    }else if(previous.stage==='freeze_pending'){
     for(let offset=0;offset<10000;offset+=200){const response=await api.outreach.batches({activityId,offset,limit:200});if(!response.ok)throw response.error;
      const match=response.data.items.find(row=>row.request_id===previous.input.data.request_id);
@@ -92,7 +93,7 @@ export function useLocalSelection(api:Pick<DesktopBridge,'outreach'|'localSelect
  async function retryPersistence(){const value=live.current;if(!value)return;try{await persist(value);setError(null);}catch(cause){setError(outreachReadError(cause));}}
  const credentialsChanged=useCallback(()=>{generation.current++;setLoading(true);setError({code:'connection_changed',message:'These choices belong to the previous workspace. Reopen the activity after reconnecting.',retryable:false});},[]);
  return {enabled,state,loading,busy,locked,error,ready:Boolean(state?.draft.initialized)&&!loading,desired:state?.draft.desired??[],toggle,change,prepare,reviewConflict,checkSaved,retryPersistence,
-  isSelected:(candidate:CandidateView)=>Boolean(live.current?.draft.desired.includes(candidate.id)),
+  isSelected:(candidate:CandidateView)=>Boolean(!candidate.identity_changed&&live.current&&isLocalMemberSelected(live.current.draft,memberFrom(candidate))),
   credentialsChanged,
  };
 }

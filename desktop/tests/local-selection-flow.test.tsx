@@ -59,3 +59,18 @@ it('restores an unknown freeze after remount without generating a new request or
  const restored=renderHook(()=>useActivityOutreach(s.props));await waitFor(()=>expect(restored.result.current.local.state?.stage).toBe('freeze_pending'));
  await act(()=>restored.result.current.prepare([]));expect(vi.mocked(s.outreach.freeze).mock.calls[1][0]).toEqual(original);expect(s.outreach.bulk).not.toHaveBeenCalled();expect(restored.result.current.panel).toBe('batch');
 });
+it('recognizes and unselects the same account under a new query candidate ID without merging query drafts',async()=>{
+ const s=setup(),alias={...s.candidate,id:'new-query-alias'},hook=renderHook(props=>useActivityOutreach(props),{initialProps:s.props});await waitFor(()=>expect(hook.result.current.selectionReady).toBe(true));
+ hook.rerender({...s.props,queryId:'new-query',candidates:[alias]});await waitFor(()=>expect(hook.result.current.selectionReady).toBe(true));expect(hook.result.current.isSelected(alias)).toBe(true);
+ act(()=>{void hook.result.current.toggle(alias);});expect(hook.result.current.selectionCount).toBe(0);expect(hook.result.current.isSelected(alias)).toBe(false);expect(s.outreach.bulk).not.toHaveBeenCalled();
+ hook.rerender(s.props);await waitFor(()=>expect(hook.result.current.selectionReady).toBe(true));expect(hook.result.current.isSelected(s.candidate)).toBe(true);
+});
+it('can explicitly remove an identity-changed row after review and prepare the other person',async()=>{
+ const s=setup(),second=candidateFixture(2),other={...s.person,id:'selection-two',candidate_id:second.id,creator_id:second.creator_id,identity:{platform:'youtube' as const,account_id:second.account_id,revision:second.identity_revision}},changed={...s.person,identity_changed:true,revision:s.person.revision+1};
+ const hook=renderHook(()=>useActivityOutreach(s.props));await waitFor(()=>expect(hook.result.current.selectionReady).toBe(true));s.setRows([changed,other]);await act(()=>hook.result.current.refresh());
+ await act(()=>hook.result.current.prepare([]));expect(hook.result.current.local.state?.stage).toBe('conflict');
+ await act(()=>hook.result.current.local.reviewConflict([changed,other]));act(()=>hook.result.current.local.change(hook.result.current.local.state!.draft.members[s.candidate.id],false));
+ vi.mocked(s.outreach.bulk).mockImplementation(async input=>{expect(input.data).toEqual({add_candidate_ids:[],cancel_selections:[{selection_id:changed.id,expected_revision:changed.revision}]});s.setRows([{...changed,active:false,revision:changed.revision+1},other]);return ok({added_selection_ids:[],cancelled_selection_ids:[changed.id]});});
+ vi.mocked(s.outreach.freeze).mockImplementation(async input=>ok(recipientBatchFixture({activity_id:s.props.activityId,request_id:input.data.request_id,recipient_count:1,recipients:[{id:'recipient',selection_id:other.id,snapshot:other,preparation:other,source_changed:false,current_missing_fields:[]}]})));
+ await act(()=>hook.result.current.prepare([]));expect(hook.result.current.panel).toBe('batch');expect(s.outreach.bulk).toHaveBeenCalledOnce();expect(s.outreach.add).not.toHaveBeenCalled();
+});

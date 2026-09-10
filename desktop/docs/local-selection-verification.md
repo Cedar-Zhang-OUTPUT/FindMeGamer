@@ -12,8 +12,8 @@ The backend contract used is
 `/Users/cedar/Documents/ChatGPT/FindMeGamer/docs/local-selection-prepare-contract-2026-09-10.md`.
 Prepare uses the existing bulk-selection and recipient-batch APIs. The native local
 path does not make the old per-click add/cancel calls or evidence-filter writes.
-It freezes an explicit set rather than relying on stopping discovery to define
-membership. It does not auto-confirm names, contacts, works or viewing evidence.
+  It freezes an explicit set rather than relying on stopping discovery to define
+  membership. It does not auto-confirm names, contacts, works or viewing evidence.
 
 ## Information / state model
 
@@ -129,3 +129,30 @@ The main agent inspected the native screenshots, not only test exit codes.
 - The 24-hour expiry check is automated unit coverage, not a day-long wall-clock run.
 - No global credential caching or unrelated request-chain optimization was added.
 - No screenshots or local synthetic workspace credential file are staged in Git.
+
+## Independent-review corrections before packaging
+
+The bounded review identified two real blockers in f58f085 despite the original
+tests passing. Both were reproduced with failing tests before fixing them:
+
+1. A creator account rediscovered in another query has a new candidate ID, while
+   the backend may reuse the activity's old selection and retain its old candidate
+   ID. Local selection and readback now reconcile by creator plus account identity
+   (platform, account ID and revision), not candidate ID alone. They deduplicate
+   aliases without combining different query draft files. Source candidate IDs
+   remain unchanged in frozen bulk requests; a lost bulk acknowledgement can also
+   be checked against the retained server selection by identity.
+2. An identity-changed old selection could not be removed because validation of
+   the cancellation path applied the same identity gate as additions. An explicit
+   Remove now records the currently observed selection ID and revision. Only that
+   acknowledged cancellation can pass the identity-changed gate. Additions and
+   chosen recipients retain strict identity/creator checks; there is no automatic
+   selection of the new identity.
+
+Three core regressions initially failed, then passed. Two additional hook tests
+exercise alias checkbox state/query isolation and review → explicit removal →
+preparing the remaining person. No backend behavior or contract was changed.
+Post-review verification: **128 files / 1,308 passed / 5 gated skips** (53.76s),
+**26 local-selection tests passed**, typecheck and build passed. A deleted-activity
+404 test additionally verifies that stale journals cannot recreate cleared server
+records. Full-process/package acceptance is recorded separately for internal.9.
