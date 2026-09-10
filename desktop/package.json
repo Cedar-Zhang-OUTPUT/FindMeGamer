@@ -1,7 +1,7 @@
 {
   "name": "findmegamer-desktop",
   "productName": "FindMeGamer",
-  "version": "0.2.0-internal.7",
+  "version": "0.2.0-internal.8",
   "private": true,
   "type": "module",
   "main": "out/main/index.cjs",
