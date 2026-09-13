@@ -8,6 +8,15 @@ import {candidateFixture} from './match-api-mock';
 afterEach(cleanup);
 const task:any={id:'search',status:'running',stage:'emails',counts:{discovered:68,profile_ready:68,profile_reused:48,profile_failed:0,email_available:10,email_missing:12,email_failed:0,evaluated:0,matched:0},stop_requested:false,retryable:false,outcome_unknown:false,error_code:null};
 const props:any={search:task,loading:false,current:false,people:[],results:[],candidates:[],error:null,disabled:false,onStop:vi.fn(),onRetry:vi.fn(),onAppend:vi.fn(),onRefresh:vi.fn(),onOpenCreator:vi.fn(),onOpenExternal:vi.fn(),isSelected:()=>false,onToggle:vi.fn()};
+it('batches only visible selectable rows and guards a stale current view',async()=>{
+ const user=userEvent.setup(),first=candidateFixture(1),changed={...candidateFixture(2),identity_changed:true},hidden=candidateFixture(3),onSetLoaded=vi.fn();
+ const people=[first,changed].map(row=>({candidate_id:row.id,creator_id:row.creator_id,platform:'youtube',profile_status:'ready',email_status:'missing'}));
+ const config={...props,search:{...task,status:'completed',stage:'complete'},people,candidates:[first,changed,hidden],current:true,onSetLoaded};
+ const {rerender}=render(<CreatorSearchView {...config}/>);
+ await user.click(screen.getByRole('button',{name:'Select all'}));expect(onSetLoaded).toHaveBeenCalledExactlyOnceWith([first],true);
+ rerender(<CreatorSearchView {...config} isSelected={()=>true}/>);await user.click(screen.getByRole('button',{name:'Deselect all'}));expect(onSetLoaded).toHaveBeenLastCalledWith([first],false);
+ rerender(<CreatorSearchView {...config} current={false}/>);expect(screen.getByRole('button',{name:'Select all'})).toBeDisabled();
+});
 it('shows one real processing stage with stop, not completed results or drafting',()=>{
  render(<CreatorSearchView {...props}/>);expect(screen.getByRole('heading',{name:'Finding contact details'})).toBeVisible();expect(screen.getByRole('button',{name:'Stop search'})).toBeVisible();expect(screen.queryByText('Complete')).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:/Draft.*emails/})).not.toBeInTheDocument();expect(screen.getByText('Processing details').closest('details')).not.toHaveAttribute('open');
 });

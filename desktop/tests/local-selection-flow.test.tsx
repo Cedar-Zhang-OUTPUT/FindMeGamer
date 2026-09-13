@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
-import {act,cleanup,renderHook,waitFor} from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
+import {act,cleanup,render,screen,within,renderHook,waitFor} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import {OutreachWorkspace} from '../src/renderer/components/match/OutreachWorkspace';
+import type {DesktopBridge} from '../src/shared/bridge';
 import {afterEach,expect,it,vi} from 'vitest';
 import {useActivityOutreach} from '../src/renderer/components/match/useActivityOutreach';
 import type {LocalSelectionsAPI} from '../src/shared/localSelections';
@@ -9,6 +13,26 @@ import {candidateFixture,activityFixture,queryFixture,matchAPIMock} from './matc
 import {preparationFixture,recipientBatchFixture} from './outreach-fixtures';
 import {ok} from './settings-fixtures';
 afterEach(cleanup);
+it('changes only loaded scope atomically, preserves other choices and never selects later arrivals',async()=>{
+ const s=setup(),second=candidateFixture(2),third=candidateFixture(3),hook=renderHook(props=>useActivityOutreach(props),{initialProps:s.props});
+ await waitFor(()=>expect(hook.result.current.selectionReady).toBe(true));
+ const writes=vi.mocked(s.props.api.localSelections.write);writes.mockClear();const reads=vi.mocked(s.outreach.selections).mock.calls.length;
+ await act(()=>hook.result.current.selectLoaded([second],true));expect(hook.result.current.selectionCount).toBe(2);expect(writes).toHaveBeenCalledTimes(1);
+ await act(()=>hook.result.current.deselectLoaded([second],true));expect(hook.result.current.selectionCount).toBe(1);expect(hook.result.current.isSelected(s.candidate)).toBe(true);
+ hook.rerender({...s.props,candidates:[s.candidate,second,third]});expect(hook.result.current.isSelected(third)).toBe(false);
+ expect(s.outreach.selections).toHaveBeenCalledTimes(reads);expect(s.outreach.bulk).not.toHaveBeenCalled();expect(s.outreach.add).not.toHaveBeenCalled();expect(s.outreach.cancel).not.toHaveBeenCalled();
+});
+it('retains displayed review rows after deselect all so select all restores them locally',async()=>{
+ const s=setup(),user=userEvent.setup();
+ function Review(){const controller=useActivityOutreach(s.props);return <><button onClick={()=>controller.setPanel('selected')}>Review choices</button><OutreachWorkspace api={s.props.api as DesktopBridge} controller={controller} active onRequest={fn=>fn()} onOpenCreator={()=>{}}/></>;}
+ render(<Review/>);await waitFor(()=>expect(s.saved.get(s.props.queryId)?.draft.initialized).toBe(true));await user.click(screen.getByRole('button',{name:'Review choices'}));
+ const list=screen.getByRole('list',{name:'Selected creators'}),actions=screen.getByRole('group',{name:'Listed review creators selection'});
+ expect(within(list).getByRole('checkbox')).toBeChecked();vi.mocked(s.props.api.localSelections.write).mockClear();
+ await user.click(within(actions).getByRole('button',{name:'Deselect all'}));expect(within(list).getByRole('checkbox')).not.toBeChecked();expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+ expect(s.props.api.localSelections.write).toHaveBeenCalledTimes(1);expect(screen.queryByRole('button',{name:'Prepare 1'})).not.toBeInTheDocument();
+ await user.click(within(actions).getByRole('button',{name:'Select all'}));expect(within(list).getByRole('checkbox')).toBeChecked();expect(screen.getByRole('button',{name:'Prepare 1'})).toBeEnabled();
+ expect(s.outreach.bulk).not.toHaveBeenCalled();expect(s.outreach.cancel).not.toHaveBeenCalled();expect(s.outreach.freeze).not.toHaveBeenCalled();
+});
 function setup(){
  const outreach=outreachAPIMock(),match=matchAPIMock(),candidate=candidateFixture(1),activityId=activityFixture().id;
  const person=preparationFixture({activity_id:activityId,candidate_id:candidate.id,creator_id:candidate.creator_id,identity:{platform:'youtube',account_id:candidate.account_id,revision:candidate.identity_revision}});
@@ -26,6 +50,26 @@ it('toggles immediately without per-click HTTP writes or selection re-reads and 
  await waitFor(()=>expect(s.saved.get(s.props.queryId)?.draft.desired).toEqual([]));
  await act(()=>hook.result.current.refresh());expect(hook.result.current.isSelected(s.candidate)).toBe(false);
  hook.unmount();const restored=renderHook(()=>useActivityOutreach(s.props));await waitFor(()=>expect(restored.result.current.selectionReady).toBe(true));expect(restored.result.current.isSelected(s.candidate)).toBe(false);
+});
+it('rejects an over-limit batch without partial changes or journal writes and deduplicates account aliases',async()=>{
+ const s=setup(),hook=renderHook(()=>useActivityOutreach(s.props));await waitFor(()=>expect(hook.result.current.selectionReady).toBe(true));
+ const writes=vi.mocked(s.props.api.localSelections.write);writes.mockClear();
+ await act(()=>hook.result.current.selectLoaded(Array.from({length:600},(_,i)=>candidateFixture(i+2)),true));
+ expect(hook.result.current.selectionCount).toBe(1);expect(writes).not.toHaveBeenCalled();expect(hook.result.current.local.error?.code).toBe('selection_limit');
+ const second=candidateFixture(2),alias={...second,id:'same-account-alias'},changed={...candidateFixture(3),identity_changed:true};
+ await act(()=>hook.result.current.selectLoaded([second,alias,changed],true));
+ expect(hook.result.current.selectionCount).toBe(2);expect(writes).toHaveBeenCalledTimes(1);expect(hook.result.current.isSelected(alias)).toBe(true);expect(hook.result.current.isSelected(changed)).toBe(false);
+ await act(()=>hook.result.current.deselectLoaded([alias],true));expect(hook.result.current.selectionCount).toBe(1);expect(hook.result.current.isSelected(s.candidate)).toBe(true);
+ expect(s.outreach.bulk).not.toHaveBeenCalled();
+});
+it('keeps batch actions disabled for stale results and pending preparation',async()=>{
+ const s=setup(),hook=renderHook(props=>useActivityOutreach(props),{initialProps:s.props});await waitFor(()=>expect(hook.result.current.selectionReady).toBe(true));
+ const writes=vi.mocked(s.props.api.localSelections.write);writes.mockClear();
+ await act(()=>hook.result.current.selectLoaded([candidateFixture(2)],false));await act(()=>hook.result.current.deselectLoaded([s.candidate],false));expect(writes).not.toHaveBeenCalled();
+ vi.mocked(s.outreach.freeze).mockResolvedValueOnce({ok:false,error:{code:'outreach_outcome_unknown',message:'Lost',retryable:false}});
+ await act(()=>hook.result.current.prepare([]));expect(hook.result.current.local.locked).toBe(true);writes.mockClear();
+ await act(()=>hook.result.current.selectLoaded([candidateFixture(2)],true));await act(()=>hook.result.current.deselectLoaded([s.candidate],true));
+ expect(writes).not.toHaveBeenCalled();expect(hook.result.current.selectionCount).toBe(1);
 });
 it('does not merge pending choices across query switches',async()=>{
  const s=setup(),hook=renderHook(props=>useActivityOutreach(props),{initialProps:s.props});await waitFor(()=>expect(hook.result.current.selectionReady).toBe(true));

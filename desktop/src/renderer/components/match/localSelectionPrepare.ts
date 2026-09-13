@@ -53,7 +53,15 @@ export function mergeSelectionRead(draft:LocalSelectionDraft,rows:Preparation[])
 }
 /** Pure and synchronous: neither this action nor pagination/filter changes write HTTP. */
 export function setDesiredSelection(draft:LocalSelectionDraft,member:LocalSelectionMember,selected:boolean):LocalSelectionDraft {
-  const next=structuredClone(draft),existing=findLocalMember(next,member);
+  return setDesiredSelections(draft,[member],selected);
+}
+export function setDesiredSelections(draft:LocalSelectionDraft,members:LocalSelectionMember[],selected:boolean):LocalSelectionDraft {
+  const next=structuredClone(draft);
+  for(const member of members)applyDesiredSelection(next,member,selected);
+  return next;
+}
+function applyDesiredSelection(next:LocalSelectionDraft,member:LocalSelectionMember,selected:boolean){
+  const existing=findLocalMember(next,member);
   if(existing&&!samePerson(existing,member))throw conflict;
   const id=existing?.candidateId??member.candidateId;
   next.members[id]=existing??structuredClone(member);
@@ -61,7 +69,6 @@ export function setDesiredSelection(draft:LocalSelectionDraft,member:LocalSelect
   next.desired=next.desired.filter(key=>key!==id&&!samePerson(next.members[key],member));
   if(selected){delete next.members[id].removal;next.desired.push(id);next.removed=next.removed.filter(key=>key!==id&&!samePerson(next.members[key],member));}
   else if(!next.removed.includes(id))next.removed.push(id);
-  return next;
 }
 function currentMembers(draft:LocalSelectionDraft,rows:Preparation[],afterBulk:boolean):Map<string,Preparation>{
   const active=new Map<string,Preparation>(),server:Preparation[]=[];

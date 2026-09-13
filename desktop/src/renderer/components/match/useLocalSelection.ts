@@ -2,7 +2,7 @@ import {useCallback,useEffect,useRef,useState} from 'react';
 import type {DesktopBridge,PublicError} from '../../../shared/bridge';
 import type {CandidateView} from '../../../shared/match';
 import type {Preparation} from '../../../shared/outreach';
-import {emptySelectionDraft,findLocalMember,isLocalMemberSelected,mergeSelectionRead,prepareLocalSelection,reconcileLocalBulk,setDesiredSelection,type LocalPrepareState,type LocalSelectionMember} from './localSelectionPrepare';
+import {emptySelectionDraft,findLocalMember,isLocalMemberSelected,mergeSelectionRead,prepareLocalSelection,reconcileLocalBulk,setDesiredSelections,type LocalPrepareState,type LocalSelectionMember} from './localSelectionPrepare';
 import {outreachReadError,readSelections} from './useOutreachSession';
 import {reconcileOutreachBatch} from './outreachMutation';
 
@@ -34,9 +34,18 @@ export function useLocalSelection(api:Pick<DesktopBridge,'outreach'|'localSelect
  },[enabled,current,rows,state?.draft.initialized,persist,update]);
  const locked=Boolean(state&&!['ready','done'].includes(state.stage));
  function change(member:LocalSelectionMember,selected:boolean){
+  changeMany([member],selected);
+ }
+ function changeMany(members:LocalSelectionMember[],selected:boolean){
   const previous=live.current;if(!previous||inFlight.current||!['ready','done'].includes(previous.stage))return;
-  if(!selected){const known=findLocalMember(previous.draft,member);const row=rows.find(row=>row.id===known?.observed?.selectionId)||rows.find(row=>row.candidate_id===known?.candidateId);if(row)member={...member,removal:{selectionId:row.id,revision:row.revision}};}
-  try{const next:LocalPrepareState={stage:'ready',draft:setDesiredSelection(previous.draft,member,selected)};update(next);setError(null);const token=generation.current;void persist(next).catch(cause=>{if(token===generation.current)setError(outreachReadError(cause));});}catch(cause){setError(outreachReadError(cause));}
+  try{const acknowledged=members.map(member=>{
+    if(!selected){const known=findLocalMember(previous.draft,member);const row=rows.find(row=>row.id===known?.observed?.selectionId)||rows.find(row=>row.candidate_id===known?.candidateId);if(row)return {...member,removal:{selectionId:row.id,revision:row.revision}};}
+    return member;
+   });
+   const draft=setDesiredSelections(previous.draft,acknowledged,selected);
+   if(draft.desired.length>600)throw {code:'selection_limit',message:'Choose up to 600 people. No choices were changed.',retryable:false};
+   const next:LocalPrepareState={stage:'ready',draft};update(next);setError(null);const token=generation.current;void persist(next).catch(cause=>{if(token===generation.current)setError(outreachReadError(cause));});
+  }catch(cause){setError(outreachReadError(cause));}
  }
  function toggle(candidate:CandidateView){
   if(candidate.identity_changed||!['youtube','x','twitch','instagram'].includes(candidate.platform))return;
@@ -92,7 +101,8 @@ export function useLocalSelection(api:Pick<DesktopBridge,'outreach'|'localSelect
  }
  async function retryPersistence(){const value=live.current;if(!value)return;try{await persist(value);setError(null);}catch(cause){setError(outreachReadError(cause));}}
  const credentialsChanged=useCallback(()=>{generation.current++;setLoading(true);setError({code:'connection_changed',message:'These choices belong to the previous workspace. Reopen the activity after reconnecting.',retryable:false});},[]);
- return {enabled,state,loading,busy,locked,error,ready:Boolean(state?.draft.initialized)&&!loading,desired:state?.draft.desired??[],toggle,change,prepare,reviewConflict,checkSaved,retryPersistence,
+ return {enabled,state,loading,busy,locked,error,ready:Boolean(state?.draft.initialized)&&!loading,desired:state?.draft.desired??[],toggle,change,changeMany,
+  setLoaded:(candidates:CandidateView[],selected:boolean)=>changeMany(candidates.filter(row=>!row.identity_changed&&['youtube','x','twitch','instagram'].includes(row.platform)).map(memberFrom),selected),prepare,reviewConflict,checkSaved,retryPersistence,
   isSelected:(candidate:CandidateView)=>Boolean(!candidate.identity_changed&&live.current&&isLocalMemberSelected(live.current.draft,memberFrom(candidate))),
   credentialsChanged,
  };

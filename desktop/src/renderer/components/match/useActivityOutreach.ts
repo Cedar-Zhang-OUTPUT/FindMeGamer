@@ -66,7 +66,7 @@ export function useActivityOutreach({api,activityId,active,initialized,queryId,c
     await mutate(selected?{kind:'cancel',activityId,id:selected.id,data:{expected_revision:selected.revision}}:{kind:'add',activityId,data:{candidate_id:candidate.id}});
   }
   async function selectLoaded(loaded:CandidateView[]=candidates,current=candidateCurrent){
-    if(local.enabled){if(!unavailableNow&&local.ready&&current)for(const item of loaded)if(!local.isSelected(item))local.toggle(item);return;}
+    if(local.enabled){if(!unavailableNow&&local.ready&&current)local.setLoaded(loaded,true);return;}
     if(unavailableNow||actionPending.current||!session.current||!current)return;
     const ids=loaded.filter(item=>!item.identity_changed&&!candidateSelection(item,session.items)).map(item=>item.id);
     if(!ids.length)return;if(ids.length>600){setProblem({code:'selection_limit',message:'Choose up to 600 people at a time.',retryable:false});return;}
@@ -74,6 +74,13 @@ export function useActivityOutreach({api,activityId,active,initialized,queryId,c
   }
   async function changeOptions(next:Required<CandidateQueryOptions>){
     return changeProjection({next,previous:options,visible:candidates,current:candidateCurrent,read:()=>queryId?readCandidateMembership(api.match,queryId,next):Promise.reject(unavailable),apply:()=>onOptions(next)});
+  }
+  async function deselectLoaded(loaded:CandidateView[]=candidates,current=candidateCurrent){
+    if(unavailableNow||actionPending.current||!current)return;
+    if(local.enabled){if(local.ready)local.setLoaded(loaded,false);return;}
+    if(!session.current)return;
+    const selected=[...new Map(loaded.filter(item=>!item.identity_changed).flatMap(item=>{const row=candidateSelection(item,session.items);return row?[[row.id,row] as const]:[];})).values()];
+    if(selected.length){afterWrite.current={kind:'ordinary'};await mutate({kind:'bulk',activityId,data:{add_candidate_ids:[],cancel_selections:selected.map(row=>({selection_id:row.id,expected_revision:row.revision}))}});}
   }
   async function changeProjection({next,previous,visible,current,read,apply}:{next:Required<CandidateQueryOptions>;previous:Required<CandidateQueryOptions>;visible:CandidateView[];current:boolean;read:()=>Promise<CandidateView[]>;apply:()=>void}){
     if(unavailableNow||actionPending.current)return;
@@ -152,7 +159,7 @@ export function useActivityOutreach({api,activityId,active,initialized,queryId,c
     }catch(error){if(alive.current&&token===version.current)setProblem(outreachReadError(error));}finally{if(alive.current)setReadBusy(false);}
   }
   return {session,local,selectionReady:local.enabled?local.ready:session.current,selectionCount:local.enabled?local.desired.length:session.items.length,operation,stopOperation,panel,setPanel,batch,batchCurrent,batchMode,selectedId,setSelectedId,chosenIds,setChosenIds,dirty,setDirty,historyEpoch,pendingCount,
-    busy,locked,problem,notice,credentialsChanged,refresh,toggle,selectLoaded,changeOptions,changeProjection,prepare,openSelected,openBatch,openCurrentBatch,updatePerson,remove,reconcile,checkStop,
+    busy,locked,problem,notice,credentialsChanged,refresh,toggle,selectLoaded,deselectLoaded,changeOptions,changeProjection,prepare,openSelected,openBatch,openCurrentBatch,updatePerson,remove,reconcile,checkStop,
     retryStop:()=>submitStop(true),retry:()=>operation.retry().then(complete),isSelected:(candidate:CandidateView)=>local.enabled?local.isSelected(candidate):Boolean(candidateSelection(candidate,session.items)),
     cancelPending:()=>{if(!busy&&!locked){pendingFreeze.current=null;setPendingCount(0);}},
   };

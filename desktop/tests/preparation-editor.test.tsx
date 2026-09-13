@@ -42,6 +42,16 @@ function setup(preparation: Preparation = preparationFixture(), saveResult = fal
 }
 
 describe('PreparationEditor', () => {
+  it('bulk work choices are local, preserve other fields and do not select later pages',async()=>{
+    const user=userEvent.setup(),{works,props}=setup(preparationFixture({public_name_confirmed:false}));
+    works.mockResolvedValueOnce({ok:true,data:{items:[availableWork(NEW_WORK_ID,'First new work')],total:2,offset:0,limit:100}})
+      .mockResolvedValueOnce({ok:true,data:{items:[availableWork(LATER_WORK_ID,'Later work')],total:2,offset:1,limit:100}});
+    await user.click(screen.getByRole('button',{name:'Choose known works'}));await screen.findByRole('checkbox',{name:'Use First new work'});
+    const actions=screen.getByRole('group',{name:'Loaded works selection'});await user.click(within(actions).getByRole('button',{name:'Select all'}));expect(screen.getByRole('checkbox',{name:'Use First new work'})).toBeChecked();
+    await user.click(screen.getByRole('button',{name:'Load more works'}));expect(await screen.findByRole('checkbox',{name:'Use Later work'})).not.toBeChecked();
+    await user.click(within(actions).getByRole('button',{name:'Deselect all'}));expect(screen.getByRole('checkbox',{name:'Use First new work'})).not.toBeChecked();
+    expect(screen.getByRole('checkbox',{name:/Confirm .* as public name/})).not.toBeChecked();expect(props.onSave).not.toHaveBeenCalled();expect(works).toHaveBeenCalledTimes(2);
+  });
   it('keeps a missing email as None, shows one explicit status-rich radio group, and emits only an explicitly selected eligible contact', async () => {
     const user = userEvent.setup();
     const eligible = contact(SECOND_CONTACT_ID, 'second@example.com', 'eligible', 'creator_page');

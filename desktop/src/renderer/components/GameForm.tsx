@@ -1,3 +1,4 @@
+import {ScopedSelectionActions} from './SelectionActions';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { GAME_FIELDS, type GameDetail, type GameField } from '../../shared/games';
@@ -61,6 +62,7 @@ export function GameForm({ base, draft, disabled, errors, onChange, selection, a
       <SteamRecommendationsStatus state={base?.steam_recommendations}/>
       {adding&&<AddReference draft={draft} onCancel={()=>setAdding(false)} onAdd={reference=>{const existing=draft.references.find(item=>reference.url.trim()?item.url.trim()===reference.url.trim():item.name.trim().toLocaleLowerCase()===reference.name.trim().toLocaleLowerCase());setAdding(false);if(existing){setExpandedReferences(previous=>new Set([...previous,existing.localId]));requestAnimationFrame(()=>document.getElementById(`game-reference-${existing.localId}-name`)?.focus());}else onChange({...draft,referencesTouched:true,references:[...draft.references,reference]});}}/>}
       {errors.references && <p className="game-field-error">{errors.references}</p>}
+      {selection&&<ScopedSelectionActions scope="Listed reference works" ids={draft.references.map(reference=>reference.id||reference.localId)} selected={selection.ids} onChange={selection.onChange} disabled={disabled} limit={100}/>}
       {draft.references.map((reference, index) => {
         const label = reference.name.trim() || reference.url.trim() || `Reference ${index + 1}`;
         const hasError = Object.keys(errors).some(key => key.startsWith(`reference-${reference.localId}-`));

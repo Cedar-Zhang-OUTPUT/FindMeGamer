@@ -1,3 +1,4 @@
+import {SelectionActions,scopedSelection} from '../SelectionActions';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CreatorAPI, WorkDetail } from '../../../shared/creators';
 import type { Preparation, PreparationContact, PreparationWork, SelectionUpdate } from '../../../shared/outreach';
@@ -204,6 +205,7 @@ export function PreparationEditor({ preparation, creators, active, busy, current
     </section>
 
     <section className="preparation-group preparation-works" aria-labelledby={`preparation-works-${observed.id}`}><div className="preparation-group-heading"><h4 id={`preparation-works-${observed.id}`}>Known works</h4><button type="button" className="button secondary" disabled={disabled || workListOpen} onClick={() => void loadWorks(0)}>Choose known works</button></div>
+      <SelectionActions scope="Loaded works" count={availableWorks.length+missingIds.length} selected={draft.workIds.filter(id=>availableWorks.some(work=>work.id===id)||missingIds.includes(id)).length} disabled={disabled} limitExceeded={scopedSelection(draft.workIds,availableWorks.map(work=>work.id),true,100)===null} onSelect={()=>changeDraft(value=>({...value,workIds:scopedSelection(value.workIds,availableWorks.map(work=>work.id),true,100)??value.workIds}))} onClear={()=>changeDraft(value=>({...value,workIds:scopedSelection(value.workIds,[...availableWorks.map(work=>work.id),...missingIds],false)!}))}/>
       <div className="preparation-work-list">
         {availableWorks.map(work => <label className="preparation-work" key={work.id}><input type="checkbox" aria-label={`Use ${workName(work)}`} checked={draft.workIds.includes(work.id)} disabled={disabled || (!draft.workIds.includes(work.id) && draft.workIds.length >= 100)} onChange={event => changeDraft(value => ({ ...value, workIds: event.target.checked ? [...value.workIds, work.id] : value.workIds.filter(id => id !== work.id) }))}/><span><strong>{workName(work)}</strong><small><span>{workRelation(work)}</span><span>{workEvidence(work)}</span></small></span></label>)}
         {missingIds.map(id => <label className="preparation-work unavailable" key={id}><input type="checkbox" aria-label={`Keep unavailable work ${id}`} checked disabled={disabled} onChange={() => changeDraft(value => ({ ...value, workIds: value.workIds.filter(workId => workId !== id) }))}/><span><strong>Previously chosen work unavailable</strong><small>{id}</small></span></label>)}
