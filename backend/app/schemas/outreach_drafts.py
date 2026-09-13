@@ -12,6 +12,7 @@ from pydantic import (
     StrictBool,
     StrictInt,
     field_validator,
+    model_validator,
 )
 
 
@@ -128,6 +129,19 @@ class DraftRevision(StrictInput):
 
 class DraftEdit(DraftRevision):
     values: DraftSlotValues
+
+
+class DraftRefresh(DraftRevision):
+    preserve_values: StrictBool = False
+    values: DraftSlotValues | None = None
+
+    @model_validator(mode="after")
+    def explicit_preserved_values(self):
+        if self.preserve_values and self.values is None:
+            raise ValueError("Provide all four values when preserving personalization.")
+        if not self.preserve_values and "values" in self.model_fields_set:
+            raise ValueError("Values require preserve_values=true.")
+        return self
 
 
 class FactMember(DraftRevision):

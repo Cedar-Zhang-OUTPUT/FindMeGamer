@@ -3608,6 +3608,42 @@
         "title": "DraftEdit",
         "type": "object"
       },
+      "DraftRefresh": {
+        "additionalProperties": false,
+        "properties": {
+          "context_token": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Context Token",
+            "type": "string"
+          },
+          "expected_revision": {
+            "minimum": 0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "preserve_values": {
+            "default": false,
+            "title": "Preserve Values",
+            "type": "boolean"
+          },
+          "values": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DraftSlotValues"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "expected_revision",
+          "context_token"
+        ],
+        "title": "DraftRefresh",
+        "type": "object"
+      },
       "DraftRevision": {
         "additionalProperties": false,
         "properties": {
@@ -17440,7 +17476,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/DraftRevision"
+                "$ref": "#/components/schemas/DraftRefresh"
               }
             }
           },

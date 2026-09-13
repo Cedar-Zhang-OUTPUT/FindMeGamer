@@ -225,9 +225,19 @@ def edit_draft(session, row, value):
 
 def refresh_draft(session, row, value):
     data = check_context(session, row, value, refreshing=True)
+    preserved = None
+    if value.preserve_values:
+        preserved = value.values.model_dump()
+        template = template_for(session, row)
+        render_preview(
+            template.subject, template.fixed_fragments, preserved, template.fixed_hash
+        )
     clear_confirmation(row)
     row.input_data, row.input_fingerprint = data, digest(data)
-    if row.manual_overrides:
+    if preserved is not None:
+        row.values, row.manual_overrides = preserved, dict(preserved)
+        row.status = "succeeded" if complete_values(preserved) else "needs_repair"
+    elif row.manual_overrides:
         row.values = data["prefill_values"] | row.manual_overrides
         row.status = "succeeded" if complete_values(row.values) else "needs_repair"
     else:

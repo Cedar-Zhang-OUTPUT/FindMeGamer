@@ -31,6 +31,7 @@ from app.schemas.outreach_drafts import (
     DraftView,
     DraftEdit,
     DraftRevision,
+    DraftRefresh,
     SenderFacts,
 )
 from app.db.models.outreach_drafts import OutreachComposition, OutreachDraft
@@ -220,7 +221,7 @@ def create_router(authenticate_workspace, *, dispatcher=None):
         operation_id="refreshOutreachDraftV2",
     )
     def refresh(
-        draft_id: UUID, value: DraftRevision, session: Session = Depends(get_session)
+        draft_id: UUID, value: DraftRefresh, session: Session = Depends(get_session)
     ):
         body = mutate(session, draft_id, value, drafts.refresh_draft)
         if body["status"] == "pending":
