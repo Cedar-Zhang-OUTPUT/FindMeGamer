@@ -41,6 +41,14 @@ def test_refresh_preserves_manual_creator_and_stable_source_records(committed_fa
             assert work.source_fields["content_type"] == "unverified"
             assert work.source_fields["game_id"] is None
             assert work.source_fields["evidence_excerpt"] is None
+            assert (
+                work.source_fields["outreach_observation"]["evidence_kind"]
+                == "metadata"
+            )
+            assert (
+                work.source_fields["outreach_observation"]["source_url"]
+                == work.source_fields["source_url"]
+            )
         contact = session.scalar(
             select(CreatorContact).where(
                 CreatorContact.email == "partnerships@example.org"
@@ -167,3 +175,87 @@ def test_refresh_keeps_known_unseen_and_manual_works(committed_factory):
         assert manual.source_collected_at is None
         assert manual.manual_overrides["content_title"] == "Human record"
         assert len(session.scalars(select(CreatorWork)).all()) == 3
+
+
+def test_backfill_stored_work_facts_is_idempotent_and_preserves_human_layers(
+    committed_factory,
+):
+    from app.outreach.prefill_backfill import backfill_prefill
+
+    factory = committed_factory
+    identity = _pipeline(factory).run(_job(factory))
+    with factory.begin() as session:
+        creator = session.get(CreatorProfile, identity)
+        before = deepcopy(creator.current_facts)
+        works = session.scalars(select(CreatorWork)).all()
+        for work in works:
+            work.source_fields = {
+                key: value
+                for key, value in work.source_fields.items()
+                if key != "outreach_observation"
+            }
+            work.manual_overrides = {
+                "content_title": "Human work title",
+                "verification_notes": "Editor note",
+            }
+        count = len(works)
+        assert backfill_prefill(session, apply=False)["works_to_update"] == count
+        assert all("outreach_observation" not in work.source_fields for work in works)
+        assert backfill_prefill(session, apply=True)["works_updated"] == count
+        assert backfill_prefill(session, apply=True)["works_updated"] == 0
+        assert creator.current_facts == before
+        for work in works:
+            assert work.manual_overrides == {
+                "content_title": "Human work title",
+                "verification_notes": "Editor note",
+            }
+            assert (
+                work.source_fields["outreach_observation"]["evidence_kind"]
+                == "metadata"
+            )
+            assert work.source_fields["evidence_excerpt"] is None
+
+
+def test_backfill_uses_only_matching_successful_publication_checkpoint(
+    committed_factory,
+):
+    from app.outreach.prefill_backfill import backfill_prefill
+    from app.analysis.creator_map_reduce_pipeline import CreatorSourceCheckpoint
+    from app.db.models.jobs import CreatorAnalysisNode
+
+    factory = committed_factory
+    job_id = _job(factory)
+    profile_id = _pipeline(factory).run(job_id)
+    source = _source()
+    first = source.videos[0].model_copy(
+        update={"description": "A public description of a quiet station"}
+    )
+    source = source.model_copy(update={"videos": (first, *source.videos[1:])})
+    with factory.begin() as session:
+        session.add(
+            CreatorAnalysisNode(
+                job_id=job_id,
+                node_key="source:v1",
+                output_payload=CreatorSourceCheckpoint.from_source(source).model_dump(
+                    mode="json"
+                ),
+            )
+        )
+        work = session.scalar(
+            select(CreatorWork).where(
+                CreatorWork.creator_id == profile_id,
+                CreatorWork.source_content_id == first.id,
+            )
+        )
+        work.source_fields = {
+            key: value
+            for key, value in work.source_fields.items()
+            if key != "outreach_observation"
+        }
+        report = backfill_prefill(session, apply=True)
+        assert report["checkpoint_descriptions_used"] == 1
+        assert (
+            work.source_fields["outreach_observation"]["source_field"] == "description"
+        )
+        assert first.description in work.source_fields["outreach_observation"]["text"]
+        assert work.source_fields["evidence_excerpt"] is None

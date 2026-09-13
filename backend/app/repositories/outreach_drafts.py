@@ -11,8 +11,9 @@ from app.db.models.outreach_drafts import (
 )
 from app.discovery.evaluation_snapshot import digest
 from app.outreach.draft_inputs import current_input, generation_ready
-from app.outreach.locked_templates import render_locked
-from app.schemas.outreach_drafts import DraftView, CompositionView
+from app.outreach.locked_templates import render_preview
+from app.schemas.outreach_drafts import DraftView, CompositionView, SlotValues
+from pydantic import ValidationError
 from app.core.idempotency import utc_now
 
 
@@ -26,7 +27,7 @@ def draft_view(session, draft):
     live = current_input(session, draft.recipient_snapshot_id, template)
     token = digest(live)
     rendered = (
-        render_locked(
+        render_preview(
             template.subject,
             template.fixed_fragments,
             draft.values,
@@ -191,14 +192,33 @@ def clear_confirmation(row):
 def edit_draft(session, row, value):
     check_context(session, row, value)
     values = value.values.model_dump()
-    validate_bound_values(row.input_data, values)
     template = template_for(session, row)
-    render_locked(
+    render_preview(
         template.subject, template.fixed_fragments, values, template.fixed_hash
     )
+    previous = row.values or {}
+    facts = (
+        dict(row.sender_facts)
+        if row.sender_facts.get("fingerprint") == fact_fingerprint(row)
+        else {}
+    )
+    changed = {key for key in values if values[key] != previous.get(key)}
     clear_confirmation(row)
     row.values = values
-    row.status = "succeeded"
+    row.manual_overrides = dict(row.manual_overrides or {}) | {
+        key: values[key] for key in changed
+    }
+    row.status = "succeeded" if complete_values(values) else "needs_repair"
+    if facts:
+        for field, affected in {
+            "channelName": ("following",),
+            "reference": ("enjoyed", "liked"),
+            "observation": ("liked",),
+        }.items():
+            if field in changed:
+                for fact in affected:
+                    facts[fact] = False
+        row.sender_facts = facts | {"fingerprint": fact_fingerprint(row)}
     session.flush()
     return draft_view(session, row)
 
@@ -207,8 +227,12 @@ def refresh_draft(session, row, value):
     data = check_context(session, row, value, refreshing=True)
     clear_confirmation(row)
     row.input_data, row.input_fingerprint = data, digest(data)
-    row.values = None
-    row.status = "pending" if generation_ready(data) else "needs_repair"
+    if row.manual_overrides:
+        row.values = data["prefill_values"] | row.manual_overrides
+        row.status = "succeeded" if complete_values(row.values) else "needs_repair"
+    else:
+        row.values = None
+        row.status = "pending" if generation_ready(data) else "needs_repair"
     session.flush()
     return draft_view(session, row)
 
@@ -240,9 +264,18 @@ def fact_fingerprint(row):
     )
 
 
+def complete_values(values):
+    try:
+        SlotValues.model_validate(values)
+        return True
+    except ValidationError:
+        return False
+
+
 def facts_valid(row, live_token):
     return bool(
         row.values
+        and complete_values(row.values)
         and row.status == "succeeded"
         and live_token == row.input_fingerprint
         and row.input_data["sender"].get("username")

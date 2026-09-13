@@ -70,6 +70,9 @@ class OutreachDraft(TimestampMixin, Base):
     revision: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     status: Mapped[str] = mapped_column(String(32))
     values: Mapped[dict | None] = mapped_column(JSONB)
+    manual_overrides: Mapped[dict] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
     error_code: Mapped[str | None] = mapped_column(String(64))
     sender_facts: Mapped[dict] = mapped_column(
         JSONB, default=dict, server_default=text("'{}'::jsonb")

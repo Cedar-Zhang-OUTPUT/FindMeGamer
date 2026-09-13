@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.models.profiles import CreatorContact, CreatorProfile, CreatorWork
 from app.schemas.ai_creator import EmailContactCandidate
+from app.outreach.prefill import metadata_observation
 
 if TYPE_CHECKING:
     from app.analysis.service import CreatorAnalysisPublication
@@ -144,4 +145,9 @@ def sync_creator_library(
             "verification_notes": None,
             "evidence_excerpt": None,
             "timestamp_seconds": None,
+            "outreach_observation": metadata_observation(
+                video.title,
+                video.description,
+                f"https://www.youtube.com/watch?v={video.id}",
+            ),
         }

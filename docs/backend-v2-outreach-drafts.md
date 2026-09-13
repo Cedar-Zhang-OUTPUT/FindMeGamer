@@ -1,4 +1,64 @@
-# P6: locked template versions and source-bound drafts
+# Locked template versions and independent personalization drafts
+
+## September 13 personalization update
+
+Draft editing is independent of generation and sending. The API remains
+`PATCH /api/v2/outreach/drafts/{id}` with revision/context checks. Exactly four
+single-line, escaped plain-text slots are accepted, including empty strings;
+each is at most 600 characters. Saving an observation fragment without a final
+period is allowed. Complete strict values produce `succeeded`; incomplete values
+produce `needs_repair`. Source/SMTP warnings do not prevent saving or rendering.
+Qualified `eligible` members still require strict complete slots, required source
+evidence, explicit sender facts, a valid recipient and SMTP configuration.
+Noneligible qualification members may return safe partial values and previews.
+
+The first three values no longer need to equal source records. Edits are persisted
+in draft-local `manual_overrides`; they never modify shared Creators, works,
+recipient snapshots or sibling drafts. Explicit refresh updates source inputs,
+preserves saved overrides, refreshes other prefills and clears sender confirmations.
+Changed external context still requires refresh; a save cannot bypass that check.
+Revision/lease guards prevent a late model result overwriting an edit.
+
+`input.prefill_values` contains all four string keys, allowing empty values.
+When `values` is null it is the editor starting point, not an assertion that an
+email has been generated or verified. Draft `rendered` is present only when saved
+values are present. Work selection uses explicitly selected works first; without
+an explicit selection, it examines current-identity Library works, preferring
+recorded notes and then current/reference-game relevance. No selection is mutated.
+Public channel names are usable addressing suggestions, never inferred real names.
+
+`input.work` and `slot_sources.reference`/`observation` include `evidence_kind`:
+`manual_note`, `metadata` or `unavailable`. Source-only YouTube work JSON may contain
+`outreach_observation` with `text`, `evidence_kind: metadata`, `source_url`, `excerpt`
+and `source_field: title|description`. Metadata suggestions explicitly describe
+the title/description, not full-video viewing. They do not fill verified evidence
+fields or any sender fact; genuine missing evidence remains a sending blocker.
+
+Editing firstName preserves all sender flags; channelName clears following;
+reference clears enjoyed and liked; observation clears liked. Existing complete
+facts retain their timestamp and receive a new fingerprint; an initial `{}` stays
+`{}`. A partial draft is never facts-valid, even when unchanged flags remain true.
+
+Migration `20260913_0023` adds `manual_overrides` on top of the deployed 0022 schema.
+Old nonnull values are copied conservatively because old rows do not identify
+manual edits; existing values/source/history are preserved. Maintenance is supported.
+After backup and migration, use the no-network backfill command first in dry-run:
+
+```sh
+python -m app.outreach.prefill_backfill
+python -m app.outreach.prefill_backfill --apply
+```
+
+It adds missing source-only suggestions to already analyzed current-identity
+YouTube works, using the matching successful publication checkpoint description
+where present, otherwise retained work titles. It is idempotent and does not call
+providers/models, reanalyze Profiles, modify human notes or rewrite sent snapshots.
+Old drafts deliberately retain their captured inputs until explicitly refreshed.
+Release this contract together with the internal.11 desktop decoder/editor.
+
+## Original P6 implementation record (September 8)
+
+The historical behavior below is superseded by the September 13 update above.
 
 Local implementation on the internal-Demo backend. No deployment or live provider,
 model or SMTP calls in acceptance. **A draft is never send-ready in this unit.**

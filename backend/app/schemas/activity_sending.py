@@ -3,8 +3,8 @@
 from typing import Any, Literal
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, Field, StrictInt, field_validator
-from app.schemas.outreach_drafts import StrictInput, SlotValues
+from pydantic import BaseModel, Field, StrictInt, field_validator, model_validator
+from app.schemas.outreach_drafts import StrictInput, SlotValues, DraftSlotValues
 
 
 class Exclusion(StrictInput):
@@ -46,7 +46,7 @@ class QualifiedMember(BaseModel):
     subject: str
     html: str | None
     text: str | None
-    values: SlotValues | None
+    values: DraftSlotValues | None
     slot_sources: dict[str, Any]
     template_version_id: UUID
     fixed_hash: str
@@ -55,6 +55,12 @@ class QualifiedMember(BaseModel):
     sender_facts: dict[str, Any]
     identity: dict[str, Any]
     blocking_delivery_id: UUID | None
+
+    @model_validator(mode="after")
+    def eligible_values_are_complete(self):
+        if self.status == "eligible":
+            SlotValues.model_validate(self.values.model_dump() if self.values else None)
+        return self
 
 
 class Qualification(BaseModel):

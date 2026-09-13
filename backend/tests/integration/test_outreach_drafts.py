@@ -1,6 +1,8 @@
 from copy import deepcopy
 from uuid import UUID, uuid4
 
+import pytest
+
 from sqlalchemy import select, func
 
 from app.db.models.discovery import Activity
@@ -172,18 +174,14 @@ def test_manual_four_slots_render_bound_sources_without_sender_confirmation(
         and "Yes, I'm in" not in item["rendered"]["html"]
     )
     assert manual(auth_client, draft).status_code == 409
-    assert (
-        manual(
-            auth_client, item, values_for(item) | {"reference": "Invented video"}
-        ).status_code
-        == 422
-    )
-    assert (
-        manual(
-            auth_client, item, values_for(item) | {"firstName": "Inferred real name"}
-        ).status_code
-        == 422
-    )
+    override = values_for(item) | {
+        "reference": "Another recorded work",
+        "firstName": "Channel team",
+    }
+    changed = manual(auth_client, item, override)
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["values"] == override
+    assert changed.json()["input"]["reference"] != override["reference"]
 
 
 def test_game_edit_refresh_keeps_frozen_discovery_and_members(
@@ -220,7 +218,7 @@ def test_game_edit_refresh_keeps_frozen_discovery_and_members(
         refreshed.json()["input"]["game"]["description"]
         == "Corrected current game details"
     )
-    assert refreshed.json()["values"] is None
+    assert refreshed.json()["values"] == draft["values"]
     assert activity.source_snapshot == original_source
     assert get_compose(auth_client, composition["id"])["recipient_count"] == 1
     assert (
@@ -396,3 +394,110 @@ def test_real_bracketed_title_remains_exact_through_manual_draft(
         response.json()["values"]["reference"] == "LIMINAL: Within [Full Playthrough]"
     )
     assert "LIMINAL: Within [Full Playthrough]" in response.json()["rendered"]["text"]
+
+
+def test_incomplete_unconfirmed_draft_saves_reopens_previews_and_stays_unsendable(
+    auth_client, session, monkeypatch
+):
+    activity, choices, batch, template = draft_setup(
+        auth_client, session, monkeypatch, count=3
+    )
+    creator = session.get(CreatorProfile, UUID(choices[2]["creator_id"]))
+    creator.manual_overrides = creator.manual_overrides | {"public_name": None}
+    session.commit()
+    original = deepcopy(creator.manual_overrides)
+    composition = compose(auth_client, activity, batch, template).json()
+    draft = composition["drafts"][2]
+    values = {
+        "firstName": "",
+        "channelName": "Channel team",
+        "reference": "",
+        "observation": "a draft fragment",
+    }
+    response = manual(auth_client, draft, values)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    assert result["status"] == "needs_repair"
+    assert (
+        result["values"] == values
+        and result["rendered"]["fixed_hash"] == template["fixed_hash"]
+    )
+    assert not result["sender_facts_valid"] and result["sender_facts"] == {}
+    assert get_compose(auth_client, composition["id"])["drafts"][2] == result
+    from app.outreach.activity_qualification import qualify
+
+    qualified = qualify(session, UUID(composition["id"]), [])
+    member = qualified["members"][2]
+    assert member["values"] == values and member["status"] == "needs_repair"
+    assert "draft_not_complete" in member["missing_fields"]
+    assert not qualified["send_ready"]
+    session.refresh(creator)
+    assert creator.manual_overrides == original
+    assert (
+        get_compose(auth_client, composition["id"])["drafts"][0]
+        == composition["drafts"][0]
+    )
+
+
+@pytest.mark.parametrize(
+    "field,replacement,invalidated",
+    [
+        ("firstName", "Team", set()),
+        ("firstName", "", set()),
+        ("channelName", "Another channel", {"following"}),
+        ("reference", "Another work", {"enjoyed", "liked"}),
+        ("observation", "another observation.", {"liked"}),
+    ],
+)
+def test_manual_edit_invalidates_only_related_sender_facts(
+    auth_client, session, monkeypatch, field, replacement, invalidated
+):
+    activity, _, batch, template = draft_setup(
+        auth_client, session, monkeypatch, count=1
+    )
+    settings = session.scalar(select(SharedSettings))
+    settings.service_connection_state = {"smtp": {"username": "producer@example.com"}}
+    session.commit()
+    composition = compose(auth_client, activity, batch, template).json()
+    draft = manual(auth_client, composition["drafts"][0]).json()
+    confirmed = confirm_facts(auth_client, composition["id"], [draft]).json()["drafts"][
+        0
+    ]
+    result = manual(auth_client, confirmed, confirmed["values"] | {field: replacement})
+    assert result.status_code == 200, result.text
+    item = result.json()
+    assert {
+        key
+        for key in ("following", "enjoyed", "liked")
+        if not item["sender_facts"][key]
+    } == invalidated
+    assert item["sender_facts"]["at"] == confirmed["sender_facts"]["at"]
+    assert (
+        item["sender_facts"]["fingerprint"] != confirmed["sender_facts"]["fingerprint"]
+    )
+    assert item["sender_facts_valid"] == (not invalidated and replacement != "")
+
+
+def test_automatic_work_prefill_uses_library_without_changing_selection(
+    auth_client, session, monkeypatch
+):
+    activity, choices, batch, template = draft_setup(
+        auth_client, session, monkeypatch, count=1
+    )
+    from app.db.models.activity_outreach import ActivitySelection
+
+    selection = session.get(ActivitySelection, UUID(choices[0]["id"]))
+    selection.work_ids = []
+    creator = session.get(CreatorProfile, selection.creator_id)
+    creator.manual_overrides = creator.manual_overrides | {"public_name": None}
+    session.commit()
+    composition = compose(auth_client, activity, batch, template).json()
+    draft = composition["drafts"][0]
+    assert (
+        draft["input"]["prefill_values"]["firstName"] == draft["input"]["channel_name"]
+    )
+    assert draft["input"]["prefill_values"]["reference"] == "Video 1"
+    assert draft["input"]["work"]["evidence_kind"] == "manual_note"
+    assert not draft["sender_facts_valid"]
+    session.refresh(selection)
+    assert selection.work_ids == []

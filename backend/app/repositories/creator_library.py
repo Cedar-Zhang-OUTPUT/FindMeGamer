@@ -62,6 +62,12 @@ def source_fields(creator):
         CreatorFields,
         {
             "name": facts.get("title") or facts.get("channel_name"),
+            "public_name": facts.get("title") or facts.get("channel_name"),
+            "source_notes": (
+                "Public addressing uses the published channel name, not an inferred personal name."
+                if facts.get("title") or facts.get("channel_name")
+                else None
+            ),
             "handle": facts.get("custom_url"),
             "profile_url": creator.canonical_url or None,
             "avatar_url": facts.get("avatar_url"),

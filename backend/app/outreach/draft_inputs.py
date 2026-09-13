@@ -7,9 +7,15 @@ from app.db.models.discovery import Activity
 from app.db.models.profiles import CreatorProfile, GameProfile
 from app.db.models.settings import SharedSettings
 from app.repositories.activity_preparation import preparation
-from app.repositories.creator_library import effective_fields
+from app.repositories.creator_library import effective_fields, work_detail
 from app.repositories.library_v2 import game_detail
 from app.outreach.evidence import choose_recorded_work
+from app.outreach.prefill import (
+    choose_prefill_work,
+    slot_text,
+    work_kind,
+    work_observation,
+)
 
 
 def current_input(session, recipient_id, template):
@@ -23,8 +29,35 @@ def current_input(session, recipient_id, template):
     )
     fields = effective_fields(creator)
     works = prepared["works"]
+    if not works and not selection.work_ids and not prepared["identity_changed"]:
+        works = [
+            work_detail(w, creator).model_dump(mode="json")
+            for w in creator.works
+            if w.identity_revision == creator.identity_revision
+        ]
+        references = {
+            str(r.get("name", "")).casefold()
+            for r in activity.source_snapshot.get("references", [])
+        }
+        for candidate in works:
+            candidate["relation"] = (
+                "current_game"
+                if candidate.get("game_id") == str(activity.game_id)
+                else (
+                    "reference_game"
+                    if (candidate.get("work_name") or "").casefold() in references
+                    else "related_content"
+                )
+            )
+            candidate["evidence_status"] = (
+                "recorded_evidence"
+                if work_kind(candidate) == "manual_note"
+                else "metadata_only"
+            )
     recorded_work = choose_recorded_work(works)
-    work = recorded_work or (works[0] if works else {})
+    work = choose_prefill_work(
+        works, game, activity.source_snapshot.get("references", [])
+    )
     reference = work.get("content_title") or work.get("work_name")
     missing = []
     for key, condition in (
@@ -76,12 +109,20 @@ def current_input(session, recipient_id, template):
     source["evidence_tier"] = (
         work.get("relation", "related_content") if recorded_work else "unverified"
     )
+    source["evidence_kind"] = work_kind(work)
+    public_name = prepared["public_name"] or prepared["name"]
+    prefill = {
+        "firstName": slot_text(public_name),
+        "channelName": slot_text(prepared["name"]),
+        "reference": slot_text(reference),
+        "observation": work_observation(work),
+    }
     return {
         "selection_id": str(selection.id),
         "identity": prepared["identity"],
         "active": prepared["active"],
         "identity_changed": prepared["identity_changed"],
-        "public_name": prepared["public_name"],
+        "public_name": public_name,
         "public_name_confirmed": prepared["public_name_confirmed"],
         "channel_name": prepared["name"],
         "profile_url": profile_url,
@@ -94,6 +135,7 @@ def current_input(session, recipient_id, template):
         "fixed_hash": template.fixed_hash,
         "sender": sender,
         "missing_fields": missing,
+        "prefill_values": prefill,
         "slot_sources": {
             "firstName": {
                 "source_url": profile_url,

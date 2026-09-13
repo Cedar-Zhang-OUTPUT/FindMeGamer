@@ -12,7 +12,7 @@ from app.db.models.outreach_drafts import (
 from app.db.models.discovery import Activity
 from app.db.models.profiles import GameProfile
 from app.discovery.evaluation_snapshot import digest
-from app.repositories.outreach_drafts import draft_view
+from app.repositories.outreach_drafts import draft_view, complete_values
 from app.repositories.settings import SettingsRepository
 from app.schemas.activity_sending import Qualification
 from app.outreach.activity_invitation_identity import blocking_delivery
@@ -55,7 +55,7 @@ def qualify(session, composition_id, exclusions):
         missing = list(draft["missing_fields"])
         if draft["source_changed"]:
             missing.append("draft_sources_changed")
-        if draft["status"] != "succeeded" or not draft["values"]:
+        if draft["status"] != "succeeded" or not complete_values(draft["values"]):
             missing.append("draft_not_complete")
         if not draft["sender_facts_valid"]:
             missing.append("sender_facts_unconfirmed")

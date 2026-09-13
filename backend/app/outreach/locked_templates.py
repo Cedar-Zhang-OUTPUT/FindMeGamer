@@ -8,7 +8,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from app.schemas.outreach_drafts import SlotValues
+from app.schemas.outreach_drafts import DraftSlotValues, SlotValues
 
 SLOT_KEYS = ("firstName", "channelName", "reference", "observation")
 CANONICAL_RAW_HASH = "6c3205c37e4d1dcdff8ee5bc8061834433e81c4cea4c40e015f4928b8dde9fcd"
@@ -131,10 +131,16 @@ class _PlainText(HTMLParser):
 
 
 def render_locked(subject, fragments, values, expected_hash):
+    values = SlotValues.model_validate(values).model_dump()
+    return render_preview(subject, fragments, values, expected_hash)
+
+
+def render_preview(subject, fragments, values, expected_hash):
+    """Safe incomplete preview, not proof of send eligibility."""
     fixed_hash = validate_fixed_template(subject, fragments)
     if fixed_hash != expected_hash:
         raise ValueError("Fixed template content changed.")
-    values = SlotValues.model_validate(values).model_dump()
+    values = DraftSlotValues.model_validate(values).model_dump()
     pieces = [fragments[0]]
     for key, fragment in zip(SLOT_KEYS, fragments[1:]):
         pieces.extend(

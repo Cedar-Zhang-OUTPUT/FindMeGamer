@@ -73,20 +73,19 @@ class TemplateCatalog(BaseModel):
     builtin: BuiltinTemplate | None
 
 
-class SlotValues(BaseModel):
+class DraftSlotValues(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    firstName: str = Field(min_length=1, max_length=600)
-    channelName: str = Field(min_length=1, max_length=600)
-    reference: str = Field(min_length=1, max_length=600)
-    observation: str = Field(min_length=1, max_length=600)
+    firstName: str = Field(max_length=600)
+    channelName: str = Field(max_length=600)
+    reference: str = Field(max_length=600)
+    observation: str = Field(max_length=600)
 
     @field_validator("*")
     @classmethod
     def plain_filled_text(cls, value):
         if (
             value != value.strip()
-            or not value.strip()
             or re.search(r"[\x00-\x1f\x7f<>{}]", value)
             or re.search(
                 r"\[(?:first name|channel name|reference game\s*/\s*video|unfilled[^\]]*|specific observation[^\]]*)\]",
@@ -95,6 +94,17 @@ class SlotValues(BaseModel):
             )
         ):
             raise ValueError("Use filled, single-line plain text for each slot.")
+        return value
+
+
+class SlotValues(DraftSlotValues):
+    """Complete generated/sendable values; saving a draft uses DraftSlotValues."""
+
+    @field_validator("*")
+    @classmethod
+    def filled(cls, value):
+        if not value:
+            raise ValueError("Fill each slot before sending.")
         return value
 
     @field_validator("observation")
@@ -117,7 +127,7 @@ class DraftRevision(StrictInput):
 
 
 class DraftEdit(DraftRevision):
-    values: SlotValues
+    values: DraftSlotValues
 
 
 class FactMember(DraftRevision):
@@ -150,7 +160,7 @@ class DraftView(BaseModel):
     status: Literal["pending", "running", "succeeded", "failed", "needs_repair"]
     error_code: str | None
     input: dict[str, Any]
-    values: SlotValues | None
+    values: DraftSlotValues | None
     missing_fields: list[str]
     slot_sources: dict[str, Any]
     rendered: dict[str, str] | None
