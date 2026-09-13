@@ -3,6 +3,28 @@ import { SendingClient } from '../src/main/sending-client';
 import { decodeBatch, decodeDelivery, decodeQualification } from '../src/main/sending-validation';
 import { deliveryFixture, qualificationFixture, qualifiedMemberFixture, sendBatchFixture, sendingIds } from './sending-fixtures';
 const id = '11111111-1111-4111-8111-111111111111';
+it('never accepts unfinished draft text as an eligible sending snapshot', () => {
+  const member = qualifiedMemberFixture();
+  const values = { ...member.values!, firstName: '' };
+  const html = member.html!.replace('>Ari</span>', '></span>');
+  const text = member.text!.replace('Ari', '');
+  expect(() => decodeQualification(qualificationFixture({ members: [{ ...member, values, html, text }] }))).toThrow();
+});
+it('can display incomplete values for blocked qualification without treating them as sendable', () => {
+  const original = qualifiedMemberFixture();
+  const member = { ...original, status: 'needs_repair' as const, missing_fields: ['firstName_missing'], values: { ...original.values!, firstName: '' }, html: original.html!.replace('>Ari</span>', '></span>'), text: original.text!.replace('Ari', '') };
+  const qualification = qualificationFixture({ members: [member], eligible_count: 0, repair_count: 1, send_ready: false });
+  expect(decodeQualification(qualification).members[0].values?.firstName).toBe('');
+  expect(decodeQualification(qualification).send_ready).toBe(false);
+});
+it('rejects incomplete observation punctuation in eligible and historical delivery snapshots', () => {
+  const original = qualifiedMemberFixture();
+  const observation = original.values!.observation.slice(0, -1);
+  const member = { ...original, values: { ...original.values!, observation }, html: original.html!.replace(original.values!.observation, observation), text: original.text!.replace(original.values!.observation, observation) };
+  expect(() => decodeQualification(qualificationFixture({ members: [member] }))).toThrow();
+  const delivery = deliveryFixture();
+  expect(() => decodeDelivery({ ...delivery, snapshot: { ...delivery.snapshot, ...member } })).toThrow();
+});
 it('qualifies read-only with no key and keeps malformed qualify responses out of unknown writes', async () => {
   const request = vi.fn().mockResolvedValue({});
   await expect(new SendingClient(request).qualify({ compositionId: id, data: { excluded: [] } })).rejects.toMatchObject({ code: 'invalid_response' });

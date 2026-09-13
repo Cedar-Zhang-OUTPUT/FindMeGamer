@@ -1,10 +1,39 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DraftsClient } from '../src/main/drafts-client';
-import { decodeCatalog, decodeComposition, decodeDraft, fixed, slots } from '../src/main/drafts-validation';
+import { decodeCatalog, decodeComposition, decodeDraft, fixed, slots, draftSlots } from '../src/main/drafts-validation';
 import { builtinTemplate, compositionFixture, draftFixture, draftIds, draftValues, templateVersion } from './drafts-fixtures';
 
 const id = '11111111-1111-4111-8111-111111111111';
 describe('drafts client boundary', () => {
+  it.each(['manual_note', 'metadata', 'unavailable'])('decodes bounded reusable prefill and %s evidence while preserving historical sources', evidenceKind => {
+    const draft = draftFixture();
+    draft.input.prefill_values = { ...draftValues, observation: '' };
+    const work = { ...(draft.input.work as object), evidence_kind: evidenceKind };
+    draft.input.work = work;
+    draft.input.slot_sources = { ...(draft.input.slot_sources as object), reference: work, observation: work };
+    draft.slot_sources = structuredClone(draft.input.slot_sources as typeof draft.slot_sources);
+    expect(decodeDraft(draft).input.prefill_values).toEqual({ ...draftValues, observation: '' });
+    expect(() => decodeDraft({ ...draft, input: { ...draft.input, prefill_values: { firstName: 'Only one' } } })).toThrow();
+    expect(() => decodeDraft({ ...draft, input: { ...draft.input, work: { ...work, evidence_kind: 'watched_full_video' } } })).toThrow();
+    expect(() => decodeDraft({ ...draft, input: { ...draft.input, prefill_values: { ...draftValues, observation: '<script>' } } })).toThrow();
+  });
+  it('accepts safe unfinished draft values but still rejects markup and malformed fields', () => {
+    expect(draftSlots({ ...draftValues, firstName: '', observation: 'Unfinished thought' }, 'input')).toEqual({ ...draftValues, firstName: '', observation: 'Unfinished thought' });
+    expect(() => slots({ ...draftValues, firstName: '', observation: 'Unfinished thought' }, 'response')).toThrow();
+    expect(() => slots({ ...draftValues, reference: '<script>' }, 'input')).toThrow();
+    expect(() => slots({ ...draftValues, channelName: null }, 'input')).toThrow();
+  });
+  it('decodes rendered per-draft overrides independently of shared source values', () => {
+    const values = { firstName: 'Hello creator', channelName: 'Your channel', reference: '', observation: 'My unfinished observation' };
+    const fragments = builtinTemplate.fixed_fragments;
+    const html = fragments.reduce((body, fragment, index) => body + fragment + (index < 4 ? `<span background-color="rgba(255,246,122,0.8)">${Object.values(values)[index]}</span>` : ''), '');
+    const draft = draftFixture({ status: 'needs_repair', values, rendered: { subject: builtinTemplate.subject, html, text: 'Preview', fixed_hash: builtinTemplate.fixed_hash } });
+    expect(decodeDraft(draft).values).toEqual(values);
+    expect(decodeDraft(draft).input.public_name).toBe('Ari');
+    expect(decodeDraft(draft).send_ready).toBe(false);
+    expect(() => decodeDraft({ ...draft, status: 'succeeded' })).toThrow();
+    expect(() => decodeDraft({ ...draft, rendered: { ...draft.rendered!, html: html.replace('Hello creator', 'Wrong value') } })).toThrow();
+  });
   it('accepts fractional recorded work timestamps and rejects nonfinite or negative numbers', () => {
     const d = draftFixture(); const source = { ...(d.input.work as object), timestamp_seconds: 42.5 }; d.input.work = source; d.input.slot_sources = { ...(d.input.slot_sources as object), reference: source, observation: source }; d.slot_sources = structuredClone(d.input.slot_sources as typeof d.slot_sources);
     expect(decodeDraft(d).input.work).toMatchObject({ timestamp_seconds: 42.5 });
@@ -34,7 +63,7 @@ describe('drafts client boundary', () => {
   });
   it('rejects unsafe fixed HTML, placeholders, nonplain values, and slots inside attributes', () => {
     for (const fragments of [['<script>', '', '', '', '</script>'], ['<a href="https://example.test/', '">', '', '', '</a>'], ['<p onclick="x">', '', '', '', '</p>'], ['<p>', '', '', '', ''], ['<p>{{', '', '', '', '}}</p>']]) expect(() => fixed('Subject', fragments, 'input')).toThrow();
-    for (const observation of ['missing period', '<b>unsafe.</b>', 'line\nbreak.', '[unfilled].']) expect(() => slots({ ...draftValues, observation }, 'input')).toThrow();
+    for (const observation of ['<b>unsafe.</b>', 'line\nbreak.', '[unfilled].']) expect(() => slots({ ...draftValues, observation }, 'input')).toThrow();
   });
   it('uses exact catalog/template/composition reads and validates creation scope', async () => {
     const request = vi.fn().mockResolvedValueOnce({ items: [templateVersion], builtin: builtinTemplate }).mockResolvedValueOnce(templateVersion).mockResolvedValueOnce(compositionFixture()).mockResolvedValueOnce({ items: [compositionFixture()], total: 1, offset: 0, limit: 100 }).mockResolvedValueOnce(compositionFixture({ recipient_batch_id: draftIds.request }));

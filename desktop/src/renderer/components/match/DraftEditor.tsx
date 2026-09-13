@@ -13,14 +13,19 @@ export interface DraftEditorProps {
 type EditSession = { before: DraftView; initial: SlotValues; values: SlotValues };
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
 function initialValues(draft: DraftView): SlotValues {
-  return draft.values ? { ...draft.values } : { firstName: text(draft.input.public_name), channelName: text(draft.input.channel_name), reference: text(draft.input.reference), observation: '' };
+  if (draft.values) return { ...draft.values };
+  const prefill = draft.input.prefill_values;
+  if (prefill && typeof prefill === 'object' && !Array.isArray(prefill)) {
+    return { firstName: text(prefill.firstName), channelName: text(prefill.channelName), reference: text(prefill.reference), observation: text(prefill.observation) };
+  }
+  return { firstName: text(draft.input.public_name), channelName: text(draft.input.channel_name), reference: text(draft.input.reference), observation: '' };
 }
 function isDirty(session: EditSession): boolean { return SLOT_KEYS.some(key => session.initial[key] !== session.values[key]); }
 function filled(value: string): boolean {
-  return value.length > 0 && value.length <= 600 && value === value.trim() && !/[\x00-\x1f\x7f<>{}]/.test(value)
+  return [...value].length <= 600 && value === value.trim() && !/[\x00-\x1f\x7f<>{}]/.test(value)
     && !/\[(?:first name|channel name|reference game\s*\/\s*video|unfilled[^\]]*|specific observation[^\]]*)\]/i.test(value);
 }
-const statusLabel: Record<DraftView['status'], string> = { pending: 'Queued', running: 'Generating…', succeeded: 'Draft complete', failed: 'Generation failed', needs_repair: 'Needs sources' };
+const statusLabel: Record<DraftView['status'], string> = { pending: 'Queued', running: 'Generating…', succeeded: 'Draft saved', failed: 'Generation failed', needs_repair: 'Unfinished draft' };
 const missingLabel: Record<string, string> = { not_selected: 'Selection removed', identity_changed: 'Account changed',
   public_name_unconfirmed: 'Confirm public name', channel_name_missing: 'Channel name', reference_missing: 'Referenced work', observation_evidence_missing: 'Recorded observation' };
 const repairSource:Partial<Record<string,'overview'|'works'>>={public_name_unconfirmed:'overview',channel_name_missing:'overview',reference_missing:'works',observation_evidence_missing:'works'};
@@ -41,16 +46,14 @@ export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, 
   const disabled = busy || saving || !current;
   const sourceMissing = draft.missing_fields.filter(field => !field.startsWith('email_'));
   const templateChanged=sourceMissing.includes('template_context_changed');
-  const unavailableSlots:Record<keyof SlotValues,boolean>={firstName:sourceMissing.includes('public_name_unconfirmed')||before.input.public_name_confirmed!==true,channelName:sourceMissing.includes('channel_name_missing'),reference:sourceMissing.includes('reference_missing'),observation:sourceMissing.includes('observation_evidence_missing')};
   const savedValues=initialValues(draft);
-  const previewValues=Object.fromEntries(SLOT_KEYS.map(key=>[key,!draft.source_changed&&!unavailableSlots[key]&&text(savedValues[key]).trim()?text(savedValues[key]):`${SLOT_LABELS[key]} · unconfirmed`])) as unknown as SlotValues;
+  const previewValues=Object.fromEntries(SLOT_KEYS.map(key=>[key,text(savedValues[key]).trim()?text(savedValues[key]):`${SLOT_LABELS[key]} · unfinished`])) as unknown as SlotValues;
   const version = `${draft.id}:${draft.revision}:${draft.context_token}:${draft.status}`;
   const fieldErrors: Partial<Record<keyof SlotValues, string>> = {};
-  for (const [key, source] of [['firstName', 'public_name'], ['channelName', 'channel_name'], ['reference', 'reference']] as const) {
-    if (!filled(values[key]) || values[key] !== before.input[source]) fieldErrors[key] = `Must match the recorded ${SLOT_LABELS[key].toLowerCase()}. Edit its source to change it.`;
+  for (const key of SLOT_KEYS) {
+    if (!filled(values[key])) fieldErrors[key] = 'Use single-line plain text, up to 600 characters.';
   }
-  if (!filled(values.observation) || !values.observation.endsWith('.')) fieldErrors.observation = 'Use filled single-line text, up to 600 characters, ending with a period.';
-  const canSave = dirty && !disabled && !changed && !draft.source_changed && !sourceMissing.length && !Object.keys(fieldErrors).length;
+  const canSave = dirty && !disabled && !changed && !draft.source_changed && !Object.keys(fieldErrors).length;
   const anyDirty = Object.values(sessions).some(isDirty);
   useEffect(() => { onDirtyChange?.(anyDirty); }, [anyDirty, onDirtyChange]);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -106,6 +109,7 @@ export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, 
     {!!sourceMissing.length && <ul className="draft-missing-sources" aria-label="Sources to repair">{sourceMissing.map(field => <li key={field}>{repairSource[field]?<button type="button" disabled={disabled} onClick={()=>onOpenSource(repairSource[field]!)}>{missingLabel[field]} ↗</button>:missingLabel[field] ?? field.replaceAll('_',' ')}</li>)}</ul>}
     <div className="draft-editor-layout">
       <div className="draft-editor-mail">
+        <p className="draft-editing-note">Draft preview · sending checks pending</p>
         {dirty && <p className="draft-editing-note">Saved preview</p>}
         {draft.rendered ? <EmailDocument html={draft.rendered.html} title="Saved email preview" /> : <>
           {previewTemplate?<><p className="draft-editing-note">Original template · highlighted slots are not a send-ready email</p><EmailDocument html={templatePreviewHTML(previewTemplate,previewValues)} title="Template preview — not ready to send"/></>:
@@ -117,9 +121,9 @@ export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, 
       <section className="draft-edit-disclosure">
       <button type="button" className="text-button" aria-expanded={fieldsOpen||dirty} aria-controls={`${prefix}-fields`} disabled={dirty} onClick={()=>setFieldsOpen(value=>!value)}>Edit personalization</button>
       <form id={`${prefix}-fields`} className="draft-fields" hidden={!fieldsOpen&&!dirty} onSubmit={event => { event.preventDefault(); void save(); }}>
+        <p className="draft-editing-note">This draft only · shared profile unchanged</p>
         {SLOT_KEYS.map(key => <div className={`draft-field draft-slot-${key}`} key={key}>
           <label htmlFor={`${prefix}-${key}`}>{SLOT_LABELS[key]}</label>
-          {unavailableSlots[key]&&<small className="draft-field-error">Confirm the source before editing this slot.</small>}
           {key === 'observation' ? <textarea id={`${prefix}-${key}`} rows={3} value={values[key]} disabled={disabled}
             aria-invalid={dirty&&!!fieldErrors[key]} aria-describedby={dirty&&fieldErrors[key] ? `${prefix}-${key}-error` : undefined} onChange={event => editValue(key, event.target.value)} />
             : <input id={`${prefix}-${key}`} value={values[key]} disabled={disabled} aria-invalid={dirty&&!!fieldErrors[key]}
@@ -152,8 +156,8 @@ export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, 
       </>}
     </div>
     {refreshFor === version && <div className="draft-refresh-confirm" role="group" aria-label="Confirm source refresh">
-      <p>Clears the four values and sender confirmations. Uses model quota.</p>
-      <div className="draft-editor-actions"><button className="button primary" type="button" disabled={disabled} onClick={() => void refreshSources()}>Refresh and clear values</button>
+      <p>Keeps saved overrides, discards unsaved edits, and clears confirmations. May use model quota.</p>
+      <div className="draft-editor-actions"><button className="button primary" type="button" disabled={disabled} onClick={() => void refreshSources()}>Refresh and keep overrides</button>
         <button className="text-button" type="button" disabled={disabled} onClick={() => setRefreshFor(null)}>Keep current draft</button></div>
     </div>}
   </section>;

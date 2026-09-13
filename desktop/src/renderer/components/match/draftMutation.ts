@@ -107,11 +107,29 @@ function sameComposition(before: CompositionView, after: CompositionView): boole
     && before.template_version_id === after.template_version_id && before.recipient_count === after.recipient_count
     && before.drafts.length === after.drafts.length && before.drafts.every((row, i) => sameMember(row, after.drafts[i]));
 }
-function exactSource(before: DraftView, after: DraftView, expected: DraftRevision): boolean {
+function exactSource(before: DraftView, after: DraftView, expected: DraftRevision, partial = false): boolean {
   return before.revision === expected.expected_revision && before.context_token === expected.context_token && !before.source_changed
     && after.revision === expected.expected_revision + 1 && after.context_token === expected.context_token && !after.source_changed
-    && same(before.input, after.input) && same(before.slot_sources, after.slot_sources) && after.status === 'succeeded'
+    && same(before.input, after.input) && same(before.slot_sources, after.slot_sources) && (after.status === 'succeeded' || (partial && after.status === 'needs_repair'))
     && after.error_code === null && after.rendered !== null && after.rendered.fixed_hash === after.input.fixed_hash;
+}
+
+function editedFactsMatch(before: DraftView, after: DraftView): boolean {
+  if (!Object.keys(before.sender_facts).length) return !after.sender_facts_valid && same(after.sender_facts, {});
+  const old = before.values;
+  const next = after.values;
+  if (!old || !next) return false;
+  const expected = {
+    following: before.sender_facts.following === true && old.channelName === next.channelName,
+    enjoyed: before.sender_facts.enjoyed === true && old.reference === next.reference,
+    liked: before.sender_facts.liked === true && old.reference === next.reference && old.observation === next.observation,
+  };
+  const facts = after.sender_facts;
+  if (Object.entries(expected).some(([key, value]) => facts[key] !== value) || facts.at !== before.sender_facts.at
+    || typeof facts.fingerprint !== 'string' || !/^[a-f0-9]{64}$/.test(facts.fingerprint)) return false;
+  const sender = after.input.sender;
+  const senderAvailable = !!(sender && typeof sender === 'object' && !Array.isArray(sender) && sender.username);
+  return after.sender_facts_valid === (after.status === 'succeeded' && senderAvailable && Object.values(expected).every(Boolean));
 }
 
 /** DTOs omit durable request_id: same-content creations cannot establish identity. */
@@ -125,9 +143,8 @@ export function reconcileDraftReadback(attempt: DraftAttempt, readback: DraftRea
   if (readback.kind !== 'composition') return null;
   if (command.kind === 'edit' && command.observedDraft && command.id === command.observedDraft.id) {
     const row = member(readback.data, command.observedDraft);
-    if (!row || !exactSource(command.observedDraft, row, command.data) || !same(row.values, command.data.values)
-      || row.sender_facts_valid || !same(row.sender_facts, {}) || row.values?.firstName !== row.input.public_name
-      || row.values?.channelName !== row.input.channel_name || row.values?.reference !== row.input.reference) return null;
+    if (!row || !exactSource(command.observedDraft, row, command.data, true) || !same(row.values, command.data.values)
+      || !editedFactsMatch(command.observedDraft, row)) return null;
     return { kind: 'edit', data: row };
   }
   if (command.kind === 'senderFacts' && command.observedComposition && command.compositionId === command.observedComposition.id

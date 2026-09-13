@@ -50,7 +50,13 @@ export function SenderFactsEditor({ composition, busy, current, onSave, onDirtyC
       <fieldset disabled={disabled || stale}>
         <legend>Completed people ({eligible.length})</legend>
         <div className="sender-facts-actions"><button type="button" disabled={!eligible.length} onClick={() => { setScope(composition.id); setChosen(eligible.map(member)); setError(''); }}>Select completed</button><button type="button" onClick={clear}>Clear</button></div>
-        <ul className="sender-facts-members">{composition.drafts.map((d, i) => <li key={d.id}><label><input type="checkbox" disabled={!completed(d)} checked={chosen.some(m => same(m.draft_id, d.id))} onChange={e => toggle(d, e.target.checked)} /><span>{typeof d.input.channel_name === 'string' && d.input.channel_name ? d.input.channel_name : `Person ${i + 1}`}{!completed(d) && <small> — {d.source_changed ? 'sources changed' : 'not completed'}</small>}</span></label></li>)}</ul>
+        <ul className="sender-facts-members">{composition.drafts.map((d, i) => <li key={d.id}>
+          <label><input type="checkbox" disabled={!completed(d)} checked={chosen.some(m => same(m.draft_id, d.id))} onChange={e => toggle(d, e.target.checked)} /><span>{d.values?.channelName || (typeof d.input.channel_name === 'string' && d.input.channel_name ? d.input.channel_name : `Person ${i + 1}`)}{!completed(d) && <small> — {d.source_changed ? 'sources changed' : 'not completed'}</small>}</span></label>
+          {chosen.some(m => same(m.draft_id, d.id)) && <div className="sender-confirmation-context">
+            {d.values?.channelName !== d.input.channel_name && <small>Source: {typeof d.input.channel_name === 'string' ? d.input.channel_name : 'Not recorded'}</small>}
+            <dl><dt>Referenced work</dt><dd>{d.values?.reference || 'Not filled'}</dd><dt>Observation</dt><dd>{d.values?.observation || 'Not filled'}</dd></dl>
+          </div>}
+        </li>)}</ul>
       </fieldset>
       <fieldset disabled={disabled || stale}><legend>Your confirmations</legend>{(Object.keys(attestations) as (keyof typeof attestations)[]).map(key => <label key={key}><input type="checkbox" checked={facts[key]} onChange={e => { setFacts(old => ({ ...old, [key]: e.target.checked })); setError(''); }} /><span>{attestations[key]}</span></label>)}</fieldset>
       {error && <p role="alert">{error}</p>}

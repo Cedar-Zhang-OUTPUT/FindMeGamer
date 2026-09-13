@@ -8,6 +8,17 @@ import { compositionFixture, draftFixture, draftValues } from './drafts-fixtures
 afterEach(cleanup);
 const complete = () => draftFixture({ status: 'succeeded', values: draftValues, rendered: { subject: 'Fixture', html: '<p>Fixture</p>', text: 'Fixture', fixed_hash: 'a'.repeat(64) }, sender_facts_valid: true, sender_facts: { following: true, enjoyed: true, liked: true } });
 const composition = () => compositionFixture({ drafts: [complete(), draftFixture({ id: '99999999-9999-4999-8999-999999999999', input_order: 1 })], recipient_count: 2 });
+it('shows the saved override being confirmed, separately from its source identity', async () => {
+  const draft = complete(); draft.values = { ...draftValues, channelName: 'Personalized channel', reference: 'Chosen reference', observation: 'Authored observation.' };
+  render(<SenderFactsEditor composition={compositionFixture({ drafts: [draft] })} busy={false} current onSave={vi.fn()} />);
+  await userEvent.click(screen.getByText('Sender confirmations'));
+  expect(screen.getByRole('checkbox', { name: 'Personalized channel' })).toBeVisible();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Personalized channel' }));
+  expect(screen.getByText('Chosen reference')).toBeVisible();
+  expect(screen.getByText('Authored observation.')).toBeVisible();
+  expect(screen.getByText('Source: Fixture Channel')).toBeVisible();
+  expect(screen.getByRole('checkbox', { name: 'I follow these channels' })).not.toBeChecked();
+});
 it('starts empty and false, chooses only completed members, and submits explicit false facts', async () => {
   const onSave = vi.fn(async () => true); render(<SenderFactsEditor composition={composition()} busy={false} current onSave={onSave} />);
   await userEvent.click(screen.getByText('Sender confirmations')); expect(screen.getByRole('checkbox', { name: 'I follow these channels' })).not.toBeChecked();

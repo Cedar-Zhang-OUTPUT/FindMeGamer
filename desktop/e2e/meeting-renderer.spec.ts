@@ -125,7 +125,7 @@ test('Meeting Brief, initial selections and current game template through real a
   await expect(template).toBeVisible();await expect(template.getByRole('button',{name:'Create 1 drafts',exact:true})).toBeEnabled();
   const preview=await template.getByTitle('Template preview').getAttribute('srcdoc');safe(preview?.includes(game.name!)&&!preview.includes('LIMINAL')&&!preview.includes('Toki'),'current_game_preview');await shot('game-bound-template');
   await template.getByRole('button',{name:'Create 1 drafts',exact:true}).click();
-  await expect(page.getByRole('navigation',{name:'Draft people'})).toBeVisible();await expect(page.getByText('Draft complete',{exact:true})).toBeVisible({timeout:45000});
+  await expect(page.getByRole('navigation',{name:'Draft people'})).toBeVisible();await expect(page.getByText('Draft saved',{exact:true})).toBeVisible({timeout:45000});
   const created=await drafts.composition(report.composition_id);safe(created.recipient_batch_id===ids.recipient_batch_id,'same_frozen_members');safe(created.template_version_id===ids.template_id,'current_template');
   safe((await drafts.composition(oldComposition.id)).template_version_id===oldComposition.template_version_id,'old_template_unchanged');await shot('game-bound-draft');
   await checkpoint('new_activity');

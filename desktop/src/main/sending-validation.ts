@@ -1,5 +1,5 @@
 import type * as DTO from '../shared/sending';
-import { exact, fixed, identifier, integer, jsonObject, keys, object, same, slots, sources, stamp, text, token, unique } from './drafts-validation';
+import { exact, fixed, identifier, integer, jsonObject, keys, object, same, slots, draftSlots, sources, stamp, text, token, unique } from './drafts-validation';
 import { PublicFailure } from './transport';
 export { exact, identifier, integer, keys, object, same, text, token };
 type Mode = 'input' | 'response';
@@ -26,7 +26,7 @@ function decodeMember(v: unknown): DTO.QualifiedMember {
   const identity = exact(r.identity, ['platform', 'account_id', 'revision'], m); if (!['youtube', 'x', 'twitch', 'instagram'].includes(identity.platform as string)) fail(m); text(identity.account_id, m, 512, 1); integer(identity.revision, m); jsonObject(r.slot_sources); sources(r.slot_sources); facts(r.sender_facts);
   if ((r.values === null) !== (r.html === null) || (r.html === null) !== (r.text === null)) fail(m);
   if (r.values !== null) {
-    const values = slots(r.values, m), html = text(r.html, m, 120_000), plainText = text(r.text, m, 120_000);
+    const values = r.status === 'eligible' ? slots(r.values, m) : draftSlots(r.values, m), html = text(r.html, m, 120_000), plainText = text(r.text, m, 120_000);
     const marked = /<span background-color="rgba\(255,246,122,0\.8\)">(.*?)<\/span>/gs, matches = [...html.matchAll(marked)];
     const escape = (s: string) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#x27;');
     const slotKeys = ['firstName', 'channelName', 'reference', 'observation'] as const;

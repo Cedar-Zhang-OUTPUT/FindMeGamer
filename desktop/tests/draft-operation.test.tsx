@@ -177,6 +177,46 @@ describe('frozen draft operations', () => {
     expect(reconcileDraftReadback(freezeDraftAttempt({ kind: 'edit', id: 'draft', data: { expected_revision: 2, context_token: token, values } }), { kind: 'composition', data: composition([saved]) })).toBeNull();
   });
 
+  it.each([
+    ['firstName', 'A different greeting', [true, true, true]],
+    ['firstName', '', [true, true, true]],
+    ['channelName', 'Different channel wording', [false, true, true]],
+    ['reference', 'Another reference', [true, false, false]],
+    ['observation', '', [true, true, false]],
+  ] as const)('reconciles a %s override and only its affected confirmations', (key, value, flags) => {
+    const facts = { following: true, enjoyed: true, liked: true, at: '2026-09-08T00:00:00Z', fingerprint: hash };
+    const before = draft({ sender_facts: facts, sender_facts_valid: true });
+    const updated = { ...values, [key]: value };
+    const command: DraftCommand = { kind: 'edit', id: before.id, observedDraft: before, data: { expected_revision: 2, context_token: token, values: updated } };
+    const saved = draft({ revision: 3, values: updated, status: value ? 'succeeded' : 'needs_repair', sender_facts_valid: !!value && flags.every(Boolean), sender_facts: { ...facts, following: flags[0], enjoyed: flags[1], liked: flags[2], fingerprint: 'c'.repeat(64) } });
+    const read = (row: DraftView) => reconcileDraftReadback(freezeDraftAttempt(command), { kind: 'composition', data: composition([row]) });
+    expect(read(saved)?.kind).toBe('edit');
+    expect(read({ ...saved, sender_facts: {} })).toBeNull();
+    expect(read({ ...saved, revision: 4 })).toBeNull();
+    expect(read({ ...saved, sender_facts: { ...saved.sender_facts, following: !flags[0] } })).toBeNull();
+  });
+
+  it.each([true, false])('restores complete greeting without inventing a sender account: sender=%s', hasSender => {
+    const facts = { following: true, enjoyed: true, liked: true, at: '2026-09-08T00:00:00Z', fingerprint: hash };
+    const before = draft({ values: { ...values, firstName: '' }, status: 'needs_repair', sender_facts: facts, sender_facts_valid: false });
+    before.input.sender = { username: hasSender ? 'synthetic@example.invalid' : null };
+    const command: DraftCommand = { kind: 'edit', id: before.id, observedDraft: before, data: { expected_revision: 2, context_token: token, values } };
+    const saved = { ...before, values, revision: 3, status: 'succeeded' as const, sender_facts_valid: hasSender, sender_facts: { ...facts, fingerprint: 'c'.repeat(64) } };
+    expect(reconcileDraftReadback(freezeDraftAttempt(command), { kind: 'composition', data: composition([saved]) })?.kind).toBe('edit');
+  });
+
+  it('retains an existing false confirmation while saving an unfinished observation', () => {
+    const facts = { following: false, enjoyed: true, liked: true, at: '2026-09-08T00:00:00Z', fingerprint: hash };
+    const before = draft({ sender_facts: facts });
+    const updated = { ...values, observation: 'Unfinished observation' };
+    const command: DraftCommand = { kind: 'edit', id: before.id, observedDraft: before, data: { expected_revision: 2, context_token: token, values: updated } };
+    const saved = { ...before, values: updated, revision: 3, status: 'needs_repair' as const, sender_facts: { ...facts, liked: false, fingerprint: 'c'.repeat(64) } };
+    const read = (row: DraftView) => reconcileDraftReadback(freezeDraftAttempt(command), { kind: 'composition', data: composition([row]) });
+    expect(read(saved)?.kind).toBe('edit');
+    expect(read({ ...saved, sender_facts: { ...saved.sender_facts, following: true } })).toBeNull();
+    expect(read({ ...saved, sender_facts: { ...saved.sender_facts, at: '2026-09-09T00:00:00Z' } })).toBeNull();
+  });
+
   it('proves all facts members and flags against their unchanged recorded values and source versions', () => {
     const before = composition([draft(), draft({ id: 'second', input_order: 1, recipient_snapshot_id: 'second-recipient', selection_id: 'second-selection' })]);
     const command: DraftCommand = { kind: 'senderFacts', compositionId: 'composition', observedComposition: before,

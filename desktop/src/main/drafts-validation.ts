@@ -21,9 +21,15 @@ export function unique(ids: string[], m: Mode) { if (new Set(ids.map(v => v.toLo
 function list<T>(v: unknown, m: Mode, max: number, decode: (v: unknown) => T, min = 0): T[] { if (!Array.isArray(v) || v.length < min || v.length > max) fail(m); return v.map(decode); }
 export function stamp(v: unknown): string { const s = text(v, 'response', 100, 1); if (!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(s) || !Number.isFinite(Date.parse(s))) fail('response'); return s; }
 export function slots(v: unknown, m: Mode): DTO.SlotValues {
+  const values = draftSlots(v, m);
+  if (SLOT_KEYS.some(key => !values[key]) || !values.observation.endsWith('.')) fail(m);
+  return values;
+}
+export function draftSlots(v: unknown, m: Mode): DTO.SlotValues {
   const raw = exact(v, SLOT_KEYS, m);
-  for (const key of SLOT_KEYS) { const s = text(raw[key], m, 600, 1); if (s !== s.trim() || /[\x00-\x1f\x7f<>{}]/.test(s) || /\[(?:first name|channel name|reference game\s*\/\s*video|unfilled[^\]]*|specific observation[^\]]*)\]/i.test(s)) fail(m); }
-  if (!(raw.observation as string).endsWith('.')) fail(m); return raw as unknown as DTO.SlotValues;
+  for (const key of SLOT_KEYS) { const s = text(raw[key], m, 600); if (s !== s.trim() || /[\x00-\x1f\x7f<>{}]/.test(s) || /\[(?:first name|channel name|reference game\s*\/\s*video|unfilled[^\]]*|specific observation[^\]]*)\]/i.test(s)) fail(m); }
+  // Persistence and preview accept unfinished text. Qualification owns completeness.
+  return raw as unknown as DTO.SlotValues;
 }
 /** Parse the small immutable HTML grammar without a browser or HTML repair. Slots must occur in text. */
 export function fixed(subject: unknown, fragments: unknown, m: Mode): string {
@@ -55,7 +61,7 @@ export function draftsBody(v: unknown, kind: BodyKind): Record<string, unknown> 
   if (kind === 'template') { const r = exact(v, ['game_id', 'request_id', 'name', 'subject', 'fixed_fragments'], m); identifier(r.game_id, m); identifier(r.request_id, m); if (!text(r.name, m, 255, 1).trim()) fail(m); fixed(r.subject, r.fixed_fragments, m); return r; }
   if (kind === 'composition') { const r = exact(v, ['request_id', 'recipient_batch_id', 'template_version_id'], m); Object.values(r).forEach(id => identifier(id, m)); return r; }
   if (kind === 'facts') { const r = exact(v, ['members', 'following', 'enjoyed', 'liked'], m); const members = list(r.members, m, 600, v => { const member = exact(v, ['draft_id', 'expected_revision', 'context_token'], m); identifier(member.draft_id, m); integer(member.expected_revision, m); token(member.context_token, m); return member; }, 1); unique(members.map(v => v.draft_id as string), m); for (const k of ['following', 'enjoyed', 'liked']) bool(r[k], m); return r; }
-  const r = exact(v, ['expected_revision', 'context_token', ...(kind === 'edit' ? ['values'] : [])], m); integer(r.expected_revision, m); token(r.context_token, m); if (kind === 'edit') slots(r.values, m); return r;
+  const r = exact(v, ['expected_revision', 'context_token', ...(kind === 'edit' ? ['values'] : [])], m); integer(r.expected_revision, m); token(r.context_token, m); if (kind === 'edit') draftSlots(r.values, m); return r;
 }
 function content(v: unknown, extra: string[]): Record<string, unknown> {
   const m = 'response', r = exact(v, ['name', 'subject', 'fixed_fragments', 'fixed_hash', 'source_metadata', ...extra], m);
@@ -81,7 +87,9 @@ function work(v: unknown) {
   const raw = object(v, 'response');
   // Immutable historical snapshots have seven fields; new snapshots carry all metadata.
   const extended = metadata.some(key => Object.hasOwn(raw, key));
-  const r = exact(raw, extended ? [...base, ...metadata] : base, 'response');
+  const evidenceKeys = Object.hasOwn(raw, 'evidence_kind') ? ['evidence_kind'] : [];
+  const r = exact(raw, [...base, ...(extended ? metadata : []), ...evidenceKeys], 'response');
+  if (evidenceKeys.length && !['manual_note', 'metadata', 'unavailable'].includes(r.evidence_kind as string)) fail('response');
   if (r.id !== null) identifier(r.id, 'response');
   for (const k of ['source_url', 'content_title', 'work_name', 'evidence_excerpt', 'verification_notes']) nullable(r[k], 'response');
   if (r.timestamp_seconds !== null && (typeof r.timestamp_seconds !== 'number' || !Number.isFinite(r.timestamp_seconds) || r.timestamp_seconds < 0)) fail('response');
@@ -106,14 +114,17 @@ function recordedGame(v: unknown) {
   for (const k of ['last_analyzed_at', 'next_analysis_at', 'created_at', 'updated_at']) if (r[k] != null) stamp(r[k]);
 }
 function recordedContact(v: unknown) { const r = exact(v, ['id', 'email', 'purpose', 'source_url', 'source_type', 'source_fields', 'manual_overrides', 'validation_state', 'identity_revision', 'updated_at', 'status'], 'response'); identifier(r.id, 'response'); text(r.email, 'response', 254, 3); nullable(r.purpose, 'response', 512); nullable(r.source_url, 'response', 2048); text(r.source_type, 'response', 255, 1); text(r.validation_state, 'response', 255, 1); jsonObject(r.source_fields); jsonObject(r.manual_overrides); integer(r.identity_revision, 'response'); stamp(r.updated_at); if (!['eligible', 'inactive', 'invalid', 'historical'].includes(r.status as string)) fail('response'); }
-function draftInput(v: unknown, selectionId: string): JsonObject { const r = exact(v, ['selection_id', 'identity', 'active', 'identity_changed', 'public_name', 'public_name_confirmed', 'channel_name', 'profile_url', 'reference', 'work', 'game', 'selected_contact', 'contact_status', 'template_version_id', 'fixed_hash', 'sender', 'missing_fields', 'slot_sources'], 'response'); jsonObject(r); if (!same(identifier(r.selection_id, 'response'), selectionId)) fail('response'); identifier(r.template_version_id, 'response'); token(r.fixed_hash, 'response'); const identity = exact(r.identity, ['platform', 'account_id', 'revision'], 'response'); if (!['youtube', 'x', 'twitch', 'instagram'].includes(identity.platform as string)) fail('response'); text(identity.account_id, 'response', 512, 1); integer(identity.revision, 'response'); for (const k of ['active', 'identity_changed', 'public_name_confirmed']) bool(r[k], 'response'); for (const k of ['public_name', 'channel_name', 'profile_url', 'reference']) nullable(r[k], 'response'); work(r.work); const game = object(r.game, 'response'); identifier(game.id, 'response'); integer(game.revision, 'response'); if (r.selected_contact !== null) { const c = object(r.selected_contact, 'response'); identifier(c.id, 'response'); text(c.email, 'response', 254, 3); integer(c.identity_revision, 'response'); } if (!['not_selected', 'eligible', 'changed', 'inactive', 'invalid', 'historical', 'missing'].includes(r.contact_status as string)) fail('response'); const sender = exact(r.sender, ['username', 'from_name', 'reply_to'], 'response'); Object.values(sender).forEach(v => nullable(v, 'response', 1024)); list(r.missing_fields, 'response', 100, v => text(v, 'response', 255)); sources(r.slot_sources); return r as JsonObject; }
+function draftInput(v: unknown, selectionId: string): JsonObject { const raw = object(v, 'response'); const extra = Object.hasOwn(raw, 'prefill_values') ? ['prefill_values'] : []; const r = exact(raw, [...extra, 'selection_id', 'identity', 'active', 'identity_changed', 'public_name', 'public_name_confirmed', 'channel_name', 'profile_url', 'reference', 'work', 'game', 'selected_contact', 'contact_status', 'template_version_id', 'fixed_hash', 'sender', 'missing_fields', 'slot_sources'], 'response'); jsonObject(r); if (extra.length) draftSlots(r.prefill_values, 'response'); if (!same(identifier(r.selection_id, 'response'), selectionId)) fail('response'); identifier(r.template_version_id, 'response'); token(r.fixed_hash, 'response'); const identity = exact(r.identity, ['platform', 'account_id', 'revision'], 'response'); if (!['youtube', 'x', 'twitch', 'instagram'].includes(identity.platform as string)) fail('response'); text(identity.account_id, 'response', 512, 1); integer(identity.revision, 'response'); for (const k of ['active', 'identity_changed', 'public_name_confirmed']) bool(r[k], 'response'); for (const k of ['public_name', 'channel_name', 'profile_url', 'reference']) nullable(r[k], 'response'); work(r.work); const game = object(r.game, 'response'); identifier(game.id, 'response'); integer(game.revision, 'response'); if (r.selected_contact !== null) { const c = object(r.selected_contact, 'response'); identifier(c.id, 'response'); text(c.email, 'response', 254, 3); integer(c.identity_revision, 'response'); } if (!['not_selected', 'eligible', 'changed', 'inactive', 'invalid', 'historical', 'missing'].includes(r.contact_status as string)) fail('response'); const sender = exact(r.sender, ['username', 'from_name', 'reply_to'], 'response'); Object.values(sender).forEach(v => nullable(v, 'response', 1024)); list(r.missing_fields, 'response', 100, v => text(v, 'response', 255)); sources(r.slot_sources); return r as JsonObject; }
 export function decodeDraft(v: unknown, id?: string, compositionId?: string): DTO.DraftView {
   const m = 'response', r = exact(v, ['id', 'composition_id', 'recipient_snapshot_id', 'selection_id', 'input_order', 'revision', 'context_token', 'source_changed', 'status', 'error_code', 'input', 'values', 'missing_fields', 'slot_sources', 'rendered', 'sender_facts_valid', 'sender_facts', 'send_ready'], m);
   const actual = identifier(r.id, m), composition = identifier(r.composition_id, m), selection = identifier(r.selection_id, m); identifier(r.recipient_snapshot_id, m); if ((id && !same(id, actual)) || (compositionId && !same(compositionId, composition))) fail(m);
   integer(r.input_order, m, 0, 599); integer(r.revision, m); token(r.context_token, m); bool(r.source_changed, m); bool(r.sender_facts_valid, m); if (r.send_ready !== false || !['pending', 'running', 'succeeded', 'failed', 'needs_repair'].includes(r.status as string)) fail(m); nullable(r.error_code, m, 255);
   const input = draftInput(r.input, selection); recordedGame(input.game); if (input.selected_contact !== null) recordedContact(input.selected_contact); sources(r.slot_sources); if (JSON.stringify(r.slot_sources) !== JSON.stringify(input.slot_sources)) fail(m);
   list(r.missing_fields, m, 100, v => text(v, m, 255)); const facts = jsonObject(r.sender_facts); if (Object.keys(facts).length) { exact(facts, ['following', 'enjoyed', 'liked', 'at', 'fingerprint'], m); for (const k of ['following', 'enjoyed', 'liked']) bool(facts[k], m); stamp(facts.at); token(facts.fingerprint, m); }
-  if (r.values !== null) { const values = slots(r.values, m); if (values.firstName !== input.public_name || values.channelName !== input.channel_name || values.reference !== input.reference) fail(m); }
+  if (r.values !== null) {
+    if (r.status === 'succeeded') slots(r.values, m);
+    else draftSlots(r.values, m);
+  }
   if ((r.values === null) !== (r.rendered === null) || (r.status === 'succeeded' && r.values === null)) fail(m);
   if (r.rendered !== null) { const rendered = exact(r.rendered, ['subject', 'html', 'text', 'fixed_hash'], m); text(rendered.subject, m, 998, 1); text(rendered.html, m, 120_000); text(rendered.text, m, 120_000); if (token(rendered.fixed_hash, m) !== input.fixed_hash) fail(m);
     const html = rendered.html as string, marked = /<span background-color="rgba\(255,246,122,0\.8\)">(.*?)<\/span>/gs; const matches = [...html.matchAll(marked)]; const values = r.values as DTO.SlotValues;
