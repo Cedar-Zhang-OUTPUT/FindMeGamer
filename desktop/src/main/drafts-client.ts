@@ -16,7 +16,18 @@ export class DraftsClient {
   async compositions(value: Input<'compositions'>) { const { activityId, offset = 0, limit = 50, ...extra } = value; exact(extra, [], 'input'); identifier(activityId, 'input'); integer(offset, 'input'); integer(limit, 'input', 1, 100); return this.send({ method: 'GET', path: `/api/v2/activities/${activityId}/compositions`, query: { offset: String(offset), limit: String(limit) } }, v => decodePage(v, activityId, offset, limit)); }
   async composition(id: string) { identifier(id, 'input'); return this.send({ method: 'GET', path: `/api/v2/outreach/compositions/${id}` }, v => decodeComposition(v, id)); }
   async createComposition(value: Input<'createComposition'>) { const r = exact(value, ['activityId', 'data', 'idempotencyKey'], 'input'), id = identifier(r.activityId, 'input'), data = r.data as unknown as DTO.CompositionCreate; return this.send({ method: 'POST', path: `/api/v2/activities/${id}/compositions`, body: data as unknown as Record<string, unknown>, idempotencyKey: r.idempotencyKey as string }, v => { const c = decodeComposition(v, undefined, id); if (!same(c.recipient_batch_id, data.recipient_batch_id) || !same(c.template_version_id, data.template_version_id)) fail('response'); return c; }); }
-  private async revise(value: Input<'refresh'> | Input<'edit'>, kind: 'edit' | 'refresh' | 'retry') { const r = exact(value, ['id', 'data'], 'input'), id = identifier(r.id, 'input'), data = r.data as unknown as DTO.DraftEdit; return this.send({ method: kind === 'edit' ? 'PATCH' : 'POST', path: `/api/v2/outreach/drafts/${id}${kind === 'edit' ? '' : '/' + kind}`, body: data as unknown as Record<string, unknown> }, v => { const d = decodeDraft(v, id); if (d.revision !== data.expected_revision + 1 || (kind === 'edit' && JSON.stringify(d.values) !== JSON.stringify(data.values))) fail('response'); return d; }); }
+  private async revise(value: Input<'refresh'> | Input<'edit'>, kind: 'edit' | 'refresh' | 'retry') {
+    const r = exact(value, ['id', 'data'], 'input'), id = identifier(r.id, 'input');
+    const data = r.data as unknown as DTO.DraftEdit & { preserve_values?: boolean };
+    return this.send({ method: kind === 'edit' ? 'PATCH' : 'POST', path: `/api/v2/outreach/drafts/${id}${kind === 'edit' ? '' : '/' + kind}`, body: data as unknown as Record<string, unknown> }, v => {
+      const d = decodeDraft(v, id), preserving = kind === 'refresh' && data.preserve_values === true;
+      if (d.revision !== data.expected_revision + 1 || ((kind === 'edit' || preserving)
+        && (!d.values || (Object.keys(data.values) as (keyof DTO.SlotValues)[]).some(key => d.values![key] !== data.values[key])))) fail('response');
+      if (preserving && (d.source_changed || !['succeeded', 'needs_repair'].includes(d.status)
+        || d.sender_facts_valid || Object.keys(d.sender_facts).length || !d.rendered)) fail('response');
+      return d;
+    });
+  }
   edit(value: Input<'edit'>) { return this.revise(value, 'edit'); }
   refresh(value: Input<'refresh'>) { return this.revise(value, 'refresh'); }
   retry(value: Input<'retry'>) { return this.revise(value, 'retry'); }

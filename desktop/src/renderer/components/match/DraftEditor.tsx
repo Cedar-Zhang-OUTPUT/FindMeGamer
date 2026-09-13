@@ -4,8 +4,10 @@ import type { PublicError } from '../../../shared/bridge';
 import { EmailDocument } from './EmailDocument';
 import { SLOT_KEYS, SLOT_LABELS, templatePreviewHTML } from './templateText';
 import './draftEditor.css';
+import { InlineEvidenceEditor, type InlineEvidenceProps } from './InlineEvidenceEditor';
 export interface DraftEditorProps {
   draft: DraftView; busy: boolean; current: boolean;
+  evidence?: Pick<InlineEvidenceProps, 'api' | 'scope' | 'onPreserve' | 'onBusy' | 'connectionEpoch'>;
   previewTemplate?:TemplateVersion|null;previewLoading?:boolean;previewError?:PublicError|null;onReloadPreview?():void;
   onSave(values: SlotValues): Promise<boolean>; onRefresh(): void|Promise<boolean>; onRetry(): void;
   onOpenSource(section: 'overview' | 'contacts' | 'works'): void; onDirtyChange?(dirty: boolean): void;onUseCurrentTemplate?():void;
@@ -30,10 +32,11 @@ const missingLabel: Record<string, string> = { not_selected: 'Selection removed'
   public_name_unconfirmed: 'Confirm public name', channel_name_missing: 'Channel name', reference_missing: 'Referenced work', observation_evidence_missing: 'Recorded observation' };
 const repairSource:Partial<Record<string,'overview'|'works'>>={public_name_unconfirmed:'overview',channel_name_missing:'overview',reference_missing:'works',observation_evidence_missing:'works'};
 
-export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, onOpenSource, onDirtyChange,onUseCurrentTemplate,previewTemplate,previewLoading=false,previewError,onReloadPreview }: DraftEditorProps) {
+export function DraftEditor({ draft, busy, current, evidence, onSave, onRefresh, onRetry, onOpenSource, onDirtyChange,onUseCurrentTemplate,previewTemplate,previewLoading=false,previewError,onReloadPreview }: DraftEditorProps) {
   const prefix = useId();
   const [sessions, setSessions] = useState<Record<string, EditSession>>({});
   const [fieldsOpen,setFieldsOpen]=useState(false);
+  const [evidenceDirty,setEvidenceDirty]=useState(false);
   const [saving, setSaving] = useState(false), pending = useRef(false), alive = useRef(true);
   const [error, setError] = useState<{ id: string; message: string } | null>(null);
   const [refreshFor, setRefreshFor] = useState<string | null>(null), [chargeFor, setChargeFor] = useState<string | null>(null);
@@ -55,7 +58,7 @@ export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, 
   }
   const canSave = dirty && !disabled && !changed && !draft.source_changed && !Object.keys(fieldErrors).length;
   const anyDirty = Object.values(sessions).some(isDirty);
-  useEffect(() => { onDirtyChange?.(anyDirty); }, [anyDirty, onDirtyChange]);
+  useEffect(() => { onDirtyChange?.(anyDirty||evidenceDirty); }, [anyDirty, evidenceDirty, onDirtyChange]);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
 
   function editValue(key: keyof SlotValues, value: string) {
@@ -119,9 +122,9 @@ export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, 
         </>}
       </div>
       <section className="draft-edit-disclosure">
-      <button type="button" className="text-button" aria-expanded={fieldsOpen||dirty} aria-controls={`${prefix}-fields`} disabled={dirty} onClick={()=>setFieldsOpen(value=>!value)}>Edit personalization</button>
-      <form id={`${prefix}-fields`} className="draft-fields" hidden={!fieldsOpen&&!dirty} onSubmit={event => { event.preventDefault(); void save(); }}>
-        <p className="draft-editing-note">This draft only · shared profile unchanged</p>
+      <button type="button" className="text-button" aria-expanded={fieldsOpen||dirty||evidenceDirty} aria-controls={`${prefix}-fields`} disabled={dirty||evidenceDirty} onClick={()=>setFieldsOpen(value=>!value)}>Edit personalization</button>
+      <form id={`${prefix}-fields`} className="draft-fields" hidden={!fieldsOpen&&!dirty&&!evidenceDirty} onSubmit={event => { event.preventDefault(); void save(); }}>
+        <p className="draft-editing-note">Email wording · this draft only</p>
         {SLOT_KEYS.map(key => <div className={`draft-field draft-slot-${key}`} key={key}>
           <label htmlFor={`${prefix}-${key}`}>{SLOT_LABELS[key]}</label>
           {key === 'observation' ? <textarea id={`${prefix}-${key}`} rows={3} value={values[key]} disabled={disabled}
@@ -129,7 +132,11 @@ export function DraftEditor({ draft, busy, current, onSave, onRefresh, onRetry, 
             : <input id={`${prefix}-${key}`} value={values[key]} disabled={disabled} aria-invalid={dirty&&!!fieldErrors[key]}
               aria-describedby={dirty&&fieldErrors[key] ? `${prefix}-${key}-error` : undefined} onChange={event => editValue(key, event.target.value)} />}
           {dirty&&fieldErrors[key] && <small id={`${prefix}-${key}-error`} className="draft-field-error">{fieldErrors[key]}</small>}
-          <button type="button" className="draft-source-button" aria-label={`Edit ${SLOT_LABELS[key].toLowerCase()} source`} disabled={disabled} onClick={() => onOpenSource(key === 'firstName' || key === 'channelName' ? 'overview' : 'works')}>Edit source</button>
+          {key === 'observation' && evidence ? <InlineEvidenceEditor {...evidence} draftId={draft.id}
+            workId={typeof work.id === 'string' ? work.id : null} active={fieldsOpen||dirty} disabled={disabled||templateChanged||draft.status==='pending'||draft.status==='running'}
+            values={values} valuesValid={!Object.keys(fieldErrors).length} onDirty={setEvidenceDirty}
+            onSaved={id=>setSessions(previous=>{const next={...previous};delete next[id];return next;})} onOpenWork={()=>onOpenSource('works')} />
+            : <button type="button" className="draft-source-button" aria-label={`Edit ${SLOT_LABELS[key].toLowerCase()} source`} disabled={disabled} onClick={() => onOpenSource(key === 'firstName' || key === 'channelName' ? 'overview' : 'works')}>Edit source</button>}
         </div>)}
         {changed && <p className="draft-editor-warning">The draft changed while you were editing. Your edits are retained; load current values to start from the new version.</p>}
         {error?.id === draft.id && <p role="alert">{error.message}</p>}

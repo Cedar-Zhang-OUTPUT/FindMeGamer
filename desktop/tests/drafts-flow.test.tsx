@@ -44,7 +44,7 @@ it('connects selected people → frozen preparation → explicit template → dr
 it('keeps unsaved mail through the in-activity source-repair detour without an unsaved-discard dialog',async()=>{
   const {api,user}=setup();await createDrafts(user);
   fireEvent.change(screen.getByRole('textbox',{name:'Observation'}),{target:{value:'My retained local edit.'}});
-  await user.click(screen.getByRole('button',{name:'Edit observation source'}));
+  await user.click(screen.getByRole('button',{name:'Edit referenced work source'}));
   const back=await screen.findByRole('button',{name:'Back to drafts'});await waitFor(()=>expect(back).toBeEnabled());await user.click(back);
   await waitFor(()=>expect(screen.getByRole('textbox',{name:'Observation'})).toHaveValue('My retained local edit.'));
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();expect(api.drafts.edit).not.toHaveBeenCalled();expect(api.drafts.refresh).not.toHaveBeenCalled();expect(api.drafts.createComposition).toHaveBeenCalledOnce();

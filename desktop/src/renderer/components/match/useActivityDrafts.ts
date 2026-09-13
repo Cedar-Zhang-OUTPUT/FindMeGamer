@@ -5,8 +5,9 @@ import type {RecipientBatchDetail} from '../../../shared/outreach';
 import {useDraftOperation} from './useDraftOperation';
 import type {DraftCommand,DraftReceipt} from './draftMutation';
 import type {NewTemplateText,TemplateGame} from './TemplatePicker';
+import {loadEvidenceContext,evidenceMatches,type EvidenceAttempt} from './inlineEvidence';
 
-type Props={api:Pick<DesktopBridge,'drafts'|'outreach'>&{games:Pick<DesktopBridge['games'],'detail'>};activityId:string;gameId:string|null;active:boolean;pollMs?:number};
+type Props={api:Pick<DesktopBridge,'drafts'|'outreach'>&Partial<Pick<DesktopBridge,'creators'>>&{games:Pick<DesktopBridge['games'],'detail'>};activityId:string;gameId:string|null;active:boolean;pollMs?:number};
 type Mode={kind:'people'}|{kind:'template'}|{kind:'composition';id:string};
 type DirtyPart='template'|'editor'|'facts';
 const scopeError:PublicError={code:'invalid_response',message:'The returned draft set does not match these prepared people. Check the original request.',retryable:false};
@@ -25,6 +26,7 @@ export function useActivityDrafts({api,activityId,gameId,active,pollMs=4000}:Pro
   const [loading,setLoading]=useState(false),[error,setError]=useState<PublicError|null>(null),[notice,setNotice]=useState(''),[historyEpoch,setHistoryEpoch]=useState(0);
   const [dirtyParts,setDirtyParts]=useState<Record<DirtyPart,boolean>>({template:false,editor:false,facts:false}),[editorEpoch,setEditorEpoch]=useState(0);
   const [readback,setReadback]=useState<CompositionView|null>(null);
+  const [evidenceBusy,setEvidenceBusy]=useState(false),[connectionEpoch,setConnectionEpoch]=useState(0);
   const alive=useRef(true),generation=useRef(0),readSequence=useRef(0),pendingRead=useRef<number|null>(null),visible=useRef(active),wasActive=useRef(active);
   const batchRef=useRef(batch),compositionRef=useRef(composition),modeRef=useRef(mode),selectedRef=useRef(selectedId),templateRef=useRef(selectedTemplate);
   batchRef.current=batch;compositionRef.current=composition;modeRef.current=mode;selectedRef.current=selectedId;templateRef.current=selectedTemplate;visible.current=active;
@@ -34,7 +36,7 @@ export function useActivityDrafts({api,activityId,gameId,active,pollMs=4000}:Pro
     if(result.ok&&(!expected||!compositionMatchesBatch(result.data,expected)||result.data.template_version_id!==input.data.template_version_id))return {ok:false,error:scopeError};
     return result;
   }}),[api.drafts]);
-  const operation=useDraftOperation(guardedAPI),busy=loading||operation.busy,locked=operation.locked;
+  const operation=useDraftOperation(guardedAPI),busy=loading||operation.busy||evidenceBusy,locked=operation.locked;
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++;readSequence.current++;};},[]);
   const dirty=Object.values(dirtyParts).some(Boolean);
   const setDirty=useCallback((part:DirtyPart,value:boolean)=>setDirtyParts(previous=>previous[part]===value?previous:{...previous,[part]:value}),[]);
@@ -75,13 +77,13 @@ export function useActivityDrafts({api,activityId,gameId,active,pollMs=4000}:Pro
     if(returning&&mode.kind!=='people')void refresh();
     if(!active){readSequence.current++;pendingRead.current=null;setLoading(false);setCurrent(false);}
   },[active,mode.kind,refresh]);
-  const polling=active&&mode.kind==='composition'&&composition?.drafts.some(row=>row.status==='pending'||row.status==='running')&&!operation.busy&&!operation.locked;
+  const polling=active&&mode.kind==='composition'&&composition?.drafts.some(row=>row.status==='pending'||row.status==='running')&&!operation.busy&&!operation.locked&&!evidenceBusy;
   useEffect(()=>{
     if(!polling||mode.kind!=='composition')return;
     const timer=setInterval(()=>{if(pendingRead.current!==null)return;void readComposition(mode.id).then(value=>{if(value&&visible.current&&modeRef.current.kind==='composition'&&modeRef.current.id===value.id)adopt(value);});},pollMs);
     return()=>clearInterval(timer);
   },[polling,mode,readComposition,pollMs]);
-  const credentialsChanged=useCallback(()=>{generation.current++;readSequence.current++;operation.credentialsChanged();setCurrent(false);setLoading(false);pendingRead.current=null;setReadback(null);setCatalog(null);setGame(null);setSelectedTemplate(null);setHistoryEpoch(value=>value+1);},[operation.credentialsChanged]);
+  const credentialsChanged=useCallback(()=>{generation.current++;setConnectionEpoch(value=>value+1);readSequence.current++;operation.credentialsChanged();setCurrent(false);setLoading(false);pendingRead.current=null;setReadback(null);setCatalog(null);setGame(null);setSelectedTemplate(null);setHistoryEpoch(value=>value+1);},[operation.credentialsChanged]);
   async function begin(original:RecipientBatchDetail){
     if(busy||locked||!active||original.activity_id!==activityId||original.recipient_count<1||original.recipient_count>600)return;
     batchRef.current=structuredClone(original);setBatch(batchRef.current);setMode({kind:'template'});setNotice('');setSelectedTemplate(null);setCatalog(null);await loadTemplates();
@@ -120,6 +122,27 @@ export function useActivityDrafts({api,activityId,gameId,active,pollMs=4000}:Pro
   }
   function target(){return compositionRef.current?.drafts.find(row=>row.id===selectedRef.current);}
   async function saveDraft(values:SlotValues){const row=target();if(busy||locked||!current||!row)return false;return execute({kind:'edit',id:row.id,data:{expected_revision:row.revision,context_token:row.context_token,values},observedDraft:row});}
+  async function preserveDraft(id:string,values:SlotValues,expected:EvidenceAttempt){
+    const previous=compositionRef.current,epoch=generation.current;
+    if(operation.busy||locked||!visible.current||!previous||!previous.drafts.some(row=>row.id===id))return false;
+    const fresh=await readComposition(previous.id,true);
+    if(!fresh||epoch!==generation.current||!visible.current)return false;
+    const row=fresh.drafts.find(item=>item.id===id);
+    if(!row||row.status==='pending'||row.status==='running')return false;
+    if(!api.creators||expected.scope.activityId!==activityId||row.selection_id!==expected.scope.selectionId)return false;
+    try{
+      // Read draft context first, then independently verify the intended evidence.
+      // The subsequent refresh CAS rejects a source change during these reads.
+      const context=await loadEvidenceContext({creators:api.creators,outreach:api.outreach},expected.scope);
+      const work=context.works.find(item=>item.id===expected.work.id);
+      if(!work||!evidenceMatches(work,expected.fields)||context.selection.works.length!==1||context.selection.works[0].id!==work.id
+        ||context.selection.missing_work_ids.length||epoch!==generation.current||!visible.current){
+        setError({code:'evidence_changed',message:'The work evidence or selection changed. Your wording is retained; review the current sources before continuing.',retryable:false});return false;
+      }
+    }catch{setError(readError);return false;}
+    adopt(fresh);
+    return execute({kind:'refresh',id,data:{expected_revision:row.revision,context_token:row.context_token,preserve_values:true,values},observedDraft:row});
+  }
   async function regenerate(kind:'refresh'|'retry'){const row=target();if(busy||locked||!current||!row)return false;return execute({kind,id:row.id,data:{expected_revision:row.revision,context_token:row.context_token},observedDraft:row});}
   async function saveFacts(data:SenderFacts){const value=compositionRef.current;if(busy||locked||!current||!value)return false;return execute({kind:'senderFacts',compositionId:value.id,data,observedComposition:value});}
   async function check(){
@@ -140,6 +163,6 @@ export function useActivityDrafts({api,activityId,gameId,active,pollMs=4000}:Pro
     if(receipt)await accept(receipt);else{setReadback(value);adopt(value);}
   }
   function reviewCurrent(){if(readback&&operation.reviewReadback(readback)){adopt(readback);setReadback(null);discardEdits();setNotice('Current version loaded · previous save remains unconfirmed');}}
-  return {mode,setMode,batch,catalog,game,selectedTemplate,selectTemplate:setSelectedTemplate,composition,selectedId,setSelectedId,current,loading,busy,locked,error,notice,historyEpoch,dirty,editorEpoch,setDirty,discardEdits,operation,readback,
-    begin,open,refresh,register,createTemplate,create,saveDraft,regenerate,saveFacts,check,reviewCurrent,credentialsChanged,retry:()=>operation.retry().then(accept)};
+  return {mode,setMode,batch,catalog,game,selectedTemplate,selectTemplate:setSelectedTemplate,composition,selectedId,setSelectedId,current,loading,busy,locked,error,notice,historyEpoch,dirty,editorEpoch,setDirty,discardEdits,operation,readback,evidenceBusy,setEvidenceBusy,connectionEpoch,
+    begin,open,refresh,register,createTemplate,create,saveDraft,preserveDraft,regenerate,saveFacts,check,reviewCurrent,credentialsChanged,retry:()=>operation.retry().then(accept)};
 }

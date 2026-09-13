@@ -34,7 +34,7 @@ it('loads a historical fixed version independently, once for the whole roster, w
  vi.mocked(api.drafts.template).mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
  const original={...c,catalog:null,selectedId:'second-draft'};
  const view=render(<DraftsWorkspace {...p} controller={original}/>);
- expect(screen.getByText('Loading original template…')).toBeVisible();expect(screen.getByRole('button',{name:'Edit observation source'})).toBeEnabled();
+ expect(screen.getByText('Loading original template…')).toBeVisible();expect(screen.getByRole('region',{name:'Shared work evidence'})).toBeVisible();
  expect(api.drafts.template).toHaveBeenCalledWith(c.composition.template_version_id);
  view.rerender(<DraftsWorkspace {...p} controller={{...original,selectedId:c.composition.drafts[0].id}}/>);
  view.rerender(<DraftsWorkspace {...p} controller={original}/>);expect(api.drafts.template).toHaveBeenCalledOnce();
@@ -57,7 +57,7 @@ it('retains every member in server order including repair states, and guards per
 it('keeps the editor mounted under a people detour and opens repair without discarding', async () => {
   const { c, p } = setup(); const view = render(<DraftsWorkspace {...p} />);
   fireEvent.change(screen.getByRole('textbox', { name: 'Observation' }), { target: { value: 'Preserved detail.' } });
-  await userEvent.click(screen.getByRole('button', { name: 'Edit observation source' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Edit referenced work source' }));
   expect(p.onRepairPerson).toHaveBeenCalledWith(draftIds.selection, 'works'); expect(p.onRequest).not.toHaveBeenCalled();
   view.rerender(<DraftsWorkspace {...p} controller={{ ...c, mode: { kind: 'people' } }} />);
   expect(screen.queryByRole('textbox', { name: 'Observation' })).not.toBeInTheDocument();

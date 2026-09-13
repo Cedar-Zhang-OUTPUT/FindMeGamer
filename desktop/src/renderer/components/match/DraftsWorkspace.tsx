@@ -32,7 +32,7 @@ export function DraftsWorkspace({ api,controller: c, active, onRequest, onBack, 
   const counts = c.composition?.drafts.reduce((totals, row) => ({ ...totals, [row.status]: (totals[row.status] ?? 0) + 1 }), {} as Partial<Record<DraftView['status'], number>>);
   useEffect(()=>{if(editing&&c.current&&c.composition&&focusedSet.current!==c.composition.id){focusedSet.current=c.composition.id;heading.current?.focus({preventScroll:true});}},[editing,c.current,c.composition?.id]);
   return <section className="drafts-workspace" hidden={!visible} aria-label="Outreach drafts">
-    <header className="drafts-workspace-heading"><div><button className="text-button" type="button" disabled={c.operation.busy} onClick={() => onRequest(onBack)}>Back to people</button>
+    <header className="drafts-workspace-heading"><div><button className="text-button" type="button" disabled={c.busy} onClick={() => onRequest(onBack)}>Back to people</button>
       {c.mode.kind!=='template'&&<h2 ref={heading} tabIndex={-1}>{c.composition?`${c.composition.recipient_count} drafts`:'Draft set'}</h2>}</div>
       {counts && c.mode.kind === 'composition' && <p className="drafts-status-counts">{Object.entries(counts).map(([status, count]) => `${count} ${labels[status as DraftView['status']].toLowerCase()}`).join(' · ')}</p>}
     </header>
@@ -59,13 +59,15 @@ export function DraftsWorkspace({ api,controller: c, active, onRequest, onBack, 
         <nav className="drafts-roster" aria-label="Draft people"><ol>{c.composition.drafts.map((row, index) => {
           const snapshot = c.batch?.recipients.find(person => person.id === row.recipient_snapshot_id && person.selection_id === row.selection_id)?.snapshot;
           const name = typeof row.input.channel_name === 'string' && row.input.channel_name ? row.input.channel_name : snapshot?.name || snapshot?.public_name || `Person ${index + 1}`;
-          return <li key={row.id}><button type="button" aria-current={row.id === selected?.id ? 'true' : undefined} disabled={c.operation.busy || !editing}
+          return <li key={row.id}><button type="button" aria-current={row.id === selected?.id ? 'true' : undefined} disabled={c.busy || !editing}
             onClick={() => { if (row.id !== selected?.id) onRequest(() => c.setSelectedId(row.id)); }}>
             <span className="draft-roster-name">{name}</span><span className={`draft-roster-status status-${row.status}`}>{row.source_changed ? 'Sources changed' : labels[row.status]}</span>
           </button></li>;
         })}</ol></nav>
         <div className="drafts-selected-mail">
           {selected ? <><DraftEditor key={`editor:${c.editorEpoch}:${c.composition.id}`} draft={selected} busy={busy} current={editing && c.current}
+            evidence={original ? {api,scope:{activityId:c.composition.activity_id,selectionId:selected.selection_id,creatorId:original.snapshot.creator_id},
+              onPreserve:c.preserveDraft,onBusy:c.setEvidenceBusy,connectionEpoch:c.connectionEpoch} : undefined}
             previewTemplate={preview.template} previewLoading={preview.loading} previewError={preview.error} onReloadPreview={preview.reload}
             onUseCurrentTemplate={onUseCurrentTemplate} onSave={c.saveDraft} onRefresh={() => c.regenerate('refresh')} onRetry={() => void c.regenerate('retry')}
             onOpenSource={section => onRepairPerson(selected.selection_id, section)} onDirtyChange={value => c.setDirty('editor', value)} />

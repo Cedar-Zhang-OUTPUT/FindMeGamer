@@ -24,7 +24,7 @@ export function validateDraftsRequest(value: DraftsRequest): DraftsRequest {
   keys(r, ['method', 'path', 'body', ...(creation ? ['idempotencyKey'] : [])], 'input');
   if (creation) { if (typeof r.idempotencyKey !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(r.idempotencyKey)) fail('input'); kind = r.path === templates ? 'template' : r.path.endsWith('/canonical') ? 'canonical' : 'composition'; }
   else if (r.method === 'PATCH' && draft.test(r.path)) kind = 'edit';
-  else if (r.method === 'POST' && revision.test(r.path)) kind = 'revision';
+  else if (r.method === 'POST' && revision.test(r.path)) kind = r.path.endsWith('/refresh') ? 'refresh' : 'revision';
   else if (r.method === 'POST' && facts.test(r.path)) kind = 'facts'; else fail('input');
   const body = draftsBody(r.body, kind); if (Buffer.byteLength(JSON.stringify(body)) > LIMIT) fail('input');
   return { method: r.method, path: r.path, body, ...(creation ? { idempotencyKey: r.idempotencyKey as string } : {}) };

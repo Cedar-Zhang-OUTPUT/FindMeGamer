@@ -7,9 +7,26 @@ import {gameFixture} from './game-fixtures';
 import {recipientBatchFixture,preparationFixture} from './outreach-fixtures';
 import {compositionFixture,draftFixture,draftIds,draftValues} from './drafts-fixtures';
 import {gameBoundBuiltin as builtinTemplate,gameBoundVersion as templateVersion} from './game-bound-template-fixtures';
+import {workFixture} from './creator-fixtures';
+import {evidenceFields,type EvidenceAttempt} from '../src/renderer/components/match/inlineEvidence';
 afterEach(()=>{cleanup();vi.useRealTimers();});
 const batch=()=>recipientBatchFixture({id:draftIds.batch,activity_id:draftIds.activity,recipients:[{id:draftIds.recipient,selection_id:draftIds.selection,snapshot:preparationFixture({id:draftIds.selection}),preparation:preparationFixture({id:draftIds.selection}),source_changed:false,current_missing_fields:[]}]});
 function setup(){const bridge=settingsBridgeMock();const api={...bridge,games:{detail:vi.fn(async()=>ok(gameFixture('Current game',draftIds.game)))}};vi.mocked(api.drafts.templates).mockResolvedValue(ok({items:[templateVersion],builtin:builtinTemplate}));vi.mocked(api.outreach.batch).mockResolvedValue(ok(batch()));return api;}
+it('preserve refresh verifies intended work after fresh draft read and stops if the evidence changed',async()=>{
+  const api=setup(),work=workFixture(),selection=preparationFixture({id:draftIds.selection,activity_id:draftIds.activity,creator_id:work.creator_id});
+  vi.mocked(api.drafts.composition).mockResolvedValue(ok(compositionFixture({drafts:[draftFixture({status:'needs_repair'})]})));
+  const expected:EvidenceAttempt={scope:{activityId:draftIds.activity,selectionId:draftIds.selection,creatorId:work.creator_id},work,selection,fields:evidenceFields(work),stage:'draft'};
+  vi.mocked(api.outreach.selection).mockResolvedValue(ok(selection));
+  vi.mocked(api.creators.works).mockResolvedValue(ok({items:[{...work,evidence_excerpt:'Another editor changed this'}],total:1,limit:100,offset:0}));
+  const view=renderHook(()=>useActivityDrafts({api,activityId:draftIds.activity,gameId:draftIds.game,active:true}));
+  await act(()=>view.result.current.open(draftIds.composition));
+  const id=view.result.current.composition!.drafts[0].id;
+  await act(async()=>{expect(await view.result.current.preserveDraft(id,draftValues,expected)).toBe(false);});
+  expect(api.drafts.refresh).not.toHaveBeenCalled();
+  vi.mocked(api.creators.works).mockResolvedValue(ok({items:[work],total:1,limit:100,offset:0}));
+  await act(()=>view.result.current.preserveDraft(id,{...draftValues,observation:''},expected));
+  expect(api.drafts.refresh).toHaveBeenCalledWith(expect.objectContaining({id,data:expect.objectContaining({preserve_values:true,values:{...draftValues,observation:''}})}));
+});
 it('does no draft reads/writes on discovery; template reads current game and creates only on explicit action',async()=>{
   const api=setup(),view=renderHook(()=>useActivityDrafts({api,activityId:draftIds.activity,gameId:draftIds.game,active:true}));
   expect(api.drafts.templates).not.toHaveBeenCalled();expect(api.drafts.composition).not.toHaveBeenCalled();

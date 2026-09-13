@@ -1,12 +1,13 @@
 import type { PublicError, Result } from '../../../shared/bridge';
-import type { CompositionView, DraftsAPI, DraftView, TemplateVersion, TemplateVersionCreate, CompositionCreate, DraftEdit, DraftRevision, SenderFacts } from '../../../shared/drafts';
+import type { CompositionView, DraftsAPI, DraftView, TemplateVersion, TemplateVersionCreate, CompositionCreate, DraftEdit, DraftRevision, DraftRefresh, SenderFacts } from '../../../shared/drafts';
 
 export type DraftCommand =
   | { kind: 'registerCanonical'; gameId: string; canonicalFixedHash?: string }
   | { kind: 'createTemplate'; data: Omit<TemplateVersionCreate, 'request_id'> }
   | { kind: 'createComposition'; activityId: string; data: Omit<CompositionCreate, 'request_id'> }
   | { kind: 'edit'; id: string; data: DraftEdit; observedDraft?: DraftView }
-  | { kind: 'refresh' | 'retry'; id: string; data: DraftRevision; observedDraft?: DraftView }
+  | { kind: 'refresh'; id: string; data: DraftRefresh; observedDraft?: DraftView }
+  | { kind: 'retry'; id: string; data: DraftRevision; observedDraft?: DraftView }
   | { kind: 'senderFacts'; compositionId: string; data: SenderFacts; observedComposition?: CompositionView };
 type WriteKind = DraftCommand['kind'];
 export type DraftReceipt = { [K in WriteKind]: { kind: K; data: K extends 'registerCanonical' | 'createTemplate' ? TemplateVersion : K extends 'createComposition' | 'senderFacts' ? CompositionView : DraftView } }[WriteKind];
@@ -141,6 +142,15 @@ export function reconcileDraftReadback(attempt: DraftAttempt, readback: DraftRea
     return matches.length === 1 ? { kind: 'registerCanonical', data: matches[0] } : null;
   }
   if (readback.kind !== 'composition') return null;
+  if (command.kind === 'refresh' && command.data.preserve_values && command.observedDraft) {
+    const row = member(readback.data, command.observedDraft);
+    if (row && row.revision === command.data.expected_revision + 1 && !row.source_changed
+      && row.context_token === command.data.context_token && same(row.values, command.data.values)
+      && ['succeeded', 'needs_repair'].includes(row.status) && !row.sender_facts_valid
+      && same(row.sender_facts, {}) && row.rendered && row.rendered.fixed_hash === row.input.fixed_hash)
+      return { kind: 'refresh', data: row };
+    return null;
+  }
   if (command.kind === 'edit' && command.observedDraft && command.id === command.observedDraft.id) {
     const row = member(readback.data, command.observedDraft);
     if (!row || !exactSource(command.observedDraft, row, command.data, true) || !same(row.values, command.data.values)

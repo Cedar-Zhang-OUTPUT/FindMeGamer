@@ -3,6 +3,21 @@ import { authenticatedDraftsRequest, validateDraftsRequest } from '../src/main/d
 const id = '11111111-1111-4111-8111-111111111111';
 const request = { method: 'POST' as const, path: `/api/v2/outreach/drafts/${id}/retry`, body: { expected_revision: 0, context_token: 'a'.repeat(64) } };
 describe('drafts transport boundary', () => {
+  it('accepts explicit model-free refresh with all four partial values, only on refresh', () => {
+    const values = { firstName: '', channelName: 'Channel', reference: '', observation: 'Unfinished' };
+    const preserving = { ...request, path: `/api/v2/outreach/drafts/${id}/refresh`, body: { ...request.body, preserve_values: true, values } };
+    expect(validateDraftsRequest(preserving)).toEqual(preserving);
+    for (const body of [
+      { ...request.body, preserve_values: true },
+      { ...request.body, values },
+      { ...request.body, preserve_values: false, values },
+      { ...preserving.body, preserve_values: 'true' },
+      { ...preserving.body, values: { firstName: '' } },
+      { ...preserving.body, values: { ...values, observation: '<script>' } },
+    ]) expect(() => validateDraftsRequest({ ...preserving, body })).toThrow();
+    expect(() => validateDraftsRequest({ ...preserving, path: request.path })).toThrow();
+    expect(validateDraftsRequest({ ...preserving, body: { ...request.body, preserve_values: false } })).toBeTruthy();
+  });
   it('rejects a revision idempotency header and unknown routes', () => {
     expect(() => validateDraftsRequest({ ...request, idempotencyKey: 'never-send' })).toThrow();
     expect(() => validateDraftsRequest({ ...request, path: '/api/v2/outreach/send' })).toThrow();

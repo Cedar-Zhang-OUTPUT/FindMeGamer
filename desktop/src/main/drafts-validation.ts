@@ -54,9 +54,18 @@ export function fixed(subject: unknown, fragments: unknown, m: Mode): string {
   if (body.slice(cursor).includes('<') || stack.length || count !== 4) fail(m);
   return createHash('sha256').update(s + '\n' + body).digest('hex');
 }
-export type BodyKind = 'canonical' | 'template' | 'composition' | 'edit' | 'revision' | 'facts';
+export type BodyKind = 'canonical' | 'template' | 'composition' | 'edit' | 'revision' | 'refresh' | 'facts';
 export function draftsBody(v: unknown, kind: BodyKind): Record<string, unknown> {
   const m = 'input';
+  if (kind === 'refresh') {
+    const r = object(v, m);
+    keys(r, ['expected_revision', 'context_token', 'preserve_values', 'values'], m);
+    integer(r.expected_revision, m); token(r.context_token, m);
+    if (Object.hasOwn(r, 'preserve_values')) bool(r.preserve_values, m);
+    if (r.preserve_values === true) draftSlots(r.values, m);
+    else if (Object.hasOwn(r, 'values')) fail(m);
+    return r;
+  }
   if (kind === 'canonical') { const r = exact(v, ['game_id'], m); identifier(r.game_id, m); return r; }
   if (kind === 'template') { const r = exact(v, ['game_id', 'request_id', 'name', 'subject', 'fixed_fragments'], m); identifier(r.game_id, m); identifier(r.request_id, m); if (!text(r.name, m, 255, 1).trim()) fail(m); fixed(r.subject, r.fixed_fragments, m); return r; }
   if (kind === 'composition') { const r = exact(v, ['request_id', 'recipient_batch_id', 'template_version_id'], m); Object.values(r).forEach(id => identifier(id, m)); return r; }

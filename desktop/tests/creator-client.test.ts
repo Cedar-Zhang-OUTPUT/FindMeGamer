@@ -5,6 +5,20 @@ const path = `/api/v2/library/creators/${CREATOR_ID}`;
 const key = 'creator-save-123';
 
 describe('Creator client contract', () => {
+  it('reads discovery language_source provenance without making it editable or accepting unbounded values',async()=>{
+    const request=vi.fn(),client=new CreatorClient(request);
+    for(const language_source of ['tweet.lang',null]){
+      request.mockResolvedValue({items:[{...workFixture(),source_fields:{text:'Indie news',language:'en',language_source}}],total:1,offset:0,limit:50});
+      expect((await client.works({creatorId:CREATOR_ID})).items[0].source_fields.language_source).toBe(language_source);
+    }
+    for(const language_source of ['x'.repeat(256),42,{}]){
+      request.mockResolvedValue({items:[{...workFixture(),source_fields:{language_source}}],total:1,offset:0,limit:50});
+      await expect(client.works({creatorId:CREATOR_ID})).rejects.toMatchObject({code:'invalid_response'});
+    }
+    request.mockClear();
+    await expect(client.updateWork({creatorId:CREATOR_ID,workId:WORK_ID,data:{expected_revision:1,language_source:'tweet.lang'} as never})).rejects.toMatchObject({code:'request_invalid'});
+    expect(request).not.toHaveBeenCalled();
+  });
   it('accepts nullable provider language evidence without exposing it as editable work fields',async()=>{
     const request=vi.fn(),client=new CreatorClient(request);
     for(const value of [null,'en-US']){request.mockResolvedValue({items:[{...workFixture(),source_fields:{...workFixture().source_fields,language:value,language_source_field:value===null?null:'snippet.defaultAudioLanguage'}}],total:1,offset:0,limit:50});expect((await client.works({creatorId:CREATOR_ID})).items[0].source_fields.language).toBe(value);}

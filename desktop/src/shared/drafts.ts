@@ -11,6 +11,7 @@ export interface TemplateVersionCreate { game_id: string; request_id: string; na
 export interface CompositionCreate { request_id: string; recipient_batch_id: string; template_version_id: string }
 export interface DraftRevision { expected_revision: number; context_token: string }
 export interface DraftEdit extends DraftRevision { values: SlotValues }
+export type DraftRefresh = DraftRevision & ({ preserve_values?: false; values?: never } | { preserve_values: true; values: SlotValues });
 export interface FactMember extends DraftRevision { draft_id: string }
 export interface SenderFacts { members: FactMember[]; following: boolean; enjoyed: boolean; liked: boolean }
 export interface DraftView {
@@ -31,7 +32,7 @@ export interface DraftsAPI {
   composition(id: string): Promise<Result<CompositionView>>;
   createComposition(input: { activityId: string; data: CompositionCreate; idempotencyKey: string }): Promise<Result<CompositionView>>;
   edit(input: { id: string; data: DraftEdit }): Promise<Result<DraftView>>;
-  refresh(input: { id: string; data: DraftRevision }): Promise<Result<DraftView>>;
+  refresh(input: { id: string; data: DraftRefresh }): Promise<Result<DraftView>>;
   retry(input: { id: string; data: DraftRevision }): Promise<Result<DraftView>>;
   senderFacts(input: { compositionId: string; data: SenderFacts }): Promise<Result<CompositionView>>;
 }
