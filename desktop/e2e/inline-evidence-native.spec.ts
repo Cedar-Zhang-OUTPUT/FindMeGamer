@@ -43,6 +43,24 @@ test('packaged inline evidence preserves generated, unsaved and partial wording 
     try{await page.getByLabel('Workspace key',{exact:true}).fill(f.workspace_key);}catch{throw Error('fixture_credential_entry_failed');}
     await page.getByRole('button',{name:'Connect',exact:true}).click();
     await expect(page.getByText('Connection verified',{exact:true})).toBeVisible();
+    const metadataChecks:unknown[]=[];
+    if(process.env.FMG_WORK_METADATA_NATIVE==='1'){
+      for(const scenario of f.cases){
+        const data=await page.evaluate(async creatorId=>{const result=await window.desktop.creators.works({creatorId,limit:100,offset:0});if(!result.ok)throw Error('metadata_works_decode_failed');return result.data;},scenario.creator_id);
+        const work=data.items.find(row=>row.id===scenario.work_id);expect(work).toBeTruthy();
+        const metadata=work!.source_fields.outreach_observation as Record<string,unknown>;
+        expect(Object.keys(metadata).sort()).toEqual(['evidence_kind','excerpt','source_field','source_url','text']);
+        expect(metadata.evidence_kind).toBe('metadata');
+        metadataChecks.push({creatorId:scenario.creator_id,workId:work!.id,keys:Object.keys(metadata),evidence_kind:metadata.evidence_kind});
+      }
+      const creator=await page.evaluate(async id=>{const r=await window.desktop.creators.detail(id);if(!r.ok)throw Error('metadata_creator_read_failed');return r.data;},f.cases[0].creator_id);
+      await page.getByRole('button',{name:'Library',exact:true}).click();
+      await page.getByRole('table',{name:'Creators',exact:true}).getByRole('button',{name:`Open ${creator.name}`,exact:true}).click();
+      await page.getByRole('button',{name:'Known works',exact:true}).click();
+      await expect(page.locator('.creator-work-list').getByRole('heading').first()).toBeVisible();
+      await expect(page.getByText(/unsupported Creator response/)).toHaveCount(0);
+      await page.screenshot({path:info.outputPath('creator-works-metadata.png')});
+    }
     const read=()=>page.evaluate(async id=>{const r=await window.desktop.drafts.composition(id);if(!r.ok)throw Error('composition_read_failed');return r.data;},f.composition_id);
     async function open(){
       await page.getByRole('button',{name:'Match',exact:true}).click();
@@ -117,6 +135,6 @@ test('packaged inline evidence preserves generated, unsaved and partial wording 
     expect(status.dispatch_attempts).toBe(0);expect(status.send_attempts).toBe(0);expect(status.real_provider_calls).toBe(0);
     const traffic=await app.evaluate(()=> (globalThis as any).__evidenceTraffic);
     expect(traffic.filter((r:any)=>!r.allowed)).toEqual([]);
-    await writeFile(info.outputPath('evidence.json'),JSON.stringify({target,results,status,traffic,reload_persisted:true},null,2));
+    await writeFile(info.outputPath('evidence.json'),JSON.stringify({target,results,status,traffic,metadataChecks,reload_persisted:true},null,2));
   } finally {if(app){await app.evaluate(({app})=>app.exit(0)).catch(()=>{});}}
 });
