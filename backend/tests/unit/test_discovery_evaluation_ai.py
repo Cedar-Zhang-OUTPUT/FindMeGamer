@@ -78,9 +78,7 @@ def test_deep_semantic_failure_has_call_and_step_context_without_narrative(caplo
     caplog.set_level(logging.INFO, logger="app.core.analysis_diagnostics")
     candidate = _candidate()
     brief = _brief(candidate)
-    brief["limitations"] = [
-        "No verified viewing evidence is available. PRIVATE-CONTENT"
-    ]
+    brief["limitations"] = ["Reference https://example.com/source PRIVATE-CONTENT"]
     ai, requests = _gateway([brief])
     run, step, search = [str(uuid4()) for _ in range(3)]
     with diagnostic_context(
@@ -105,7 +103,7 @@ def test_deep_semantic_failure_has_call_and_step_context_without_narrative(caplo
         and failure["search_id"] == search
     )
     assert failure["reason"] == "evaluation_narrative_invalid"
-    assert failure["rule"] == "viewing_term" and failure["field"] == "limitations"
+    assert failure["rule"] == "url" and failure["field"] == "limitations"
     assert call["status"] == "succeeded"
     assert "PRIVATE-CONTENT" not in caplog.text
 
@@ -261,9 +259,6 @@ def test_metadata_only_limited_confidence_is_accepted():
         "See https://example.com/source",
         "Contact person@example.com",
         "Evidence at 01:23",
-        "The creator played the game",
-        "The sender watched the upload",
-        "Viewing confirmed the fit",
     ],
 )
 def test_deep_rejects_unsafe_narrative_claims(unsafe_text):
@@ -271,6 +266,29 @@ def test_deep_rejects_unsafe_narrative_claims(unsafe_text):
     ai, _ = _gateway([_brief(candidate, summary=unsafe_text)])
     with pytest.raises(InvalidModelOutput, match="evaluation_narrative_invalid"):
         ai.deep({"name": "Game"}, candidate)
+
+
+@pytest.mark.parametrize(
+    "field", ["summary", "content_fit", "audience_fit", "limitations"]
+)
+@pytest.mark.parametrize(
+    "text",
+    [
+        "The audience prefers viewing strategy guides.",
+        "No verified viewing evidence is available.",
+        "We have not watched or played this game.",
+        "The creator played the game",
+        "The sender watched the upload",
+    ],
+)
+def test_deep_viewing_words_are_not_a_business_rejection(field, text):
+    candidate = _candidate(evidence=False)
+    brief = _brief(candidate, confidence="limited")
+    brief[field] = [text] if field == "limitations" else text
+    ai, _ = _gateway([brief])
+    output = ai.deep({}, candidate)
+    assert getattr(output, field) == brief[field]
+    assert output.confidence == "limited"
 
 
 @pytest.mark.parametrize("mutation", ["missing", "extra", "duplicate"])

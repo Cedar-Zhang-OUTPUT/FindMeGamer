@@ -34,14 +34,13 @@ _WORK_FIELDS = (
 _CONTACT_KEYS = {"contact", "contacts", "email", "emails", "phone", "telephone"}
 _UNSAFE_NARRATIVE = re.compile(
     r"(?:https?://|www\.|\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b|"
-    r"\b\d{1,2}:\d{2}(?::\d{2})?\b|\b(?:played|watched|viewing)\b)",
+    r"\b\d{1,2}:\d{2}(?::\d{2})?\b)",
     re.IGNORECASE,
 )
 _NARRATIVE_RULES = (
     ("url", re.compile(r"https?://|www\.", re.I)),
     ("contact", re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b", re.I)),
     ("timestamp", re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")),
-    ("viewing_term", re.compile(r"\b(?:played|watched|viewing)\b", re.I)),
 )
 
 
