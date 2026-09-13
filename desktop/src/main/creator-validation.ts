@@ -125,12 +125,23 @@ function source(value: unknown, kind: Kind, complete = false): Record<string, un
   if (Object.hasOwn(raw, 'validation_state')) result.validation_state = text(raw.validation_state, 'response', 255, 1);
   return result;
 }
+/** Deterministic title/description suggestion, never a viewing note or sender confirmation. */
+function outreachObservation(value: unknown): Record<string, unknown> {
+  const raw = object(value, 'response');
+  const names = ['text', 'evidence_kind', 'source_url', 'excerpt', 'source_field'];
+  keys(raw, names, 'response');
+  if (names.some(name => !Object.hasOwn(raw, name))) fail('response');
+  return { text: text(raw.text, 'response', 600), evidence_kind: enumValue(raw.evidence_kind, ['metadata'], 'response'),
+    source_url: webURL(raw.source_url, 'response'), excerpt: text(raw.excerpt, 'response', 350),
+    source_field: enumValue(raw.source_field, ['title', 'description'], 'response') };
+}
 function workSource(value: unknown): Record<string, unknown> {
   const raw = object(value, 'response');
-  const { text: recordedText, language, language_source, language_source_field, ...editableFields } = raw;
+  const { text: recordedText, language, language_source, language_source_field, outreach_observation, ...editableFields } = raw;
   const result = source(editableFields, 'work');
   // Imported PublicJSONObject retains source evidence, not an editable WorkField.
   if (Object.hasOwn(raw, 'text')) result.text = text(recordedText, 'response', 20_000);
+  if (Object.hasOwn(raw, 'outreach_observation')) result.outreach_observation = outreachObservation(outreach_observation);
   for(const [key,value] of [['language',language],['language_source',language_source],['language_source_field',language_source_field]] as const)if(Object.hasOwn(raw,key))result[key]=value===null?null:text(value,'response',255);
   return result;
 }
