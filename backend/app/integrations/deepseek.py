@@ -14,6 +14,11 @@ from pydantic import BaseModel, ValidationError
 
 from app.analysis.contracts import Message
 from app.core.config import validate_external_base_url
+from app.core.analysis_diagnostics import (
+    model_call,
+    response_metadata,
+    failure_category,
+)
 from app.integrations.errors import (
     InvalidModelOutput,
     PermanentIntegrationError,
@@ -171,14 +176,19 @@ class DeepSeekGateway:
         schema_payload = _schema_payload(schema)
         output_budget = _resolve_max_tokens(schema, max_tokens)
         request_messages = [_schema_instruction(schema_payload), *messages]
-        content = self._request(
-            model,
-            request_messages,
-            max_tokens=output_budget,
-        )
+        response_content = {}
         try:
-            return schema.model_validate_json(content)
+            return self._validated_request(
+                model,
+                request_messages,
+                schema,
+                schema_payload,
+                "initial",
+                output_budget,
+                response_content,
+            )
         except (ValidationError, ValueError) as error:
+            content = response_content["content"]
             _log_schema_failure(schema_payload, "initial", error)
             if schema is CreatorBriefSynthesis:
                 brief = repair_creator_brief_text(
@@ -194,14 +204,18 @@ class DeepSeekGateway:
                 *request_messages,
                 *_repair_messages(content, schema_payload, error),
             ]
-        repaired = self._request(
-            model,
-            repair_messages,
-            max_tokens=output_budget,
-        )
         try:
-            return schema.model_validate_json(repaired)
+            return self._validated_request(
+                model,
+                repair_messages,
+                schema,
+                schema_payload,
+                "repair",
+                output_budget,
+                response_content,
+            )
         except (ValidationError, ValueError) as error:
+            repaired = response_content["content"]
             _log_schema_failure(schema_payload, "repair", error)
             if schema is CreatorBriefSynthesis:
                 brief = repair_creator_brief_text(
@@ -214,6 +228,46 @@ class DeepSeekGateway:
                 if brief is not None:
                     return brief
             raise InvalidModelOutput("deepseek_model_output_invalid") from None
+
+    def _validated_request(
+        self, model, messages, schema, schema_payload, attempt, budget, response_content
+    ):
+        actual_model = (
+            "deepseek-flash"
+            if model
+            in {"deepseek-v4-flash", "deepseek-v4-flash-vision-exp", "deepseek-v4-pro"}
+            else model
+        )
+        with model_call(
+            provider="deepseek",
+            model=actual_model,
+            schema=schema_payload["title"],
+            attempt=attempt,
+            max_tokens=budget,
+        ) as span:
+            content = self._request(model, messages, max_tokens=budget)
+            response_content["content"] = content
+            try:
+                return schema.model_validate_json(content)
+            except (ValidationError, ValueError) as error:
+                safe = _safe_validation_errors(schema_payload, error)
+                span["category"] = (
+                    "json"
+                    if any(e["type"] == "json_invalid" for e in safe)
+                    else "schema"
+                )
+                span["validation_errors"] = safe
+                span["validation_error_count"] = (
+                    error.error_count() if isinstance(error, ValidationError) else 1
+                )
+                counts = {}
+                for item in _safe_validation_errors(schema_payload, error, limit=None):
+                    reason = item.get("reason", item["type"])
+                    if reason not in counts and len(counts) >= 63:
+                        reason = "other"
+                    counts[reason] = counts.get(reason, 0) + 1
+                span["validation_reason_counts"] = counts
+                raise
 
     def _request(
         self,
@@ -252,24 +306,39 @@ class DeepSeekGateway:
                 follow_redirects=False,
             ) as response:
                 if response.status_code == 429 or response.status_code >= 500:
+                    failure_category("http_retryable")
                     raise TransientIntegrationError("deepseek_unavailable")
                 if response.status_code >= 400:
+                    failure_category("http_rejected")
                     raise PermanentIntegrationError("deepseek_request_rejected")
                 body = read_bounded_bytes(
                     response,
                     max_bytes=MAX_DEEPSEEK_RESPONSE_BYTES,
                 )
         except ResponseTooLarge:
+            failure_category("response_limit")
             raise PermanentIntegrationError("deepseek_response_too_large") from None
         except InvalidContentLength:
+            failure_category("response_envelope")
             raise PermanentIntegrationError("deepseek_response_invalid") from None
-        except httpx.TransportError:
+        except httpx.TransportError as error:
+            failure_category(
+                "network_timeout"
+                if isinstance(error, httpx.TimeoutException)
+                else "network"
+            )
             raise TransientIntegrationError("deepseek_unavailable") from None
         try:
             envelope = json.loads(body)
         except (UnicodeDecodeError, ValueError):
+            failure_category("json")
             raise PermanentIntegrationError("deepseek_response_invalid") from None
-        return _extract_content(envelope, model=model, max_tokens=max_tokens)
+        response_metadata(envelope)
+        try:
+            return _extract_content(envelope, model=model, max_tokens=max_tokens)
+        except (PermanentIntegrationError, TransientIntegrationError):
+            failure_category("response_envelope")
+            raise
 
 
 def _validate_api_key(api_key: str) -> None:
@@ -435,7 +504,7 @@ def _schema_location_names(value: object) -> set[str]:
 
 
 def _safe_validation_errors(
-    schema_payload: dict[str, Any], error: ValueError
+    schema_payload: dict[str, Any], error: ValueError, *, limit: int | None = 8
 ) -> list[dict[str, Any]]:
     allowed_names = _schema_location_names(schema_payload["schema"])
     errors = (
@@ -444,7 +513,7 @@ def _safe_validation_errors(
         else [{"type": "value_error", "loc": ()}]
     )
     safe_errors = []
-    for item in errors[:8]:
+    for item in errors[:limit]:
         location = [
             (
                 part

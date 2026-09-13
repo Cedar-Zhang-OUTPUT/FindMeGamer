@@ -5,6 +5,13 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
+from app.core.analysis_diagnostics import (
+    diagnostic_context,
+    traced_node,
+    evidence_failure,
+    emit,
+)
 from datetime import datetime
 from typing import Literal, Protocol, TypeVar, cast
 from uuid import UUID
@@ -259,7 +266,10 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
         if lease.completed_profile_id is not None:
             return lease.completed_profile_id
 
-        source = self._source(lease.job_id, lease.channel_id, lease.canonical_url)
+        source = traced_node(
+            SOURCE_NODE_KEY,
+            lambda: self._source(lease.job_id, lease.channel_id, lease.canonical_url),
+        )
         self._service.advance(lease.job_id, completed_units=2)
         representative_videos = tuple(select_representative_thumbnails(source.videos))
 
@@ -273,10 +283,13 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
             digests,
             visual,
         )
-        synthesis, contacts = self._brief_wave(
-            lease.job_id,
-            reductions,
-            contact.evidence,
+        synthesis, contacts = traced_node(
+            BRIEF_NODE_KEY,
+            lambda: self._brief_wave(
+                lease.job_id,
+                reductions,
+                contact.evidence,
+            ),
         )
 
         self._service.advance(lease.job_id, completed_units=4)
@@ -522,6 +535,15 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
                 last_failure = (
                     "contacts" if "contact selection" in str(error) else "evidence"
                 )
+                evidence_failure(
+                    "CreatorBriefSynthesis",
+                    attempt + 1,
+                    (
+                        "contact_binding_invalid"
+                        if last_failure == "contacts"
+                        else "evidence_catalog_mismatch"
+                    ),
+                )
                 if attempt == 0:
                     continue
                 code = (
@@ -555,6 +577,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
             try:
                 validate_stage_evidence(output, catalog)
             except ValueError:
+                evidence_failure(schema.__name__, attempt + 1)
                 if schema is CreatorContentFormatReduction:
                     content = cast(CreatorContentFormatReduction, output)
                     reason = _content_format_binding_reason(content, catalog)
@@ -578,6 +601,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
                 )
                 != original_content
             ):
+                evidence_failure(schema.__name__, attempt + 1, "repair_content_changed")
                 logger.warning(
                     "creator_content_format_evidence_rejected "
                     "attempt=%d reason=repair_content_changed",
@@ -627,6 +651,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
             try:
                 validate_stage_evidence(output, bundle.evidence_catalog)
             except ValueError:
+                evidence_failure("CreatorVisualAnalysis", attempt)
                 logger.warning(
                     "creator_visual_evidence_rejected "
                     "attempt=%d reason=evidence_catalog_mismatch",
@@ -658,15 +683,27 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
             thread_name_prefix="creator-analysis",
         ) as executor:
             futures = {
-                executor.submit(call): node_key for node_key, call in calls.items()
+                executor.submit(
+                    copy_context().run, traced_node, node_key, call
+                ): node_key
+                for node_key, call in calls.items()
             }
             for future in as_completed(futures):
                 node_key = futures[future]
                 try:
                     output = future.result()
-                    completed[node_key] = self._checkpoints.save_success(
-                        job_id, node_key, output
-                    )
+                    try:
+                        completed[node_key] = self._checkpoints.save_success(
+                            job_id, node_key, output
+                        )
+                    except Exception:
+                        with diagnostic_context(job_id=job_id, node_key=node_key):
+                            emit(
+                                "analysis_checkpoint_failed",
+                                category="checkpoint",
+                                status="failed",
+                            )
+                        raise
                 except Exception as error:
                     errors.append((node_key, error))
         if errors:

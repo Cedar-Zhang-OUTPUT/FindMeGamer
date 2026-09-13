@@ -10,6 +10,11 @@ import httpx
 
 from app.analysis.contracts import CreatorSource
 from app.core.config import validate_external_base_url
+from app.core.analysis_diagnostics import (
+    model_call,
+    response_metadata,
+    failure_category,
+)
 from app.integrations.errors import (
     PermanentIntegrationError,
     TransientIntegrationError,
@@ -136,7 +141,15 @@ class GeminiEmailResearchGateway:
         payload = _request_payload(source, existing_contacts=existing_contacts)
         for attempt in range(1, MAX_GEMINI_EMAIL_ATTEMPTS + 1):
             try:
-                records = self._request(payload)
+                with model_call(
+                    provider="gemini",
+                    model=self._model,
+                    schema="GeminiEmailResearch",
+                    attempt="initial" if attempt == 1 else "retry",
+                    max_tokens=65_536,
+                ) as span:
+                    span["request_attempt"] = attempt
+                    records = self._request(payload)
             except TransientIntegrationError:
                 if attempt == MAX_GEMINI_EMAIL_ATTEMPTS:
                     raise
@@ -165,18 +178,34 @@ class GeminiEmailResearchGateway:
                 follow_redirects=False,
             ) as response:
                 if response.status_code == 429 or response.status_code >= 500:
+                    failure_category("http_retryable")
                     raise TransientIntegrationError("public_page_unavailable")
                 if response.status_code >= 400:
+                    failure_category("http_rejected")
                     raise PermanentIntegrationError("public_page_request_rejected")
                 body = read_bounded_bytes(
                     response, max_bytes=MAX_GEMINI_EMAIL_RESPONSE_BYTES
                 )
         except ResponseTooLarge:
+            failure_category("response_limit")
             raise PermanentIntegrationError("public_page_too_large") from None
         except InvalidContentLength:
+            failure_category("response_envelope")
             raise PermanentIntegrationError("public_page_response_invalid") from None
-        except httpx.TransportError:
+        except httpx.TransportError as error:
+            failure_category(
+                "network_timeout"
+                if isinstance(error, httpx.TimeoutException)
+                else "network"
+            )
             raise TransientIntegrationError("public_page_unavailable") from None
+        try:
+            envelope = json.loads(body)
+        except (UnicodeDecodeError, ValueError):
+            failure_category("json")
+            return _parse_response(body)
+        else:
+            response_metadata(envelope, gemini=True)
         return _parse_response(body)
 
 
@@ -271,7 +300,11 @@ def _parse_response(body: bytes) -> tuple[GeminiEmailRecord, ...]:
         email_info = structured["email_info"]
         if not isinstance(email_info, list):
             raise TypeError
-    except (KeyError, IndexError, TypeError, UnicodeDecodeError, ValueError):
+    except (UnicodeDecodeError, ValueError):
+        failure_category("json")
+        raise _MalformedGeminiResponse from None
+    except (KeyError, IndexError, TypeError):
+        failure_category("schema")
         raise _MalformedGeminiResponse from None
     return _normalize_records(email_info)
 

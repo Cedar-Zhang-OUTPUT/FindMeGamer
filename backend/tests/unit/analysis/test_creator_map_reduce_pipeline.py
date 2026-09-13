@@ -390,6 +390,47 @@ def test_failed_parallel_wave_harvests_other_successes_before_retry() -> None:
     assert youtube.calls == [("UCcreator123", 50)]
 
 
+def test_all_parallel_failure_nodes_are_correlated_without_failed_checkpoints(caplog):
+    import json
+    import logging
+    from app.core.analysis_diagnostics import diagnostic_context
+
+    logging.getLogger("app.core.analysis_diagnostics").disabled = False
+    caplog.set_level(logging.INFO, logger="app.core.analysis_diagnostics")
+    pipeline, service, _, _, _, checkpoints = _pipeline()
+
+    def fail():
+        raise TransientIntegrationError("deepseek_unavailable")
+
+    with diagnostic_context(job_id=service.job_id, creator_id=service.profile_id):
+        with pytest.raises(TransientIntegrationError):
+            pipeline._run_parallel(
+                service.job_id,
+                {
+                    "batch:v1:00": fail,
+                    "reduce:v1:presentation": fail,
+                    "batch:v1:01": _batch,
+                },
+            )
+    events = [
+        json.loads(r.message)
+        for r in caplog.records
+        if r.name == "app.core.analysis_diagnostics"
+    ]
+    failed = [
+        e
+        for e in events
+        if e["event"] == "analysis_node_finished" and e["status"] == "failed"
+    ]
+    assert {e["node_key"] for e in failed} == {"batch:v1:00", "reduce:v1:presentation"}
+    assert all(
+        e["job_id"] == str(service.job_id)
+        and e["creator_id"] == str(service.profile_id)
+        for e in failed
+    )
+    assert set(checkpoints.values) == {"batch:v1:01"}
+
+
 def test_failed_email_research_is_not_checkpointed_and_retry_reuses_parallel_work() -> (
     None
 ):

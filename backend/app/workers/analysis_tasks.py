@@ -24,6 +24,8 @@ from app.core.analysis_job_contract import (
     valid_analysis_job_state,
 )
 from app.core.config import get_settings
+from app.core.analysis_diagnostics import diagnostic_context
+from app.db.models.creator_search import CreatorSearchUnit
 from app.analysis.targets import creator_platform
 from app.core.database import session_scope
 from app.db.models.enums import AnalysisStage, JobStatus, TargetType
@@ -285,7 +287,37 @@ class AnalysisJobExecutor:
                 else self._pipeline_factory(target_type)
             )
             with context as pipeline:
-                pipeline.run(job_id)
+                with self._session_factory() as session:
+                    job = session.get(AnalysisJob, job_id)
+                    unit = session.scalars(
+                        select(CreatorSearchUnit)
+                        .where(CreatorSearchUnit.analysis_job_id == job_id)
+                        .order_by(CreatorSearchUnit.created_at)
+                        .limit(1)
+                    ).first()
+                    creator_id = (
+                        unit.creator_id
+                        if unit is not None
+                        else (
+                            job.profile_id
+                            if job is not None and target_type is TargetType.CREATOR
+                            else None
+                        )
+                    )
+                    search_id = unit.search_id if unit is not None else None
+                    creator_target = (
+                        job.canonical_target_id
+                        if job is not None and target_type is TargetType.CREATOR
+                        else None
+                    )
+                    session.commit()
+                with diagnostic_context(
+                    job_id=job_id,
+                    creator_id=creator_id,
+                    search_id=search_id,
+                    creator_target=creator_target,
+                ):
+                    pipeline.run(job_id)
         except CollectionPaused:
             with self._session_factory() as session:
                 acquire_job_change_lock(session)
