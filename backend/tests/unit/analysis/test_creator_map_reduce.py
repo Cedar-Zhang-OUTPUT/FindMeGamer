@@ -215,7 +215,7 @@ def test_map_reduce_schemas_are_strict_frozen_and_bounded() -> None:
     assert CreatorBriefSynthesis.deepseek_max_tokens == 3_072
 
 
-def test_map_reduce_claims_accept_up_to_three_evidence_references() -> None:
+def test_map_claims_accept_up_to_eight_evidence_references() -> None:
     payload = _batch_payload()
     primary_games = payload["content_format"]["primary_games"]
     primary_games["evidence"] = [
@@ -225,7 +225,7 @@ def test_map_reduce_claims_accept_up_to_three_evidence_references() -> None:
             "reference": f"video:video-{index}",
             "observation": f"Video {index} supports this bounded signal.",
         }
-        for index in range(1, 4)
+        for index in range(1, 9)
     ]
 
     CreatorVideoBatchDigest.model_validate(payload)
@@ -234,8 +234,8 @@ def test_map_reduce_claims_accept_up_to_three_evidence_references() -> None:
         {
             "kind": "source_fact",
             "source_type": "video_id",
-            "reference": "video:video-4",
-            "observation": "Video 4 exceeds the bounded evidence allowance.",
+            "reference": "video:video-9",
+            "observation": "Video 9 exceeds the bounded evidence allowance.",
         }
     )
     with pytest.raises(ValidationError):
@@ -404,7 +404,7 @@ def test_content_format_prompt_maps_current_citations_without_losing_batch_evide
         message.content for message in bundle.messages if message.role == "system"
     )
 
-    assert CREATOR_CONTENT_FORMAT_PROMPT_VERSION == "creator-content-format-v3"
+    assert CREATOR_CONTENT_FORMAT_PROMPT_VERSION == "creator-content-format-v4"
     assert "source_type=intermediate_output" in rules
     assert "kind=ai_inference" in rules
     assert "Do not copy nested video or channel citations" in rules
@@ -559,9 +559,9 @@ def test_map_reduce_prompt_versions_are_stage_specific() -> None:
     }
     assert len(versions) == 6
     assert CREATOR_BRIEF_PROMPT_VERSION == "creator-brief-v2"
-    assert CREATOR_CONTENT_FORMAT_PROMPT_VERSION == "creator-content-format-v3"
+    assert CREATOR_CONTENT_FORMAT_PROMPT_VERSION == "creator-content-format-v4"
     assert all(
-        version.startswith("creator-") and version.endswith("-v2")
+        version.startswith("creator-") and version.endswith("-v3")
         for version in versions
         - {CREATOR_BRIEF_PROMPT_VERSION, CREATOR_CONTENT_FORMAT_PROMPT_VERSION}
     )
@@ -578,6 +578,9 @@ def test_map_and_reducers_explicitly_select_within_list_limits() -> None:
     ]
     for bundle in bundles:
         rules = "\n".join(m.content for m in bundle.messages if m.role == "system")
+        if bundle is bundles[0]:
+            assert "up to 20" in rules and "up to 8" in rules
+            continue
         assert "at most 3 items" in rules
         assert "values" in rules and "evidence" in rules
         assert "strongest" in rules

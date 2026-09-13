@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.analysis.contracts import ArtifactStore, CreatorSource, Message, VideoSource
 from app.analysis.creator_map_reduce import merge_creator_synthesis
+from app.analysis.evidence_binding import evidence_bindings
 from app.analysis.creator_metrics import (
     compute_creator_metrics,
     select_representative_thumbnails,
@@ -568,18 +569,19 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
         request_messages = messages
         original_content: dict[str, object] | None = None
         for attempt in range(2):
-            output = self._deepseek.complete_structured(
-                model,
-                request_messages,
-                schema,
-                max_tokens=schema.deepseek_max_tokens,
-            )
+            with evidence_bindings(catalog):
+                output = self._deepseek.complete_structured(
+                    model,
+                    request_messages,
+                    schema,
+                    max_tokens=schema.deepseek_max_tokens,
+                )
             try:
                 validate_stage_evidence(output, catalog)
             except ValueError:
                 evidence_failure(schema.__name__, attempt + 1)
-                if schema is CreatorContentFormatReduction:
-                    content = cast(CreatorContentFormatReduction, output)
+                if schema is not CreatorVideoBatchDigest:
+                    content = output
                     reason = _content_format_binding_reason(content, catalog)
                     logger.warning(
                         "creator_content_format_evidence_rejected attempt=%d reason=%s",
@@ -596,10 +598,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
                 raise InvalidModelOutput("deepseek_model_evidence_invalid") from None
             if (
                 original_content is not None
-                and _content_format_without_bindings(
-                    cast(CreatorContentFormatReduction, output)
-                )
-                != original_content
+                and _content_format_without_bindings(output) != original_content
             ):
                 evidence_failure(schema.__name__, attempt + 1, "repair_content_changed")
                 logger.warning(
@@ -713,7 +712,7 @@ class CreatorMapReducePipeline(CreatorAnalysisPipeline):
 
 
 def _content_format_binding_reason(
-    output: CreatorContentFormatReduction, catalog: EvidenceCatalog
+    output: StageOutput, catalog: EvidenceCatalog
 ) -> str:
     """Return code-owned diagnostics only: never emit model/source references."""
 
@@ -732,17 +731,25 @@ def _content_format_binding_reason(
 
 
 def _content_format_without_bindings(
-    output: CreatorContentFormatReduction,
+    output: StageOutput,
 ) -> dict[str, object]:
     """Only citation identity may change in the bounded evidence repair."""
 
     payload = output.model_dump(mode="json")
-    for claim in payload.values():
-        if not isinstance(claim, dict):
-            continue
-        for reference in claim.get("evidence", []):
-            for key in ("reference", "source_type", "kind"):
-                reference.pop(key)
+
+    def strip_identity(node):
+        if isinstance(node, list):
+            for value in node:
+                strip_identity(value)
+        elif isinstance(node, dict):
+            for name, value in node.items():
+                if name == "evidence" and isinstance(value, list):
+                    for citation in value:
+                        for key in ("reference", "source_type", "kind"):
+                            citation.pop(key, None)
+                strip_identity(value)
+
+    strip_identity(payload)
     return payload
 
 

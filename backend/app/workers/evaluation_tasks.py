@@ -3,10 +3,15 @@
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextvars import copy_context
+from time import monotonic
+from sqlalchemy import select
 from datetime import timedelta
 from uuid import UUID, uuid4
 
 from app.core.config import get_settings
+from app.core.analysis_diagnostics import diagnostic_context, emit, last_model_call_id
+from app.db.models.creator_search import CreatorSearch, CreatorSearchUnit
 from app.core.crypto import EncryptedValue, SecretCipher
 from app.core.database import session_scope
 from app.core.idempotency import utc_now
@@ -233,13 +238,38 @@ def run_evaluation(
             return
         with session_factory() as session:
             claims = _claims(session, run_id)
+            search_id = session.scalar(
+                select(CreatorSearch.id)
+                .where(CreatorSearch.evaluation_id == run_id)
+                .order_by(CreatorSearch.created_at)
+                .limit(1)
+            )
+            origin = {}
+            if search_id is not None:
+                for unit in session.scalars(
+                    select(CreatorSearchUnit).where(
+                        CreatorSearchUnit.search_id == search_id
+                    )
+                ):
+                    origin[str(unit.candidate_id)] = {
+                        "creator_id": unit.creator_id,
+                        "job_id": unit.analysis_job_id,
+                    }
         if not claims:
             return
         # Model calls never hold the claim/publication transaction. Distinct workers
         # share the per-run running-step count, preventing duplicate or unbounded work.
         with ThreadPoolExecutor(max_workers=CONCURRENCY) as pool:
             futures = {
-                pool.submit(execute_model, claim[2], claim[3]): claim
+                pool.submit(
+                    copy_context().run,
+                    _execute_diagnostic_claim,
+                    run_id,
+                    search_id,
+                    claim,
+                    execute_model,
+                    origin.get(claim[3].get("candidate", {}).get("candidate_id"), {}),
+                ): claim
                 for claim in claims
             }
             for future in as_completed(futures):
@@ -250,6 +280,44 @@ def run_evaluation(
                     failure = error
                 with session_factory() as session:
                     _publish(session, run_id, futures[future], output, failure)
+
+
+def _execute_diagnostic_claim(run_id, search_id, claim, execute_model, origin=None):
+    step_id, _token, kind, payload = claim
+    candidate = payload.get("candidate", {})
+    origin = origin or {}
+    with diagnostic_context(
+        evaluation_run_id=run_id,
+        search_id=search_id,
+        step_id=step_id,
+        candidate_id=candidate.get("candidate_id"),
+        creator_id=origin.get("creator_id"),
+        job_id=origin.get("job_id"),
+    ):
+        started = monotonic()
+        emit("evaluation_step_started", kind=kind)
+        try:
+            result = execute_model(kind, payload)
+        except Exception as error:
+            reason = getattr(error, "code", None)
+            emit(
+                "evaluation_step_finished",
+                kind=kind,
+                status="failed",
+                reason=reason if reason in _SAFE_FAILURE_REASONS else "unclassified",
+                error_code=error_code(error),
+                call_id=last_model_call_id(),
+                duration_ms=round((monotonic() - started) * 1000, 2),
+            )
+            raise
+        emit(
+            "evaluation_step_finished",
+            kind=kind,
+            status="succeeded",
+            call_id=last_model_call_id(),
+            duration_ms=round((monotonic() - started) * 1000, 2),
+        )
+        return result
 
 
 @celery_app.task(name="find_me_gamer.discovery.evaluate", max_retries=0)

@@ -20,7 +20,14 @@ _last_call = ContextVar("analysis_diagnostic_last_call", default=None)
 @contextmanager
 def diagnostic_context(**values):
     context = dict(_context.get() or {})
-    for key in ("job_id", "search_id", "creator_id"):
+    for key in (
+        "job_id",
+        "search_id",
+        "creator_id",
+        "evaluation_run_id",
+        "step_id",
+        "candidate_id",
+    ):
         if values.get(key) is not None:
             try:
                 context[key] = str(UUID(str(values[key])))
@@ -52,6 +59,10 @@ def emit(event, **fields):
             {"event": event, **(_context.get() or {}), **fields}, separators=(",", ":")
         ),
     )
+
+
+def last_model_call_id():
+    return _last_call.get()
 
 
 def category(error):

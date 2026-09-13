@@ -10,6 +10,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.analysis.contracts import Message
 from app.integrations.errors import InvalidModelOutput
+from app.core.analysis_diagnostics import emit, last_model_call_id
 from app.schemas.discovery_evaluation_output import (
     EvaluationMatchBrief,
     EvaluationRankOutput,
@@ -36,6 +37,23 @@ _UNSAFE_NARRATIVE = re.compile(
     r"\b\d{1,2}:\d{2}(?::\d{2})?\b|\b(?:played|watched|viewing)\b)",
     re.IGNORECASE,
 )
+_NARRATIVE_RULES = (
+    ("url", re.compile(r"https?://|www\.", re.I)),
+    ("contact", re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b", re.I)),
+    ("timestamp", re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?\b")),
+    ("viewing_term", re.compile(r"\b(?:played|watched|viewing)\b", re.I)),
+)
+
+
+def _reject(reason, **details):
+    emit(
+        "evaluation_business_rejected",
+        reason=reason,
+        call_id=last_model_call_id(),
+        **details,
+    )
+    raise InvalidModelOutput(reason)
+
 
 _SCREEN_SYSTEM = """Select candidate IDs for deeper evaluation of the supplied game.
 Campaign intent describes desired promotion fit, not verified facts or work evidence.
@@ -113,7 +131,7 @@ class EvaluationAI:
         )
         selected = output.selected_ids
         if len(set(selected)) != len(selected) or not set(selected).issubset(input_ids):
-            raise InvalidModelOutput("evaluation_screen_ids_invalid")
+            _reject("evaluation_screen_ids_invalid")
         return output
 
     def deep(self, game: dict, candidate: dict) -> EvaluationMatchBrief:
@@ -157,25 +175,35 @@ class EvaluationAI:
         )
         citations = output.cited_work_ids
         if output.candidate_id != candidate_id:
-            raise InvalidModelOutput("evaluation_candidate_id_invalid")
+            _reject("evaluation_candidate_id_invalid")
         if len(set(citations)) != len(citations) or not set(citations).issubset(
             known_works
         ):
-            raise InvalidModelOutput("evaluation_work_ids_invalid")
+            _reject("evaluation_work_ids_invalid")
         if output.confidence == "supported" and not any(
             _nonblank(known_works[work_id].get("evidence_excerpt"))
             and _nonblank(known_works[work_id].get("verification_notes"))
             for work_id in citations
         ):
-            raise InvalidModelOutput("evaluation_evidence_invalid")
+            _reject("evaluation_evidence_invalid")
         narratives = [
-            output.summary,
-            output.content_fit,
-            output.audience_fit,
-            *output.limitations,
+            ("summary", output.summary),
+            ("content_fit", output.content_fit),
+            ("audience_fit", output.audience_fit),
+            *(("limitations", value) for value in output.limitations),
         ]
-        if any(_UNSAFE_NARRATIVE.search(text) for text in narratives):
-            raise InvalidModelOutput("evaluation_narrative_invalid")
+        for field, value in narratives:
+            if _UNSAFE_NARRATIVE.search(value):
+                rule = next(
+                    (
+                        name
+                        for name, pattern in _NARRATIVE_RULES
+                        if pattern.search(value)
+                    ),
+                    "unclassified",
+                )
+                _reject("evaluation_narrative_invalid", field=field, rule=rule)
+        emit("evaluation_business_accepted", call_id=last_model_call_id())
         return output
 
     def rank(self, game: dict, briefs: list[dict]) -> EvaluationRankOutput:
@@ -206,7 +234,7 @@ class EvaluationAI:
         )
         output_ids = [item.candidate_id for item in output.items]
         if len(set(output_ids)) != len(output_ids) or set(output_ids) != input_ids:
-            raise InvalidModelOutput("evaluation_rank_ids_invalid")
+            _reject("evaluation_rank_ids_invalid")
         return output
 
 

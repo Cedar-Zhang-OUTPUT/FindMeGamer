@@ -179,31 +179,60 @@ ReducerInferenceList = Annotated[
 ]
 
 
+# Map gathers evidence across ten videos; reducer concision must not discard it.
+# These bounds match the existing full Profile claims. Aggregate JSON stays 32 KiB.
+class BatchAvailableTextClaim(ReducerAvailableTextClaim):
+    evidence: Annotated[
+        tuple[ReducerEvidenceReference, ...], Field(min_length=1, max_length=8)
+    ]
+
+
+class BatchAvailableListClaim(StrictAIModel):
+    status: Literal["available"]
+    values: Annotated[
+        tuple[ReducerListItem, ...],
+        Field(min_length=1, max_length=20),
+        AfterValidator(_unique_values),
+    ]
+    evidence: Annotated[
+        tuple[ReducerEvidenceReference, ...], Field(min_length=1, max_length=8)
+    ]
+    confidence: Confidence
+
+
+BatchEvidenceText = Annotated[
+    BatchAvailableTextClaim | ReducerUnavailableClaim, Field(discriminator="status")
+]
+BatchEvidenceList = Annotated[
+    BatchAvailableListClaim | ReducerUnavailableClaim, Field(discriminator="status")
+]
+
+
 class CreatorBatchContentFormat(StrictAIModel):
-    content_focus: ReducerEvidenceList
-    primary_games: ReducerEvidenceList
-    genres: ReducerEvidenceList
-    formats: ReducerEvidenceList
-    format_tendencies: ReducerEvidenceText
-    representative_video_context: ReducerEvidenceList
+    content_focus: BatchEvidenceList
+    primary_games: BatchEvidenceList
+    genres: BatchEvidenceList
+    formats: BatchEvidenceList
+    format_tendencies: BatchEvidenceText
+    representative_video_context: BatchEvidenceList
 
 
 class CreatorBatchPresentation(StrictAIModel):
-    style_and_pacing: ReducerEvidenceText
-    production_signals: ReducerEvidenceText
+    style_and_pacing: BatchEvidenceText
+    production_signals: BatchEvidenceText
 
 
 class CreatorBatchPerformanceAudience(StrictAIModel):
-    recent_performance: ReducerEvidenceText
-    engagement: ReducerEvidenceText
-    publishing_cadence: ReducerEvidenceText
-    audience_signals: ReducerEvidenceList
+    recent_performance: BatchEvidenceText
+    engagement: BatchEvidenceText
+    publishing_cadence: BatchEvidenceText
+    audience_signals: BatchEvidenceList
 
 
 class CreatorBatchCommercialSafety(StrictAIModel):
-    sponsorship_signals: ReducerEvidenceList
-    brand_safety_signals: ReducerEvidenceList
-    collaboration_risks: ReducerEvidenceList
+    sponsorship_signals: BatchEvidenceList
+    brand_safety_signals: BatchEvidenceList
+    collaboration_risks: BatchEvidenceList
 
 
 class CreatorVideoBatchDigest(StageOutput):

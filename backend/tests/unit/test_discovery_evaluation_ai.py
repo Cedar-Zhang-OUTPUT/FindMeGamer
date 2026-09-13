@@ -70,6 +70,54 @@ def _brief(candidate, *, confidence="supported", summary="Strong tactical topic 
     }
 
 
+def test_deep_semantic_failure_has_call_and_step_context_without_narrative(caplog):
+    import logging
+    from app.core.analysis_diagnostics import diagnostic_context
+
+    logging.getLogger("app.core.analysis_diagnostics").disabled = False
+    caplog.set_level(logging.INFO, logger="app.core.analysis_diagnostics")
+    candidate = _candidate()
+    brief = _brief(candidate)
+    brief["limitations"] = [
+        "No verified viewing evidence is available. PRIVATE-CONTENT"
+    ]
+    ai, requests = _gateway([brief])
+    run, step, search = [str(uuid4()) for _ in range(3)]
+    with diagnostic_context(
+        evaluation_run_id=run,
+        step_id=step,
+        search_id=search,
+        candidate_id=candidate["candidate_id"],
+    ):
+        with pytest.raises(InvalidModelOutput, match="evaluation_narrative_invalid"):
+            ai.deep({}, candidate)
+    events = [
+        json.loads(r.getMessage())
+        for r in caplog.records
+        if r.name == "app.core.analysis_diagnostics"
+    ]
+    failure = next(e for e in events if e["event"] == "evaluation_business_rejected")
+    call = next(e for e in events if e["event"] == "model_call_finished")
+    assert failure["call_id"] == call["call_id"]
+    assert failure["evaluation_run_id"] == run and failure["step_id"] == step
+    assert (
+        failure["candidate_id"] == candidate["candidate_id"]
+        and failure["search_id"] == search
+    )
+    assert failure["reason"] == "evaluation_narrative_invalid"
+    assert failure["rule"] == "viewing_term" and failure["field"] == "limitations"
+    assert call["status"] == "succeeded"
+    assert "PRIVATE-CONTENT" not in caplog.text
+
+
+def test_legitimate_limited_evidence_statement_remains_valid():
+    candidate = _candidate(evidence=False)
+    brief = _brief(candidate, confidence="limited")
+    brief["limitations"] = ["No verified content observations are available."]
+    ai, _ = _gateway([brief])
+    assert ai.deep({}, candidate).confidence == "limited"
+
+
 def test_successful_three_stage_flow_uses_bounded_models_and_prompts():
     candidate = _candidate()
     brief = _brief(candidate)

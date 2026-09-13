@@ -13,6 +13,7 @@ import idna
 from pydantic import BaseModel, ValidationError
 
 from app.analysis.contracts import Message
+from app.analysis.evidence_binding import normalize_evidence_json
 from app.core.config import validate_external_base_url
 from app.core.analysis_diagnostics import (
     model_call,
@@ -248,7 +249,7 @@ class DeepSeekGateway:
             content = self._request(model, messages, max_tokens=budget)
             response_content["content"] = content
             try:
-                return schema.model_validate_json(content)
+                return schema.model_validate_json(normalize_evidence_json(content))
             except (ValidationError, ValueError) as error:
                 safe = _safe_validation_errors(schema_payload, error)
                 span["category"] = (
@@ -649,7 +650,18 @@ def _repair_messages(
         separators=(",", ":"),
         allow_nan=False,
     )
-    context = invalid_content[:MAX_REPAIR_CONTEXT_CHARACTERS]
+    creator_stage = schema_payload["title"] in {
+        "CreatorVideoBatchDigest",
+        "CreatorContentFormatReduction",
+        "CreatorPresentationReduction",
+        "CreatorPerformanceAudienceReduction",
+        "CreatorCommercialSafetyReduction",
+        "CreatorBriefSynthesis",
+    }
+    limit = 32_000 if creator_stage else MAX_REPAIR_CONTEXT_CHARACTERS
+    context = invalid_content if len(invalid_content.encode("utf-8")) <= limit else None
+    if not creator_stage:
+        context = invalid_content[:MAX_REPAIR_CONTEXT_CHARACTERS]
     safe_errors_json = json.dumps(_safe_validation_errors(schema_payload, error))
     instruction = (
         "Repair the previous assistant output. Return exactly one JSON value that "
@@ -667,6 +679,9 @@ def _repair_messages(
             "as spaces; do not copy unsafe punctuation from a supplied title into terms. "
             "Keep terms unique and emit exactly one query for each requested platform."
         )
+    if context is None:
+        instruction += "\nThe prior output exceeds the bounded repair context and is omitted entirely. Regenerate the complete JSON from the original supplied inputs; do not continue a partial JSON fragment."
+        return [{"role": "user", "content": instruction}]
     return [
         {"role": "assistant", "content": context},
         {"role": "user", "content": instruction},

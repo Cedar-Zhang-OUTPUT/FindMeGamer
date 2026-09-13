@@ -19,11 +19,11 @@ from app.schemas.ai_creator_map_reduce import (
 )
 from app.schemas.ai_game import EvidenceCatalog, EvidenceCatalogEntry, StrictAIModel
 
-CREATOR_VIDEO_BATCH_PROMPT_VERSION = "creator-video-batch-v2"
-CREATOR_CONTENT_FORMAT_PROMPT_VERSION = "creator-content-format-v3"
-CREATOR_PRESENTATION_PROMPT_VERSION = "creator-presentation-v2"
-CREATOR_PERFORMANCE_AUDIENCE_PROMPT_VERSION = "creator-performance-audience-v2"
-CREATOR_COMMERCIAL_SAFETY_PROMPT_VERSION = "creator-commercial-safety-v2"
+CREATOR_VIDEO_BATCH_PROMPT_VERSION = "creator-video-batch-v3"
+CREATOR_CONTENT_FORMAT_PROMPT_VERSION = "creator-content-format-v4"
+CREATOR_PRESENTATION_PROMPT_VERSION = "creator-presentation-v3"
+CREATOR_PERFORMANCE_AUDIENCE_PROMPT_VERSION = "creator-performance-audience-v3"
+CREATOR_COMMERCIAL_SAFETY_PROMPT_VERSION = "creator-commercial-safety-v3"
 CREATOR_BRIEF_PROMPT_VERSION = "creator-brief-v2"
 
 CREATOR_VIDEO_BATCH_SIZE = 10
@@ -38,6 +38,7 @@ Every available reducer claim must cite only an exact reference from the supplie
 
 _MAP_REDUCE_LIST_RULES = """Every values array and every evidence array must contain at most 3 items. Select the strongest, most representative items within each field's schema limits.
 Do not concatenate every item from all batches into the output. Summarize and prioritize instead; never exceed maxItems to preserve all examples."""
+_BATCH_LIST_RULES = """For this ten-video map, values arrays may contain up to 20 distinct supported items and evidence arrays up to 8 exact source references. Keep observations concise and avoid duplicating evidence; these are ceilings, not quotas. Do not drop genuinely relevant supported games or genres merely to meet a three-item summary preference. Later reducers select the strongest summary items. Never invent examples or exceed the JSON schema bounds."""
 
 _CHANNEL_FIELDS = (
     "channel_id",
@@ -87,7 +88,7 @@ def build_creator_video_batch_bundle(
     return build_prompt_bundle(
         version=CREATOR_VIDEO_BATCH_PROMPT_VERSION,
         stage_rules=(
-            f"{_MAP_REDUCE_RULES}\n{_MAP_REDUCE_LIST_RULES}\n"
+            f"{_MAP_REDUCE_RULES}\n{_BATCH_LIST_RULES}\n"
             "Analyze this one ordered batch of zero to ten "
             "videos. Produce compact signals for all four groups. Cite a specific "
             "video reference for each video-derived claim, and use explicit unavailable "
@@ -164,7 +165,7 @@ def build_creator_content_format_bundle(
 
 def build_creator_content_format_binding_repair(
     messages: list[Message],
-    output: CreatorContentFormatReduction,
+    output: StrictAIModel,
     *,
     reason: str,
 ) -> list[Message]:
@@ -186,6 +187,8 @@ def build_creator_content_format_binding_repair(
                 "supporting supplied batch field and use that field's exact "
                 "citation_targets triplet: source_type=intermediate_output, "
                 "kind=ai_inference, and the reference present in evidence_catalog. "
+                "Visual and commercial reducer citations also refer to intermediate "
+                "claims, not direct visual_asset observations or source_fact claims. "
                 "Nested video/channel references and paths invented from output "
                 "field names are not valid. If no supplied target supports an "
                 "observation, do not invent a citation; retain the unresolved "
@@ -372,13 +375,26 @@ def _reducer_bundle(
     if extra_payload:
         serialized.update(extra_payload)
     serialized["evidence_catalog"] = catalog.model_dump(mode="json")
+    serialized["citation_targets"] = [
+        {
+            "reference": entry.reference,
+            "source_type": entry.source_type,
+            "kind": "ai_inference",
+        }
+        for entry in catalog.entries
+    ]
     return build_prompt_bundle(
         version=version,
         stage_rules=(
             f"{_MAP_REDUCE_RULES}\n{_MAP_REDUCE_LIST_RULES}\n{rules}\n"
             "The batch digests below were "
             "schema-validated. Cite their intermediate references rather than original "
-            "video IDs."
+            "video IDs. Copy the exact current citation_targets triplet for every "
+            "output evidence item: kind=ai_inference, source_type=intermediate_output. "
+            "This also applies to creator_visual references: the current stage reasons "
+            "from validated visual analysis, it does not directly observe an image. "
+            "Nested source_fact/visual_observation citations describe prior provenance "
+            "only and must not be copied as the current citation identity."
         ),
         label=label,
         payload=serialized,
