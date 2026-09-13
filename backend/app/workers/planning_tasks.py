@@ -25,13 +25,20 @@ from app.workers.celery_app import celery_app
 
 LEASE_SECONDS = 300
 logger = logging.getLogger(__name__)
-_SAFE_FAILURE_REASONS = frozenset({
-    "planning_platform_invalid", "deepseek_model_output_invalid",
-    "deepseek_response_invalid", "deepseek_response_too_large",
-    "deepseek_unavailable", "deepseek_request_rejected",
-    "deepseek_configuration_invalid", "deepseek_input_invalid",
-    "game_context_required", "plan_platforms_invalid",
-})
+_SAFE_FAILURE_REASONS = frozenset(
+    {
+        "planning_platform_invalid",
+        "deepseek_model_output_invalid",
+        "deepseek_response_invalid",
+        "deepseek_response_too_large",
+        "deepseek_unavailable",
+        "deepseek_request_rejected",
+        "deepseek_configuration_invalid",
+        "deepseek_input_invalid",
+        "game_context_required",
+        "plan_platforms_invalid",
+    }
+)
 
 
 def _log_failure(plan_id, error, public_code, attempt):
@@ -40,10 +47,18 @@ def _log_failure(plan_id, error, public_code, attempt):
         reason = "planning_configuration_missing"
     elif not isinstance(reason, str) or reason not in _SAFE_FAILURE_REASONS:
         reason = "unclassified"
-    logger.warning("%s", json.dumps({
-        "event": "discovery_planning_failed", "plan_id": str(plan_id),
-        "attempt": attempt, "public_code": public_code, "reason": reason,
-    }))
+    logger.warning(
+        "%s",
+        json.dumps(
+            {
+                "event": "discovery_planning_failed",
+                "plan_id": str(plan_id),
+                "attempt": attempt,
+                "public_code": public_code,
+                "reason": reason,
+            }
+        ),
+    )
 
 
 class PlanningConfigurationMissing(Exception):
@@ -126,7 +141,7 @@ def run_discovery_plan(
     plan_generator=None,
     dispatch_discovery=None,
 ):
-    from app.discovery.planning import provider_queries
+    from app.discovery.planning import provider_query_directions
 
     plan_id = UUID(str(plan_id))
     dispatch_discovery = dispatch_discovery or _dispatch
@@ -164,7 +179,10 @@ def run_discovery_plan(
             )
         else:
             output = plan_generator(snapshot, conditions, model)
-        native_queries = provider_queries(output)
+        directions = provider_query_directions(
+            output, (snapshot.get("game") or {}).get("name", "")
+        )
+        native_queries = {platform: terms[0] for platform, terms in directions.items()}
         if set(native_queries) != set(conditions["platforms"]):
             raise InvalidModelOutput("planning_platform_invalid")
         providers = []
@@ -183,7 +201,7 @@ def run_discovery_plan(
                     "platform": platform,
                     "query": native_queries[platform],
                     "page_size": page_size,
-                    "max_requests": 2 if platform == "youtube" else 1,
+                    "max_requests": 3 if platform == "youtube" else 1,
                 }
             )
         options = {
@@ -194,6 +212,7 @@ def run_discovery_plan(
         query_conditions = QueryCreate(providers=providers, **options).model_dump(
             mode="json"
         )
+        query_conditions["query_directions"] = directions
     except Exception as error:
         code, retryable = _error_info(error)
         _log_failure(plan_id, error, code, attempt)

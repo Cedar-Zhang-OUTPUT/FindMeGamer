@@ -109,7 +109,7 @@ def test_game_plan_model_query_provider_library_e2e_and_duplicates(
     assert len(calls) == 1
     assert len(set(batches)) == 1
     query = auth_client.get(f"/api/v2/discovery/queries/{plan['query_id']}").json()
-    assert query["conditions"]["providers"][0]["query"] == '"Minecraft" -is:retweet'
+    assert query["conditions"]["providers"][0]["query"] == "Minecraft -is:retweet"
     assert query["conditions"]["total_request_budget"] == 1
     assert query["source_snapshot"]["discovery_plan_id"] == plan_id
     provider_calls = []

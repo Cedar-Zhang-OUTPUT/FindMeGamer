@@ -222,6 +222,7 @@ class XDiscoveryGateway:
                 source_url=f"https://x.com/i/web/status/{content_id}",
                 text=_text(item.get("text")),
                 language=_text(item.get("lang")),
+                language_source="tweet.lang" if _text(item.get("lang")) else None,
                 published_at=_timestamp(item.get("created_at")),
                 public_metrics=public_metrics,
                 collected_at=now,

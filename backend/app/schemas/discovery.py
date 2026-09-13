@@ -24,7 +24,7 @@ class DiscoveryRequest(BaseModel):
     region_hint: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
     language_hint: str | None = Field(default=None, pattern=r"^[a-zA-Z-]{2,12}$")
     cursor: DiscoveryCursor | None = None
-    max_requests: int = Field(default=2, ge=0, le=2)
+    max_requests: int = Field(default=2, ge=0, le=3)
 
     def fingerprint(self) -> str:
         value = self.model_dump(exclude={"cursor", "max_requests"})
@@ -71,6 +71,9 @@ class DiscoveredContent(BaseModel):
     text: str | None = None
     published_at: datetime | None = None
     language: str | None = None
+    language_source: (
+        Literal["defaultAudioLanguage", "defaultLanguage", "tweet.lang"] | None
+    ) = None
     public_metrics: dict[str, int] = Field(default_factory=dict)
     collected_at: datetime
     evidence_status: Literal["unverified"] = "unverified"

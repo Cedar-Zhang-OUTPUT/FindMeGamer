@@ -8,6 +8,92 @@ from app.schemas.discovery import DiscoveryRequest
 CHANNEL = "UCabcdefghijklmnopqrstuv"
 
 
+def test_language_is_taken_from_official_video_metadata_not_guessed_from_title():
+    calls = []
+
+    def handler(req):
+        calls.append(req.url.path.rsplit("/", 1)[-1])
+        if calls[-1] == "search":
+            return httpx.Response(200, json={"items": [video(), video("second12345")]})
+        if calls[-1] == "channels":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": CHANNEL,
+                            "snippet": {"country": "US"},
+                            "statistics": {"subscriberCount": "1000"},
+                        }
+                    ]
+                },
+            )
+        assert calls[-1] == "videos"
+        assert req.url.params["part"] == "snippet"
+        return httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "id": "video123456",
+                        "snippet": {
+                            "defaultAudioLanguage": "en-US",
+                            "defaultLanguage": "ja",
+                        },
+                    },
+                    {"id": "second12345", "snippet": {}},
+                ]
+            },
+        )
+
+    result = gateway(handler).discover(
+        DiscoveryRequest(platform="youtube", query="horror gameplay", max_requests=3)
+    )
+    assert calls == ["search", "channels", "videos"]
+    assert result.requests_used == 3
+    assert [c.language for c in result.contents] == ["en-US", None]
+    assert [c.language_source for c in result.contents] == [
+        "defaultAudioLanguage",
+        None,
+    ]
+
+
+@pytest.mark.parametrize("cap", [2, 3])
+def test_language_metadata_failure_or_insufficient_cap_never_guesses(cap):
+    seen = []
+
+    def handler(req):
+        path = req.url.path.rsplit("/", 1)[-1]
+        seen.append(path)
+        if path == "search":
+            return httpx.Response(200, json={"items": [video()]})
+        if path == "channels":
+            return httpx.Response(
+                200,
+                json={
+                    "items": [
+                        {
+                            "id": CHANNEL,
+                            "snippet": {"country": "US", "defaultLanguage": "en"},
+                            "statistics": {},
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(429)
+
+    result = gateway(handler).discover(
+        DiscoveryRequest(
+            platform="youtube", query="English horror gameplay", max_requests=cap
+        )
+    )
+    assert len(seen) == result.requests_used == cap
+    assert result.contents[0].language is None
+    assert result.contents[0].language_source is None
+    if cap == 3:
+        assert result.issues[0].code == "rate_limited"
+
+
 @pytest.mark.parametrize("status", [400, 422])
 def test_invalid_query_or_cursor_does_not_claim_service_unavailable(status):
     result = gateway(lambda req: httpx.Response(status)).discover(

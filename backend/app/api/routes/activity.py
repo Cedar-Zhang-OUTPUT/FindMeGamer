@@ -108,7 +108,11 @@ def _query(session, item):
         .order_by(DiscoveryBatch.ordinal)
     ).all()
     sources = {
-        platform: {key: value for key, value in state.items() if key != "cursor"}
+        platform: {
+            key: value
+            for key, value in state.items()
+            if key not in {"cursor", "directions", "next_direction"}
+        }
         for platform, state in (item.provider_states or {}).items()
     }
     for state in sources.values():
@@ -142,7 +146,9 @@ def _query(session, item):
     return {
         "id": item.id,
         "activity_id": item.activity_id,
-        "conditions": item.conditions,
+        "conditions": {
+            k: v for k, v in item.conditions.items() if k != "query_directions"
+        },
         "source_snapshot": item.source_snapshot,
         "status": "outcome_unknown" if requires_acknowledgement else item.status,
         "requires_acknowledgement": requires_acknowledgement,

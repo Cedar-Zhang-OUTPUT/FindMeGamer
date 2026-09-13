@@ -182,6 +182,7 @@ def import_discovered_account(
             ),
             "collected_at": item.collected_at.isoformat(),
             "language": item.language,
+            "language_source": item.language_source,
             "text": item.text,
         }
         source.update({k: v for k, v in updates.items() if v is not None and v != ""})

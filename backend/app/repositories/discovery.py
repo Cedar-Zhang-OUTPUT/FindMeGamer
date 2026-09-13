@@ -91,6 +91,9 @@ def start_batch(session, query, acknowledge_unknown=False):
         ):
             attempt.status = "acknowledged_unknown"
             attempt.lease_token = uuid4()
+    from app.discovery.directions import upgrade_legacy_plan
+
+    upgrade_legacy_plan(session, query)
     limits = query.conditions
     if query.result_count >= limits.get("result_limit", 600):
         raise DiscoveryConflict("The query result limit has been reached.")

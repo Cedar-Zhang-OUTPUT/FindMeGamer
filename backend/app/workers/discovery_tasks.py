@@ -97,7 +97,22 @@ def reserve(session, batch_id):
         return None
     states = dict(query.provider_states)
     request = None
-    for provider in limits["providers"]:
+    providers = limits["providers"]
+    if limits.get("query_directions"):
+        # Rotate platforms as well as their directions: a busy YouTube cursor must
+        # not spend every batch before X receives its first page.
+        previous_platform = session.scalar(
+            select(DiscoveryAttempt.platform)
+            .join(DiscoveryBatch)
+            .where(DiscoveryBatch.query_id == query.id)
+            .order_by(DiscoveryBatch.ordinal.desc(), DiscoveryAttempt.sequence.desc())
+            .limit(1)
+        )
+        platforms = [p["platform"] for p in providers]
+        if previous_platform in platforms:
+            offset = platforms.index(previous_platform) + 1
+            providers = providers[offset:] + providers[:offset]
+    for provider in providers:
         platform = provider["platform"]
         state = dict(states.get(platform, {}))
         state.pop("blocked_reason", None)
@@ -139,6 +154,14 @@ def reserve(session, batch_id):
                 continue
         raw = dict(provider)
         raw["cursor"] = state.get("cursor")
+        if limits.get("query_directions", {}).get(platform):
+            from app.discovery.directions import select_direction
+
+            direction = select_direction(limits, platform, state)
+            if direction is None:
+                states[platform] = {**state, "status": "exhausted"}
+                continue
+            raw["query"], raw["cursor"] = direction
         request = DiscoveryRequest.model_validate(raw)
         break
     query.provider_states = states
@@ -171,7 +194,9 @@ def reserve(session, batch_id):
             reason = "providers_finished"
         finish(query, batch, reason)
         return None
-    cost = 2 if request.platform == "youtube" else 1
+    cost = (
+        (3 if request.max_requests >= 3 else 2) if request.platform == "youtube" else 1
+    )
     scan = request.page_size
     if request.max_requests < cost:
         states[request.platform] = {
@@ -258,6 +283,8 @@ def apply_outcome(session, attempt_id, token, page, failure):
     from app.discovery.library import import_discovered_account, evaluate_candidate
     from app.discovery.library_candidates import add_candidate
 
+    filter_counts = {}
+    added = eligible_count = 0
     for account in page.accounts:
         contents = [
             content
@@ -272,12 +299,20 @@ def apply_outcome(session, attempt_id, token, page, failure):
             session, creator, account, contents, query.conditions.get("filters", {})
         )
         if not eligible:
+            for reason in notes.get("failed_filters", []):
+                filter_counts[reason] = filter_counts.get(reason, 0) + 1
             continue
-        add_candidate(session, query, creator, account, notes, "realtime")
+        eligible_count += 1
+        added += int(add_candidate(session, query, creator, account, notes, "realtime"))
     attempt.status = "applied"
     attempt.outcome = page.model_dump(
         mode="json", exclude={"accounts", "contents", "next_cursor"}
-    )
+    ) | {
+        "accounts_received": len(page.accounts),
+        "eligible_count": eligible_count,
+        "added_count": added,
+        "failed_filters": filter_counts,
+    }
     state_status = (
         "more"
         if page.status == "more" and page.next_cursor
@@ -295,6 +330,15 @@ def apply_outcome(session, attempt_id, token, page, failure):
         "provider_items_received": page.provider_items_received,
         "issues": [issue.model_dump(mode="json") for issue in page.issues],
     }
+    from app.discovery.directions import record_direction
+
+    states[attempt.platform] = record_direction(
+        query.conditions,
+        attempt.platform,
+        query.provider_states.get(attempt.platform, {}),
+        states[attempt.platform],
+        attempt.input,
+    )
     query.provider_states = states
     if query.stop_requested:
         finish(query, batch, "stopped")

@@ -70,8 +70,8 @@ def test_generate_plan_uses_real_gateway_and_compiles_provider_queries() -> None
     assert requests[0]["model"] == "deepseek-chat"
     assert requests[0]["max_tokens"] == 2048
     assert provider_queries(output) == {
-        "youtube": '"Café Quest" "gameplay"',
-        "x": '"Café Quest" "creator reactions" -is:retweet',
+        "youtube": "Café Quest",
+        "x": "Café Quest -is:retweet",
     }
 
 
@@ -375,10 +375,17 @@ def test_keyword_repair_explains_unsafe_title_punctuation_without_weakening_vali
     ],
 )
 def test_planning_failure_log_keeps_allowlisted_cause_without_raw_exception(
-    code, expected, caplog
+    code, expected, caplog, monkeypatch
 ):
     from uuid import UUID
     from app.workers.planning_tasks import _log_failure
+    import logging
+
+    # Migration tests call logging.fileConfig, which disables preexisting loggers.
+    # Isolate this logging assertion from those preceding test-side effects.
+    monkeypatch.setattr(
+        logging.getLogger("app.workers.planning_tasks"), "disabled", False
+    )
 
     _log_failure(
         UUID("00000000-0000-0000-0000-000000000001"),

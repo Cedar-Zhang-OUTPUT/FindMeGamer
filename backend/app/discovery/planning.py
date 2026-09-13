@@ -43,7 +43,14 @@ In query terms only, rewrite title punctuation as spaces: for example a supplied
 title 'Example: Within' becomes the keyword phrase 'Example Within'. Never include
 colons, ampersands, slashes, underscores, quote delimiters or other punctuation in
 terms. Preserve the original game title in narrative text if needed. Return only
-the requested platforms, each exactly once; do not add another platform."""
+the requested platforms, each exactly once; do not add another platform.
+Each term is an INDEPENDENT search direction, NOT a fragment to combine with the
+other terms. Prefer three short, broad, useful directions: a genre plus gameplay,
+a supplied reference work, and a related content category. Use two or three words
+per direction when possible. Discover creators covering related games, not only
+people already mentioning this unreleased title. The target game name is optional
+and should be last, used only when useful or when no other facts were supplied.
+Never invent reference works or facts. Do not repeat the target title in every term."""
 
 
 class PlanningInputError(ValueError):
@@ -134,12 +141,29 @@ def generate_plan(
 
 
 def provider_queries(output: SearchPlanOutput) -> dict[str, str]:
-    queries: dict[str, str] = {}
+    return {
+        platform: terms[0]
+        for platform, terms in provider_query_directions(output).items()
+    }
+
+
+def provider_query_directions(
+    output: SearchPlanOutput, game_name: str = ""
+) -> dict[str, list[str]]:
+    """Keep each safe phrase independent; never turn alternatives into exact AND."""
+    queries: dict[str, list[str]] = {}
+    normalized_name = " ".join(
+        "".join(c if c.isalnum() else " " for c in game_name).split()
+    ).casefold()
     for query in output.queries:
-        native = " ".join(f'"{term}"' for term in query.terms)
-        if query.platform == "x":
-            native += " -is:retweet"
-        queries[query.platform] = native
+        terms = sorted(
+            query.terms,
+            key=lambda term: bool(normalized_name)
+            and term.casefold() == normalized_name,
+        )
+        queries[query.platform] = [
+            term + (" -is:retweet" if query.platform == "x" else "") for term in terms
+        ]
     return queries
 
 

@@ -190,6 +190,24 @@ class YouTubeDiscoveryGateway:
             if any(not a.metadata_complete for a in accounts.values()):
                 _partial(page)
         page.accounts = list(accounts.values())
+        if contents and request.max_requests >= 3:
+            page.requests_used += 1
+            metadata, issue = self._get(
+                "videos", {"part": "snippet", "id": ",".join(contents)}
+            )
+            if issue:
+                page.issues.append(issue)
+            else:
+                for item in metadata["items"]:
+                    if not isinstance(item, dict) or item.get("id") not in contents:
+                        continue
+                    snippet = _dict(item.get("snippet"))
+                    for field in ("defaultAudioLanguage", "defaultLanguage"):
+                        language = _text(snippet.get(field))
+                        if language:
+                            contents[item["id"]].language = language
+                            contents[item["id"]].language_source = field
+                            break
         page.contents = list(contents.values())
         page.status = (
             "partial" if page.issues else "more" if page.next_cursor else "complete"
