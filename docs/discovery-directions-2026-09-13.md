@@ -56,6 +56,8 @@ The final changed-path regression run passed 122 tests, including the added
 platform-fairness case. A broader intermediate run had 216 passes, three skips and
 three logging-test failures caused by preceding migration tests disabling existing
 loggers; the logging assertion now explicitly isolates that test-side effect.
+The migration-then-planning/logging regression was rerun in that order and passed
+all 24 tests.
 
 The real-provider check used a dedicated local PostgreSQL database, no Worker,
 no AI calls and no SMTP. It reproduced the saved exhausted LIMINAL plan and used
@@ -94,4 +96,33 @@ Use a maintenance window after confirming no active work, retain a verified
 database backup and protected configuration hashes, deploy the precise reviewed
 revision, and check health and authenticated reads. Do not clear Library, rewrite
 historical outcomes, or automatically run the user's new batch during deployment.
-Deployment evidence will be recorded after release.
+### Completed deployment
+
+On September 13 at approximately 17:14 Shanghai time, the integrated revision
+`5ef1cee180ff48f22ff29a9e86db47647661a5bd` (backend change `7485fec`) was deployed to
+`44.233.174.193`. All six Compose services are healthy; the schema remains
+`20260913_0023`. Before/after full database table fingerprints and protected
+`app.env`/`master.key` hashes match. Idle checks were performed before the build
+and again before maintenance; no running work was interrupted.
+
+Backup:
+`s3://zhangyue-data-493392056671-us-west-2/backups/20260913T091358Z-5ef1cee180ff-pre-migration.dump`
+
+The dump and its SHA were downloaded back and verified; `pg_restore --list`
+succeeded. This is a checksum/catalog verification, not a full restore exercise.
+The `pre-migration` filename is the existing backup convention, not an indication
+that a schema migration occurred. Root-only server evidence is in
+`/var/backups/find-me-gamer/20260913-discovery-directions`; previous service images
+are retained as `rollback-14d0a6c-discovery` tags.
+
+Post-deployment authenticated public HTTPS reads passed for health, the Activity,
+Game detail, Discovery Query, both historical Search records, and Library lists.
+The original one Game, zero Creators and two completed-zero searches were preserved;
+no hidden retry or model/email call was made. Existing query cap two remains stored
+until an explicit append upgrades that saved plan. The ten validation candidates
+remain only in the isolated test database.
+
+The coordinated internal.12 app and mounted DMG both passed actual IPC reads of
+the GET-only isolated API with old cap two, new cap three and actual usage four
+unchanged. For users: install internal.12, reopen the original LIMINAL automatic
+search and choose **Find more creators**. No reanalysis or Library reset is needed.
