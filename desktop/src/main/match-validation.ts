@@ -113,7 +113,7 @@ export function decodeCreatorSearchPerson(v:unknown):CreatorSearchPerson{return 
 
 const providerShape = record({ platform, query: string(512, 1) }, {
   search_mode: enumeration('video', 'channel'), region_hint: nullable(pattern(/^[A-Z]{2}$/, 2)),
-  language_hint: nullable(pattern(/^[a-zA-Z-]{2,12}$/, 12)), page_size: count(100, 1), max_requests: count(2), cursor: enumeration(null),
+  language_hint: nullable(pattern(/^[a-zA-Z-]{2,12}$/, 12)), page_size: count(100, 1), max_requests: count(3), cursor: enumeration(null),
 });
 const provider: Rule = (value, mode) => {
   const result = providerShape(value, mode) as DTO.DiscoveryRequest;

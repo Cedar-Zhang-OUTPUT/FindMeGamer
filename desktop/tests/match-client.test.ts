@@ -5,6 +5,18 @@ const key = 'match-operation-123';
 const activities = '/api/v2/activities', discovery = '/api/v2/discovery';
 
 describe('Match client v2 boundary', () => {
+  it.each([2, 3])('preserves provider max_requests=%s in query and embedded activity reads', async max_requests => {
+    const query = queryFixture(); query.conditions.providers[0].max_requests = max_requests;
+    const request = vi.fn().mockResolvedValueOnce(query).mockResolvedValueOnce({ ...activityDetailFixture(), queries: [query] });
+    const client = new MatchClient(request);
+    expect((await client.query(Q)).conditions.providers[0].max_requests).toBe(max_requests);
+    expect((await client.activity(A)).queries[0].conditions.providers[0].max_requests).toBe(max_requests);
+  });
+  it.each([4, 999, -1, 2.5, '3', null, true, NaN, Infinity])('rejects invalid provider max_requests=%j in both read paths', async max_requests => {
+    const query = queryFixture(); query.conditions.providers[0].max_requests = max_requests as never;
+    await expect(new MatchClient(vi.fn().mockResolvedValue(query)).query(Q)).rejects.toMatchObject({ code: 'invalid_response' });
+    await expect(new MatchClient(vi.fn().mockResolvedValue({ ...activityDetailFixture(), queries: [query] })).activity(A)).rejects.toMatchObject({ code: 'invalid_response' });
+  });
   it('accepts all four planning platforms without injecting source switches',async()=>{
     const request=vi.fn(async()=>({plan_id:P,status:'queued'})),platforms=['youtube','x','twitch','instagram'] as const;
     await new MatchClient(request).createPlan({activityId:A,idempotencyKey:key,data:{mode:'discover',platforms:[...platforms]}});
