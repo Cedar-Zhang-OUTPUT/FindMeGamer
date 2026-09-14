@@ -4,6 +4,35 @@ import Testing
 @testable import FindMeGamerCore
 
 @Suite(.serialized) struct DiscoverModelTests {
+  @MainActor @Test func staleBatchPollCannotEraseAcknowledgedBatchOrStopMatchPolling() async throws
+  {
+    let api = RecordingDiscoverAPI()
+    await api.enableBatchRace()
+    let model = DiscoverModel(api: api)
+    await model.open(id: api.record.id)
+    model.selectAll()
+    await model.submitAnalysis(mode: .analyzeAndMatch)
+    let polling = Task { await model.runPolling() }
+    defer { polling.cancel() }
+    for _ in 0..<500 {
+      if await api.batchReadSuspended { break }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    try #require(await api.batchReadSuspended)
+    await model.submitAnalysis(mode: .analyzeAndMatch)
+    let newest = try #require(model.batches.first?.id)
+    await api.releaseBatchRead()
+    // The old response resumes before the next three-second polling interval.
+    try await Task.sleep(for: .milliseconds(100))
+    #expect(model.batches.contains { $0.id == newest && $0.isActive })
+    for _ in 0..<500 {
+      if model.batches.contains(where: { $0.id == newest && $0.matchID != nil }) { break }
+      try await Task.sleep(for: .milliseconds(10))
+    }
+    #expect(model.batches.first(where: { $0.id == newest })?.matchID == api.completedMatchID)
+    polling.cancel()
+    await polling.value
+  }
   @MainActor @Test func openingCreatedMatchRetainsDiscoverContext() async throws {
     let coordinator = ClientCoordinator(
       api: DemoAPIService(), apiBaseURL: "http://127.0.0.1", appVersion: "test")
@@ -92,6 +121,16 @@ actor RecordingDiscoverAPI: DiscoverAPIService {
   var batchModes: [DiscoverAnalysisMode] = []
   var createKeys: [String] = []
   var readsFail = false
+  var batchRace = false
+  var batchReadSuspended = false
+  var batchReadGate: CheckedContinuation<Void, Never>?
+  var acknowledgedBatches: [DiscoverBatch] = []
+  nonisolated let completedMatchID = UUID()
+  func enableBatchRace() { batchRace = true }
+  func releaseBatchRead() {
+    batchReadGate?.resume()
+    batchReadGate = nil
+  }
   func failReads() { readsFail = true }
   func discoverCapabilities() async throws -> [DiscoverCapability] { [] }
   func retryDiscover(id: UUID) async throws -> DiscoverRecord { record }
@@ -118,12 +157,33 @@ actor RecordingDiscoverAPI: DiscoverAPIService {
     createKeys.append(idempotencyKey)
     return record
   }
-  func discoverBatches(id: UUID) async throws -> [DiscoverBatch] { [] }
+  func discoverBatches(id: UUID) async throws -> [DiscoverBatch] {
+    guard batchRace else { return [] }
+    let snapshot = acknowledgedBatches.map {
+      DiscoverBatch(
+        id: $0.id, discoverID: id, mode: $0.mode, status: "done", items: [],
+        matchID: completedMatchID, error: nil)
+    }
+    if acknowledgedBatches.count == 1 && !batchReadSuspended {
+      await withCheckedContinuation {
+        batchReadGate = $0
+        batchReadSuspended = true
+      }
+    }
+    return snapshot
+  }
   func createDiscoverBatch(
     id: UUID, candidateIDs: [UUID], mode: DiscoverAnalysisMode, idempotencyKey: String
   ) async throws -> DiscoverBatch {
     batchKeys.append(idempotencyKey)
     batchModes.append(mode)
+    if batchRace {
+      let batch = DiscoverBatch(
+        id: UUID(), discoverID: id, mode: mode, status: "running",
+        items: [], matchID: nil, error: nil)
+      acknowledgedBatches.append(batch)
+      return batch
+    }
     if batchKeys.count == 1 { throw URLError(.timedOut) }
     return .init(
       id: UUID(), discoverID: id, mode: mode, status: "done", items: [], matchID: nil, error: nil)

@@ -28,6 +28,7 @@ import Observation
   @ObservationIgnored private var records: [UUID: DiscoverRecord] = [:]
   @ObservationIgnored private var trackedBatchRecords: Set<UUID> = []
   @ObservationIgnored private var batchCache: [UUID: [DiscoverBatch]] = [:]
+  @ObservationIgnored private var batchSubmissionRevisions: [UUID: Int] = [:]
   @ObservationIgnored private var openGeneration = 0
 
   public init(
@@ -210,6 +211,7 @@ import Observation
       values.removeAll { $0.id == batch.id }
       values.insert(batch, at: 0)
       batchCache[intent.recordID] = values
+      batchSubmissionRevisions[intent.recordID, default: 0] += 1
       trackedBatchRecords.insert(intent.recordID)
       if self.record?.id == intent.recordID { batches = values }
     } catch is CancellationError {} catch {
@@ -238,9 +240,12 @@ import Observation
     }
   }
   private func refreshBatches(id: UUID) async {
+    let submissionRevision = batchSubmissionRevisions[id, default: 0]
     do {
       let values = try await api.discoverBatches(id: id)
       try Task.checkCancellation()
+      // A pre-submission snapshot must not erase an acknowledged batch or stop its polling.
+      guard submissionRevision == batchSubmissionRevisions[id, default: 0] else { return }
       batchCache[id] = values
       if values.contains(where: \.isActive) {
         trackedBatchRecords.insert(id)
