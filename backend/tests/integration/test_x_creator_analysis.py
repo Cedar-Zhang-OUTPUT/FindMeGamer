@@ -27,6 +27,87 @@ from tests.unit.analysis.test_ai_schemas import (
 from app.schemas.ai_creator import CreatorSynthesis
 
 
+@pytest.mark.parametrize("host", ["x.com", "twitter.com"])
+@pytest.mark.parametrize(
+    ("provider_status", "provider_body", "code", "status", "retryable"),
+    [
+        (429, {}, "x_rate_limited", 503, True),
+        (503, {}, "x_unavailable", 503, True),
+        (None, {}, "x_configuration_invalid", 503, False),
+        (402, {}, "x_payment_required", 502, False),
+        (403, {"reason": "usage-capped"}, "x_spend_cap_reached", 502, False),
+        (403, {}, "x_request_rejected", 502, False),
+    ],
+)
+def test_x_alias_http_failures_preserve_provider_code_and_retryability(
+    session,
+    workspace_access_key,
+    monkeypatch,
+    host,
+    provider_status,
+    provider_body,
+    code,
+    status,
+    retryable,
+):
+    import httpx
+    from contextlib import contextmanager
+    from app.analysis.runtime import ProductionChannelResolver, ProductionSecretProvider
+    from app.core.config import get_settings
+    from app.core.crypto import SecretCipher
+    from app.db.models.settings import ServiceSecret
+    from app.integrations.x import XGateway
+    from tests.integration.test_analysis_job_creation import _client_with_session
+
+    cipher = SecretCipher(bytes(range(32)))
+    if provider_status is not None:
+        encrypted = cipher.encrypt("fixture-token")
+        session.add(
+            ServiceSecret(
+                service="x", ciphertext=encrypted.ciphertext, nonce=encrypted.nonce
+            )
+        )
+        session.flush()
+
+    @contextmanager
+    def secret_session():
+        yield session
+
+    def respond(request):
+        assert provider_status is not None, "missing configuration must not call X"
+        assert str(request.url) == "https://api.x.com/2/users/by/username/example"
+        assert request.headers["authorization"] == "Bearer fixture-token"
+        return httpx.Response(provider_status, json=provider_body)
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as provider_client:
+        monkeypatch.setattr(
+            "app.analysis.runtime.XGateway",
+            lambda **kwargs: XGateway(**kwargs, http_client=provider_client),
+        )
+        resolver = ProductionChannelResolver(
+            settings=get_settings(),
+            secret_provider=ProductionSecretProvider(
+                session_factory=secret_session, cipher_factory=lambda: cipher
+            ),
+        )
+        with _client_with_session(
+            session, workspace_access_key, channel_resolver=resolver
+        ) as client:
+            response = client.post(
+                "/api/v1/jobs/analysis",
+                headers={"Idempotency-Key": f"x-alias-{code}"},
+                json={"target_type": "creator", "url": f"https://{host}/Example"},
+            )
+    assert response.status_code == status, response.text
+    error = response.json()["error"]
+    assert error["code"] == code
+    assert error["retryable"] is retryable
+    assert "X account resolution" in error["message"]
+    assert "YouTube" not in error["message"]
+    assert "fixture-token" not in response.text
+    assert session.scalars(select(AnalysisJob)).all() == []
+
+
 def test_x_connection_secret_is_configurable_without_exposing_token(auth_client):
     response = auth_client.put(
         "/api/v1/settings/connections/x", json={"secret": "fixture-token"}

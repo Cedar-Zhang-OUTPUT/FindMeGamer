@@ -42,7 +42,7 @@ from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import AnalysisJob
 from app.db.models.jobs import acquire_job_change_lock
 from app.db.models.match import MatchStatus, MatchTask
-from app.integrations.errors import PermanentIntegrationError
+from app.integrations.errors import PermanentIntegrationError, TransientIntegrationError
 from app.repositories.jobs import (
     JobCreationResult,
     JobsRepository,
@@ -724,7 +724,26 @@ def create_router(
                 message="YouTube Handle resolution is temporarily unavailable.",
                 retryable=True,
             ) from None
-        except PermanentIntegrationError as error:
+        except (PermanentIntegrationError, TransientIntegrationError) as error:
+            failure = public_job_failure(error.code)
+            if error.code.startswith("x_") and failure is not None:
+                configuration_missing = error.code == "x_configuration_invalid"
+                raise APIError(
+                    status_code=(
+                        503 if failure.retryable or configuration_missing else 502
+                    ),
+                    code=error.code,
+                    message=(
+                        "X account resolution is temporarily unavailable."
+                        if failure.retryable
+                        else (
+                            "X account resolution configuration is unavailable."
+                            if configuration_missing
+                            else "X account resolution could not be completed."
+                        )
+                    ),
+                    retryable=failure.retryable,
+                ) from None
             if error.code in {
                 "youtube_channel_not_found",
                 "youtube_target_invalid",

@@ -280,6 +280,8 @@ class ProductionChannelResolver:
                 )
                 return youtube.resolve_channel(target)
         except TransientIntegrationError:
+            if platform == "x":
+                raise
             raise ChannelResolutionUnavailable() from None
         finally:
             secrets_by_service.clear()
