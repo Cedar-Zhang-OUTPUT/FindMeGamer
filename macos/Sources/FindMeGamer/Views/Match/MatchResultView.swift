@@ -8,7 +8,7 @@ enum MatchOtherGroupPresentation: Equatable {
 }
 
 struct MatchResultPresentation: Equatable {
-  static let pageSize = 20
+  static let pageSize = 4
   let recommended: [MatchCandidatePresentation]
   let other: [MatchCandidatePresentation]
   let page: Int
