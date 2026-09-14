@@ -264,6 +264,8 @@ def test_creator_card_and_detail_include_ordered_active_contacts_and_selected_co
         "id": str(creator.id),
         "name": "Creator Card",
         "youtube_channel_id": "creator-card",
+        "platform": "youtube",
+        "platform_account_id": "creator-card",
         "canonical_url": "https://youtube.com/channel/creator-card",
         "favorite": True,
         "current_facts": {"channel_name": "Creator Card"},

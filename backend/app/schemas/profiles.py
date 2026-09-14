@@ -359,7 +359,9 @@ class CreatorProfileCard(PublicProfileResponse):
     type: Literal["creator"] = "creator"
     id: UUID
     name: str
-    youtube_channel_id: str
+    platform: Literal["youtube", "x", "twitch", "instagram"]
+    platform_account_id: str
+    youtube_channel_id: str | None
     canonical_url: str
     favorite: bool
     current_facts: PublicJSONObject

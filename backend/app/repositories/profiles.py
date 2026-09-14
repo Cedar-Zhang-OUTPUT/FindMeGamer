@@ -159,6 +159,7 @@ class ProfilesRepository:
                 CreatorProfile.canonical_url.label("canonical_url"),
             ).where(
                 CreatorProfile.next_analysis_at.is_not(None),
+                CreatorProfile.platform == "youtube",
                 CreatorProfile.next_analysis_at <= now,
                 ~active_creator,
             ),
@@ -193,6 +194,7 @@ class ProfilesRepository:
             update(CreatorProfile)
             .where(
                 CreatorProfile.last_analyzed_at.is_not(None),
+                CreatorProfile.platform == "youtube",
                 CreatorProfile.last_analyzed_at < cutoff,
                 (
                     func.lower(

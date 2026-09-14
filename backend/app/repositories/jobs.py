@@ -2,10 +2,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, tuple_
+from sqlalchemy import case, select, tuple_
 from sqlalchemy.orm import Session, load_only
 
 from app.analysis.targets import CanonicalTarget, InvalidTarget, canonicalize_target
+from app.analysis.creator_identity import creator_job_identity
 from app.db.models.enums import JobMode, JobStatus, TargetType
 from app.db.models.idempotency import IdempotencyRecord
 from app.db.models.jobs import (
@@ -70,10 +71,11 @@ def require_valid_succeeded_job_result(
             )
             and _is_canonical_identity(
                 TargetType.CREATOR,
-                profile.youtube_channel_id,
+                creator_job_identity(profile.platform, profile.platform_account_id),
                 profile.canonical_url,
             )
-            and profile.youtube_channel_id == job.canonical_target_id
+            and creator_job_identity(profile.platform, profile.platform_account_id)
+            == job.canonical_target_id
             and profile.canonical_url == job.canonical_url
         )
     else:
@@ -220,6 +222,8 @@ class JobsRepository:
                     load_only(
                         CreatorProfile.id,
                         CreatorProfile.youtube_channel_id,
+                        CreatorProfile.platform,
+                        CreatorProfile.platform_account_id,
                         CreatorProfile.canonical_url,
                     )
                 )
@@ -261,7 +265,16 @@ class JobsRepository:
             else:
                 profile_id = self._session.scalar(
                     select(CreatorProfile.id).where(
-                        CreatorProfile.youtube_channel_id == target.canonical_id
+                        case(
+                            (
+                                CreatorProfile.platform == "youtube",
+                                CreatorProfile.platform_account_id,
+                            ),
+                            else_=CreatorProfile.platform
+                            + ":"
+                            + CreatorProfile.platform_account_id,
+                        )
+                        == target.canonical_id
                     )
                 )
             if profile_id is not None:

@@ -300,7 +300,7 @@ EXPECTED_CHECKS = {
 def test_match_and_outreach_revision_is_the_single_linear_head(alembic_config) -> None:
     script = ScriptDirectory.from_config(alembic_config)
 
-    assert script.get_heads() == ["20260914_native_0008"]
+    assert script.get_heads() == ["20260914_native_0009"]
     revision = script.get_revision("20260902_0005")
     assert revision is not None
     assert revision.down_revision == "20260902_0004"
@@ -1166,11 +1166,11 @@ def _insert_creator(connection: Connection, label: str) -> UUID:
         text(
             """
             INSERT INTO creator_profiles (
-                id, youtube_channel_id, canonical_url, sort_name,
+                id, youtube_channel_id, platform, platform_account_id, canonical_url, sort_name,
                 current_facts, analysis, brief, source_status,
                 model_metadata, prompt_metadata
             ) VALUES (
-                :id, :channel_id, :canonical_url, :sort_name,
+                :id, :channel_id, 'youtube', :channel_id, :canonical_url, :sort_name,
                 '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
                 '{}'::jsonb, '{}'::jsonb
             )

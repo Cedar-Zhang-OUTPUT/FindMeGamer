@@ -10,12 +10,15 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
+    event,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
+from app.analysis.creator_identity import creator_job_identity
 
 
 class ProfileFieldsMixin(TimestampMixin):
@@ -61,17 +64,43 @@ class GameProfile(ProfileFieldsMixin, Base):
 
 class CreatorProfile(ProfileFieldsMixin, Base):
     __tablename__ = "creator_profiles"
+    __table_args__ = (
+        UniqueConstraint(
+            "platform",
+            "platform_account_id",
+            name="uq_creator_profiles_platform_account",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(
         PGUUID(as_uuid=True), primary_key=True, default=uuid4
     )
-    youtube_channel_id: Mapped[str] = mapped_column(
-        String(128), nullable=False, unique=True
+    platform: Mapped[str] = mapped_column(String(16), nullable=False)
+    platform_account_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    youtube_channel_id: Mapped[str | None] = mapped_column(
+        String(128), nullable=True, unique=True
     )
     manual_notes: Mapped[str | None] = mapped_column(Text)
     contacts: Mapped[list["CreatorContact"]] = relationship(
         back_populates="creator", cascade="all, delete-orphan"
     )
+
+
+@event.listens_for(CreatorProfile, "before_insert")
+def normalize_creator_identity(mapper, connection, profile: CreatorProfile) -> None:
+    """Keep established YouTube producers compatible with generic identity."""
+    if profile.platform is None:
+        profile.platform = "youtube"
+    if profile.platform == "youtube":
+        if profile.platform_account_id is None:
+            profile.platform_account_id = profile.youtube_channel_id
+        if profile.youtube_channel_id is None:
+            profile.youtube_channel_id = profile.platform_account_id
+        if profile.youtube_channel_id != profile.platform_account_id:
+            raise ValueError("Conflicting creator identity")
+    elif profile.youtube_channel_id is not None:
+        raise ValueError("Non-YouTube creator cannot have a YouTube identity")
+    creator_job_identity(profile.platform, profile.platform_account_id)
 
 
 class CreatorContact(TimestampMixin, Base):

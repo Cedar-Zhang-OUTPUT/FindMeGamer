@@ -406,6 +406,8 @@ class MatchRepository:
             {
                 "id": str(creator.id),
                 "youtube_channel_id": creator.youtube_channel_id,
+                "platform": creator.platform,
+                "platform_account_id": creator.platform_account_id,
                 "canonical_url": creator.canonical_url,
                 "current_facts": MatchRepository._match_relevant_json(
                     creator.current_facts

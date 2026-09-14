@@ -499,13 +499,18 @@ class CreatorAnalysisService:
             analyzed_at = self._aware_now()
             profile = session.scalar(
                 select(CreatorProfile)
-                .where(CreatorProfile.youtube_channel_id == lease.channel_id)
+                .where(
+                    CreatorProfile.platform == "youtube",
+                    CreatorProfile.platform_account_id == lease.channel_id,
+                )
                 .with_for_update()
             )
             if profile is None:
                 profile = CreatorProfile(
                     id=uuid4(),
                     youtube_channel_id=lease.channel_id,
+                    platform="youtube",
+                    platform_account_id=lease.channel_id,
                     canonical_url=source.canonical_url,
                     sort_name=self._sort_name(source.title, lease.channel_id),
                 )

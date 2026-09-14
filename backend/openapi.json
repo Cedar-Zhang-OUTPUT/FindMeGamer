@@ -765,6 +765,20 @@
             ],
             "title": "Next Analysis At"
           },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_account_id": {
+            "title": "Platform Account Id",
+            "type": "string"
+          },
           "profile_revision": {
             "default": 0,
             "title": "Profile Revision",
@@ -780,13 +794,22 @@
             "type": "string"
           },
           "youtube_channel_id": {
-            "title": "Youtube Channel Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Youtube Channel Id"
           }
         },
         "required": [
           "id",
           "name",
+          "platform",
+          "platform_account_id",
           "youtube_channel_id",
           "canonical_url",
           "favorite",
@@ -890,6 +913,20 @@
             ],
             "title": "Next Analysis At"
           },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_account_id": {
+            "title": "Platform Account Id",
+            "type": "string"
+          },
           "profile_revision": {
             "default": 0,
             "title": "Profile Revision",
@@ -908,13 +945,22 @@
             "type": "string"
           },
           "youtube_channel_id": {
-            "title": "Youtube Channel Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Youtube Channel Id"
           }
         },
         "required": [
           "id",
           "name",
+          "platform",
+          "platform_account_id",
           "youtube_channel_id",
           "canonical_url",
           "favorite",

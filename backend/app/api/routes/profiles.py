@@ -244,6 +244,8 @@ def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
         profile_revision=profile.profile_revision,
         manual_overrides=profile.manual_overrides,
         youtube_channel_id=profile.youtube_channel_id,
+        platform=profile.platform,
+        platform_account_id=profile.platform_account_id,
         canonical_url=profile.canonical_url,
         favorite=profile.favorite,
         current_facts=public_json_object(current_facts),
