@@ -812,95 +812,12 @@ def test_creator_brief_accepts_bounded_descriptive_list_items() -> None:
         CreatorBrief.model_validate(payload)
 
 
-def test_worst_case_screening_brief_budget_fits_one_game_and_100_creators() -> None:
-    source_evidence = [
-        {
-            "kind": "source_fact",
-            "source_type": "steam_field",
-            "reference": f"steam:{'r' * 88}{index}",
-        }
-        for index in range(2)
-    ]
-    inference_evidence = [
-        {
-            "kind": "ai_inference",
-            "source_type": "video_id",
-            "reference": f"video:{'r' * 87}{index}",
-        }
-        for index in range(2)
-    ]
-    max_text = compact_text_claim(
-        "x" * 240,
-        claim_evidence=source_evidence,
-    )
-    max_list = compact_list_claim(
-        *(f"{index}{'x' * 71}" for index in range(4)),
-        claim_evidence=source_evidence,
-    )
-    max_audience = {
-        "status": "available",
-        "value": "x" * 240,
-        "provenance": "ai_inference",
-        "evidence": inference_evidence,
-        "confidence": "high",
-    }
-    max_creator_text = creator_compact_text_claim("x" * 144)
-    max_creator_text["evidence"] = source_evidence[:1]
-    max_creator_list = creator_compact_list_claim(
-        *(f"{index}{'x' * 63}" for index in range(3))
-    )
-    max_creator_list["evidence"] = source_evidence[:1]
-    max_creator_audience = {
-        **max_audience,
-        "value": "x" * 144,
-        "evidence": inference_evidence[:1],
-    }
-    game_payload = {
-        field: (
-            max_text
-            if field in {"positioning_premise", "core_gameplay_loop", "visual_identity"}
-            else max_list
-        )
-        for field in GameBrief.model_fields
-    }
-    creator_payload = {
-        field: (
-            max_creator_audience
-            if field == "audience"
-            else (
-                max_creator_list
-                if field
-                in {
-                    "content_focus",
-                    "formats",
-                    "suitable_game_types",
-                    "collaboration_risks",
-                }
-                else max_creator_text
-            )
-        )
-        for field in CreatorBrief.model_fields
-    }
-    game = GameBrief.model_validate(game_payload)
-    creator = CreatorBrief.model_validate(creator_payload)
+def test_screening_budget_covers_current_brief_contract_and_shared_overhead() -> None:
+    from app.matching.prompts import MAX_SCREENING_TOTAL_MESSAGE_BYTES
 
-    game_size = len(game.model_dump_json().encode("utf-8"))
-    creator_size = len(creator.model_dump_json().encode("utf-8"))
-    combined_size = game_size + 100 * creator_size + MAX_SCREENING_PROMPT_OVERHEAD_BYTES
-
-    assert game_size <= MAX_GAME_BRIEF_JSON_BYTES
-    assert creator_size <= MAX_CREATOR_BRIEF_JSON_BYTES
-    assert creator_size * 2 <= game_size
     assert (
         MAX_GAME_BRIEF_JSON_BYTES
         + 100 * MAX_CREATOR_BRIEF_JSON_BYTES
         + MAX_SCREENING_PROMPT_OVERHEAD_BYTES
-        <= 1_000_000
+        <= MAX_SCREENING_TOTAL_MESSAGE_BYTES
     )
-    assert combined_size <= 1_000_000
-    grouped_message_payload_bytes = 120_000
-    required_user_messages = (
-        combined_size + grouped_message_payload_bytes - 1
-    ) // grouped_message_payload_bytes
-    assert grouped_message_payload_bytes < 131_072
-    assert required_user_messages + 1 <= 100

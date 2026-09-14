@@ -8,7 +8,12 @@ from uuid import UUID
 from app.analysis.contracts import Message
 from app.analysis.prompts.common import MAX_PROMPT_BYTES, MAX_USER_MESSAGE_BYTES
 from app.schemas.ai_creator import CreatorBrief
-from app.schemas.ai_game import GameBrief
+from app.schemas.ai_game import (
+    GameBrief,
+    MAX_GAME_BRIEF_JSON_BYTES,
+    MAX_CREATOR_BRIEF_JSON_BYTES,
+    MAX_SCREENING_PROMPT_OVERHEAD_BYTES,
+)
 from app.schemas.ai_match import PairwiseMatchBrief
 
 
@@ -18,11 +23,17 @@ PAIRWISE_MATCH_PROMPT_VERSION = "pairwise-match-v2"
 RANKING_PROMPT_VERSION = "match-ranking-v2"
 MAX_MATCH_MESSAGES = 100
 # Bound the whole request, not just each message. UTF-8 bytes are a conservative
-# proxy rather than an exact tokenizer count. Against V4's 1M-token window this
-# leaves ample room for the schemas, one repair context, and up to 65,536 output
-# tokens. A 100-Creator library fits even at the 4,500-byte Brief contract limit;
-# larger libraries are accepted only when the complete input fits this budget.
+# proxy rather than an exact tokenizer count. Ranking retains its existing
+# allowance for schemas, repair context and up to 65,536 output tokens.
 MAX_MATCH_TOTAL_MESSAGE_BYTES = 512_000
+# Screening supports 100 complete 8 KB Creator Briefs and one 16 KB Game Brief,
+# with 100 KB shared allowance for framing, IDs and bounded manual sidecars.
+# Arbitrarily large overrides or libraries still fail the complete-request cap.
+MAX_SCREENING_TOTAL_MESSAGE_BYTES = (
+    MAX_GAME_BRIEF_JSON_BYTES
+    + 100 * MAX_CREATOR_BRIEF_JSON_BYTES
+    + MAX_SCREENING_PROMPT_OVERHEAD_BYTES
+)
 MATCH_CHUNK_BYTES = 120_000
 
 _MATCH_COMMON_RULES = """Return English only.
@@ -179,6 +190,7 @@ def build_screening_prompt(
             "creators": creators,
         },
         items_key="creators",
+        total_byte_budget=MAX_SCREENING_TOTAL_MESSAGE_BYTES,
     )
 
 
@@ -203,7 +215,7 @@ def build_empty_screening_recheck(messages: list[Message]) -> list[Message]:
     if (
         len(recheck) > MAX_MATCH_MESSAGES
         or sum(len(message.content.encode("utf-8")) for message in recheck)
-        > MAX_MATCH_TOTAL_MESSAGE_BYTES
+        > MAX_SCREENING_TOTAL_MESSAGE_BYTES
     ):
         raise ValueError("match screening recheck exceeds its total byte budget")
     return recheck
@@ -473,18 +485,21 @@ def _build_grouped_messages(
     stage_rules: str,
     payload: Mapping[str, object],
     items_key: str,
+    total_byte_budget: int | None = None,
 ) -> list[Message]:
     """One global model call, with whole records grouped into bounded messages."""
 
+    budget = (
+        MAX_MATCH_TOTAL_MESSAGE_BYTES
+        if total_byte_budget is None
+        else total_byte_budget
+    )
     encoded = _encoded_user_content(payload)
     system = Message(
         role="system",
         content=f"Prompt version: {version}\n{_MATCH_COMMON_RULES}\n{stage_rules}",
     )
-    if (
-        len(system.content.encode("utf-8")) + len(encoded.encode("utf-8"))
-        > MAX_MATCH_TOTAL_MESSAGE_BYTES
-    ):
+    if len(system.content.encode("utf-8")) + len(encoded.encode("utf-8")) > budget:
         raise ValueError("match prompt exceeds its total byte budget")
     if len(encoded.encode("utf-8")) <= MAX_USER_MESSAGE_BYTES:
         return _build_messages(
@@ -527,8 +542,7 @@ def _build_grouped_messages(
     ]
     if (
         len(messages) > MAX_MATCH_MESSAGES
-        or sum(len(message.content.encode("utf-8")) for message in messages)
-        > MAX_MATCH_TOTAL_MESSAGE_BYTES
+        or sum(len(message.content.encode("utf-8")) for message in messages) > budget
     ):
         raise ValueError("match prompt exceeds its total byte budget")
     return messages

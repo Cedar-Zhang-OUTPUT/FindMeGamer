@@ -21,7 +21,92 @@ from app.schemas.ai_match import (
     PairwiseMatchBrief,
     ScreeningOutput,
 )
-from tests.helpers.match_capacity import synthetic_pairwise_brief
+from tests.helpers.match_capacity import (
+    synthetic_pairwise_brief,
+    synthetic_game_brief,
+    synthetic_creator_brief,
+)
+from app.schemas.ai_creator import CreatorBrief
+
+
+def _full_creator_brief():
+    payload = synthetic_creator_brief().model_dump(mode="json")
+    payload["positioning"]["value"] = "x" * 4000
+    current = len(
+        CreatorBrief.model_validate(payload).model_dump_json().encode("utf-8")
+    )
+    payload["style_and_pacing"]["value"] += "s" * (8000 - current)
+    result = CreatorBrief.model_validate(payload)
+    assert len(result.model_dump_json().encode("utf-8")) == 8000
+    return result
+
+
+@pytest.mark.parametrize("manual_text_size", [600, 2000])
+def test_screening_hundred_full_briefs_and_manual_context_reach_gateway_or_reject_oversize(
+    manual_text_size,
+):
+    creators = [(UUID(int=index), _full_creator_brief()) for index in range(1, 101)]
+    manual = {
+        "revision": 1,
+        "provenance": "manual",
+        "overrides": {
+            "analysis.content_summary": "Editorial context. " * (manual_text_size // 19)
+        },
+    }
+    kwargs = dict(
+        game_manual_context={
+            "revision": 1,
+            "provenance": "manual",
+            "overrides": {"facts.name": "Manual game"},
+        },
+        creator_manual_contexts={creator_id: manual for creator_id, _ in creators},
+    )
+    if manual_text_size == 2000:
+        with pytest.raises(ValueError, match="total byte budget"):
+            prompts.build_screening_prompt(synthetic_game_brief(), creators, **kwargs)
+        return
+    messages = prompts.build_screening_prompt(
+        synthetic_game_brief(), creators, **kwargs
+    )
+    recheck = prompts.build_empty_screening_recheck(messages)
+    payloads = [
+        json.loads(message.content.split("```json\n", 1)[1].removesuffix("\n```"))
+        for message in messages[1:]
+    ]
+    sent_creators = [
+        item for payload in payloads for item in payload.get("creators", [])
+    ]
+    assert [item["creator_id"] for item in sent_creators] == [
+        str(item[0]) for item in creators
+    ]
+    assert all(
+        item["creator_brief"] == creators[0][1].model_dump(mode="json")
+        for item in sent_creators
+    )
+    assert all(item["manual_context"] == manual for item in sent_creators)
+    assert sum("game_manual_context" in payload for payload in payloads) == 1
+    requests = []
+
+    def handler(request):
+        requests.append(json.loads(request.read()))
+        content = "not-json" if len(requests) == 1 else _valid_output(ScreeningOutput)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"finish_reason": "stop", "message": {"content": content}}]
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as client:
+        result = DeepSeekGateway(
+            api_key="test-key", http_client=client
+        ).complete_structured("deepseek-flash", recheck, ScreeningOutput)
+    assert result.selected == ()
+    assert len(requests) == 2
+    assert (
+        requests[1]["messages"][: len(requests[0]["messages"])]
+        == requests[0]["messages"]
+    )
 
 
 STAGES = [
@@ -183,5 +268,19 @@ def test_match_context_budget_reserves_schema_repair_and_output_headroom() -> No
         + 4 * MAX_REPAIR_CONTEXT_CHARACTERS
         + 10_000
         + max(budget for _, _, budget in STAGES)
+        < 1_000_000
+    )
+
+
+def test_screening_context_reserves_schema_repair_recheck_and_output_headroom():
+    schema_bytes = len(
+        _schema_instruction(_schema_payload(ScreeningOutput))["content"].encode("utf-8")
+    )
+    assert (
+        prompts.MAX_SCREENING_TOTAL_MESSAGE_BYTES
+        + 2 * schema_bytes
+        + 4 * MAX_REPAIR_CONTEXT_CHARACTERS
+        + 10_000
+        + 16_384
         < 1_000_000
     )

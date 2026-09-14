@@ -293,7 +293,7 @@ def test_screening_rejects_total_input_over_its_byte_budget_without_dropping_peo
     None
 ):
     creator_inputs = [
-        (UUID(int=index), large_creator_brief()) for index in range(1, 301)
+        (UUID(int=index), large_creator_brief()) for index in range(1, 601)
     ]
 
     with pytest.raises(ValueError, match="total byte budget"):
