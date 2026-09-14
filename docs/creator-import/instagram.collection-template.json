@@ -1,0 +1,50 @@
+{
+  "collection_schema_version": 1,
+  "creators": [
+    {
+      "platform": "instagram",
+      "profile_url": "",
+      "username": "",
+      "display_name": "",
+      "collected_at": "",
+      "platform_account_id": null,
+      "account_id_source_url": null,
+      "bio_original": null,
+      "avatar_url": null,
+      "website_url": null,
+      "followers_count": null,
+      "followers_precision": "unknown",
+      "content_languages": [],
+      "public_location": null,
+      "platform_metrics": [],
+      "works": [
+        {
+          "work_id": "work-001",
+          "platform_content_id": null,
+          "url": "",
+          "kind": "reel",
+          "title_original": null,
+          "caption_original": null,
+          "published_at": null,
+          "language": null,
+          "game_names": [],
+          "thumbnail_url": null,
+          "metrics": [],
+          "summary_en": null
+        }
+      ],
+      "contacts": [],
+      "observations": [
+        {
+          "work_id": "work-001",
+          "basis": "metadata_only",
+          "observation_en": "",
+          "source_url": "",
+          "time_range": null,
+          "observed_at": ""
+        }
+      ],
+      "collection_notes": null
+    }
+  ]
+}
