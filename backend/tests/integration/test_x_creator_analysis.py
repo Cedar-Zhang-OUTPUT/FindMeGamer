@@ -237,7 +237,7 @@ def test_x_publication_is_valid_in_migrated_db_and_common_consumers(committed_fa
         assert "subscriber_count" not in profile.current_facts
         assert "representative_videos" not in profile.current_facts
         assert profile.source_status["visual_analysis"] == "unavailable"
-        assert profile.prompt_metadata["synthesis_prompt_version"] == "x-creator-v1"
+        assert profile.prompt_metadata["synthesis_prompt_version"] == "x-creator-v2"
         assert profile.brief["positioning"]["status"] == "available"
         assert _creator_identity(profile).platform == "x"
         assert _creator_card(profile).platform == "x"

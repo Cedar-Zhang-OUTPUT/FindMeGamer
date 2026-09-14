@@ -3,7 +3,7 @@
 from app.analysis.prompts.common import build_prompt_bundle, clip_text
 from app.schemas.ai_game import EvidenceCatalog, EvidenceCatalogEntry
 
-X_CREATOR_PROMPT_VERSION = "x-creator-v1"
+X_CREATOR_PROMPT_VERSION = "x-creator-v2"
 
 
 def build_x_creator_bundle(source, *, contacts=None, metadata=None):
@@ -36,6 +36,13 @@ def build_x_creator_bundle(source, *, contacts=None, metadata=None):
             "Return the common Creator analysis/Creator Brief schema. Cite exact public_link references from the catalog. "
             "No videos, thumbnails, audio or audience demographics were supplied. Mark representative_video_context, production_quality, livestream_tendency, long_form_tendency and short_form_tendency unavailable. "
             "Do not fabricate YouTube identity, video statistics, or visual observations. Audience statements must be cautious AI inference with confidence. "
+            "Every audience_inference field and creator_brief.audience must use provenance=ai_inference, "
+            "and every available audience claim must label all cited evidence kind=ai_inference, never source_fact. "
+            "Unavailable audience claims still require provenance=ai_inference and a reason. "
+            "The creator_brief is compact: each available claim has exactly one evidence reference "
+            "with only kind, source_type, reference (no observation field), copied from the catalog; "
+            "each brief list has at most three unique values. Keep the entire creator_brief below 8000 UTF-8 bytes. "
+            "Keep generated statements concise, follow the supplied schema exactly, and return one complete valid JSON object. "
             "Choose public contacts only by supplied candidate_id. Never invent addresses or evidence."
         ),
         label="X_SOURCE_UNTRUSTED_EVIDENCE",
