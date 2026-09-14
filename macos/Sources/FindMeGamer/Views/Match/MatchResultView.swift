@@ -8,8 +8,21 @@ enum MatchOtherGroupPresentation: Equatable {
 }
 
 struct MatchResultPresentation: Equatable {
+  static let pageSize = 20
   let recommended: [MatchCandidatePresentation]
   let other: [MatchCandidatePresentation]
+  let page: Int
+  let totalPages: Int
+  let totalCount: Int
+  let recommendedCount: Int
+  let otherCount: Int
+
+  var visibleCandidates: [MatchCandidate] { (recommended + other).map(\.source) }
+  var rangeLabel: String {
+    guard totalCount > 0 else { return "0 creators" }
+    let start = (page - 1) * Self.pageSize + 1
+    return "\(start)–\(min(page * Self.pageSize, totalCount)) of \(totalCount) creators"
+  }
 
   var showsRecommended: Bool { !recommended.isEmpty }
   var otherGroup: MatchOtherGroupPresentation {
@@ -17,9 +30,19 @@ struct MatchResultPresentation: Equatable {
     return recommended.isEmpty ? .primary : .disclosure
   }
 
-  init(result: MatchResult) {
-    recommended = result.recommendedMatches.map(MatchCandidatePresentation.init(candidate:))
-    other = result.otherMatches.map(MatchCandidatePresentation.init(candidate:))
+  init(result: MatchResult, page requestedPage: Int = 1) {
+    recommendedCount = result.recommendedMatches.count
+    otherCount = result.otherMatches.count
+    totalCount = recommendedCount + otherCount
+    totalPages = max(1, (totalCount + Self.pageSize - 1) / Self.pageSize)
+    page = min(max(1, requestedPage), totalPages)
+    let start = (page - 1) * Self.pageSize
+    // Slice before constructing row presentations, including their detailed briefs.
+    recommended = result.recommendedMatches.dropFirst(start).prefix(Self.pageSize)
+      .map(MatchCandidatePresentation.init(candidate:))
+    other = result.otherMatches.dropFirst(max(0, start - recommendedCount))
+      .prefix(Self.pageSize - recommended.count)
+      .map(MatchCandidatePresentation.init(candidate:))
   }
 }
 
@@ -55,6 +78,10 @@ struct MatchRecipientSelection: Equatable {
   }
 
   mutating func clear() { selectedIDs.removeAll() }
+
+  mutating func select(_ candidates: [MatchCandidate]) {
+    selectedIDs.formUnion(candidates.filter(MatchOutreachActionPolicy.isEligibleForNewSend).map(\.id))
+  }
 
   func orderedIDs(in result: MatchResult) -> [UUID] {
     var seen = Set<UUID>()
@@ -108,6 +135,7 @@ struct MatchResultView: View {
   @State private var selection = MatchRecipientSelection()
   @State private var restoredSelection = false
   @State private var retainedResult: MatchResult?
+  @State private var currentPage = 1
 
   init(
     matchID: UUID, model: MatchModel, writesEnabled: Bool,
@@ -147,11 +175,13 @@ struct MatchResultView: View {
       selection = MatchRecipientSelection()
       otherExpanded = false
       retainedResult = nil
+      currentPage = 1
       restoredSelection = false
     }
     .onChange(of: model.resultState, initial: true) { _, state in
       guard case .available(let result) = state, result.id == matchID else { return }
       retainedResult = result
+      currentPage = MatchResultPresentation(result: result, page: currentPage).page
       if restoredSelection { selection.reconcile(with: result) }
     }
     .onChange(of: selection) { _, selection in
@@ -216,7 +246,7 @@ struct MatchResultView: View {
   }
 
   private func availableContent(_ result: MatchResult) -> some View {
-    let presentation = MatchResultPresentation(result: result)
+    let presentation = MatchResultPresentation(result: result, page: currentPage)
     return VStack(spacing: 0) {
       if result.profileRevisions.contains(where: \.hasChanged) {
         Label("Current profiles have changed. This Match keeps its original results. Start a new Match to use the updates.", systemImage: "clock.arrow.circlepath")
@@ -247,12 +277,12 @@ struct MatchResultView: View {
         LazyVStack(alignment: .leading, spacing: WorkspaceDesign.spaceL) {
           gameHeader(
             result.game,
-            creatorCount: presentation.recommended.count + presentation.other.count)
+            creatorCount: presentation.totalCount)
 
           if presentation.showsRecommended {
             VStack(alignment: .leading, spacing: 10) {
               WorkspaceSectionHeader(
-                MatchCopy.recommended, count: presentation.recommended.count)
+                MatchCopy.recommended, count: presentation.recommendedCount)
               candidateGroup(presentation.recommended, result: result)
             }
           }
@@ -262,7 +292,7 @@ struct MatchResultView: View {
             EmptyView()
           case .primary:
             VStack(alignment: .leading, spacing: 10) {
-              WorkspaceSectionHeader(MatchCopy.other, count: presentation.other.count)
+              WorkspaceSectionHeader(MatchCopy.other, count: presentation.otherCount)
                 .help("Alternatives with weaker or mixed evidence")
               candidateGroup(presentation.other, result: result)
             }
@@ -271,7 +301,7 @@ struct MatchResultView: View {
               candidateGroup(presentation.other, result: result)
                 .padding(.top, 10)
             } label: {
-              WorkspaceSectionHeader(MatchCopy.other, count: presentation.other.count)
+              WorkspaceSectionHeader(MatchCopy.other, count: presentation.otherCount)
                 .help("Alternatives with weaker or mixed evidence")
             }
           }
@@ -281,6 +311,9 @@ struct MatchResultView: View {
         .frame(maxWidth: 1_040, alignment: .leading)
         .frame(maxWidth: .infinity)
       }
+      .id(presentation.page)
+
+      pageControls(presentation)
 
       let actionPresentation = MatchResultActionPresentation(
         resultState: model.resultState, writesEnabled: writesEnabled)
@@ -298,6 +331,38 @@ struct MatchResultView: View {
           })
       }
     }
+  }
+
+  private func pageControls(_ presentation: MatchResultPresentation) -> some View {
+    VStack(spacing: 8) {
+      HStack {
+        Text(presentation.rangeLabel).font(.caption).foregroundStyle(.secondary)
+        Spacer()
+        Button("Select page") { selection.select(presentation.visibleCandidates) }
+          .disabled(!canActOnResult || !presentation.visibleCandidates.contains(where: MatchOutreachActionPolicy.isEligibleForNewSend))
+        Button("Clear selection") { selection.clear() }
+          .disabled(selection.isEmpty)
+      }
+      HStack(spacing: 16) {
+        Spacer()
+        Button("Previous") { currentPage = presentation.page - 1 }
+          .disabled(presentation.page <= 1)
+        Picker("Page", selection: Binding(
+          get: { presentation.page }, set: { currentPage = $0 }
+        )) {
+          ForEach(1...presentation.totalPages, id: \.self) { page in
+            Text("\(page)").tag(page)
+          }
+        }
+        .frame(width: 110)
+        Text("of \(presentation.totalPages)").foregroundStyle(.secondary)
+        Button("Next") { currentPage = presentation.page + 1 }
+          .disabled(presentation.page >= presentation.totalPages)
+      }
+    }
+    .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
+    .padding(.vertical, 10)
+    .accessibilityIdentifier("match.resultPagination")
   }
 
   private func acceptedSummary(_ batch: SendBatch) -> some View {

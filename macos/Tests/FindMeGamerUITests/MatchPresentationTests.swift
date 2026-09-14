@@ -5,6 +5,59 @@ import Testing
 @testable import FindMeGamerCore
 
 @Suite(.serialized) struct MatchPresentationTests {
+  @Test func firstResultPageDoesNotBuildOffPageCreatorPresentations() {
+    let creators = (1...1_200).map { candidate(id: id($0)) }
+    let page = MatchResultPresentation(result: result(recommended: creators, other: []))
+    #expect(page.recommended.count == 20)
+    #expect(page.recommended.map(\.id) == (1...20).map(id))
+    #expect(page.other.isEmpty)
+  }
+
+  @Test func pagesPreserveOrderAcrossGroupsAndClampAfterResultsShrink() {
+    let recommended = (1...23).map { candidate(id: id($0)) }
+    let other = (24...45).map { candidate(id: id($0), group: .other) }
+    let full = result(recommended: recommended, other: other)
+    let middle = MatchResultPresentation(result: full, page: 2)
+    #expect(middle.recommended.map(\.id) == [id(21), id(22), id(23)])
+    #expect(middle.other.map(\.id) == (24...40).map(id))
+    #expect(middle.rangeLabel == "21–40 of 45 creators")
+    #expect(middle.totalPages == 3)
+    #expect(middle.otherGroup == .disclosure)
+    let last = MatchResultPresentation(result: full, page: 3)
+    #expect(last.recommended.isEmpty)
+    #expect(last.other.map(\.id) == (41...45).map(id))
+    #expect(last.otherGroup == .primary)
+    #expect(last.rangeLabel == "41–45 of 45 creators")
+    let back = MatchResultPresentation(result: full, page: 1)
+    #expect(back.visibleCandidates.map(\.id) == (1...20).map(id))
+    let shrunk = MatchResultPresentation(result: result(recommended: [recommended[0]], other: []), page: 3)
+    #expect(shrunk.page == 1)
+    #expect(shrunk.visibleCandidates.map(\.id) == [id(1)])
+    let empty = MatchResultPresentation(result: result(recommended: [], other: []), page: 2)
+    #expect(empty.page == 1)
+    #expect(empty.visibleCandidates.isEmpty)
+  }
+
+  @Test func pageSelectionPreservesOtherPagesAndExcludesIneligibleRecipients() {
+    let creators = (1...41).map {
+      candidate(id: id($0), contactAvailable: $0 != 2, email: $0 == 2 ? nil : "creator\($0)@example.test")
+    }
+    let full = result(recommended: creators, other: [])
+    var selection = MatchRecipientSelection()
+    selection.select(MatchResultPresentation(result: full).visibleCandidates)
+    #expect(selection.count == 19)
+    selection.select(MatchResultPresentation(result: full, page: 3).visibleCandidates)
+    selection.reconcile(with: full)
+    #expect(selection.count == 20)
+    #expect(selection.contains(id(1)))
+    #expect(selection.contains(id(41)))
+    #expect(!selection.contains(id(2)))
+    #expect(!selection.contains(id(21)))
+    #expect(selection.orderedRecipients(in: full).count == 20)
+    selection.clear()
+    #expect(selection.isEmpty)
+  }
+
   @Test func productionCopyAndAccessibilityKeepExactPublicContractWithoutRankingLabels() {
     #expect(MatchCopy.heroPrefix == "Find me a creator for")
     #expect(MatchCopy.sections == ["Recommended Matches", "Other Matches"])
