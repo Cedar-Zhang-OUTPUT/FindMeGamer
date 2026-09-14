@@ -38,10 +38,11 @@ Discover home:
 `Start` opens a single modal with:
 
 1. Platforms: YouTube, X, Twitch, Instagram checkboxes. YouTube and X enabled when configured; Twitch/Instagram visible but disabled and labeled `Unavailable` in this version. Neither is falsely advertised as collectable.
-2. Content languages: multiselect list of content languages, searchable where necessary, with `Any` as the default.
-3. Country or region: multiselect region list, with `Any` as the default.
-4. Followers: `Any` or minimum/maximum follower bounds, with plain validation of inconsistent bounds. YouTube subscribers map to this filtering concept; labels in individual profiles remain platform-accurate.
-5. Content Keywords: optional free text.
+2. Content languages: multiselect list of content languages, searchable where necessary, with `Any` as the default. Filter against observed content-language metadata, not a claim about every work or the creator's native language. For YouTube, use video audio-language metadata as evidence of spoken language; title/description language alone is not equivalent. Normalize locale variants such as `en-US` to the selected base language. Missing evidence does not pass a restrictive language filter. X accepts the `lang:en` search operator and returned English post metadata in the small live test below; this is a post-language condition, not proof of a creator's native language or all their content.
+3. Followers: `Any` or minimum/maximum follower bounds, with plain validation of inconsistent bounds. Apply bounds after reading public account statistics. YouTube subscribers map to this filtering concept and are rounded upstream; labels in individual profiles remain platform-accurate.
+4. Content Keywords: optional free text.
+
+Do not include a cross-platform `Country or region` filter in this first Discover version. YouTube exposes a usable but optional account country; its search `regionCode` instead describes video availability. The X live sample confirmed that profile location mixes countries, cities, missing values and non-geographic free text, so it is not a standardized country filter. Retain public location facts in Profiles when available without pretending that this is a verified cross-platform search condition.
 
 YouTube is the default selected platform; users can add X. Require at least one available platform. `Cancel` preserves the page's game selection and closes without a job; `Submit` explicitly starts the cloud workflow. No extra Match settings or email settings in this dialog.
 
@@ -60,7 +61,7 @@ Submitting creates a Discover record promptly and returns its ID, even when a pr
 - Use the game facts/analysis/Brief and conditions to plan search terms, then use the enabled platform adapters to return public creator identities/homepages. Apply lightweight public metadata checks for filters where available.
 - Do not perform full Creator analysis, email enrichment, deep Match or ranking during discovery. Displayed `Done` means discovery finished, not that its accounts have been analyzed or qualified for outreach.
 - Proposed operational default: at most 100 unique accounts across the selected platforms per run, bounded platform requests/pagination, no guarantee of reaching 100. Keep this a backend limit instead of adding a primary-screen parameter.
-- Country/content-language filtering uses attributable available information. Do not equate an arbitrary X location string with verified country, or silently pretend unknown attributes match restrictive filters. Unknown values remain visible as unknown; with restrictive filters, unverified candidates are not presented as confirmed matches. `Any` does not exclude unknown values.
+- Content-language/follower filtering uses attributable available information. Do not silently pretend unknown attributes match restrictive filters. Unknown values remain visible as unknown; with restrictive filters, unverified candidates are not presented as confirmed matches. `Any` does not exclude unknown values. Country is not an input to this version's Discover filters.
 - Zero results may be valid. Distinguish completed-empty from provider failure; do not silently loosen the user's filters.
 - Isolate platform failures. Preserve successful results and a compact failure explanation, with retry limited to incomplete platform work. Prevent duplicate results on retries.
 
@@ -120,6 +121,18 @@ Deliver versioned machine-readable JSON Schema, fillable JSON templates and vali
 - Retain visible recovery actions without stacking job internals, histories and settings in the primary task area.
 
 ## Verification and delivery order
+
+### Small live filter feasibility check — 2026-09-14
+
+At 11:09 UTC, a throwaway read-only probe used the deployed API container's encrypted credentials in memory and called official provider endpoints directly. It submitted no application jobs, changed no business data or configuration, and made no model calls. Six HTTP requests total: four successful YouTube requests and two rejected X requests (the second only confirmed the error category). No pagination was followed.
+
+- YouTube search `indie horror gameplay`: baseline returned 10 videos from 7 authors; adding English relevance and US availability hints returned 10 videos from 8 authors. Both returned a next-page token, but pagination was not exercised.
+- Across both pages: 9 unique account IDs/homepage URLs and 13 unique videos. Channel lookup returned follower counts for 9/9, public country for 8/9, and no default channel language for 9/9. Applying 1,000–100,000 subscriber bounds locally retained 2/9 accounts.
+- Video lookup returned audio-language metadata for 9/13 videos and title/description language for 13/13. Missing audio-language evidence must not be fabricated from a title-language field. This is a small single-topic sample, not proof of universal field coverage or search quality.
+- X recent search returned HTTP 402. A bounded diagnostic request confirmed `Payment Required`, problem type `https://api.x.com/2/problems/credits-depleted`, detail `credits depleted`. No X search results, language filtering, follower coverage or pagination were validated in this run. This is an account-credit blocker, not evidence that X search is technically unsupported. Do not recharge automatically; retain the adapter plan and repeat a small test after the user restores credits.
+- After the user reported recharging, an X-only retry at 11:14 UTC returned HTTP 403 instead. One further minimal diagnostic search confirmed problem type `https://api.x.com/2/problems/spend-cap-reached`, detail `Your monthly spend cap has been reached.` This follow-up made two HTTP requests, no model calls or business writes; it did not validate successful search/filtering. The current reported blocker is the monthly spending cap, not the earlier depleted-credit response. Do not increase the spending cap automatically; the user must adjust it before another funded check.
+- Following the user's further adjustment, the 11:16 UTC X-only probe succeeded: both recent-search requests returned HTTP 200 (0.13s and 0.12s). Baseline query `("indie horror" OR "horror game") -is:retweet` and the same query plus `lang:en` each returned 10 posts from the same 9 unique authors. All posts carried `lang=en`, all 9 authors had homepage identities and follower counts, and local 1,000–100,000 follower filtering retained 1/9. Both responses offered pagination, not exercised. Seven authors had raw location text, including non-geographic strings. The sample demonstrates endpoint access, author extraction and usable follower data; the English operator was accepted and its results were consistent, but this all-English baseline does not test mixed-language exclusion. The broad search also returned a game account and an automated assistant account: discovered authors are candidates, not automatically verified gaming influencers. Topic/account relevance checks remain necessary. Two requests, no model calls, jobs or business writes; the earlier credit/cap blockers no longer blocked this probe.
+- The country control is removed from the initial design; keyword, content-language and follower controls remain under the evidence limitations above. YouTube homepage discovery is demonstrated. The complete Discover workflow remains unimplemented and is not claimed to be deployed.
 
 1. Contract/platform identity migration with YouTube regression and X analysis tests.
 2. Discover/game-prerequisite/result-deduplication API and worker tests.
