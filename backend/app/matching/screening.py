@@ -53,6 +53,7 @@ class ScreeningRepository(Protocol):
 class LockedScreeningCreator:
     creator_id: UUID
     brief: CreatorBrief
+    manual_context: dict | None = None
 
     def __post_init__(self) -> None:
         if type(self.creator_id) is not UUID:
@@ -67,6 +68,7 @@ class LockedScreeningInput:
     game_brief: GameBrief
     creators: tuple[LockedScreeningCreator, ...]
     applied_creator_ids: tuple[UUID, ...] | None
+    game_manual_context: dict | None = None
 
     def __post_init__(self) -> None:
         if type(self.task_id) is not UUID:
@@ -119,6 +121,11 @@ class ScreeningService:
         messages = build_screening_prompt(
             locked.game_brief,
             [(creator.creator_id, creator.brief) for creator in locked.creators],
+            game_manual_context=locked.game_manual_context,
+            creator_manual_contexts={
+                creator.creator_id: creator.manual_context
+                for creator in locked.creators
+            },
         )
         raw_output = self._ai.complete_structured(
             SCREENING_MODEL,

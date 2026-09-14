@@ -14,6 +14,13 @@ from app.core.database import get_session
 from app.core.errors import APIError
 from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 from app.repositories.profiles import CursorValue, ProfilesRepository
+from app.schemas.profile_editing import ProfileEditDocument, ProfileEditPatch
+from app.services.profile_editing import (
+    apply_edit,
+    edit_document,
+    effective_name,
+    effective_section,
+)
 from app.schemas.common import CursorPage
 from app.schemas.profiles import (
     CreatorContactResponse,
@@ -237,12 +244,14 @@ def _available_contacts(
 def _game_card(profile: GameProfile) -> GameProfileCard:
     return GameProfileCard(
         id=profile.id,
-        name=profile.sort_name,
+        name=effective_name(profile),
+        profile_revision=profile.profile_revision,
+        manual_overrides=profile.manual_overrides,
         steam_app_id=profile.steam_app_id,
         canonical_url=profile.canonical_url,
         favorite=profile.favorite,
-        current_facts=public_json_object(profile.current_facts),
-        brief=public_json_object(profile.brief),
+        current_facts=public_json_object(effective_section(profile, "facts")),
+        brief=public_json_object(effective_section(profile, "brief")),
         source_status=public_json_object(profile.source_status),
         last_analyzed_at=profile.last_analyzed_at,
         next_analysis_at=profile.next_analysis_at,
@@ -252,7 +261,7 @@ def _game_card(profile: GameProfile) -> GameProfileCard:
 def _game_detail(profile: GameProfile) -> GameProfileDetail:
     return GameProfileDetail(
         **_game_card(profile).model_dump(),
-        analysis=public_json_object(profile.analysis),
+        analysis=public_json_object(effective_section(profile, "analysis")),
         model_metadata=public_json_object(profile.model_metadata),
         prompt_metadata=public_json_object(profile.prompt_metadata),
     )
@@ -261,11 +270,13 @@ def _game_detail(profile: GameProfile) -> GameProfileDetail:
 def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
     stale = _creator_youtube_is_stale(profile.source_status)
     contacts = _available_contacts(profile, manual_only=stale)
-    current_facts = {} if stale else profile.current_facts
-    brief = {} if stale else profile.brief
+    current_facts = effective_section(profile, "facts", source_visible=not stale)
+    brief = effective_section(profile, "brief", source_visible=not stale)
     return CreatorProfileCard(
         id=profile.id,
-        name=profile.sort_name,
+        name=effective_name(profile),
+        profile_revision=profile.profile_revision,
+        manual_overrides=profile.manual_overrides,
         youtube_channel_id=profile.youtube_channel_id,
         canonical_url=profile.canonical_url,
         favorite=profile.favorite,
@@ -280,8 +291,10 @@ def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
 
 
 def _creator_detail(profile: CreatorProfile) -> CreatorProfileDetail:
-    analysis = (
-        {} if _creator_youtube_is_stale(profile.source_status) else profile.analysis
+    analysis = effective_section(
+        profile,
+        "analysis",
+        source_visible=not _creator_youtube_is_stale(profile.source_status),
     )
     return CreatorProfileDetail(
         **_creator_card(profile).model_dump(),
@@ -351,6 +364,48 @@ def create_router(
         tags=["profiles"],
         dependencies=[Depends(authenticate_workspace)],
     )
+
+    def editable_profile(profile_type, profile_id, session, *, lock=False):
+        if profile_type not in {"game", "creator"}:
+            raise _unknown_profile_type()
+        profile = ProfilesRepository(session).get_for_edit(
+            profile_type, profile_id, lock=lock
+        )
+        if profile is None:
+            raise _profile_not_found()
+        return profile
+
+    @router.get(
+        "/{profile_type}/{profile_id}/edit",
+        response_model=ProfileEditDocument,
+        operation_id="getProfileEdit",
+    )
+    def get_profile_edit(
+        profile_type: str,
+        profile_id: UUID,
+        database_session: Session = Depends(get_session),
+    ):
+        return edit_document(
+            editable_profile(profile_type, profile_id, database_session)
+        )
+
+    @router.patch(
+        "/{profile_type}/{profile_id}/edit",
+        response_model=ProfileEditDocument,
+        operation_id="updateProfileEdit",
+    )
+    def update_profile_edit(
+        profile_type: str,
+        profile_id: UUID,
+        patch: ProfileEditPatch,
+        database_session: Session = Depends(get_session),
+    ):
+        profile = editable_profile(
+            profile_type, profile_id, database_session, lock=True
+        )
+        result = apply_edit(profile, patch)
+        database_session.commit()
+        return result
 
     @router.get(
         "/games",

@@ -27,6 +27,7 @@ from app.schemas.ai_creator import CreatorBrief
 from app.schemas.ai_game import GameBrief
 from app.schemas.ai_match import ScreeningSelection
 from app.schemas.profiles import public_json_object
+from app.services.profile_editing import manual_context
 
 
 if TYPE_CHECKING:
@@ -93,7 +94,10 @@ class MatchRepository:
         now = self._aware_now()
         expires_at = now + MATCH_INPUT_RETENTION
         game = self._session.scalar(
-            select(GameProfile).where(GameProfile.id == game_id).with_for_update()
+            select(GameProfile)
+            .where(GameProfile.id == game_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         )
         if game is None:
             raise MatchInputError("game_profile_not_found")
@@ -103,7 +107,10 @@ class MatchRepository:
             raise MatchInputError("game_brief_invalid") from None
 
         creators = self._session.scalars(
-            select(CreatorProfile).order_by(CreatorProfile.id).with_for_update()
+            select(CreatorProfile)
+            .order_by(CreatorProfile.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
         ).all()
         eligible: dict[UUID, tuple[CreatorProfile, CreatorBrief]] = {}
         cutoff = now - MATCH_INPUT_RETENTION
@@ -115,6 +122,7 @@ class MatchRepository:
         task = MatchTask(
             game_id=game.id,
             locked_game_brief=deepcopy(game_brief.model_dump(mode="json")),
+            locked_game_context=manual_context(game),
             shuffle_seed=seed,
             recommended_match_threshold=threshold,
             status=MatchStatus.QUEUED,
@@ -140,6 +148,7 @@ class MatchRepository:
                     creator_id=creator.id,
                     screening_order=screening_order,
                     locked_creator_brief=serialized_brief,
+                    locked_manual_context=manual_context(creator),
                     selected=False,
                     expires_at=expires_at,
                     created_at=now,
@@ -224,6 +233,7 @@ class MatchRepository:
             LockedScreeningCreator(
                 creator_id=record.creator_id,
                 brief=self._validated_creator_brief(record.locked_creator_brief),
+                manual_context=deepcopy(record.locked_manual_context),
             )
             for record in records
         )
@@ -238,6 +248,7 @@ class MatchRepository:
             game_brief=self._validated_game_brief(task.locked_game_brief),
             creators=creators,
             applied_creator_ids=None,
+            game_manual_context=deepcopy(task.locked_game_context),
         )
 
     def apply_screening_output(
@@ -401,6 +412,7 @@ class MatchRepository:
                 ),
                 "analysis": MatchRepository._match_relevant_json(creator.analysis),
                 "brief": creator_brief.model_dump(mode="json"),
+                "manual_context": manual_context(creator),
             }
         )
 

@@ -742,6 +742,13 @@
             ],
             "title": "Last Analyzed At"
           },
+          "manual_overrides": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EditValue"
+            },
+            "title": "Manual Overrides",
+            "type": "object"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -757,6 +764,11 @@
               }
             ],
             "title": "Next Analysis At"
+          },
+          "profile_revision": {
+            "default": 0,
+            "title": "Profile Revision",
+            "type": "integer"
           },
           "source_status": {
             "$ref": "#/components/schemas/PublicJSONObject"
@@ -852,6 +864,13 @@
             ],
             "title": "Manual Notes"
           },
+          "manual_overrides": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EditValue"
+            },
+            "title": "Manual Overrides",
+            "type": "object"
+          },
           "model_metadata": {
             "$ref": "#/components/schemas/PublicJSONObject"
           },
@@ -870,6 +889,11 @@
               }
             ],
             "title": "Next Analysis At"
+          },
+          "profile_revision": {
+            "default": 0,
+            "title": "Profile Revision",
+            "type": "integer"
           },
           "prompt_metadata": {
             "$ref": "#/components/schemas/PublicJSONObject"
@@ -964,6 +988,19 @@
         "title": "CursorPage[GameProfileCard]",
         "type": "object"
       },
+      "EditValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        ]
+      },
       "ExistingProfileResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1045,6 +1082,13 @@
             ],
             "title": "Last Analyzed At"
           },
+          "manual_overrides": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EditValue"
+            },
+            "title": "Manual Overrides",
+            "type": "object"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -1060,6 +1104,11 @@
               }
             ],
             "title": "Next Analysis At"
+          },
+          "profile_revision": {
+            "default": 0,
+            "title": "Profile Revision",
+            "type": "integer"
           },
           "source_status": {
             "$ref": "#/components/schemas/PublicJSONObject"
@@ -1126,6 +1175,13 @@
             ],
             "title": "Last Analyzed At"
           },
+          "manual_overrides": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EditValue"
+            },
+            "title": "Manual Overrides",
+            "type": "object"
+          },
           "model_metadata": {
             "$ref": "#/components/schemas/PublicJSONObject"
           },
@@ -1144,6 +1200,11 @@
               }
             ],
             "title": "Next Analysis At"
+          },
+          "profile_revision": {
+            "default": 0,
+            "title": "Profile Revision",
+            "type": "integer"
           },
           "prompt_metadata": {
             "$ref": "#/components/schemas/PublicJSONObject"
@@ -1556,6 +1617,13 @@
               "$ref": "#/components/schemas/MatchResultItem"
             },
             "title": "Other Matches",
+            "type": "array"
+          },
+          "profile_revisions": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileRevisionComparison"
+            },
+            "title": "Profile Revisions",
             "type": "array"
           },
           "recommended_matches": {
@@ -3180,6 +3248,177 @@
           }
         },
         "title": "OutreachTemplateUpdate",
+        "type": "object"
+      },
+      "ProfileEditDocument": {
+        "properties": {
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileEditField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "profile_id": {
+            "format": "uuid",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "profile_type": {
+            "enum": [
+              "game",
+              "creator"
+            ],
+            "title": "Profile Type",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "profile_type",
+          "profile_id",
+          "revision",
+          "fields"
+        ],
+        "title": "ProfileEditDocument",
+        "type": "object"
+      },
+      "ProfileEditField": {
+        "properties": {
+          "is_overridden": {
+            "title": "Is Overridden",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "text",
+              "multiline",
+              "list"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "section": {
+            "enum": [
+              "facts",
+              "analysis",
+              "brief"
+            ],
+            "title": "Section",
+            "type": "string"
+          },
+          "source_value": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EditValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "value": {
+            "$ref": "#/components/schemas/EditValue"
+          }
+        },
+        "required": [
+          "key",
+          "section",
+          "label",
+          "kind",
+          "required",
+          "value",
+          "source_value",
+          "is_overridden"
+        ],
+        "title": "ProfileEditField",
+        "type": "object"
+      },
+      "ProfileEditPatch": {
+        "additionalProperties": false,
+        "properties": {
+          "changes": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EditValue"
+            },
+            "title": "Changes",
+            "type": "object"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "reset_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reset Fields",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "changes",
+          "reset_fields"
+        ],
+        "title": "ProfileEditPatch",
+        "type": "object"
+      },
+      "ProfileRevisionComparison": {
+        "additionalProperties": false,
+        "properties": {
+          "current_revision": {
+            "title": "Current Revision",
+            "type": "integer"
+          },
+          "profile_id": {
+            "format": "uuid",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "profile_type": {
+            "enum": [
+              "game",
+              "creator"
+            ],
+            "title": "Profile Type",
+            "type": "string"
+          },
+          "snapshot_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot Revision"
+          }
+        },
+        "required": [
+          "profile_type",
+          "profile_id",
+          "snapshot_revision",
+          "current_revision"
+        ],
+        "title": "ProfileRevisionComparison",
         "type": "object"
       },
       "PublicJSONObject": {
@@ -5321,6 +5560,128 @@
           }
         ],
         "summary": "Read Profile",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
+    "/api/v1/profiles/{profile_type}/{profile_id}/edit": {
+      "get": {
+        "operationId": "getProfileEdit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_type",
+            "required": true,
+            "schema": {
+              "title": "Profile Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileEditDocument"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Profile Edit",
+        "tags": [
+          "profiles"
+        ]
+      },
+      "patch": {
+        "operationId": "updateProfileEdit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "profile_type",
+            "required": true,
+            "schema": {
+              "title": "Profile Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "profile_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Profile Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileEditPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileEditDocument"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Update Profile Edit",
         "tags": [
           "profiles"
         ]

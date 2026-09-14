@@ -30,6 +30,15 @@ class ProfilesRepository:
     def __init__(self, database_session: Session) -> None:
         self._session = database_session
 
+    def get_for_edit(self, profile_type: str, profile_id: UUID, *, lock: bool = False):
+        model = GameProfile if profile_type == "game" else CreatorProfile
+        statement = select(model).where(model.id == profile_id)
+        if lock:
+            statement = statement.with_for_update().execution_options(
+                populate_existing=True
+            )
+        return self._session.scalar(statement)
+
     def list_games(
         self,
         *,
@@ -295,8 +304,12 @@ class ProfilesRepository:
     ) -> Select:
         normalized_query = query.strip()
         if normalized_query:
+            name_key = "facts.name" if model is GameProfile else "facts.title"
+            effective_name = func.coalesce(
+                model.manual_overrides[name_key].astext, model.sort_name
+            )
             statement = statement.where(
-                model.sort_name.icontains(normalized_query, autoescape=True)
+                effective_name.icontains(normalized_query, autoescape=True)
             )
         if only_collection:
             statement = statement.where(model.favorite.is_(True))

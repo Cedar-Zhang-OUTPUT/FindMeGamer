@@ -65,6 +65,7 @@ class LockedPairwiseInput:
     game_brief: GameBrief | None
     creator_profile: Mapping[str, object] | None
     completed_brief: PairwiseMatchBrief | None
+    game_manual_context: dict | None = None
 
     def __post_init__(self) -> None:
         if type(self.match_task_id) is not UUID or type(self.creator_id) is not UUID:
@@ -198,7 +199,11 @@ class SQLPairwiseRepository:
             expected_creator_id=creator_id,
         )
         try:
-            build_pairwise_prompt(game_brief, creator_profile)
+            build_pairwise_prompt(
+                game_brief,
+                creator_profile,
+                game_manual_context=task.locked_game_context,
+            )
         except (TypeError, ValueError):
             raise PairwiseCheckpointError("locked_creator_profile_invalid") from None
 
@@ -219,6 +224,7 @@ class SQLPairwiseRepository:
             game_brief=game_brief,
             creator_profile=creator_profile,
             completed_brief=None,
+            game_manual_context=deepcopy(task.locked_game_context),
         )
 
     def apply_success(
@@ -323,6 +329,7 @@ class PairwiseService:
         messages = build_pairwise_prompt(
             claimed.game_brief,
             claimed.creator_profile,
+            game_manual_context=claimed.game_manual_context,
         )
         raw_output = self._ai.complete_structured(
             PAIRWISE_MODEL,

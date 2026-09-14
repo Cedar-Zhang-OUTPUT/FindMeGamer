@@ -18,6 +18,8 @@ EXPORTER = BACKEND_ROOT / "scripts" / "export_openapi.py"
 COMMITTED_SCHEMA = BACKEND_ROOT / "openapi.json"
 
 EXPECTED_OPERATIONS = {
+    ("GET", "/api/v1/profiles/{profile_type}/{profile_id}/edit"): "getProfileEdit",
+    ("PATCH", "/api/v1/profiles/{profile_type}/{profile_id}/edit"): "updateProfileEdit",
     ("GET", "/r/{token}"): "showCreatorResponseConfirmation",
     ("POST", "/r/{token}"): "confirmCreatorResponse",
     ("GET", "/health/live"): "checkLiveness",

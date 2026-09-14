@@ -13,6 +13,7 @@ from pydantic import (
     WithJsonSchema,
     model_validator,
 )
+from app.schemas.profile_editing import EditValue
 
 
 type PublicJSONValue = (
@@ -321,6 +322,8 @@ class CreatorContactResponse(BaseModel):
 
 class PublicProfileResponse(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True)
+    profile_revision: int = 0
+    manual_overrides: dict[str, EditValue] = Field(default_factory=dict)
 
     @model_validator(mode="before")
     @classmethod

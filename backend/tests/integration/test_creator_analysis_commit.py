@@ -273,6 +273,8 @@ def _snapshot(factory: sessionmaker[Session], profile_id: UUID) -> dict[str, obj
             .order_by(CreatorContact.is_manual.desc(), CreatorContact.email)
         ).all()
         return {
+            "manual_overrides": deepcopy(profile.manual_overrides),
+            "profile_revision": profile.profile_revision,
             "current_facts": deepcopy(profile.current_facts),
             "analysis": deepcopy(profile.analysis),
             "brief": deepcopy(profile.brief),
@@ -442,6 +444,11 @@ def test_reanalysis_preserves_manual_contact_notes_favorite_and_replaces_discove
     with committed_factory.begin() as session:
         profile = session.get(CreatorProfile, profile_id)
         assert profile is not None
+        profile.manual_overrides = {
+            "facts.title": "Human creator",
+            "facts.description": "Human description",
+        }
+        profile.profile_revision = 6
         profile.source_status = {
             "youtube": "stale",
             "freshness": "stale",
@@ -452,6 +459,34 @@ def test_reanalysis_preserves_manual_contact_notes_favorite_and_replaces_discove
     assert _pipeline(committed_factory).run(job_id) == profile_id
 
     snapshot = _snapshot(committed_factory, profile_id)
+    with committed_factory() as session:
+        profile = session.get(CreatorProfile, profile_id)
+        assert profile.manual_overrides == {
+            "facts.title": "Human creator",
+            "facts.description": "Human description",
+        }
+        assert profile.current_facts["description"] == _source().description
+        from app.services.profile_editing import apply_edit, edit_document
+        from app.schemas.profile_editing import ProfileEditPatch
+
+        apply_edit(
+            profile,
+            ProfileEditPatch(
+                expected_revision=7, changes={}, reset_fields=["facts.description"]
+            ),
+        )
+        description = next(
+            field
+            for field in edit_document(profile).fields
+            if field.key == "facts.description"
+        )
+        assert description.value == _source().description
+        assert not description.is_overridden
+        assert profile.profile_revision == 8
+        found, _ = ProfilesRepository(session).list_creators(
+            query="Human creator", only_collection=False, cursor=None, limit=50
+        )
+        assert [row.id for row in found] == [profile_id]
     assert snapshot["favorite"] is True
     assert snapshot["manual_notes"] == "Warm lead"
     assert snapshot["source_status"] == {
@@ -678,6 +713,10 @@ def test_every_prepublication_failure_preserves_profile_and_contacts(
     committed_factory, failure_stage: str
 ) -> None:
     profile_id = _profile(committed_factory)
+    with committed_factory.begin() as session:
+        profile = session.get(CreatorProfile, profile_id)
+        profile.manual_overrides = {"facts.title": "Retained human title"}
+        profile.profile_revision = 3
     before = _snapshot(committed_factory, profile_id)
     job_id = _job(committed_factory)
     youtube = YouTube(

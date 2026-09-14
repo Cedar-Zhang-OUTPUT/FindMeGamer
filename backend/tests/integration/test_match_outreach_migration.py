@@ -36,6 +36,7 @@ EXPECTED_COLUMNS = {
         "id",
         "game_id",
         "locked_game_brief",
+        "locked_game_context",
         "shuffle_seed",
         "recommended_match_threshold",
         "status",
@@ -61,6 +62,7 @@ EXPECTED_COLUMNS = {
         "creator_id",
         "screening_order",
         "locked_creator_brief",
+        "locked_manual_context",
         "selected",
         "screening_reason",
         "expires_at",
@@ -298,7 +300,7 @@ EXPECTED_CHECKS = {
 def test_match_and_outreach_revision_is_the_single_linear_head(alembic_config) -> None:
     script = ScriptDirectory.from_config(alembic_config)
 
-    assert script.get_heads() == ["20260904_0007"]
+    assert script.get_heads() == ["20260914_native_0008"]
     revision = script.get_revision("20260902_0005")
     assert revision is not None
     assert revision.down_revision == "20260902_0004"

@@ -131,7 +131,15 @@ class MatchSummary(PublicMatchModel):
     completed_at: datetime | None
 
 
+class ProfileRevisionComparison(PublicMatchModel):
+    profile_type: Literal["game", "creator"]
+    profile_id: UUID
+    snapshot_revision: int | None
+    current_revision: int
+
+
 class MatchDetail(MatchSummary):
+    profile_revisions: list[ProfileRevisionComparison] = Field(default_factory=list)
     result_state: Literal["pending", "available", "no_suitable_creators"]
     recommended_matches: list[MatchResultItem]
     other_matches: list[MatchResultItem]

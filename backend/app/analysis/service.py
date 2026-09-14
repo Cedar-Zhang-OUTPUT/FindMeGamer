@@ -260,6 +260,7 @@ class GameAnalysisService:
             profile.canonical_url = source.canonical_url
             profile.sort_name = self._sort_name(source.name, lease.app_id)
             profile.current_facts = public_json_object(current_facts)
+            profile.profile_revision = (profile.profile_revision or 0) + 1
             profile.analysis = public_json_object(analysis)
             profile.brief = public_json_object(brief)
             profile.source_status = public_json_object(source_status)
@@ -530,6 +531,7 @@ class CreatorAnalysisService:
             profile.canonical_url = source.canonical_url
             profile.sort_name = self._sort_name(source.title, lease.channel_id)
             profile.current_facts = public_json_object(current_facts)
+            profile.profile_revision = (profile.profile_revision or 0) + 1
             profile.analysis = public_json_object(analysis)
             profile.brief = public_json_object(synthesis["creator_brief"])
             profile.source_status = public_json_object(
@@ -621,6 +623,7 @@ class CreatorAnalysisService:
             "channel_id": source.channel_id,
             "canonical_url": source.canonical_url,
             "title": source.title,
+            "description": source.description,
             "custom_url": source.custom_url,
             "published_at": (
                 source.published_at.isoformat() if source.published_at else None

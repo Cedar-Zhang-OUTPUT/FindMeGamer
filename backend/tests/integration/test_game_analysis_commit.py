@@ -212,6 +212,8 @@ def _snapshot(factory: sessionmaker[Session], profile_id: UUID) -> dict[str, obj
         profile = session.get(GameProfile, profile_id)
         assert profile is not None
         return {
+            "manual_overrides": deepcopy(profile.manual_overrides),
+            "profile_revision": profile.profile_revision,
             "current_facts": deepcopy(profile.current_facts),
             "analysis": deepcopy(profile.analysis),
             "brief": deepcopy(profile.brief),
@@ -560,6 +562,10 @@ def test_successful_reanalysis_replaces_every_current_field_but_favorite(
     committed_factory,
 ) -> None:
     profile_id = _profile(committed_factory, favorite=True)
+    with committed_factory.begin() as session:
+        profile = session.get(GameProfile, profile_id)
+        profile.manual_overrides = {"facts.name": "Human title"}
+        profile.profile_revision = 4
     job_id = _job(committed_factory)
 
     assert _pipeline(committed_factory).run(job_id) == profile_id
@@ -569,6 +575,16 @@ def test_successful_reanalysis_replaces_every_current_field_but_favorite(
     assert after["analysis"] != {"old": "analysis"}
     assert after["brief"] != {"old": "brief"}
     assert after["source_status"] != {"steam": "available", "old": True}
+    with committed_factory() as session:
+        profile = session.get(GameProfile, profile_id)
+        assert profile.manual_overrides == {"facts.name": "Human title"}
+        assert profile.profile_revision == 5
+        from app.repositories.profiles import ProfilesRepository
+
+        found, _ = ProfilesRepository(session).list_games(
+            query="Human title", only_collection=False, cursor=None, limit=50
+        )
+        assert [row.id for row in found] == [profile_id]
 
 
 def test_sort_name_is_nonblank_bounded_while_full_name_is_retained(
@@ -595,6 +611,10 @@ def test_external_failure_preserves_entire_prior_profile(
     committed_factory, failure_stage
 ) -> None:
     profile_id = _profile(committed_factory)
+    with committed_factory.begin() as session:
+        profile = session.get(GameProfile, profile_id)
+        profile.manual_overrides = {"facts.name": "Retained human name"}
+        profile.profile_revision = 3
     job_id = _job(committed_factory)
     before = _snapshot(committed_factory, profile_id)
     failure = TransientIntegrationError(f"{failure_stage}_safe_failure")

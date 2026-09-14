@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     event,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -136,6 +137,9 @@ class MatchTask(TimestampMixin, Base):
         nullable=False,
     )
     locked_game_brief: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    locked_game_context: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     shuffle_seed: Mapped[int] = mapped_column(BigInteger, nullable=False)
     recommended_match_threshold: Mapped[Decimal] = mapped_column(
         Numeric(5, 4), nullable=False
@@ -240,6 +244,9 @@ class MatchScreeningRecord(TimestampMixin, Base):
     )
     screening_order: Mapped[int] = mapped_column(Integer, nullable=False)
     locked_creator_brief: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    locked_manual_context: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
     selected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     screening_reason: Mapped[str | None] = mapped_column(Text)
     expires_at: Mapped[datetime] = mapped_column(

@@ -404,9 +404,34 @@ def project_match_detail(
     session: Session, task: MatchTask, game: GameProfile
 ) -> MatchDetail:
     summary = project_match_summary(task, game)
+    revisions = [
+        {
+            "profile_type": "game",
+            "profile_id": game.id,
+            "snapshot_revision": (task.locked_game_context or {}).get("revision"),
+            "current_revision": game.profile_revision,
+        }
+    ]
+    for record, current_revision in session.execute(
+        select(MatchScreeningRecord, CreatorProfile.profile_revision)
+        .join(CreatorProfile, CreatorProfile.id == MatchScreeningRecord.creator_id)
+        .where(MatchScreeningRecord.match_task_id == task.id)
+        .order_by(MatchScreeningRecord.screening_order)
+    ):
+        revisions.append(
+            {
+                "profile_type": "creator",
+                "profile_id": record.creator_id,
+                "snapshot_revision": (record.locked_manual_context or {}).get(
+                    "revision"
+                ),
+                "current_revision": current_revision,
+            }
+        )
     if task.status is not MatchStatus.SUCCEEDED:
         return MatchDetail(
             **summary.model_dump(),
+            profile_revisions=revisions,
             result_state="pending",
             recommended_matches=[],
             other_matches=[],
@@ -468,6 +493,7 @@ def project_match_detail(
         )
     return MatchDetail(
         **summary.model_dump(),
+        profile_revisions=revisions,
         result_state="no_suitable_creators" if not rows else "available",
         recommended_matches=[
             item for item in projected if item.result_group == "recommended"

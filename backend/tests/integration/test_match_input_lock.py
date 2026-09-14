@@ -578,3 +578,124 @@ def test_zero_selected_and_zero_eligible_complete_atomically_without_ai_or_candi
         )
     assert len(zero_ai.calls) == 2  # Nonempty Library gets one empty-result recheck.
     assert no_ai.calls == []
+
+
+def test_manual_edits_are_frozen_for_both_matching_phases(auth_client, session):
+    from app.matching.prompts import build_pairwise_prompt
+    from copy import deepcopy
+
+    game, creator = _game(), _creator(980)
+    session.add_all([game, creator])
+    session.flush()
+    old_task = _create_task(session, game.id)
+    old_candidate = session.scalar(
+        select(MatchCandidateInput).where(
+            MatchCandidateInput.match_task_id == old_task.id
+        )
+    )
+    original = deepcopy(old_candidate.locked_creator_profile)
+    original_brief = deepcopy(old_task.locked_game_brief)
+    for kind, profile, changes in (
+        (
+            "game",
+            game,
+            {"facts.name": "Human game", "analysis.themes": ["Human theme"]},
+        ),
+        (
+            "creator",
+            creator,
+            {"facts.title": "Human creator", "analysis.content_summary": "Human focus"},
+        ),
+    ):
+        url = f"/api/v1/profiles/{kind}/{profile.id}/edit"
+        response = auth_client.get(url)
+        assert response.status_code == 200
+        assert (
+            auth_client.patch(
+                url,
+                json={
+                    "expected_revision": response.json()["revision"],
+                    "changes": changes,
+                    "reset_fields": [],
+                },
+            ).status_code
+            == 200
+        )
+    new_task = _create_task(session, game.id)
+    candidate = session.scalar(
+        select(MatchCandidateInput).where(
+            MatchCandidateInput.match_task_id == new_task.id
+        )
+    )
+    ai = FakeAI(_output(creator.id))
+    _service(session, ai).run(new_task.id)
+    payload = parse_prompt_payload(ai.calls[0][1])
+    assert payload["game_manual_context"]["overrides"]["analysis.themes"] == [
+        "Human theme"
+    ]
+    assert (
+        payload["creators"][0]["manual_context"]["overrides"][
+            "analysis.content_summary"
+        ]
+        == "Human focus"
+    )
+    assert payload["creators"][0]["manual_context"]["provenance"] == "manual"
+    pairwise = parse_prompt_payload(
+        build_pairwise_prompt(
+            GameBrief.model_validate(new_task.locked_game_brief),
+            candidate.locked_creator_profile,
+            game_manual_context=new_task.locked_game_context,
+        )
+    )
+    assert pairwise["game_manual_context"]["overrides"]["facts.name"] == "Human game"
+    assert (
+        pairwise["creator_profile"]["manual_context"]["overrides"]["facts.title"]
+        == "Human creator"
+    )
+    from tests.integration.test_match_checkpoint import (
+        _store,
+        _service as pairwise_service,
+        _brief,
+    )
+
+    _store(session).prepare(new_task.id, [creator.id])
+    deep_ai = FakeAI(_brief(creator.id))
+    pairwise_service(session, deep_ai).run(new_task.id, creator.id)
+    actual_pairwise = parse_prompt_payload(deep_ai.calls[0][1])
+    assert actual_pairwise["game_manual_context"]["overrides"]["analysis.themes"] == [
+        "Human theme"
+    ]
+    assert (
+        actual_pairwise["creator_profile"]["manual_context"]["overrides"][
+            "analysis.content_summary"
+        ]
+        == "Human focus"
+    )
+    assert old_task.locked_game_brief == original_brief
+    assert old_candidate.locked_creator_profile == original
+    # An explicit Brief edit is authoritative without rewriting source claims.
+    url = f"/api/v1/profiles/game/{game.id}/edit"
+    revision = auth_client.get(url).json()["revision"]
+    assert (
+        auth_client.patch(
+            url,
+            json={
+                "expected_revision": revision,
+                "changes": {"brief.themes": ["Explicit human brief theme"]},
+                "reset_fields": [],
+            },
+        ).status_code
+        == 200
+    )
+    latest = _create_task(session, game.id)
+    assert latest.locked_game_context["overrides"]["brief.themes"] == [
+        "Explicit human brief theme"
+    ]
+    assert "brief.themes" not in new_task.locked_game_context["overrides"]
+    assert latest.locked_game_context["revision"] == revision + 1
+    from app.api.routes.match import project_match_detail
+
+    comparisons = project_match_detail(session, new_task, game).profile_revisions
+    game_comparison = next(item for item in comparisons if item.profile_type == "game")
+    assert game_comparison.snapshot_revision == 1
+    assert game_comparison.current_revision == 2

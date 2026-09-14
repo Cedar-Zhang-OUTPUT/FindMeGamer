@@ -181,6 +181,8 @@ def test_game_card_and_detail_are_distinct_typed_projections(
     card = card_response.json()["items"][0]
     assert card == {
         "type": "game",
+        "profile_revision": 0,
+        "manual_overrides": {},
         "id": str(game.id),
         "name": "Clockwork Kingdom",
         "steam_app_id": "1001",
@@ -257,6 +259,8 @@ def test_creator_card_and_detail_include_ordered_active_contacts_and_selected_co
     }
     assert card == {
         "type": "creator",
+        "profile_revision": 0,
+        "manual_overrides": {},
         "id": str(creator.id),
         "name": "Creator Card",
         "youtube_channel_id": "creator-card",
