@@ -11,7 +11,7 @@ from app.core.analysis_job_contract import public_job_failure
 from app.db.models.discover import DiscoverJob, DiscoverCandidate
 from app.db.models.enums import TargetType, JobMode, JobStatus
 from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
-from app.db.models.profiles import GameProfile
+from app.db.models.profiles import CreatorProfile, GameProfile
 from app.discovery.planning import build_plan, HomepageCandidate, matches
 from app.repositories.discover import DiscoverRepository
 from app.repositories.jobs import JobsRepository, require_valid_succeeded_job_result
@@ -21,6 +21,7 @@ from app.services.profile_editing import effective_name, effective_section
 
 LEASE = timedelta(minutes=10)
 PUBLICATION_RETRY = timedelta(minutes=2)
+PLATFORM_RESULT_LIMIT = 20
 
 
 def usable_game(game):
@@ -56,9 +57,11 @@ class DiscoverService:
                 if platform in completed:
                     continue
                 try:
-                    remaining = self._remaining(job_id)
+                    remaining = self._remaining(job_id, platform)
                     if remaining:
                         with self.providers(platform) as provider:
+                            # Keep bounded oversampling so Library hits do not
+                            # consume the per-platform quota of new accounts.
                             for page in provider.search(queries, conditions, limit=100):
                                 if not self._save_page(
                                     job_id, token, platform, page, conditions
@@ -198,14 +201,17 @@ class DiscoverService:
                 pass
         return prepared
 
-    def _remaining(self, job_id):
+    def _remaining(self, job_id, platform):
         with self.sessions() as session:
             count = session.scalar(
                 select(func.count())
                 .select_from(DiscoverCandidate)
-                .where(DiscoverCandidate.discover_id == job_id)
+                .where(
+                    DiscoverCandidate.discover_id == job_id,
+                    DiscoverCandidate.platform == platform,
+                )
             )
-            return max(0, 100 - count)
+            return max(0, PLATFORM_RESULT_LIMIT - count)
 
     def _save_page(self, job_id, token, platform, page, conditions):
         # Validate/filter outside the write lock and keep provider metadata only.
@@ -223,17 +229,34 @@ class DiscoverService:
             existing = set(
                 session.scalars(
                     select(DiscoverCandidate.id).where(
-                        DiscoverCandidate.discover_id == job_id
+                        DiscoverCandidate.discover_id == job_id,
+                        DiscoverCandidate.platform == platform,
+                    )
+                )
+            )
+            library_accounts = set(
+                session.scalars(
+                    select(CreatorProfile.platform_account_id).where(
+                        CreatorProfile.platform == platform,
+                        CreatorProfile.platform_account_id.in_(
+                            [
+                                c.platform_account_id
+                                for c in candidates
+                                if c.platform == platform
+                            ]
+                        ),
                     )
                 )
             )
             for candidate in candidates:
                 if candidate.platform != platform or not matches(candidate, conditions):
                     continue
+                if candidate.platform_account_id in library_accounts:
+                    continue
                 identifier = uuid5(
                     job_id, f"{candidate.platform}:{candidate.platform_account_id}"
                 )
-                if identifier in existing or len(existing) >= 100:
+                if identifier in existing or len(existing) >= PLATFORM_RESULT_LIMIT:
                     continue
                 session.add(
                     DiscoverCandidate(
@@ -247,7 +270,7 @@ class DiscoverService:
                 existing.add(identifier)
             job.lease_until = self.clock() + LEASE
             session.commit()
-            return len(existing) < 100
+            return len(existing) < PLATFORM_RESULT_LIMIT
 
     def _platform_done(self, job_id, token, platform):
         with self.sessions() as session:

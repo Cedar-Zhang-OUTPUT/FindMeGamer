@@ -302,7 +302,7 @@ def test_partial_pages_survive_retry_cap_and_expired_claim(
     service.execute(identifier)
     response = auth_client.get(f"/api/v1/discover/{identifier}").json()
     assert response["status"] == "partial"
-    assert len(response["candidates"]) == 70
+    assert len(response["candidates"]) == 30
     ids = {c["id"] for c in response["candidates"]}
     assert response["issues"][0]["code"] == "x_payment_required"
     state["fail"] = False
@@ -323,14 +323,82 @@ def test_partial_pages_survive_retry_cap_and_expired_claim(
     ).execute(identifier)
     response = auth_client.get(f"/api/v1/discover/{identifier}").json()
     assert response["status"] == "done"
-    assert len(response["candidates"]) == 100
+    assert len(response["candidates"]) == 40
+    assert sum(c["platform"] == "youtube" for c in response["candidates"]) == 20
+    assert sum(c["platform"] == "x" for c in response["candidates"]) == 20
     assert ids <= {c["id"] for c in response["candidates"]}
     assert state["youtube_runs"] == 1
     service.execute(identifier)
     assert (
         len(auth_client.get(f"/api/v1/discover/{identifier}").json()["candidates"])
-        == 100
+        == 40
     )
+
+
+@pytest.mark.parametrize("platforms", [["x", "youtube"], ["youtube", "x"], ["youtube"]])
+def test_platform_limits_exclude_library_and_fill_from_later_pages(
+    auth_client, session, discover_factory, job_dispatcher, monkeypatch, platforms
+):
+    # A shared cap, counting Library hits, or stopping at the first page loses
+    # new candidates. Use real persistence/API and only fake the external search.
+    from app.discovery.service import DiscoverService
+    from app.discovery.planning import HomepageCandidate
+    from app.db.models.discover import DiscoverJob
+
+    def candidate(platform, i):
+        identity = f"UCtest{i:04}" if platform == "youtube" else str(i + 1)
+        url = (
+            f"https://www.youtube.com/channel/{identity}"
+            if platform == "youtube"
+            else f"https://x.com/i/user/{identity}"
+        )
+        return HomepageCandidate(
+            platform=platform, platform_account_id=identity,
+            display_name=f"Author {i}", canonical_url=url,
+        )
+
+    for platform in platforms:
+        for i in range(25):
+            c = candidate(platform, i)
+            session.add(CreatorProfile(
+                platform=platform, platform_account_id=c.platform_account_id,
+                canonical_url=c.canonical_url, sort_name=c.display_name,
+            ))
+    session.commit()
+
+    class Provider:
+        def __init__(self, platform):
+            self.platform = platform
+
+        def search(self, queries, conditions, *, limit):
+            yield [candidate(self.platform, i) for i in range(25)]
+            # Repeated Library hits and repeated new accounts must not use slots.
+            yield [candidate(self.platform, i) for i in range(20, 31)] * 2
+            yield [candidate(self.platform, i) for i in range(30, 70)]
+
+    @contextmanager
+    def providers(platform):
+        yield Provider(platform)
+
+    service = DiscoverService(
+        session_factory=discover_factory, provider_factory=providers,
+        analysis_dispatcher=job_dispatcher,
+    )
+    identifier = submit(auth_client, session, platforms)
+    service.execute(identifier)
+    complete_game(discover_factory, session.get(DiscoverJob, identifier).game_job_id, monkeypatch)
+    service.execute(identifier)
+    response = auth_client.get(f"/api/v1/discover/{identifier}").json()
+    assert response["status"] == "done"
+    assert response["issues"] == []
+    for platform in platforms:
+        results = [c for c in response["candidates"] if c["platform"] == platform]
+        assert len(results) == 20
+        assert {c["platform_account_id"] for c in results} == {
+            candidate(platform, i).platform_account_id for i in range(25, 45)
+        }
+        assert all(not c["in_library"] for c in results)
+    assert session.scalar(select(func.count()).select_from(CreatorProfile)) == 25 * len(platforms)
 
 
 def test_sweep_recovers_uncertain_publication_without_duplicate_immediate_publish(
