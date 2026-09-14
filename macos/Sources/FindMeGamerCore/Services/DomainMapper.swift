@@ -3,7 +3,9 @@ import Foundation
 import OpenAPIRuntime
 
 enum DomainMapper {
-  static func profileEdit(_ value: Components.Schemas.ProfileEditDocument) throws -> ProfileEditDocument {
+  static func profileEdit(_ value: Components.Schemas.ProfileEditDocument) throws
+    -> ProfileEditDocument
+  {
     func editValue(_ value: Components.Schemas.EditValue) throws -> ProfileEditValue {
       switch (value.value1, value.value2) {
       case (let text?, nil): .text(text)
@@ -11,11 +13,14 @@ enum DomainMapper {
       default: throw APIError.invalidResponse
       }
     }
-    return ProfileEditDocument(profileType: value.profile_type == .game ? .game : .creator,
+    return ProfileEditDocument(
+      profileType: value.profile_type == .game ? .game : .creator,
       profileID: try uuid(value.profile_id), revision: value.revision,
       fields: try value.fields.map {
-        .init(key: $0.key, section: $0.section.rawValue, label: $0.label, kind: $0.kind.rawValue,
-          required: $0.required, value: try editValue($0.value), sourceValue: try $0.source_value.map { try editValue($0.value1) },
+        .init(
+          key: $0.key, section: $0.section.rawValue, label: $0.label, kind: $0.kind.rawValue,
+          required: $0.required, value: try editValue($0.value),
+          sourceValue: try $0.source_value.map { try editValue($0.value1) },
           isOverridden: $0.is_overridden)
       })
   }
@@ -37,11 +42,13 @@ enum DomainMapper {
     let preferredContact = contact(value.contact?.value1)
     var result = CreatorProfileCard(
       id: try uuid(value.id), name: value.name, youtubeChannelID: value.youtube_channel_id,
+      platformAccountID: value.platform_account_id,
       canonicalURL: value.canonical_url, favorite: value.favorite,
       currentFacts: try json(value.current_facts), brief: try json(value.brief),
       sourceStatus: try json(value.source_status), lastAnalyzedAt: value.last_analyzed_at,
       nextAnalysisAt: value.next_analysis_at, contact: preferredContact,
       contacts: contacts(value.contacts, fallback: preferredContact))
+    result.platformAccountID = value.platform_account_id
     result.profileRevision = value.profile_revision ?? 0
     result.manualOverrides = try overrides(value.manual_overrides?.additionalProperties)
     return result
@@ -67,6 +74,7 @@ enum DomainMapper {
     let preferredContact = contact(value.contact?.value1)
     var result = CreatorProfile(
       id: try uuid(value.id), name: value.name, youtubeChannelID: value.youtube_channel_id,
+      platformAccountID: value.platform_account_id,
       canonicalURL: value.canonical_url, favorite: value.favorite,
       currentFacts: try json(value.current_facts), brief: try json(value.brief),
       sourceStatus: try json(value.source_status), lastAnalyzedAt: value.last_analyzed_at,
@@ -76,12 +84,15 @@ enum DomainMapper {
       promptMetadata: try json(value.prompt_metadata),
       contacts: contacts(value.contacts, fallback: preferredContact)
     )
+    result.platformAccountID = value.platform_account_id
     result.profileRevision = value.profile_revision ?? 0
     result.manualOverrides = try overrides(value.manual_overrides?.additionalProperties)
     return result
   }
 
-  private static func overrides(_ values: [String: Components.Schemas.EditValue]?) throws -> [String: ProfileEditValue] {
+  private static func overrides(_ values: [String: Components.Schemas.EditValue]?) throws
+    -> [String: ProfileEditValue]
+  {
     try (values ?? [:]).mapValues {
       switch ($0.value1, $0.value2) {
       case (let text?, nil): .text(text)
@@ -181,7 +192,8 @@ enum DomainMapper {
       recommendedMatches: try value.recommended_matches.map(candidate),
       otherMatches: try value.other_matches.map(candidate))
     result.profileRevisions = try (value.profile_revisions ?? []).map {
-      .init(profileType: $0.profile_type == .game ? .game : .creator,
+      .init(
+        profileType: $0.profile_type == .game ? .game : .creator,
         profileID: try uuid($0.profile_id), snapshotRevision: $0.snapshot_revision,
         currentRevision: $0.current_revision)
     }
@@ -336,6 +348,7 @@ enum DomainMapper {
     return MatchCandidate(
       creator: MatchCreatorCard(
         id: try uuid(c.id), name: c.name, youtubeChannelID: c.youtube_channel_id,
+        platformAccountID: c.platform_account_id,
         canonicalURL: c.canonical_url, favorite: c.favorite,
         contactAvailable: c.contact_available,
         contact: preferredContact, avatarURL: c.avatar_url,
@@ -411,7 +424,9 @@ enum DomainMapper {
       sendBatchID: try uuid(value.send_batch_id), creatorID: try uuid(creator.id),
       creator: OutreachCreator(
         id: try uuid(creator.id), name: creator.name,
-        youtubeChannelID: creator.youtube_channel_id, canonicalURL: creator.canonical_url,
+        youtubeChannelID: creator.youtube_channel_id,
+        platformAccountID: creator.platform_account_id ?? creator.youtube_channel_id ?? "",
+        canonicalURL: creator.canonical_url,
         avatarURL: creator.avatar_url), recipientEmail: value.recipient_email,
       sendState: try sendState(value.send_state.rawValue),
       responseState: try responseState(value.response_state.rawValue),

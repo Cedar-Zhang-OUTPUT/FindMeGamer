@@ -179,7 +179,7 @@ public final class AnalyzeRequestModel {
   private func validationMessage(for type: ProfileType) -> String {
     switch type {
     case .game: "Enter a Steam game page URL."
-    case .creator: "Enter a YouTube creator page URL."
+    case .creator: "Enter a YouTube or public X creator page URL."
     }
   }
 
@@ -202,6 +202,14 @@ public final class AnalyzeRequestModel {
       return !path[1].isEmpty && path[1].allSatisfy(\.isASCIIWholeNumber)
         && UInt64(path[1]) != nil && UInt64(path[1]) != 0
     case .creator:
+      if ["x.com", "www.x.com", "twitter.com", "www.twitter.com"].contains(host) {
+        let reserved = [
+          "home", "explore", "search", "intent", "compose", "i", "settings", "messages",
+          "notifications",
+        ]
+        return path.count == 1 && !reserved.contains(path[0].lowercased()) && path[0].count <= 15
+          && path[0].allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") }
+      }
       guard host == "youtube.com" || host == "www.youtube.com" else { return false }
       if path.count == 2, path[0] == "channel" {
         return path[1].hasPrefix("UC") && path[1].count > 2

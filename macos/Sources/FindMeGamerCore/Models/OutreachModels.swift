@@ -54,7 +54,8 @@ public struct CampaignPage: Sendable, Equatable, Hashable {
 public struct OutreachCreator: Identifiable, Sendable, Equatable, Hashable {
   public let id: UUID
   public let name: String
-  public let youtubeChannelID: String
+  public let youtubeChannelID: String?
+  public var platformAccountID: String = ""
   public let canonicalURL: String
   public let avatarURL: String?
 }

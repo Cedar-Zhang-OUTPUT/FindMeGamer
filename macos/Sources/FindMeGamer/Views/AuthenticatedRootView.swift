@@ -24,7 +24,7 @@ struct AuthenticatedRootView: View {
 
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
-  @SceneStorage("sidebar-selection") private var storedSelection = AppDestination.library.rawValue
+  @SceneStorage("sidebar-selection") private var storedSelection = AppDestination.discover.rawValue
   @State private var coordinator: ClientCoordinator?
   @State private var composerRequest: OutreachComposerRequest?
   @State private var destinationDirection = WorkspaceMotionDirection.stationary
@@ -179,7 +179,7 @@ struct AuthenticatedRootView: View {
     Binding(
       get: { selectedDestination },
       set: { proposedDestination in
-        let destination = proposedDestination ?? .library
+        let destination = proposedDestination ?? .discover
         guard destination != selectedDestination else { return }
 
         if destination != .library {
@@ -209,6 +209,22 @@ struct AuthenticatedRootView: View {
   @ViewBuilder
   private func selectedDetail(_ coordinator: ClientCoordinator) -> some View {
     switch selectedDestination {
+    case .discover:
+      NavigationStack(path: $navigation.discoverPath) {
+        DiscoverView(
+          model: coordinator.discover,
+          onOpenMatch: { id in
+            navigation.requestedMatchID = id
+            sidebarSelection.wrappedValue = .match
+          },
+          onAnalysisHistory: {
+            analyzePhase = .activity
+            coordinator.analyze.inspectorPresented = true
+            sidebarSelection.wrappedValue = .library
+          }
+        )
+        .modifier(WorkspacePageEntrance(direction: destinationDirection))
+      }
     case .library:
       NavigationStack(path: $navigation.libraryPath) {
         LibraryView(
@@ -256,6 +272,12 @@ struct AuthenticatedRootView: View {
             // clears a source URL or starts an analysis without submission.
             sidebarSelection.wrappedValue = .library
             coordinator.analyze.inspectorPresented = true
+          },
+          onLoaded: {
+            if let id = navigation.requestedMatchID {
+              navigation.requestedMatchID = nil
+              navigation.matchPath = NavigationPath([MatchRoute.result(id)])
+            }
           }
         )
         .modifier(WorkspacePageEntrance(direction: destinationDirection))

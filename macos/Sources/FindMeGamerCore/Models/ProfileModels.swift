@@ -62,7 +62,8 @@ public struct CreatorProfileCard: Identifiable, Sendable, Equatable {
   public var manualOverrides: [String: ProfileEditValue] = [:]
   public let id: UUID
   public let name: String
-  public let youtubeChannelID: String
+  public let youtubeChannelID: String?
+  public var platformAccountID: String = ""
   public let canonicalURL: String
   public let favorite: Bool
   public let currentFacts: JSONObject
@@ -74,7 +75,8 @@ public struct CreatorProfileCard: Identifiable, Sendable, Equatable {
   public let contacts: [CreatorContact]
 
   public init(
-    id: UUID, name: String, youtubeChannelID: String, canonicalURL: String, favorite: Bool,
+    id: UUID, name: String, youtubeChannelID: String?, platformAccountID: String? = nil,
+    canonicalURL: String, favorite: Bool,
     currentFacts: JSONObject, brief: JSONObject, sourceStatus: JSONObject,
     lastAnalyzedAt: Date?, nextAnalysisAt: Date?, contact: CreatorContact?,
     contacts: [CreatorContact]? = nil
@@ -82,6 +84,7 @@ public struct CreatorProfileCard: Identifiable, Sendable, Equatable {
     self.id = id
     self.name = name
     self.youtubeChannelID = youtubeChannelID
+    self.platformAccountID = platformAccountID ?? youtubeChannelID ?? ""
     self.canonicalURL = canonicalURL
     self.favorite = favorite
     self.currentFacts = currentFacts
@@ -121,7 +124,8 @@ public struct CreatorProfile: Identifiable, Sendable, Equatable {
   public var manualOverrides: [String: ProfileEditValue] = [:]
   public let id: UUID
   public var name: String
-  public let youtubeChannelID: String
+  public let youtubeChannelID: String?
+  public var platformAccountID: String = ""
   public let canonicalURL: String
   public let favorite: Bool
   public var currentFacts: JSONObject
@@ -137,7 +141,8 @@ public struct CreatorProfile: Identifiable, Sendable, Equatable {
   public let promptMetadata: JSONObject
 
   public init(
-    id: UUID, name: String, youtubeChannelID: String, canonicalURL: String, favorite: Bool,
+    id: UUID, name: String, youtubeChannelID: String?, platformAccountID: String? = nil,
+    canonicalURL: String, favorite: Bool,
     currentFacts: JSONObject, brief: JSONObject, sourceStatus: JSONObject,
     lastAnalyzedAt: Date?, nextAnalysisAt: Date?, contact: CreatorContact?, manualNotes: String?,
     analysis: JSONObject, modelMetadata: JSONObject, promptMetadata: JSONObject,
@@ -146,6 +151,7 @@ public struct CreatorProfile: Identifiable, Sendable, Equatable {
     self.id = id
     self.name = name
     self.youtubeChannelID = youtubeChannelID
+    self.platformAccountID = platformAccountID ?? youtubeChannelID ?? ""
     self.canonicalURL = canonicalURL
     self.favorite = favorite
     self.currentFacts = currentFacts

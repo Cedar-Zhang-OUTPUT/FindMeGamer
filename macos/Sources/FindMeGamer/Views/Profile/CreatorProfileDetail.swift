@@ -30,7 +30,7 @@ struct CreatorProfileDetail: View {
           }
         } else {
           ContentUnavailableView {
-            Label("YouTube data is stale", systemImage: "arrow.clockwise")
+            Label("\(presentation.platformTitle) data is stale", systemImage: "arrow.clockwise")
           } actions: {
             Button(isReanalyzing ? "Requesting…" : "Re-analyze", action: onReanalyze)
               .buttonStyle(.borderedProminent)
@@ -40,7 +40,7 @@ struct CreatorProfileDetail: View {
         }
       case .evidence:
         ProfileEvidenceSection(
-          title: "YouTube",
+          title: presentation.platformTitle,
           symbol: "play.rectangle", tone: .identity
         ) {
           sourceColumn

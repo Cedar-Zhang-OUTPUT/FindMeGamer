@@ -9,7 +9,7 @@ import Testing
       WorkspaceMotionPolicy.direction(
         from: AppDestination.library,
         to: .outreach,
-        ordered: AppDestination.allCases) == .forward)
+        ordered: AppDestination.allCases) == .backward)
     #expect(
       WorkspaceMotionPolicy.direction(
         from: AppDestination.settings,

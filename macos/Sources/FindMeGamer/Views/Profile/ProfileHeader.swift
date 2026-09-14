@@ -250,7 +250,10 @@ struct ProfileHeader: View {
   }
 
   private var sourceLinkLabel: String {
-    type == .game ? "Steam" : "YouTube"
+    switch profile {
+    case .game: "Steam"
+    case .creator(let creator): CreatorPlatform.isX(url: creator.canonicalURL) ? "X" : "YouTube"
+    }
   }
 
   private var lastAnalyzedAt: Date? {

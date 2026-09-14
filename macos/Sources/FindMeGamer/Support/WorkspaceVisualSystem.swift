@@ -8,12 +8,13 @@ struct WorkspacePageDescriptor: Equatable, Identifiable {
 }
 
 enum WorkspacePageCopy {
+  static let discover = WorkspacePageDescriptor(id: "discover", title: "Discover")
   static let library = WorkspacePageDescriptor(id: "library", title: "Library")
   static let match = WorkspacePageDescriptor(id: "match", title: "Match")
   static let outreach = WorkspacePageDescriptor(id: "outreach", title: "Outreach")
   static let settings = WorkspacePageDescriptor(id: "settings", title: "Settings")
 
-  static let all = [library, match, outreach, settings]
+  static let all = [discover, match, outreach, library, settings]
 }
 
 enum WorkspaceDesign {

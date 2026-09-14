@@ -1,5 +1,8 @@
 public enum GeneratedOperationNames {
   public static let all: [String] = [
+    "listDiscover", "createDiscover", "getDiscover", "retryDiscover",
+    "getDiscoverCapabilities", "resolveDiscoverGame", "listDiscoverAnalysisBatches",
+    "createDiscoverAnalysisBatch", "getDiscoverAnalysisBatch",
     "listJobs",
     "createAnalysisJob",
     "retryAnalysisJob",

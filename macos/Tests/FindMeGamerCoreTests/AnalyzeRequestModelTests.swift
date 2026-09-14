@@ -19,12 +19,15 @@ struct AnalyzeRequestModelTests {
 
     let invalid: [(ProfileType, String, String)] = [
       (.game, "https://youtube.com/@maker", "Enter a Steam game page URL."),
-      (.creator, "https://store.steampowered.com/app/730", "Enter a YouTube creator page URL."),
+      (
+        .creator, "https://store.steampowered.com/app/730",
+        "Enter a YouTube or public X creator page URL."
+      ),
       (.game, "http://store.steampowered.com/app/730", "Enter a Steam game page URL."),
       (.game, "https://store.steampowered.com.evil.test/app/730", "Enter a Steam game page URL."),
       (.game, "https://user@store.steampowered.com/app/730", "Enter a Steam game page URL."),
-      (.creator, "https://youtube.com:443/@maker", "Enter a YouTube creator page URL."),
-      (.creator, "/@maker", "Enter a YouTube creator page URL."),
+      (.creator, "https://youtube.com:443/@maker", "Enter a YouTube or public X creator page URL."),
+      (.creator, "/@maker", "Enter a YouTube or public X creator page URL."),
     ]
     for (type, url, message) in invalid {
       model.targetType = type
@@ -277,7 +280,7 @@ struct AnalyzeRequestModelTests {
 
     model.urlText = "not a supported URL"
     await model.submit()
-    #expect(model.validationMessage == "Enter a YouTube creator page URL.")
+    #expect(model.validationMessage == "Enter a YouTube or public X creator page URL.")
 
     await model.retry(job: failed)
 
@@ -307,14 +310,14 @@ struct AnalyzeRequestModelTests {
 
     model.urlText = "invalid"
     await model.submit()
-    #expect(model.validationMessage == "Enter a YouTube creator page URL.")
+    #expect(model.validationMessage == "Enter a YouTube or public X creator page URL.")
 
     await model.reanalyze(.profile(profile))
     #expect(model.validationMessage == nil)
     #expect(model.actionError == "Re-analysis is temporarily unavailable.")
 
     await model.submit()
-    #expect(model.validationMessage == "Enter a YouTube creator page URL.")
+    #expect(model.validationMessage == "Enter a YouTube or public X creator page URL.")
     await model.reanalyze(.profile(profile))
 
     #expect(model.validationMessage == nil)

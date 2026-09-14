@@ -29,6 +29,7 @@ extension ProfileCard {
       .creator(
         CreatorProfileCard(
           id: card.id, name: card.name, youtubeChannelID: card.youtubeChannelID,
+          platformAccountID: card.platformAccountID,
           canonicalURL: card.canonicalURL, favorite: favorite,
           currentFacts: card.currentFacts, brief: card.brief, sourceStatus: card.sourceStatus,
           lastAnalyzedAt: card.lastAnalyzedAt, nextAnalysisAt: card.nextAnalysisAt,

@@ -64,7 +64,7 @@ import Testing
       "creator": [
         "id": "00000000-0000-4000-8000-000000000003",
         "name": "Alpha Plays",
-        "youtube_channel_id": "alpha",
+        "platform": "youtube", "platform_account_id": "alpha", "youtube_channel_id": "alpha",
         "canonical_url": "https://youtube.com/@alpha",
         "favorite": true,
         "contact_available": false,
@@ -188,7 +188,7 @@ import Testing
           "type": "creator",
           "id": "00000000-0000-4000-8000-000000000004",
           "name": "Alpha Plays",
-          "youtube_channel_id": "alpha",
+          "platform": "youtube", "platform_account_id": "alpha", "youtube_channel_id": "alpha",
           "canonical_url": "https://youtube.com/@alpha",
           "favorite": false,
           "current_facts": [:],
@@ -294,8 +294,8 @@ import Testing
     swiftDocument["x-find-me-gamer-source-sha256"] as? String
   )
 
-  // Native profile editing contract from cef6ceb:backend/openapi.json.
-  #expect(recordedDigest == "a1fdf37b15c0360ac2066296c625c949c47f1547cd1ca4000dafea1b63e682bb")
+  // Native Discover contract from fd14223:backend/openapi.json.
+  #expect(recordedDigest == "10c31f9365a45a93015fb8fe02a6071c947fc4a347702828be69946f44f258bb")
 }
 
 private func decodeGenerated<Value: Decodable>(

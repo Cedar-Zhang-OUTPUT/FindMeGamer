@@ -71,7 +71,8 @@ struct AnalyzeRequestInspector: View {
         .accessibilityIdentifier(AnalyzeAccessibility.profileType)
       }
       VStack(alignment: .leading, spacing: 8) {
-        Text(model.targetType == .game ? "Steam game URL" : "YouTube channel URL").font(.headline)
+        Text(model.targetType == .game ? "Steam game URL" : "YouTube or public X URL").font(
+          .headline)
         TextField(
           model.targetType == .game
             ? "https://store.steampowered.com/app/…" : "https://youtube.com/@…",
@@ -91,7 +92,8 @@ struct AnalyzeRequestInspector: View {
       Button(action: submit) {
         HStack(spacing: 8) {
           if model.isSubmitting { ProgressView().controlSize(.small) }
-          Text(model.isSubmitting ? "Submitting…" : LibraryCopy.analysisAction(for: model.targetType))
+          Text(
+            model.isSubmitting ? "Submitting…" : LibraryCopy.analysisAction(for: model.targetType))
         }
         .frame(maxWidth: .infinity)
       }

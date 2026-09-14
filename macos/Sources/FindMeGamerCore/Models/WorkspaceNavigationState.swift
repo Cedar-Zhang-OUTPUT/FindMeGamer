@@ -12,8 +12,10 @@ public struct OutreachCampaignDestination: Identifiable, Hashable {
 @MainActor
 @Observable
 public final class WorkspaceNavigationState {
+  public var discoverPath = NavigationPath()
   public var libraryPath = NavigationPath()
   public var matchPath = NavigationPath()
+  public var requestedMatchID: UUID?
   public var outreachCampaign: OutreachCampaignDestination?
   public var settingsPath = NavigationPath()
 

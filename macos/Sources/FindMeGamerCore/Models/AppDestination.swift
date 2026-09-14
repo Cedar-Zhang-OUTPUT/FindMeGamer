@@ -1,15 +1,17 @@
 import SwiftUI
 
 public enum AppDestination: String, CaseIterable, Identifiable, Sendable, Hashable {
-  case library
+  case discover
   case match
   case outreach
+  case library
   case settings
 
   public var id: String { rawValue }
 
   public var title: String {
     switch self {
+    case .discover: "Discover"
     case .library: "Library"
     case .match: "Match"
     case .outreach: "Outreach Management"
@@ -19,6 +21,7 @@ public enum AppDestination: String, CaseIterable, Identifiable, Sendable, Hashab
 
   public var systemImage: String {
     switch self {
+    case .discover: "sparkle.magnifyingglass"
     case .library: "square.grid.2x2"
     case .match: "person.2.badge.magnifyingglass"
     case .outreach: "paperplane"
@@ -27,7 +30,7 @@ public enum AppDestination: String, CaseIterable, Identifiable, Sendable, Hashab
   }
 
   public static func restoring(rawValue: String?) -> AppDestination {
-    rawValue.flatMap(AppDestination.init(rawValue:)) ?? .library
+    rawValue.flatMap(AppDestination.init(rawValue:)) ?? .discover
   }
 }
 

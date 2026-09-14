@@ -339,7 +339,9 @@ struct CreatorMatchRow: View {
 
   @ViewBuilder private var statisticItems: some View {
     if let subscriberCount = presentation.subscriberCount {
-      statistic("Subscribers", value: subscriberCount)
+      statistic(
+        CreatorPlatform.isX(url: presentation.source.creator.canonicalURL)
+          ? "Followers" : "Subscribers", value: subscriberCount)
     }
     if let recentAverageViews = presentation.recentAverageViews {
       statistic("Recent average", value: recentAverageViews)

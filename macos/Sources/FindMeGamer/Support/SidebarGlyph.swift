@@ -3,6 +3,7 @@ import FindMeGamerCore
 import SwiftUI
 
 enum SidebarGlyph: String, CaseIterable, Hashable {
+  case discoverSearch
   case libraryMatrix
   case matchOrbit
   case outreachSignal
@@ -10,6 +11,7 @@ enum SidebarGlyph: String, CaseIterable, Hashable {
 
   init(destination: AppDestination) {
     switch destination {
+    case .discover: self = .discoverSearch
     case .library: self = .libraryMatrix
     case .match: self = .matchOrbit
     case .outreach: self = .outreachSignal
@@ -75,6 +77,14 @@ struct SidebarDestinationIcon: View {
       let stroke = StrokeStyle(lineWidth: 1.55, lineCap: .round, lineJoin: .round)
 
       switch glyph {
+      case .discoverSearch:
+        context.stroke(
+          Path(ellipseIn: CGRect(x: 3, y: 2, width: 11, height: 11)), with: .color(colors.line),
+          style: stroke)
+        var handle = Path()
+        handle.move(to: CGPoint(x: 12, y: 12))
+        handle.addLine(to: CGPoint(x: 18, y: 18))
+        context.stroke(handle, with: .color(colors.detail), style: stroke)
       case .libraryMatrix:
         drawLibraryMatrix(
           in: &context,

@@ -63,6 +63,7 @@ public enum ConnectionService: String, Sendable, Equatable, Hashable, CaseIterab
   case googleAI = "google_ai"
   case steam
   case youtube
+  case x
   case s3
   public var displayName: String {
     switch self {
@@ -70,6 +71,7 @@ public enum ConnectionService: String, Sendable, Equatable, Hashable, CaseIterab
     case .googleAI: "Google AI Studio"
     case .steam: "Steam"
     case .youtube: "YouTube"
+    case .x: "X"
     case .s3: "S3"
     }
   }
@@ -77,6 +79,7 @@ public enum ConnectionService: String, Sendable, Equatable, Hashable, CaseIterab
   public var credentialName: String {
     switch self {
     case .googleAI: "Gemini API Key"
+    case .x: "Bearer Token"
     default: "API Key"
     }
   }

@@ -5,12 +5,14 @@ import Testing
 
 @Suite
 struct EnglishCopyTests {
-  @Test func realWorkspaceDestinationsRemainTheFourEnglishProducts() {
+  @Test func realWorkspaceDestinationsExposeDiscoverFirst() {
     #expect(
       AppDestination.allCases.map(\.title)
-        == ["Library", "Match", "Outreach Management", "Settings"])
+        == ["Discover", "Match", "Outreach Management", "Library", "Settings"])
     #expect(
-      AppDestination.allCases.map(\.rawValue) == ["library", "match", "outreach", "settings"])
+      AppDestination.allCases.map(\.rawValue) == [
+        "discover", "match", "outreach", "library", "settings",
+      ])
   }
 
   @Test func composerSendRequiresBothWritableWorkspaceAndEligibleDraft() {

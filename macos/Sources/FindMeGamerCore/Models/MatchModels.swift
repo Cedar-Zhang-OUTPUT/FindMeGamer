@@ -103,7 +103,8 @@ public struct MatchCreatorContact: Sendable, Equatable, Hashable {
 public struct MatchCreatorCard: Identifiable, Sendable, Equatable, Hashable {
   public let id: UUID
   public let name: String
-  public let youtubeChannelID: String
+  public let youtubeChannelID: String?
+  public let platformAccountID: String
   public let canonicalURL: String
   public let favorite: Bool
   public let contactAvailable: Bool
@@ -116,7 +117,8 @@ public struct MatchCreatorCard: Identifiable, Sendable, Equatable, Hashable {
   public let recentMedianViews: Int?
 
   public init(
-    id: UUID, name: String, youtubeChannelID: String, canonicalURL: String, favorite: Bool,
+    id: UUID, name: String, youtubeChannelID: String?, platformAccountID: String? = nil,
+    canonicalURL: String, favorite: Bool,
     contactAvailable: Bool, contact: MatchCreatorContact?, avatarURL: String?,
     performanceSummary: String?, subscriberCount: Int?, recentAverageViews: Int?,
     recentMedianViews: Int?, contacts: [MatchCreatorContact]? = nil
@@ -124,6 +126,7 @@ public struct MatchCreatorCard: Identifiable, Sendable, Equatable, Hashable {
     self.id = id
     self.name = name
     self.youtubeChannelID = youtubeChannelID
+    self.platformAccountID = platformAccountID ?? youtubeChannelID ?? ""
     self.canonicalURL = canonicalURL
     self.favorite = favorite
     self.contactAvailable = contactAvailable

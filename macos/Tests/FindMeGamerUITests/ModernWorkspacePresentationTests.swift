@@ -7,13 +7,17 @@ import Testing
 @Suite struct ModernWorkspacePresentationTests {
   @Test func workspaceHeadersIdentifyTheDestinationWithoutInstructionalSubtitles() {
     #expect(WorkspacePageCopy.all.map(\.id) == AppDestination.allCases.map(\.rawValue))
-    #expect(WorkspacePageCopy.all.map(\.title) == ["Library", "Match", "Outreach", "Settings"])
+    #expect(
+      WorkspacePageCopy.all.map(\.title) == [
+        "Discover", "Match", "Outreach", "Library", "Settings",
+      ])
     #expect(Set(WorkspacePageCopy.all.map(\.title)).count == WorkspacePageCopy.all.count)
   }
 
   @Test func everySidebarDestinationHasOneDistinctCustomGlyph() {
     let glyphs = AppDestination.allCases.map(SidebarGlyph.init(destination:))
-    #expect(glyphs == [.libraryMatrix, .matchOrbit, .outreachSignal, .settingsControls])
+    #expect(
+      glyphs == [.discoverSearch, .matchOrbit, .outreachSignal, .libraryMatrix, .settingsControls])
     #expect(Set(glyphs).count == AppDestination.allCases.count)
   }
 

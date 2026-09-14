@@ -5,24 +5,26 @@ import Testing
 
 @Suite struct AppDestinationTests {
   @Test func destinationsExposeTheApprovedSidebarContractInOrder() {
-    #expect(AppDestination.allCases == [.library, .match, .outreach, .settings])
+    #expect(AppDestination.allCases == [.discover, .match, .outreach, .library, .settings])
     #expect(
       AppDestination.allCases.map(\.title) == [
-        "Library", "Match", "Outreach Management", "Settings",
+        "Discover", "Match", "Outreach Management", "Library", "Settings",
       ])
     #expect(
       AppDestination.allCases.map(\.systemImage) == [
-        "square.grid.2x2", "person.2.badge.magnifyingglass", "paperplane", "gearshape",
+        "sparkle.magnifyingglass", "person.2.badge.magnifyingglass", "paperplane",
+        "square.grid.2x2", "gearshape",
       ])
-    #expect(AppDestination.allCases.map(\.id) == ["library", "match", "outreach", "settings"])
-    #expect(AppDestination.allCases.count == 4)
+    #expect(
+      AppDestination.allCases.map(\.id) == ["discover", "match", "outreach", "library", "settings"])
+    #expect(AppDestination.allCases.count == 5)
   }
 
-  @Test func restoredDestinationDefaultsToLibraryAndPreservesEveryValidValue() {
-    #expect(AppDestination.restoring(rawValue: nil) == .library)
-    #expect(AppDestination.restoring(rawValue: "") == .library)
-    #expect(AppDestination.restoring(rawValue: "analyze") == .library)
-    #expect(AppDestination.restoring(rawValue: "match-results") == .library)
+  @Test func restoredDestinationDefaultsToDiscoverAndPreservesEveryValidValue() {
+    #expect(AppDestination.restoring(rawValue: nil) == .discover)
+    #expect(AppDestination.restoring(rawValue: "") == .discover)
+    #expect(AppDestination.restoring(rawValue: "analyze") == .discover)
+    #expect(AppDestination.restoring(rawValue: "match-results") == .discover)
     #expect(AppDestination.restoring(rawValue: "library") == .library)
     #expect(AppDestination.restoring(rawValue: "match") == .match)
     #expect(AppDestination.restoring(rawValue: "outreach") == .outreach)

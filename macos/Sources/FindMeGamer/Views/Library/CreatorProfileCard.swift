@@ -4,6 +4,7 @@ import SwiftUI
 struct CreatorCardPresentation: Equatable {
   let name: String
   let subscriberCount: Int?
+  let audienceLabel: String
   let performanceSummary: String?
   let tags: [String]
   let artworkURL: URL?
@@ -12,7 +13,10 @@ struct CreatorCardPresentation: Equatable {
 
   init(card: FindMeGamerCore.CreatorProfileCard) {
     name = card.name
-    subscriberCount = LibraryJSON.count(card.currentFacts["subscriber_count"])
+    let isX = CreatorPlatform.isX(url: card.canonicalURL)
+    audienceLabel = isX ? "followers" : "subscribers"
+    subscriberCount = LibraryJSON.count(
+      card.currentFacts[isX ? "follower_count" : "subscriber_count"])
     performanceSummary = LibraryJSON.text(card.brief["performance_context"])
     tags = Array(LibraryJSON.strings(card.brief["content_focus"]).prefix(3))
     artworkURL = LibraryJSON.webURL(card.currentFacts["avatar_url"])
@@ -193,7 +197,7 @@ struct CreatorProfileCard: View {
   private var accessibilitySummary: String {
     var parts: [String] = []
     if let subscriberCount = presentation.subscriberCount {
-      parts.append("\(subscriberCount.formatted()) subscribers")
+      parts.append("\(subscriberCount.formatted()) \(presentation.audienceLabel)")
     }
     parts.append(presentation.performanceSummary ?? "Performance summary unavailable")
     if !presentation.tags.isEmpty {
@@ -206,9 +210,9 @@ struct CreatorProfileCard: View {
 
   @ViewBuilder private var subscriberLabel: some View {
     if let subscriberCount = presentation.subscriberCount {
-      Text(subscriberCount, format: .number) + Text(" subscribers")
+      Text(subscriberCount, format: .number) + Text(" \(presentation.audienceLabel)")
     } else {
-      Text("Subscribers —")
+      Text("\(presentation.audienceLabel.capitalized) —")
     }
   }
 }

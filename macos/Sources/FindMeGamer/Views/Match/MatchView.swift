@@ -49,6 +49,7 @@ struct MatchView: View {
   var acceptedBatch: SendBatch? = nil
   var onViewCampaign: (UUID) -> Void = { _ in }
   var onAddProfile: (ProfileType) -> Void = { _ in }
+  var onLoaded: () -> Void = {}
 
   @Environment(\.workspaceWritesEnabled) private var writesEnabled
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -112,6 +113,7 @@ struct MatchView: View {
       async let games: Void = model.loadGames()
       async let history: Void = model.loadHistory()
       _ = await (games, history)
+      if !Task.isCancelled { onLoaded() }
     }
   }
 

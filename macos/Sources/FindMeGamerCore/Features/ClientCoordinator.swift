@@ -23,6 +23,7 @@ public struct ClientBatchRouting: Sendable, Equatable {
 @MainActor
 @Observable
 public final class ClientCoordinator {
+  public let discover: DiscoverModel
   public let library: LibraryModel
   public let analyze: AnalyzeRequestModel
   public let match: MatchModel
@@ -57,6 +58,7 @@ public final class ClientCoordinator {
     disconnect: @escaping @MainActor @Sendable () async -> Void = {}
   ) {
     self.api = api
+    discover = DiscoverModel(api: api, idempotencyKey: idempotencyKey)
     let poller = JobPoller(api: api, clock: clock)
     jobPoller = poller
     library = LibraryModel(api: api, clock: clock)
@@ -92,6 +94,7 @@ public final class ClientCoordinator {
       await withTaskGroup(of: Void.self) { group in
         group.addTask { await self.loadInitialData() }
         group.addTask { await self.consumeEvents() }
+        group.addTask { await self.discover.runPolling() }
         await group.waitForAll()
       }
     } onCancel: {
@@ -103,12 +106,13 @@ public final class ClientCoordinator {
   }
 
   public func loadInitialData() async {
+    async let discoverLoad: Void = discover.load()
     async let libraryLoad: Void = library.loadFirstPage()
     async let smtpLoad: Void = settings.loadSMTPSettings()
     async let connectionLoad: Void = settings.loadConnections()
     async let reanalysisLoad: Void = settings.loadReanalysis()
     async let activityLoad: Void = settings.loadProfileActivity()
-    _ = await (libraryLoad, smtpLoad, connectionLoad, reanalysisLoad, activityLoad)
+    _ = await (discoverLoad, libraryLoad, smtpLoad, connectionLoad, reanalysisLoad, activityLoad)
   }
 
   public func consume(_ batch: JobChangeBatch) async {
@@ -180,7 +184,9 @@ public final class ClientCoordinator {
     try await api.profileEdit(type: type, id: id)
   }
 
-  public func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws -> ProfileEditDocument {
+  public func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws
+    -> ProfileEditDocument
+  {
     try await api.saveProfileEdit(type: type, id: id, patch: patch)
   }
 
@@ -283,6 +289,8 @@ public final class ClientCoordinator {
 
   private func refreshVisibleWorkspace(_ destination: AppDestination) async {
     switch destination {
+    case .discover:
+      await discover.load()
     case .library:
       await library.loadFirstPage()
     case .match:

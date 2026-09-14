@@ -302,7 +302,7 @@ private func creatorCardJSON(contact: Any, contacts: Any? = nil) -> [String: Any
     "type": "creator",
     "id": "10000000-0000-4000-8000-000000000002",
     "name": "Signal Channel",
-    "youtube_channel_id": "UC-signal",
+    "platform": "youtube", "platform_account_id": "UC-signal", "youtube_channel_id": "UC-signal",
     "canonical_url": "https://youtube.com/@signal",
     "favorite": false,
     "current_facts": ["subscribers": 2_000],
@@ -454,6 +454,7 @@ private func matchItemJSON(name: String, suffix: String, label: String, group: S
     "creator": [
       "id": "40000000-0000-4000-8000-00000000000\(suffix)",
       "name": name,
+      "platform": "youtube", "platform_account_id": "UC-\(suffix)",
       "youtube_channel_id": "UC-\(suffix)",
       "canonical_url": "https://youtube.com/@creator\(suffix)",
       "favorite": suffix == "1",
@@ -570,7 +571,7 @@ private func sendBatchDetailJSON() -> [String: Any] {
         "creator": [
           "id": "40000000-0000-4000-8000-000000000001",
           "name": "First",
-          "youtube_channel_id": "UC-1",
+          "platform": "youtube", "platform_account_id": "UC-1", "youtube_channel_id": "UC-1",
           "canonical_url": "https://youtube.com/@creator1",
           "avatar_url": NSNull(),
         ],

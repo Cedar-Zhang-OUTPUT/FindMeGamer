@@ -13,7 +13,7 @@ struct SettingsModelTests {
   @Test func connectionPresentationStatePublishesObservationChanges() async {
     let api = SettingsAPI(connectionLoadOutcomes: [
       .value(connection(.steam, configured: true)),
-      .value(connection(.youtube)),
+      .value(connection(.youtube)), .value(connection(.x)),
       .value(connection(.deepSeek)),
       .value(connection(.googleAI)),
     ])
@@ -45,7 +45,7 @@ struct SettingsModelTests {
     #expect(model.creatorIntervalDays == 14)
     #expect(model.gameIntervalDays == 30)
     #expect(!model.hasDisableScheduleControl)
-    #expect(model.connectionServices == [.steam, .youtube, .deepSeek, .googleAI])
+    #expect(model.connectionServices == [.steam, .youtube, .x, .deepSeek, .googleAI])
 
     model.setAppearanceMode(.dark)
     model.setFontSize(.extraLarge)
@@ -332,7 +332,7 @@ struct SettingsModelTests {
   }
 
   @MainActor
-  @Test func connectionsExposeFourServicesAndReplaceTestWithoutLeakingInputs() async {
+  @Test func connectionsExposeFiveServicesAndReplaceTestWithoutLeakingInputs() async {
     let steamInitial = connection(.steam, configured: false, status: .notTested)
     let youtubeInitial = connection(.youtube, configured: true, status: .notTested)
     let deepInitial = connection(.deepSeek, configured: false, status: .notTested)
@@ -341,7 +341,8 @@ struct SettingsModelTests {
     let steamGate = SettingsGate<ConnectionStatus>()
     let api = SettingsAPI(
       connectionLoadOutcomes: [
-        .value(steamInitial), .value(youtubeInitial), .value(deepInitial), .value(googleInitial),
+        .value(steamInitial), .value(youtubeInitial), .value(connection(.x)), .value(deepInitial),
+        .value(googleInitial),
       ],
       connectionReplaceOutcomes: [
         .failure(
@@ -353,8 +354,8 @@ struct SettingsModelTests {
     let model = SettingsModel(api: api, appearanceStore: SettingsPreferenceStore())
     await model.loadConnections()
 
-    #expect(await api.connectionLoadCalls == [.steam, .youtube, .deepSeek, .googleAI])
-    #expect(model.connectionServices == [.steam, .youtube, .deepSeek, .googleAI])
+    #expect(await api.connectionLoadCalls == [.steam, .youtube, .x, .deepSeek, .googleAI])
+    #expect(model.connectionServices == [.steam, .youtube, .x, .deepSeek, .googleAI])
     #expect(model.connectionStatus(for: .steam) == steamInitial)
     let reflectedLabels = Mirror(reflecting: steamInitial).children.compactMap(\.label)
     #expect(!reflectedLabels.contains("secret"))
@@ -397,7 +398,8 @@ struct SettingsModelTests {
     let configured = connection(.googleAI, configured: true)
     let api = SettingsAPI(
       connectionLoadOutcomes: [
-        .value(connection(.steam)), .value(connection(.youtube)), .value(connection(.deepSeek)),
+        .value(connection(.steam)), .value(connection(.youtube)), .value(connection(.x)),
+        .value(connection(.deepSeek)),
         .value(initial),
       ],
       connectionReplaceOutcomes: [.value(configured)],
@@ -435,8 +437,10 @@ struct SettingsModelTests {
     let staleGate = SettingsGate<ConnectionStatus>()
     let api = SettingsAPI(
       connectionLoadOutcomes: [
-        .value(initial), .value(connection(.youtube)), .value(connection(.deepSeek)),
+        .value(initial), .value(connection(.youtube)), .value(connection(.x)),
+        .value(connection(.deepSeek)),
         .value(connection(.googleAI)), .gated(staleGate), .value(connection(.youtube)),
+        .value(connection(.x)),
         .value(connection(.deepSeek)), .value(connection(.googleAI)),
       ],
       connectionReplaceOutcomes: [.value(canonical)])
@@ -460,7 +464,8 @@ struct SettingsModelTests {
     let configured = connection(.steam, configured: true)
     let api = SettingsAPI(
       connectionLoadOutcomes: [
-        .gated(steamGate), .value(connection(.youtube)), .value(connection(.deepSeek)),
+        .gated(steamGate), .value(connection(.youtube)), .value(connection(.x)),
+        .value(connection(.deepSeek)),
         .value(connection(.googleAI)),
       ],
       connectionTestOutcomes: [

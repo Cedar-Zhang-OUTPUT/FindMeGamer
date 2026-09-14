@@ -1,6 +1,6 @@
 import Foundation
 
-public protocol APIService: Sendable {
+public protocol APIService: DiscoverAPIService, Sendable {
   func validateSession() async throws -> WorkspaceSession
   func listJobs(changedAfter: String?, status: JobStatus?) async throws -> JobChangePage
   func createAnalysisJob(_ request: AnalysisRequest, idempotencyKey: String) async throws
@@ -11,7 +11,8 @@ public protocol APIService: Sendable {
   ) async throws -> ProfileCardPage
   func profile(type: ProfileType, id: UUID) async throws -> Profile
   func profileEdit(type: ProfileType, id: UUID) async throws -> ProfileEditDocument
-  func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws -> ProfileEditDocument
+  func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws
+    -> ProfileEditDocument
   func setFavorite(type: ProfileType, id: UUID, favorite: Bool) async throws -> ProfileCard
   func updateCreatorManual(id: UUID, email: String?, notes: String) async throws
     -> CreatorProfile

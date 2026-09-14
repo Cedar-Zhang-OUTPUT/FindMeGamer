@@ -80,7 +80,8 @@ struct GameProfilePresentation: Equatable {
 
   init(profile original: FindMeGamerCore.GameProfile) {
     var profile = original
-    profile.currentFacts = ProfileManualPresentation.annotatedFacts(profile.currentFacts, overrides: profile.manualOverrides)
+    profile.currentFacts = ProfileManualPresentation.annotatedFacts(
+      profile.currentFacts, overrides: profile.manualOverrides)
     name = profile.name
     sourceURL = ProfileLinkPolicy.validated(profile.canonicalURL)
     artworkURL =
@@ -164,6 +165,7 @@ struct CreatorContactPresentation: Equatable, Sendable {
 
 struct CreatorProfilePresentation: Equatable {
   static let staleCopy = "YouTube data is stale. Re-analysis is required."
+  let platformTitle: String
 
   let name: String
   let sourceURL: URL?
@@ -177,11 +179,15 @@ struct CreatorProfilePresentation: Equatable {
 
   init(profile original: FindMeGamerCore.CreatorProfile) {
     var profile = original
-    profile.currentFacts = ProfileManualPresentation.annotatedFacts(profile.currentFacts, overrides: profile.manualOverrides)
+    platformTitle = CreatorPlatform.isX(url: profile.canonicalURL) ? "X" : "YouTube"
+    profile.currentFacts = ProfileManualPresentation.annotatedFacts(
+      profile.currentFacts, overrides: profile.manualOverrides)
     name = profile.name
     sourceURL = ProfileLinkPolicy.validated(profile.canonicalURL)
     let isStale = CreatorStalePolicy.isStale(profile.sourceStatus)
-    staleWarning = isStale ? Self.staleCopy : nil
+    staleWarning =
+      isStale
+      ? (platformTitle == "X" ? "X data is stale. Re-analysis is required." : Self.staleCopy) : nil
 
     if isStale {
       artworkURL = nil
@@ -217,9 +223,22 @@ struct CreatorProfilePresentation: Equatable {
   private static func makeSourceFacts(profile: FindMeGamerCore.CreatorProfile)
     -> [ProfileDisplayField]
   {
+    if CreatorPlatform.isX(url: profile.canonicalURL) {
+      return [
+        ProfileDisplayField(
+          label: "Platform Account ID", values: [profile.platformAccountID], annotation: nil)
+      ]
+        + ProfileFieldBuilder.fields(
+          from: profile.currentFacts,
+          specs: [
+            ("Description", "description"), ("Username", "username"),
+            ("Followers", "follower_count"), ("Posts", "post_count"),
+          ])
+    }
     var fields = [
       ProfileDisplayField(
-        label: "YouTube Channel ID", values: [profile.youtubeChannelID], annotation: nil)
+        label: profile.youtubeChannelID == nil ? "Platform Account ID" : "YouTube Channel ID",
+        values: [profile.platformAccountID], annotation: nil)
     ]
     fields += ProfileFieldBuilder.fields(
       from: profile.currentFacts,
@@ -483,7 +502,8 @@ final class ProfileSheetState {
 
   func replaceEditedProfile(_ value: Profile, generation: UInt64) {
     guard isCurrentEditedProfileRefresh(generation), !isManualSaveInFlight,
-      value.id == profile.id else { return }
+      value.id == profile.id
+    else { return }
     let preserveDraft = hasUnsavedManualChanges
     profile = value
     creatorOverride = nil

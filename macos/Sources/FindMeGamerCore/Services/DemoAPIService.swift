@@ -1,6 +1,96 @@
 import Foundation
 
 actor DemoAPIService: APIService {
+  private var discoverRecords: [DiscoverRecord] = []
+  private var discoverBatchRecords: [UUID: [DiscoverBatch]] = [:]
+  private var discoverKeys: [String: DiscoverRecord] = [:]
+  private var discoverBatchKeys: [String: DiscoverBatch] = [:]
+
+  func discoverCapabilities() async throws -> [DiscoverCapability] {
+    ["youtube", "x", "instagram", "twitch"].map {
+      .init(platform: $0, available: $0 == "youtube" || $0 == "x", reason: nil)
+    }
+  }
+  func resolveDiscoverGame(url: String) async throws -> DiscoverGame {
+    guard let components = URLComponents(string: url), components.host == "store.steampowered.com",
+      components.path.hasPrefix("/app/")
+    else { throw APIError.invalidResponse }
+    if let game = games.first(where: { $0.canonicalURL == url }) {
+      return .init(id: game.id, name: game.name, url: url)
+    }
+    return .init(id: nil, name: "Steam game (Demo)", url: url)
+  }
+  func discoverHistory(cursor: String?) async throws -> DiscoverPage {
+    .init(
+      items: discoverRecords.map {
+        .init(
+          id: $0.id, gameName: $0.gameName, status: $0.status,
+          candidateCount: $0.candidates.count, createdAt: $0.createdAt)
+      }, nextCursor: nil)
+  }
+  func discover(id: UUID) async throws -> DiscoverRecord {
+    guard let record = discoverRecords.first(where: { $0.id == id }) else {
+      throw APIError.invalidResponse
+    }
+    return record
+  }
+  func createDiscover(game: DiscoverGame, conditions: DiscoverConditions, idempotencyKey: String)
+    async throws -> DiscoverRecord
+  {
+    if let existing = discoverKeys[idempotencyKey] { return existing }
+    let candidates = (1...24).map { index in
+      let platform = conditions.platforms.sorted()[(index - 1) % conditions.platforms.count]
+      if platform == "youtube", index <= 3, creators.count >= index {
+        let creator = creators[index - 1]
+        return DiscoverCandidate(
+          id: UUID(), platform: platform, accountID: creator.platformAccountID,
+          name: creator.name, url: creator.canonicalURL, inLibrary: true)
+      }
+      return DiscoverCandidate(
+        id: UUID(), platform: platform, accountID: "demo_creator_\(index)",
+        name: "Demo Creator \(index)",
+        url: platform == "x"
+          ? "https://x.com/demo_creator_\(index)" : "https://youtube.com/@demo_creator_\(index)",
+        inLibrary: false)
+    }
+    let record = DiscoverRecord(
+      id: UUID(), gameID: game.id ?? games.first?.id, gameName: game.name,
+      status: "done", stage: nil, candidates: candidates, issues: [], createdAt: Date())
+    discoverRecords.insert(record, at: 0)
+    discoverKeys[idempotencyKey] = record
+    return record
+  }
+  func discoverBatches(id: UUID) async throws -> [DiscoverBatch] { discoverBatchRecords[id] ?? [] }
+  func retryDiscover(id: UUID) async throws -> DiscoverRecord { try await discover(id: id) }
+  func createDiscoverBatch(
+    id: UUID, candidateIDs: [UUID], mode: DiscoverAnalysisMode, idempotencyKey: String
+  ) async throws -> DiscoverBatch {
+    if let existing = discoverBatchKeys[idempotencyKey] { return existing }
+    let record = try await discover(id: id)
+    for candidate in record.candidates
+    where candidateIDs.contains(candidate.id) && !candidate.inLibrary {
+      _ = try await createAnalysisJob(
+        .init(url: candidate.url, profileType: .creator),
+        idempotencyKey: idempotencyKey + candidate.id.uuidString)
+    }
+    let matchID: UUID?
+    if mode == .analyzeAndMatch, let gameID = record.gameID {
+      matchID = try await createMatch(gameID: gameID, idempotencyKey: idempotencyKey).id
+    } else {
+      matchID = nil
+    }
+    let batch = DiscoverBatch(
+      id: UUID(), discoverID: id, mode: mode, status: "done",
+      items: candidateIDs.map { candidate in
+        .init(
+          candidateID: candidate, status: "succeeded",
+          reused: record.candidates.first(where: { $0.id == candidate })?.inLibrary ?? false,
+          error: nil)
+      }, matchID: matchID, error: nil)
+    discoverBatchRecords[id, default: []].insert(batch, at: 0)
+    discoverBatchKeys[idempotencyKey] = batch
+    return batch
+  }
   private var editDocuments: [UUID: ProfileEditDocument] = [:]
   private var editSources: [UUID: Profile] = [:]
   private let scenario: DemoScenario
@@ -97,17 +187,30 @@ actor DemoAPIService: APIService {
           genres: ["Indie", "Adventure", "Demo"]),
         at: 0)
     case .creator:
-      creators.insert(
-        DemoFixtures.creator(
-          id: profileID,
-          name: "New Demo Creator",
-          channelID: targetID,
-          url: canonicalURL,
-          favorite: false,
-          subscribers: 42_000,
-          focus: ["Indie", "First Look", "Reviews"],
-          performance: "Newly analyzed local demo profile."),
-        at: 0)
+      if CreatorPlatform.isX(url: canonicalURL) {
+        creators.insert(
+          CreatorProfile(
+            id: profileID, name: "New Demo X Creator", youtubeChannelID: nil,
+            platformAccountID: "demo-\(targetID)", canonicalURL: canonicalURL, favorite: false,
+            currentFacts: [
+              "follower_count": .number(42000), "post_count": .number(125),
+              "description": .string("Local Demo X creator"),
+            ],
+            brief: [:], sourceStatus: [:], lastAnalyzedAt: now, nextAnalysisAt: nil, contact: nil,
+            manualNotes: nil, analysis: [:], modelMetadata: [:], promptMetadata: [:]), at: 0)
+      } else {
+        creators.insert(
+          DemoFixtures.creator(
+            id: profileID,
+            name: "New Demo Creator",
+            channelID: targetID,
+            url: canonicalURL,
+            favorite: false,
+            subscribers: 42_000,
+            focus: ["Indie", "First Look", "Reviews"],
+            performance: "Newly analyzed local demo profile."),
+          at: 0)
+      }
       discoveredContactsByCreatorID[profileID] = creators[0].contacts.filter {
         $0.availability == .discovered
       }
@@ -167,7 +270,7 @@ actor DemoAPIService: APIService {
           (!onlyCollection || profile.favorite)
             && (needle.isEmpty
               || profile.name.lowercased().contains(needle)
-              || profile.youtubeChannelID.lowercased().contains(needle))
+              || profile.platformAccountID.lowercased().contains(needle))
         }
         .prefix(max(0, limit))
         .map { .creator(DemoFixtures.card($0)) }
@@ -212,31 +315,41 @@ actor DemoAPIService: APIService {
     return document
   }
 
-  func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws -> ProfileEditDocument {
+  func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws
+    -> ProfileEditDocument
+  {
     var document = try await profileEdit(type: type, id: id)
     guard document.revision == patch.expectedRevision else {
-      throw APIError(code: "profile_revision_conflict", message: "Profile changed. Read the latest profile.", retryable: false)
+      throw APIError(
+        code: "profile_revision_conflict", message: "Profile changed. Read the latest profile.",
+        retryable: false)
     }
     let keys = Set(document.fields.map(\.key))
     guard Set(patch.changes.keys).union(patch.resetFields).isSubset(of: keys),
-      Set(patch.changes.keys).isDisjoint(with: patch.resetFields) else { throw APIError.invalidResponse }
+      Set(patch.changes.keys).isDisjoint(with: patch.resetFields)
+    else { throw APIError.invalidResponse }
     for index in document.fields.indices {
       let field = document.fields[index]
       if let value = patch.changes[field.key] {
         let isList: Bool = if case .list = value { true } else { false }
-        guard isList == (field.kind == "list"), !field.required || !value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-          throw APIError(code: "profile_edit_invalid", message: "Check required fields.", retryable: false)
+        guard isList == (field.kind == "list"),
+          !field.required || !value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+          throw APIError(
+            code: "profile_edit_invalid", message: "Check required fields.", retryable: false)
         }
         document.fields[index].value = value
         document.fields[index].isOverridden = true
       } else if patch.resetFields.contains(field.key) {
-        document.fields[index].value = field.sourceValue ?? (field.kind == "list" ? .list([]) : .text(""))
+        document.fields[index].value =
+          field.sourceValue ?? (field.kind == "list" ? .list([]) : .text(""))
         document.fields[index].isOverridden = false
       }
     }
     document.revision += 1
     let current = try await profile(type: type, id: id)
-    let effective = DemoProfileEditing.applying(document, to: current, source: editSources[id] ?? current)
+    let effective = DemoProfileEditing.applying(
+      document, to: current, source: editSources[id] ?? current)
     switch effective {
     case .game(let value): games[games.firstIndex { $0.id == id }!] = value
     case .creator(let value): creators[creators.firstIndex { $0.id == id }!] = value
@@ -274,6 +387,7 @@ actor DemoAPIService: APIService {
     let primaryContact = manualContact ?? canonicalDiscoveredContacts.first
     var updated = CreatorProfile(
       id: old.id, name: old.name, youtubeChannelID: old.youtubeChannelID,
+      platformAccountID: old.platformAccountID,
       canonicalURL: old.canonicalURL, favorite: old.favorite,
       currentFacts: old.currentFacts, brief: old.brief, sourceStatus: old.sourceStatus,
       lastAnalyzedAt: old.lastAnalyzedAt, nextAnalysisAt: old.nextAnalysisAt,
@@ -282,7 +396,10 @@ actor DemoAPIService: APIService {
       contacts: contacts)
     updated.profileRevision = old.profileRevision + 1
     updated.manualOverrides = old.manualOverrides
-    if var document = editDocuments[id] { document.revision = updated.profileRevision; editDocuments[id] = document }
+    if var document = editDocuments[id] {
+      document.revision = updated.profileRevision
+      editDocuments[id] = document
+    }
     creators[index] = updated
     return updated
   }
@@ -695,7 +812,7 @@ actor DemoAPIService: APIService {
       return creators.first(where: { $0.canonicalURL == request.url }).map {
         ExistingProfile(
           profileID: $0.id, profileType: .creator,
-          canonicalTargetID: $0.youtubeChannelID, canonicalURL: $0.canonicalURL)
+          canonicalTargetID: $0.platformAccountID, canonicalURL: $0.canonicalURL)
       }
     }
   }
@@ -737,6 +854,14 @@ private struct DemoFixtures {
         favorite: false,
         summary: "Command a rebel fleet through tactical battles and branching choices.",
         genres: ["Tactics", "Roguelite", "Sci-fi"]),
+      game(
+        id: id(104), name: "Starfield Orchard", appID: "3038111",
+        url: "https://store.steampowered.com/app/3038111/Starfield_Orchard/", favorite: false,
+        summary: "Build a peaceful orchard among the stars.", genres: ["Simulation", "Cozy"]),
+      game(
+        id: id(105), name: "Moonlit Courier", appID: "3038112",
+        url: "https://store.steampowered.com/app/3038112/Moonlit_Courier/", favorite: false,
+        summary: "Deliver stories through a moonlit city.", genres: ["Adventure", "Indie"]),
     ]
     let creators = [
       creator(
@@ -796,7 +921,7 @@ private struct DemoFixtures {
       isDefault: false, createdAt: date(dayOffset: -10), updatedAt: date(dayOffset: -10))
     let campaign = campaignFixture(match: firstMatch, creators: creators, template: template)
     let completedAnalysis = AnalysisJob(
-      id: id(601), profileType: .creator, canonicalTargetID: creators[0].youtubeChannelID,
+      id: id(601), profileType: .creator, canonicalTargetID: creators[0].platformAccountID,
       canonicalURL: creators[0].canonicalURL, mode: .create, status: .succeeded,
       stage: .finalizing, completedUnits: 3, totalUnits: 3, retryable: false,
       correlationID: "LOCAL-DEMO", profileID: creators[0].id,
@@ -1057,6 +1182,7 @@ private struct DemoFixtures {
     return MatchCandidate(
       creator: MatchCreatorCard(
         id: creator.id, name: creator.name, youtubeChannelID: creator.youtubeChannelID,
+        platformAccountID: creator.platformAccountID,
         canonicalURL: creator.canonicalURL, favorite: creator.favorite,
         contactAvailable: !creator.contacts.isEmpty,
         contact: creator.contact.map {
@@ -1150,6 +1276,7 @@ private struct DemoFixtures {
   static func card(_ profile: CreatorProfile) -> CreatorProfileCard {
     var result = CreatorProfileCard(
       id: profile.id, name: profile.name, youtubeChannelID: profile.youtubeChannelID,
+      platformAccountID: profile.platformAccountID,
       canonicalURL: profile.canonicalURL, favorite: profile.favorite,
       currentFacts: profile.currentFacts, brief: profile.brief,
       sourceStatus: profile.sourceStatus, lastAnalyzedAt: profile.lastAnalyzedAt,
@@ -1176,6 +1303,7 @@ private struct DemoFixtures {
   static func replacingFavorite(_ profile: CreatorProfile, favorite: Bool) -> CreatorProfile {
     var result = CreatorProfile(
       id: profile.id, name: profile.name, youtubeChannelID: profile.youtubeChannelID,
+      platformAccountID: profile.platformAccountID,
       canonicalURL: profile.canonicalURL, favorite: favorite,
       currentFacts: profile.currentFacts, brief: profile.brief,
       sourceStatus: profile.sourceStatus, lastAnalyzedAt: profile.lastAnalyzedAt,
@@ -1232,6 +1360,7 @@ private struct DemoFixtures {
   static func outreachCreator(_ creator: CreatorProfile) -> OutreachCreator {
     OutreachCreator(
       id: creator.id, name: creator.name, youtubeChannelID: creator.youtubeChannelID,
+      platformAccountID: creator.platformAccountID,
       canonicalURL: creator.canonicalURL, avatarURL: nil)
   }
 

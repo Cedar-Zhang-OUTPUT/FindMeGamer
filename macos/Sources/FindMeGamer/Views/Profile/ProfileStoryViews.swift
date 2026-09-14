@@ -52,7 +52,7 @@ struct ProfileMetricPresentation: Equatable {
   ) -> [Self] {
     let labels =
       type == .creator
-      ? ["Subscribers", "Average Views", "Public Videos"]
+      ? ["Followers", "Posts", "Subscribers", "Average Views", "Public Videos"]
       : ["Release Date", "Review Summary", "Recommendations"]
     return labels.compactMap { label in
       guard let field = fields.first(where: { $0.label == label }),
