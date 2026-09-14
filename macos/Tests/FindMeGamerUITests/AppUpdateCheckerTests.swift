@@ -314,8 +314,8 @@ import Testing
   }
 
   @Test(.enabled(if: ProcessInfo.processInfo.environment["FMG_VERIFY_LIVE_UPDATE"] == "1"))
-  func liveApprovedManifestOffers030AndKeeps030Current() async throws {
-    for installed in ["0.1.2", "0.1.3", "0.1.4", "0.2.0", "0.3.0"] {
+  func liveApprovedManifestOffers040AndKeeps040Current() async throws {
+    for installed in ["0.1.2", "0.1.3", "0.1.4", "0.2.0", "0.3.0", "0.4.0"] {
       let preferences = UpdateTestPreferences()
       defer { preferences.cleanUp() }
       let checker = AppUpdateChecker(
@@ -323,10 +323,10 @@ import Testing
         defaults: preferences.defaults)
       await checker.check()
       #expect(checker.state == .checked)
-      if installed != "0.3.0" {
+      if installed != "0.4.0" {
         let available = try #require(checker.availableRelease)
-        #expect(available.version == "0.3.0")
-        #expect(available.releasePageURL.absoluteString == releasePage(version: "0.3.0"))
+        #expect(available.version == "0.4.0")
+        #expect(available.releasePageURL.absoluteString == releasePage(version: "0.4.0"))
       } else {
         #expect(checker.availableRelease == nil)
       }
