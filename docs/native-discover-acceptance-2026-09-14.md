@@ -87,6 +87,18 @@ Verification commands and evidence:
 
 ## Future authorized release and maintenance
 
+### Independent development review
+
+Task 7's scoped spec/quality review and the final whole-feature review of `afa10cf..08ac273` completed without Critical or Important findings. The final reviewer independently inspected the retained suites/build/HTTP/restart/migration/live evidence and traced the integration boundaries. No additional provider calls or duplicate suites were used for review. The implementation is ready for the separately authorized internal Demo release process; no deployment or published installer is implied.
+
+Six nonblocking follow-ups remain: include X's dedicated website in contact evidence; avoid truncating exceptionally long X query expressions; add safe broker-publication warnings; clear a recovered native polling warning; provide safe import error field/index locations; strengthen the unavailable-channel test's exact-set assertion. Existing dependency warnings and three postponed tests remain recorded. The earlier curated expiry/platform-label issues and acknowledged-batch read race were fixed and reviewed, not deferred.
+
+Controller decisions, accepted by the final reviewer:
+
+1. Complete X succeeded-job SQL validation in native0010 with full X analysis instead of native0009's storage-only unit. This kept the first unit independently testable; if incorrect, the integration order would require rework caught by actual publication tests.
+2. Return compact Discover history summaries and load candidate bodies through the detail endpoint. This avoids heavy history loading while preserving all results; if the split is unsuitable, native DTO/endpoint adaptation would be required.
+3. Replace the crashing Discover native Table with a table-shaped SwiftUI scrollable Grid, preserving columns, local selection, links and navigation. An actual AppKit outline coordinator crash motivated the narrow fallback; if inadequate, keyboard/accessibility behavior would need rework or Table restoration after the underlying crash is fixed.
+
 Release execution remains a separate action after independent review. Use the current native deployment described in `docs/native-release-0.3.0-2026-09-14.md`: source `/opt/find-me-gamer-native-030`, env `/etc/find-me-gamer/native.env`, native DB `find_me_gamer_native_20260914`, Redis `/1`. Do not repeat the original empty-DB cutover/settings import or run the old `ops/deploy.sh`.
 
 For a future approved maintenance release: stage the reviewed commit and image; verify the explicit native DB/Redis configuration; stop API, Worker and Beat together; take and verify a fresh complete native backup and protected configuration/image record; then run the additive migration. There is no zero-downtime compatibility claim. Retain both the current native data and the old v2 DB.
