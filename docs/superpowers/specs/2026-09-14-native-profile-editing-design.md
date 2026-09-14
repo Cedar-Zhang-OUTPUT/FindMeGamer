@@ -1,6 +1,6 @@
 # Native macOS restoration and editable Profiles
 
-Status: user approved the product direction and manual-overrides model; this written design awaits review before implementation planning.
+Status: approved by the user; implementation authorized on 2026-09-14.
 
 ## Baseline and scope
 
