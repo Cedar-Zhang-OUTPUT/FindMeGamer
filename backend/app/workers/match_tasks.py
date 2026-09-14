@@ -478,8 +478,20 @@ class MatchTaskExecutor:
 
 class _ProductionScreening:
     def run(self, task_id: UUID) -> list[UUID]:
-        with _production_gateway() as ai:
-            return ScreeningService(session_factory=session_scope, ai=ai).run(task_id)
+        # Only the advisory lock lives in this transaction. All checkpoints use
+        # separate short transactions; duplicate Celery deliveries do not pay for
+        # the same in-flight batches. Worker loss releases the lock automatically.
+        with session_scope() as guard, guard.begin():
+            acquired = guard.scalar(
+                text("SELECT pg_try_advisory_xact_lock(:key)"),
+                {"key": advisory_lock_key(task_id)},
+            )
+            if not acquired:
+                return []
+            with _production_gateway() as ai:
+                return ScreeningService(session_factory=session_scope, ai=ai).run(
+                    task_id
+                )
 
 
 @contextmanager

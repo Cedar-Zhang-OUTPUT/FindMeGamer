@@ -221,6 +221,38 @@ def build_empty_screening_recheck(messages: list[Message]) -> list[Message]:
     return recheck
 
 
+def build_screening_reduction_prompt(
+    game_brief: GameBrief,
+    selections: Sequence[object],
+    *,
+    selection_limit: int,
+    game_manual_context: Mapping | None = None,
+) -> list[Message]:
+    """Compare bounded preliminary summaries, never the entire original Library."""
+    return _build_grouped_messages(
+        version="match-screening-reduction-v1",
+        stage_rules=(
+            f"Select at most {selection_limit} candidates from these preliminary "
+            "screening summaries for later independent Deep Match. Compare plausible "
+            "fit to the supplied Game Brief and manual context. Summaries are AI-derived "
+            "judgments, not new source facts. Retain the best supported fits across "
+            "the whole supplied group; do not favor input order. Return ScreeningOutput "
+            "with only supplied creator IDs and concise reasons and evidence. This is "
+            "not final ranking. Do not invent evidence or add candidates."
+        ),
+        payload={
+            "game_brief": game_brief.model_dump(mode="json"),
+            "game_manual_context": dict(game_manual_context or {}),
+            "selection_limit": selection_limit,
+            "screening_summaries": [
+                item.model_dump(mode="json") for item in selections
+            ],
+        },
+        items_key="screening_summaries",
+        total_byte_budget=MAX_SCREENING_TOTAL_MESSAGE_BYTES,
+    )
+
+
 def build_pairwise_prompt(
     game_brief: GameBrief,
     creator_profile: Mapping[str, object],

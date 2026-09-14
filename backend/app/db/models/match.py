@@ -200,6 +200,16 @@ event.listen(MatchTask, "before_insert", _serialize_and_timestamp_match_change)
 event.listen(MatchTask, "before_update", _serialize_and_timestamp_match_change)
 
 
+class MatchScreeningCheckpoint(TimestampMixin, Base):
+    __tablename__ = "match_screening_checkpoints"
+
+    match_task_id: Mapped[UUID] = mapped_column(
+        ForeignKey("match_tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    request_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    selections: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+
+
 class MatchScreeningRecord(TimestampMixin, Base):
     __tablename__ = "match_screening_records"
     __table_args__ = (

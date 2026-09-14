@@ -100,6 +100,10 @@ class FakeRepository:
         self.locked_input = locked_input
         self.applied: list[ScreeningSelection] | None = None
 
+    def save_screening_checkpoint(self, match_task_id, key, selections):
+        assert match_task_id == TASK_ID
+        return tuple(selections)
+
     def load_locked_screening_input(self, match_task_id: UUID) -> LockedScreeningInput:
         assert match_task_id == TASK_ID
         return self.locked_input

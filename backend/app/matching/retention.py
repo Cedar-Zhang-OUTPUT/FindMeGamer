@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.orm import Session
 
 from app.core.database import session_scope
 from app.db.models.match import (
     MatchCandidateInput,
     MatchScreeningRecord,
+    MatchScreeningCheckpoint,
     MatchStatus,
     MatchTask,
 )
@@ -41,6 +42,12 @@ def _purge(session: Session, now: datetime) -> int:
     for task in tasks:
         task_changed = task.locked_game_brief is not None
         task.locked_game_brief = None
+        removed = session.execute(
+            delete(MatchScreeningCheckpoint).where(
+                MatchScreeningCheckpoint.match_task_id == task.id
+            )
+        )
+        task_changed = bool(removed.rowcount) or task_changed
         screenings = session.scalars(
             select(MatchScreeningRecord)
             .where(MatchScreeningRecord.match_task_id == task.id)

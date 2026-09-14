@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from app.db.models.match import (
     MatchCandidateInput,
     MatchScreeningRecord,
+    MatchScreeningCheckpoint,
     MatchStage,
     MatchStatus,
     MatchTask,
@@ -249,7 +250,46 @@ class MatchRepository:
             creators=creators,
             applied_creator_ids=None,
             game_manual_context=deepcopy(task.locked_game_context),
+            checkpoints={
+                row.request_hash: tuple(
+                    ScreeningSelection.model_validate_json(json.dumps(value))
+                    for value in row.selections
+                )
+                for row in self._session.scalars(
+                    select(MatchScreeningCheckpoint).where(
+                        MatchScreeningCheckpoint.match_task_id == task.id
+                    )
+                )
+            },
         )
+
+    def save_screening_checkpoint(self, match_task_id, key, selections):
+        task = self._session.scalar(
+            select(MatchTask).where(MatchTask.id == match_task_id).with_for_update()
+        )
+        if (
+            task is None
+            or task.stage != MatchStage.SCREENING
+            or task.status != MatchStatus.RUNNING
+        ):
+            raise MatchInputError("match_task_not_screenable")
+        existing = self._session.get(MatchScreeningCheckpoint, (match_task_id, key))
+        if existing is not None:
+            return tuple(
+                ScreeningSelection.model_validate_json(json.dumps(value))
+                for value in existing.selections
+            )
+        self._session.add(
+            MatchScreeningCheckpoint(
+                match_task_id=match_task_id,
+                request_hash=key,
+                selections=[
+                    selection.model_dump(mode="json") for selection in selections
+                ],
+            )
+        )
+        self._session.flush()
+        return tuple(selections)
 
     def apply_screening_output(
         self,
