@@ -8,6 +8,7 @@ from redis import Redis
 
 from app.api.dependencies import create_workspace_authenticator
 from app.api.routes import health
+from app.api.routes import discover as discover_routes
 from app.api.routes.health import ReadinessProbe
 from app.api.routes import profiles as profile_routes
 from app.api.routes import jobs as job_routes
@@ -166,6 +167,11 @@ def create_app(
         return response
 
     app.include_router(health.create_router(readiness_probe))
+    app.include_router(
+        discover_routes.create_router(
+            authenticate_workspace, session_factory=job_session_factory
+        )
+    )
     app.include_router(
         response_routes.create_router(
             rate_limiter=rate_limiter,

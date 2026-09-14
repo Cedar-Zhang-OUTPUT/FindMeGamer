@@ -18,6 +18,12 @@ EXPORTER = BACKEND_ROOT / "scripts" / "export_openapi.py"
 COMMITTED_SCHEMA = BACKEND_ROOT / "openapi.json"
 
 EXPECTED_OPERATIONS = {
+    ("GET", "/api/v1/discover/capabilities"): "getDiscoverCapabilities",
+    ("POST", "/api/v1/discover/resolve-game"): "resolveDiscoverGame",
+    ("POST", "/api/v1/discover"): "createDiscover",
+    ("GET", "/api/v1/discover"): "listDiscover",
+    ("GET", "/api/v1/discover/{discover_id}"): "getDiscover",
+    ("POST", "/api/v1/discover/{discover_id}/retry"): "retryDiscover",
     ("GET", "/api/v1/profiles/{profile_type}/{profile_id}/edit"): "getProfileEdit",
     ("PATCH", "/api/v1/profiles/{profile_type}/{profile_id}/edit"): "updateProfileEdit",
     ("GET", "/r/{token}"): "showCreatorResponseConfirmation",
@@ -191,6 +197,7 @@ def test_openapi_retains_bearer_auth_and_required_idempotency_headers(client) ->
         assert _operation(schema, method, "/r/{token}").get("security") in (None, [])
 
     for method, path in (
+        ("POST", "/api/v1/discover"),
         ("POST", "/api/v1/jobs/analysis"),
         ("POST", "/api/v1/jobs/analysis/{job_id}/retry"),
         ("POST", "/api/v1/matches"),

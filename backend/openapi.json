@@ -1034,6 +1034,460 @@
         "title": "CursorPage[GameProfileCard]",
         "type": "object"
       },
+      "DiscoverCandidateResponse": {
+        "properties": {
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "content_languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Languages",
+            "type": "array"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "followers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followers"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "in_library": {
+            "default": false,
+            "title": "In Library",
+            "type": "boolean"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_account_id": {
+            "title": "Platform Account Id",
+            "type": "string"
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "platform_account_id",
+          "display_name",
+          "canonical_url"
+        ],
+        "title": "DiscoverCandidateResponse",
+        "type": "object"
+      },
+      "DiscoverCapabilities": {
+        "properties": {
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverCapability"
+            },
+            "title": "Platforms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "platforms"
+        ],
+        "title": "DiscoverCapabilities",
+        "type": "object"
+      },
+      "DiscoverCapability": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "platform",
+          "available"
+        ],
+        "title": "DiscoverCapability",
+        "type": "object"
+      },
+      "DiscoverConditions": {
+        "additionalProperties": false,
+        "properties": {
+          "content_languages": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Content Languages",
+            "type": "array"
+          },
+          "keywords": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Keywords",
+            "type": "string"
+          },
+          "max_followers": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Followers"
+          },
+          "min_followers": {
+            "anyOf": [
+              {
+                "maximum": 1000000000000.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Followers"
+          },
+          "platforms": {
+            "items": {
+              "enum": [
+                "youtube",
+                "x",
+                "twitch",
+                "instagram"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Platforms",
+            "type": "array"
+          }
+        },
+        "title": "DiscoverConditions",
+        "type": "object"
+      },
+      "DiscoverCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "$ref": "#/components/schemas/DiscoverConditions"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "steam_url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam Url"
+          }
+        },
+        "title": "DiscoverCreate",
+        "type": "object"
+      },
+      "DiscoverDetail": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverCandidateResponse"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "conditions": {
+            "$ref": "#/components/schemas/DiscoverConditions"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "game_name": {
+            "title": "Game Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "preparing_game",
+                  "finding_creators"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "partial",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "game_name",
+          "status",
+          "conditions",
+          "candidates",
+          "issues",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DiscoverDetail",
+        "type": "object"
+      },
+      "DiscoverIssue": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "platform": {
+            "anyOf": [
+              {
+                "enum": [
+                  "youtube",
+                  "x",
+                  "twitch",
+                  "instagram"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "DiscoverIssue",
+        "type": "object"
+      },
+      "DiscoverPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "DiscoverPage",
+        "type": "object"
+      },
+      "DiscoverSummary": {
+        "properties": {
+          "candidate_count": {
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "game_name": {
+            "title": "Game Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "issue_count": {
+            "title": "Issue Count",
+            "type": "integer"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "enum": [
+                  "preparing_game",
+                  "finding_creators"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "partial",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "game_name",
+          "status",
+          "candidate_count",
+          "issue_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DiscoverSummary",
+        "type": "object"
+      },
       "EditValue": {
         "anyOf": [
           {
@@ -3612,6 +4066,56 @@
         "title": "RenderedDelivery",
         "type": "object"
       },
+      "ResolveGameRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "steam_url": {
+            "maxLength": 2048,
+            "title": "Steam Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steam_url"
+        ],
+        "title": "ResolveGameRequest",
+        "type": "object"
+      },
+      "ResolveGameResponse": {
+        "properties": {
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "steam_app_id": {
+            "title": "Steam App Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steam_app_id",
+          "name",
+          "canonical_url"
+        ],
+        "title": "ResolveGameResponse",
+        "type": "object"
+      },
       "RetryAnalysisJobRequest": {
         "additionalProperties": false,
         "properties": {},
@@ -3941,6 +4445,296 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/discover": {
+      "get": {
+        "operationId": "listDiscover",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "History",
+        "tags": [
+          "Discover"
+        ]
+      },
+      "post": {
+        "operationId": "createDiscover",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoverCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
+    "/api/v1/discover/capabilities": {
+      "get": {
+        "operationId": "getDiscoverCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverCapabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Capabilities",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
+    "/api/v1/discover/resolve-game": {
+      "post": {
+        "operationId": "resolveDiscoverGame",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveGameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveGameResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Game",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
+    "/api/v1/discover/{discover_id}": {
+      "get": {
+        "operationId": "getDiscover",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discover_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Discover Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Detail",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
+    "/api/v1/discover/{discover_id}/retry": {
+      "post": {
+        "operationId": "retryDiscover",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discover_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Discover Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "operationId": "listJobs",

@@ -1,4 +1,5 @@
 from app.db.models.idempotency import IdempotencyRecord
+from app.db.models.discover import DiscoverJob, DiscoverCandidate
 from app.db.models.jobs import AnalysisJob, CreatorAnalysisNode
 from app.db.models.match import (
     MatchCandidateInput,
@@ -18,6 +19,8 @@ from app.db.models.profiles import CreatorContact, CreatorProfile, GameProfile
 from app.db.models.settings import ServiceSecret, SharedSettings
 
 __all__ = [
+    "DiscoverJob",
+    "DiscoverCandidate",
     "AnalysisJob",
     "CampaignCreatorResponse",
     "CreatorContact",

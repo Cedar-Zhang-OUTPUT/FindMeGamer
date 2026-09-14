@@ -45,6 +45,10 @@ def test_beat_registers_stable_task_at_exact_fifteen_minute_cadence() -> None:
     from app.matching.retention import MATCH_RETENTION_TASK_NAME
 
     assert celery_app.conf.beat_schedule == {
+        "discover-recovery": {
+            "task": "find_me_gamer.discover.sweep",
+            "schedule": 30.0,
+        },
         "mandatory-profile-reanalysis": {
             "task": SCHEDULE_TASK_NAME,
             "schedule": 900.0,

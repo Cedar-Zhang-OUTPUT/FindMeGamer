@@ -633,6 +633,20 @@
             "title": "Next Analysis At",
             "type": "string"
           },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_account_id": {
+            "title": "Platform Account Id",
+            "type": "string"
+          },
           "profile_revision": {
             "default": 0,
             "title": "Profile Revision",
@@ -648,6 +662,7 @@
             "type": "string"
           },
           "youtube_channel_id": {
+            "nullable": true,
             "title": "Youtube Channel Id",
             "type": "string"
           }
@@ -655,6 +670,8 @@
         "required": [
           "id",
           "name",
+          "platform",
+          "platform_account_id",
           "youtube_channel_id",
           "canonical_url",
           "favorite",
@@ -738,6 +755,20 @@
             "title": "Next Analysis At",
             "type": "string"
           },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_account_id": {
+            "title": "Platform Account Id",
+            "type": "string"
+          },
           "profile_revision": {
             "default": 0,
             "title": "Profile Revision",
@@ -756,6 +787,7 @@
             "type": "string"
           },
           "youtube_channel_id": {
+            "nullable": true,
             "title": "Youtube Channel Id",
             "type": "string"
           }
@@ -763,6 +795,8 @@
         "required": [
           "id",
           "name",
+          "platform",
+          "platform_account_id",
           "youtube_channel_id",
           "canonical_url",
           "favorite",
@@ -822,6 +856,382 @@
           "next_cursor"
         ],
         "title": "CursorPage[GameProfileCard]",
+        "type": "object"
+      },
+      "DiscoverCandidateResponse": {
+        "properties": {
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "content_languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Content Languages",
+            "type": "array"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "followers": {
+            "nullable": true,
+            "title": "Followers",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "in_library": {
+            "default": false,
+            "title": "In Library",
+            "type": "boolean"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_account_id": {
+            "title": "Platform Account Id",
+            "type": "string"
+          },
+          "profile_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Profile Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "platform_account_id",
+          "display_name",
+          "canonical_url"
+        ],
+        "title": "DiscoverCandidateResponse",
+        "type": "object"
+      },
+      "DiscoverCapabilities": {
+        "properties": {
+          "platforms": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverCapability"
+            },
+            "title": "Platforms",
+            "type": "array"
+          }
+        },
+        "required": [
+          "platforms"
+        ],
+        "title": "DiscoverCapabilities",
+        "type": "object"
+      },
+      "DiscoverCapability": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "reason": {
+            "nullable": true,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "platform",
+          "available"
+        ],
+        "title": "DiscoverCapability",
+        "type": "object"
+      },
+      "DiscoverConditions": {
+        "additionalProperties": false,
+        "properties": {
+          "content_languages": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Content Languages",
+            "type": "array"
+          },
+          "keywords": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Keywords",
+            "type": "string"
+          },
+          "max_followers": {
+            "maximum": 1000000000000.0,
+            "minimum": 0.0,
+            "nullable": true,
+            "title": "Max Followers",
+            "type": "integer"
+          },
+          "min_followers": {
+            "maximum": 1000000000000.0,
+            "minimum": 0.0,
+            "nullable": true,
+            "title": "Min Followers",
+            "type": "integer"
+          },
+          "platforms": {
+            "items": {
+              "enum": [
+                "youtube",
+                "x",
+                "twitch",
+                "instagram"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Platforms",
+            "type": "array"
+          }
+        },
+        "title": "DiscoverConditions",
+        "type": "object"
+      },
+      "DiscoverCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "$ref": "#/components/schemas/DiscoverConditions"
+          },
+          "game_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Game Id",
+            "type": "string"
+          },
+          "steam_url": {
+            "maxLength": 2048,
+            "nullable": true,
+            "title": "Steam Url",
+            "type": "string"
+          }
+        },
+        "title": "DiscoverCreate",
+        "type": "object"
+      },
+      "DiscoverDetail": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverCandidateResponse"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "conditions": {
+            "$ref": "#/components/schemas/DiscoverConditions"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "game_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Game Id",
+            "type": "string"
+          },
+          "game_name": {
+            "title": "Game Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "stage": {
+            "enum": [
+              "preparing_game",
+              "finding_creators"
+            ],
+            "nullable": true,
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "partial",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "game_name",
+          "status",
+          "conditions",
+          "candidates",
+          "issues",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DiscoverDetail",
+        "type": "object"
+      },
+      "DiscoverIssue": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "x",
+              "twitch",
+              "instagram"
+            ],
+            "nullable": true,
+            "title": "Platform",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "DiscoverIssue",
+        "type": "object"
+      },
+      "DiscoverPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "nullable": true,
+            "title": "Next Cursor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "DiscoverPage",
+        "type": "object"
+      },
+      "DiscoverSummary": {
+        "properties": {
+          "candidate_count": {
+            "title": "Candidate Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "game_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Game Id",
+            "type": "string"
+          },
+          "game_name": {
+            "title": "Game Name",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "issue_count": {
+            "title": "Issue Count",
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "preparing_game",
+              "finding_creators"
+            ],
+            "nullable": true,
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "partial",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "game_name",
+          "status",
+          "candidate_count",
+          "issue_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DiscoverSummary",
         "type": "object"
       },
       "EditValue": {
@@ -1255,6 +1665,16 @@
             "title": "Performance Summary",
             "type": "string"
           },
+          "platform": {
+            "default": "youtube",
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_account_id": {
+            "nullable": true,
+            "title": "Platform Account Id",
+            "type": "string"
+          },
           "recent_average_views": {
             "minimum": 0.0,
             "nullable": true,
@@ -1274,6 +1694,7 @@
             "type": "integer"
           },
           "youtube_channel_id": {
+            "nullable": true,
             "title": "Youtube Channel Id",
             "type": "string"
           }
@@ -2060,7 +2481,18 @@
             "title": "Name",
             "type": "string"
           },
+          "platform": {
+            "default": "youtube",
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_account_id": {
+            "nullable": true,
+            "title": "Platform Account Id",
+            "type": "string"
+          },
           "youtube_channel_id": {
+            "nullable": true,
             "title": "Youtube Channel Id",
             "type": "string"
           }
@@ -3070,6 +3502,50 @@
         "title": "RenderedDelivery",
         "type": "object"
       },
+      "ResolveGameRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "steam_url": {
+            "maxLength": 2048,
+            "title": "Steam Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steam_url"
+        ],
+        "title": "ResolveGameRequest",
+        "type": "object"
+      },
+      "ResolveGameResponse": {
+        "properties": {
+          "canonical_url": {
+            "title": "Canonical Url",
+            "type": "string"
+          },
+          "game_id": {
+            "format": "uuid",
+            "nullable": true,
+            "title": "Game Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "steam_app_id": {
+            "title": "Steam App Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steam_app_id",
+          "name",
+          "canonical_url"
+        ],
+        "title": "ResolveGameResponse",
+        "type": "object"
+      },
       "RetryAnalysisJobRequest": {
         "additionalProperties": false,
         "properties": {},
@@ -3345,6 +3821,290 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/api/v1/discover": {
+      "get": {
+        "operationId": "listDiscover",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "maxLength": 128,
+              "nullable": true,
+              "title": "Cursor",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "History",
+        "tags": [
+          "Discover"
+        ]
+      },
+      "post": {
+        "operationId": "createDiscover",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoverCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
+    "/api/v1/discover/capabilities": {
+      "get": {
+        "operationId": "getDiscoverCapabilities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverCapabilities"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Capabilities",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
+    "/api/v1/discover/resolve-game": {
+      "post": {
+        "operationId": "resolveDiscoverGame",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveGameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveGameResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resolve Game",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
+    "/api/v1/discover/{discover_id}": {
+      "get": {
+        "operationId": "getDiscover",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discover_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Discover Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Detail",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
+    "/api/v1/discover/{discover_id}/retry": {
+      "post": {
+        "operationId": "retryDiscover",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discover_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Discover Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retry",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
     "/api/v1/jobs": {
       "get": {
         "operationId": "listJobs",
@@ -5708,5 +6468,5 @@
       }
     }
   },
-  "x-find-me-gamer-source-sha256": "a1fdf37b15c0360ac2066296c625c949c47f1547cd1ca4000dafea1b63e682bb"
+  "x-find-me-gamer-source-sha256": "23580b39beed33d841c997c8d62e564d53aeca86ccb87ca59e6321b74da9d95b"
 }
