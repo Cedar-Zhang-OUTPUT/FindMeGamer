@@ -366,6 +366,40 @@ class MatchRepository:
     ) -> CreatorBrief | None:
         if creator.last_analyzed_at is None or creator.last_analyzed_at < cutoff:
             return None
+        if creator.platform in {"twitch", "instagram"}:
+            from app.schemas.creator_import import CreatorImportRecord
+
+            provenance = creator.source_status.get("curated_import", {})
+            if provenance != {
+                "status": "available",
+                "schema_version": 1,
+                "platform": creator.platform,
+                "platform_account_id": creator.platform_account_id,
+            }:
+                return None
+            if creator.source_status.get("freshness") != "current":
+                return None
+            try:
+                material = CreatorImportRecord.model_validate(
+                    {
+                        **creator.current_facts["curated_collection"],
+                        "analysis": {
+                            "analyzed_at": creator.last_analyzed_at,
+                            "synthesis": creator.analysis,
+                        },
+                    }
+                )
+                if (
+                    material.platform != creator.platform
+                    or material.platform_account_id != creator.platform_account_id
+                    or material.profile_url != creator.canonical_url
+                    or material.analysis.synthesis.creator_brief.model_dump(mode="json")
+                    != creator.brief
+                ):
+                    return None
+                return material.analysis.synthesis.creator_brief
+            except Exception:
+                return None
         if not self._youtube_source_is_current(
             creator.source_status, platform=creator.platform
         ):

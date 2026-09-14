@@ -25,6 +25,7 @@ services:
     working_dir: /app
     volumes:
       - .:/app
+      - ../docs/creator-import:/contract-docs:ro
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres-test:5432/find_me_gamer_test
       REDIS_URL: redis://redis-test:6379/0

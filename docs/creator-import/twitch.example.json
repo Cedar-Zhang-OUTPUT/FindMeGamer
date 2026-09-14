@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "records": [
+    {
+      "platform": "twitch",
+      "platform_account_id": "990000001",
+      "account_id_source_url": "https://www.twitch.tv/synthetic_fixture",
+      "profile_url": "https://www.twitch.tv/synthetic_fixture",
+      "username": "synthetic_fixture",
+      "display_name": "Synthetic fixture — not a real creator",
+      "collected_at": "2026-09-14T10:00:00Z",
+      "bio_original": "Synthetic example for validating the import format.",
+      "followers_count": null,
+      "followers_precision": "unknown",
+      "content_languages": [],
+      "platform_metrics": [],
+      "works": [],
+      "contacts": [],
+      "observations": [],
+      "collection_notes": "Entirely synthetic documentation data. No identity, ownership, metrics or contact claims about a real person. Do not import into a real Library."
+    }
+  ]
+}

@@ -1,0 +1,1929 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Curated Creator Import v1",
+  "$defs": {
+    "AudienceInference": {
+      "additionalProperties": false,
+      "properties": {
+        "primary_language": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableInferenceText",
+              "unavailable": "#/$defs/UnavailableInference"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableInferenceText"
+            },
+            {
+              "$ref": "#/$defs/UnavailableInference"
+            }
+          ],
+          "title": "Primary Language"
+        },
+        "likely_regions": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableInferenceList",
+              "unavailable": "#/$defs/UnavailableInference"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableInferenceList"
+            },
+            {
+              "$ref": "#/$defs/UnavailableInference"
+            }
+          ],
+          "title": "Likely Regions"
+        },
+        "interests": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableInferenceList",
+              "unavailable": "#/$defs/UnavailableInference"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableInferenceList"
+            },
+            {
+              "$ref": "#/$defs/UnavailableInference"
+            }
+          ],
+          "title": "Interests"
+        }
+      },
+      "required": [
+        "primary_language",
+        "likely_regions",
+        "interests"
+      ],
+      "title": "AudienceInference",
+      "type": "object"
+    },
+    "AvailableContactSelection": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "available",
+          "title": "Status",
+          "type": "string"
+        },
+        "candidate_id": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "candidate_id"
+      ],
+      "title": "AvailableContactSelection",
+      "type": "object"
+    },
+    "AvailableInferenceList": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "available",
+          "title": "Status",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        },
+        "provenance": {
+          "const": "ai_inference",
+          "title": "Provenance",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceReference"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "values",
+        "provenance",
+        "evidence",
+        "confidence"
+      ],
+      "title": "AvailableInferenceList",
+      "type": "object"
+    },
+    "AvailableInferenceText": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "available",
+          "title": "Status",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "provenance": {
+          "const": "ai_inference",
+          "title": "Provenance",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceReference"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "value",
+        "provenance",
+        "evidence",
+        "confidence"
+      ],
+      "title": "AvailableInferenceText",
+      "type": "object"
+    },
+    "AvailableListClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "available",
+          "title": "Status",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceReference"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "values",
+        "evidence",
+        "confidence"
+      ],
+      "title": "AvailableListClaim",
+      "type": "object"
+    },
+    "AvailableSocialSelections": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "available",
+          "title": "Status",
+          "type": "string"
+        },
+        "candidate_ids": {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 20,
+          "minItems": 1,
+          "title": "Candidate Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "status",
+        "candidate_ids"
+      ],
+      "title": "AvailableSocialSelections",
+      "type": "object"
+    },
+    "AvailableTextClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "available",
+          "title": "Status",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/EvidenceReference"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "value",
+        "evidence",
+        "confidence"
+      ],
+      "title": "AvailableTextClaim",
+      "type": "object"
+    },
+    "BriefEvidenceReference": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "source_fact",
+            "visual_observation",
+            "ai_inference"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source_type": {
+          "enum": [
+            "steam_field",
+            "video_id",
+            "channel_field",
+            "visual_asset",
+            "public_link",
+            "intermediate_output"
+          ],
+          "title": "Source Type",
+          "type": "string"
+        },
+        "reference": {
+          "maxLength": 96,
+          "minLength": 1,
+          "title": "Reference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "source_type",
+        "reference"
+      ],
+      "title": "BriefEvidenceReference",
+      "type": "object"
+    },
+    "CompactAvailableInferenceText": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "available",
+          "title": "Status",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "provenance": {
+          "const": "ai_inference",
+          "title": "Provenance",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/BriefEvidenceReference"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "value",
+        "provenance",
+        "evidence",
+        "confidence"
+      ],
+      "title": "CompactAvailableInferenceText",
+      "type": "object"
+    },
+    "CompactUnavailableInference": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "unavailable",
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "provenance": {
+          "const": "ai_inference",
+          "title": "Provenance",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "reason",
+        "provenance"
+      ],
+      "title": "CompactUnavailableInference",
+      "type": "object"
+    },
+    "Contact": {
+      "additionalProperties": false,
+      "properties": {
+        "email": {
+          "maxLength": 320,
+          "minLength": 3,
+          "title": "Email",
+          "type": "string"
+        },
+        "purpose": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Purpose",
+          "type": "string"
+        },
+        "source_url": {
+          "maxLength": 512,
+          "minLength": 8,
+          "title": "Source Url",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "email",
+        "purpose",
+        "source_url",
+        "observed_at"
+      ],
+      "title": "Contact",
+      "type": "object"
+    },
+    "ContentLanguage": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "maxLength": 35,
+          "minLength": 2,
+          "title": "Code",
+          "type": "string"
+        },
+        "basis": {
+          "enum": [
+            "platform_metadata",
+            "observed_content",
+            "creator_statement"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "source_url": {
+          "maxLength": 512,
+          "minLength": 8,
+          "title": "Source Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "basis",
+        "source_url"
+      ],
+      "title": "ContentLanguage",
+      "type": "object"
+    },
+    "CreatorBrief": {
+      "additionalProperties": false,
+      "description": "Compact, score-free input used by later matching stages.",
+      "properties": {
+        "positioning": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/CreatorBriefAvailableTextClaim",
+              "unavailable": "#/$defs/CreatorBriefUnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CreatorBriefAvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/CreatorBriefUnavailableClaim"
+            }
+          ],
+          "title": "Positioning"
+        },
+        "content_focus": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/CreatorBriefAvailableListClaim",
+              "unavailable": "#/$defs/CreatorBriefUnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CreatorBriefAvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/CreatorBriefUnavailableClaim"
+            }
+          ],
+          "title": "Content Focus"
+        },
+        "formats": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/CreatorBriefAvailableListClaim",
+              "unavailable": "#/$defs/CreatorBriefUnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CreatorBriefAvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/CreatorBriefUnavailableClaim"
+            }
+          ],
+          "title": "Formats"
+        },
+        "style_and_pacing": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/CreatorBriefAvailableTextClaim",
+              "unavailable": "#/$defs/CreatorBriefUnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CreatorBriefAvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/CreatorBriefUnavailableClaim"
+            }
+          ],
+          "title": "Style And Pacing"
+        },
+        "audience": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/CompactAvailableInferenceText",
+              "unavailable": "#/$defs/CompactUnavailableInference"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CompactAvailableInferenceText"
+            },
+            {
+              "$ref": "#/$defs/CompactUnavailableInference"
+            }
+          ],
+          "title": "Audience"
+        },
+        "performance_context": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/CreatorBriefAvailableTextClaim",
+              "unavailable": "#/$defs/CreatorBriefUnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CreatorBriefAvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/CreatorBriefUnavailableClaim"
+            }
+          ],
+          "title": "Performance Context"
+        },
+        "promotion_fit": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/CreatorBriefAvailableTextClaim",
+              "unavailable": "#/$defs/CreatorBriefUnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CreatorBriefAvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/CreatorBriefUnavailableClaim"
+            }
+          ],
+          "title": "Promotion Fit"
+        },
+        "brand_safety": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/CreatorBriefAvailableTextClaim",
+              "unavailable": "#/$defs/CreatorBriefUnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CreatorBriefAvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/CreatorBriefUnavailableClaim"
+            }
+          ],
+          "title": "Brand Safety"
+        },
+        "suitable_game_types": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/CreatorBriefAvailableListClaim",
+              "unavailable": "#/$defs/CreatorBriefUnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CreatorBriefAvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/CreatorBriefUnavailableClaim"
+            }
+          ],
+          "title": "Suitable Game Types"
+        },
+        "collaboration_risks": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/CreatorBriefAvailableListClaim",
+              "unavailable": "#/$defs/CreatorBriefUnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/CreatorBriefAvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/CreatorBriefUnavailableClaim"
+            }
+          ],
+          "title": "Collaboration Risks"
+        }
+      },
+      "required": [
+        "positioning",
+        "content_focus",
+        "formats",
+        "style_and_pacing",
+        "audience",
+        "performance_context",
+        "promotion_fit",
+        "brand_safety",
+        "suitable_game_types",
+        "collaboration_risks"
+      ],
+      "title": "CreatorBrief",
+      "type": "object"
+    },
+    "CreatorBriefAvailableListClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "available",
+          "title": "Status",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 3,
+          "minItems": 1,
+          "title": "Values",
+          "type": "array"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/BriefEvidenceReference"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "values",
+        "evidence",
+        "confidence"
+      ],
+      "title": "CreatorBriefAvailableListClaim",
+      "type": "object"
+    },
+    "CreatorBriefAvailableTextClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "available",
+          "title": "Status",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/BriefEvidenceReference"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "confidence": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Confidence",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "value",
+        "evidence",
+        "confidence"
+      ],
+      "title": "CreatorBriefAvailableTextClaim",
+      "type": "object"
+    },
+    "CreatorBriefUnavailableClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "unavailable",
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "reason"
+      ],
+      "title": "CreatorBriefUnavailableClaim",
+      "type": "object"
+    },
+    "CreatorImportRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "platform": {
+          "enum": [
+            "twitch",
+            "instagram"
+          ],
+          "title": "Platform",
+          "type": "string"
+        },
+        "platform_account_id": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9]{1,128}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Platform Account Id"
+        },
+        "account_id_source_url": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 8,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Account Id Source Url"
+        },
+        "profile_url": {
+          "maxLength": 512,
+          "minLength": 8,
+          "title": "Profile Url",
+          "type": "string"
+        },
+        "username": {
+          "pattern": "^[A-Za-z0-9_.]{1,30}$",
+          "title": "Username",
+          "type": "string"
+        },
+        "display_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Display Name",
+          "type": "string"
+        },
+        "collected_at": {
+          "format": "date-time",
+          "title": "Collected At",
+          "type": "string"
+        },
+        "bio_original": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bio Original"
+        },
+        "avatar_url": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 8,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Avatar Url"
+        },
+        "website_url": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 8,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Website Url"
+        },
+        "followers_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Followers Count"
+        },
+        "followers_precision": {
+          "enum": [
+            "exact",
+            "rounded",
+            "unknown"
+          ],
+          "title": "Followers Precision",
+          "type": "string"
+        },
+        "content_languages": {
+          "items": {
+            "$ref": "#/$defs/ContentLanguage"
+          },
+          "title": "Content Languages",
+          "type": "array"
+        },
+        "public_location": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Public Location"
+        },
+        "platform_metrics": {
+          "items": {
+            "$ref": "#/$defs/Metric"
+          },
+          "title": "Platform Metrics",
+          "type": "array"
+        },
+        "works": {
+          "items": {
+            "$ref": "#/$defs/Work"
+          },
+          "title": "Works",
+          "type": "array"
+        },
+        "contacts": {
+          "items": {
+            "$ref": "#/$defs/Contact"
+          },
+          "title": "Contacts",
+          "type": "array"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/Observation"
+          },
+          "title": "Observations",
+          "type": "array"
+        },
+        "collection_notes": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Collection Notes"
+        },
+        "analysis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CuratedAnalysis"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "platform",
+        "profile_url",
+        "username",
+        "display_name",
+        "collected_at",
+        "followers_precision"
+      ],
+      "title": "CreatorImportRecord",
+      "type": "object"
+    },
+    "CreatorSynthesis": {
+      "additionalProperties": false,
+      "description": "AI-owned Creator fields plus pipeline-resolved contact selections.",
+      "properties": {
+        "english_language_check": {
+          "const": true,
+          "title": "English Language Check",
+          "type": "boolean"
+        },
+        "content_summary": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableTextClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Content Summary"
+        },
+        "primary_games": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableListClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Primary Games"
+        },
+        "genres": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableListClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Genres"
+        },
+        "formats": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableListClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Formats"
+        },
+        "style": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableListClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Style"
+        },
+        "pacing": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableTextClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Pacing"
+        },
+        "production_quality": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableTextClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Production Quality"
+        },
+        "livestream_tendency": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableTextClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Livestream Tendency"
+        },
+        "long_form_tendency": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableTextClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Long Form Tendency"
+        },
+        "short_form_tendency": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableTextClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Short Form Tendency"
+        },
+        "recent_performance_summary": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableTextClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Recent Performance Summary"
+        },
+        "engagement_summary": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableTextClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Engagement Summary"
+        },
+        "publishing_frequency_context": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableTextClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableTextClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Publishing Frequency Context"
+        },
+        "representative_video_context": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableListClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Representative Video Context"
+        },
+        "sponsorship_patterns": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableListClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Sponsorship Patterns"
+        },
+        "brand_safety": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableListClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Brand Safety"
+        },
+        "suitable_game_types": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableListClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Suitable Game Types"
+        },
+        "collaboration_risks": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableListClaim",
+              "unavailable": "#/$defs/UnavailableClaim"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableListClaim"
+            },
+            {
+              "$ref": "#/$defs/UnavailableClaim"
+            }
+          ],
+          "title": "Collaboration Risks"
+        },
+        "audience_inference": {
+          "$ref": "#/$defs/AudienceInference"
+        },
+        "public_email": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableContactSelection",
+              "unavailable": "#/$defs/UnavailableContact"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableContactSelection"
+            },
+            {
+              "$ref": "#/$defs/UnavailableContact"
+            }
+          ],
+          "title": "Public Email"
+        },
+        "linked_site": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableContactSelection",
+              "unavailable": "#/$defs/UnavailableContact"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableContactSelection"
+            },
+            {
+              "$ref": "#/$defs/UnavailableContact"
+            }
+          ],
+          "title": "Linked Site"
+        },
+        "social_links": {
+          "discriminator": {
+            "mapping": {
+              "available": "#/$defs/AvailableSocialSelections",
+              "unavailable": "#/$defs/UnavailableContact"
+            },
+            "propertyName": "status"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/AvailableSocialSelections"
+            },
+            {
+              "$ref": "#/$defs/UnavailableContact"
+            }
+          ],
+          "title": "Social Links"
+        },
+        "creator_brief": {
+          "$ref": "#/$defs/CreatorBrief"
+        }
+      },
+      "required": [
+        "english_language_check",
+        "content_summary",
+        "primary_games",
+        "genres",
+        "formats",
+        "style",
+        "pacing",
+        "production_quality",
+        "livestream_tendency",
+        "long_form_tendency",
+        "short_form_tendency",
+        "recent_performance_summary",
+        "engagement_summary",
+        "publishing_frequency_context",
+        "representative_video_context",
+        "sponsorship_patterns",
+        "brand_safety",
+        "suitable_game_types",
+        "collaboration_risks",
+        "audience_inference",
+        "public_email",
+        "linked_site",
+        "social_links",
+        "creator_brief"
+      ],
+      "title": "CreatorSynthesis",
+      "type": "object"
+    },
+    "CuratedAnalysis": {
+      "additionalProperties": false,
+      "properties": {
+        "analyzed_at": {
+          "format": "date-time",
+          "title": "Analyzed At",
+          "type": "string"
+        },
+        "synthesis": {
+          "$ref": "#/$defs/CreatorSynthesis"
+        }
+      },
+      "required": [
+        "analyzed_at",
+        "synthesis"
+      ],
+      "title": "CuratedAnalysis",
+      "type": "object"
+    },
+    "EvidenceReference": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "source_fact",
+            "visual_observation",
+            "ai_inference"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "source_type": {
+          "enum": [
+            "steam_field",
+            "video_id",
+            "channel_field",
+            "visual_asset",
+            "public_link",
+            "intermediate_output"
+          ],
+          "title": "Source Type",
+          "type": "string"
+        },
+        "reference": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Reference",
+          "type": "string"
+        },
+        "observation": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Observation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "source_type",
+        "reference",
+        "observation"
+      ],
+      "title": "EvidenceReference",
+      "type": "object"
+    },
+    "Metric": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "enum": [
+            "views",
+            "likes",
+            "comments",
+            "vod_views",
+            "clip_views",
+            "live_viewers",
+            "duration_seconds",
+            "media_count",
+            "following_count",
+            "average_concurrent_viewers",
+            "paid_subscribers"
+          ],
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "minimum": 0,
+          "title": "Value",
+          "type": "number"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "precision": {
+          "enum": [
+            "exact",
+            "rounded",
+            "unknown"
+          ],
+          "title": "Precision",
+          "type": "string"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 8,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Url"
+        },
+        "period_start": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period Start"
+        },
+        "period_end": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Period End"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "observed_at",
+        "precision"
+      ],
+      "title": "Metric",
+      "type": "object"
+    },
+    "Observation": {
+      "additionalProperties": false,
+      "properties": {
+        "work_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Work Id"
+        },
+        "basis": {
+          "enum": [
+            "metadata_only",
+            "viewed_excerpt",
+            "viewed_full",
+            "profile_statement"
+          ],
+          "title": "Basis",
+          "type": "string"
+        },
+        "observation_en": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Observation En",
+          "type": "string"
+        },
+        "source_url": {
+          "maxLength": 512,
+          "minLength": 8,
+          "title": "Source Url",
+          "type": "string"
+        },
+        "time_range": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time Range"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "basis",
+        "observation_en",
+        "source_url",
+        "observed_at"
+      ],
+      "title": "Observation",
+      "type": "object"
+    },
+    "UnavailableClaim": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "unavailable",
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "reason"
+      ],
+      "title": "UnavailableClaim",
+      "type": "object"
+    },
+    "UnavailableContact": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "unavailable",
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "reason"
+      ],
+      "title": "UnavailableContact",
+      "type": "object"
+    },
+    "UnavailableInference": {
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "const": "unavailable",
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "provenance": {
+          "const": "ai_inference",
+          "title": "Provenance",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "reason",
+        "provenance"
+      ],
+      "title": "UnavailableInference",
+      "type": "object"
+    },
+    "Work": {
+      "additionalProperties": false,
+      "properties": {
+        "work_id": {
+          "pattern": "^[A-Za-z0-9_-]{1,80}$",
+          "title": "Work Id",
+          "type": "string"
+        },
+        "platform_content_id": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Platform Content Id"
+        },
+        "url": {
+          "maxLength": 512,
+          "minLength": 8,
+          "title": "Url",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "post",
+            "reel",
+            "carousel",
+            "vod",
+            "clip",
+            "stream"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "title_original": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Title Original"
+        },
+        "caption_original": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Caption Original"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Published At"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Language"
+        },
+        "game_names": {
+          "items": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Game Names",
+          "type": "array"
+        },
+        "thumbnail_url": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "minLength": 8,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Thumbnail Url"
+        },
+        "metrics": {
+          "items": {
+            "$ref": "#/$defs/Metric"
+          },
+          "title": "Metrics",
+          "type": "array"
+        },
+        "summary_en": {
+          "anyOf": [
+            {
+              "maxLength": 4000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Summary En"
+        }
+      },
+      "required": [
+        "work_id",
+        "url",
+        "kind"
+      ],
+      "title": "Work",
+      "type": "object"
+    }
+  },
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "records": {
+          "items": {
+            "$ref": "#/$defs/CreatorImportRecord"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "title": "Records",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "records"
+      ],
+      "title": "CreatorImport",
+      "type": "object"
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "collection_schema_version",
+        "creators"
+      ],
+      "properties": {
+        "collection_schema_version": {
+          "type": "integer",
+          "const": 1
+        },
+        "creators": {
+          "items": {
+            "$ref": "#/$defs/CreatorImportRecord"
+          },
+          "maxItems": 1000,
+          "minItems": 1,
+          "title": "Records",
+          "type": "array"
+        }
+      }
+    }
+  ]
+}
