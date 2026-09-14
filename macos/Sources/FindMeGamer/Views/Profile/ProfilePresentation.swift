@@ -453,6 +453,7 @@ final class ProfileSheetState {
   private(set) var isManualSaveInFlight = false
   private(set) var actionMessage: String?
   private(set) var actionSuccessMessage: String?
+  @ObservationIgnored private var editedProfileRefreshGeneration: UInt64 = 0
 
   init(profile: Profile) {
     self.profile = profile
@@ -471,11 +472,24 @@ final class ProfileSheetState {
     return profile
   }
 
-  func replaceEditedProfile(_ value: Profile) {
-    guard value.id == profile.id else { return }
+  func beginEditedProfileRefresh() -> UInt64 {
+    editedProfileRefreshGeneration &+= 1
+    return editedProfileRefreshGeneration
+  }
+
+  func isCurrentEditedProfileRefresh(_ generation: UInt64) -> Bool {
+    generation == editedProfileRefreshGeneration
+  }
+
+  func replaceEditedProfile(_ value: Profile, generation: UInt64) {
+    guard isCurrentEditedProfileRefresh(generation), !isManualSaveInFlight,
+      value.id == profile.id else { return }
+    let preserveDraft = hasUnsavedManualChanges
     profile = value
     creatorOverride = nil
-    if case .creator(let creator) = value { manualDraft = CreatorManualDraft(profile: creator) }
+    if !preserveDraft, case .creator(let creator) = value {
+      manualDraft = CreatorManualDraft(profile: creator)
+    }
   }
 
   var hasUnsavedManualChanges: Bool {
@@ -541,6 +555,8 @@ final class ProfileSheetState {
     actionSuccessMessage = nil
     let submittedDraft = manualDraft
     guard let validationMessage = submittedDraft.validationMessage else {
+      // A pending profile read predates this contact write and must not replace it.
+      editedProfileRefreshGeneration &+= 1
       isManualSaveInFlight = true
       actionMessage = nil
       actionSuccessMessage = nil
@@ -552,6 +568,7 @@ final class ProfileSheetState {
           actionMessage = "The server returned a different profile."
           return
         }
+        editedProfileRefreshGeneration &+= 1
         creatorOverride = canonical
         favorite = canonical.favorite
         if manualDraft == submittedDraft {

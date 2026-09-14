@@ -200,6 +200,57 @@ import Testing
     #expect(presentation.briefFields.first?.annotation == "Manual")
   }
 
+  @MainActor @Test func delayedProfileRefreshPreservesNewContactDraft() {
+    let state = ProfileSheetState(profile: .creator(creatorProfile()))
+    let refresh = state.beginEditedProfileRefresh()
+    state.beginManualEditing()
+    state.manualDraft.notes = "Typed while profile refresh was pending"
+    state.replaceEditedProfile(.creator(creatorProfile()), generation: refresh)
+    #expect(state.manualDraft.notes == "Typed while profile refresh was pending")
+    #expect(state.hasUnsavedManualChanges)
+    #expect(state.manualEditorMode == .editing)
+  }
+
+  @MainActor @Test func delayedProfileRefreshCannotReplaceNewerProfileRefresh() {
+    let original = creatorProfile()
+    let state = ProfileSheetState(profile: .creator(original))
+    let older = state.beginEditedProfileRefresh()
+    let newer = state.beginEditedProfileRefresh()
+    var updated = original
+    updated.name = "Newest profile"
+    state.replaceEditedProfile(.creator(updated), generation: newer)
+    state.replaceEditedProfile(.creator(original), generation: older)
+    guard case .creator(let current) = state.currentProfile else { Issue.record("Expected creator"); return }
+    #expect(current.name == "Newest profile")
+    #expect(!state.isCurrentEditedProfileRefresh(older))
+  }
+
+  @MainActor @Test func delayedProfileRefreshCannotReplaceInFlightOrAcknowledgedContactSave() async {
+    let original = creatorProfile()
+    let state = ProfileSheetState(profile: .creator(original))
+    let older = state.beginEditedProfileRefresh()
+    state.beginManualEditing()
+    state.manualDraft.notes = "New contact note"
+    let canonical = replacingCreator(original, manualNotes: "New contact note")
+    let gate = ProfileActionGate()
+    let save = Task { @MainActor in
+      await state.saveManual { _, _, _ in
+        await gate.wait()
+        return canonical
+      }
+    }
+    await gate.waitUntilEntered()
+    state.replaceEditedProfile(.creator(original), generation: older)
+    #expect(state.manualDraft.notes == "New contact note")
+    #expect(state.isManualSaveInFlight)
+    await gate.resume()
+    await save.value
+    state.replaceEditedProfile(.creator(original), generation: older)
+    #expect(state.creatorOverride?.manualNotes == "New contact note")
+    #expect(state.manualDraft.notes == "New contact note")
+    #expect(!state.hasUnsavedManualChanges)
+  }
+
   @Test func manualDraftNeverPromotesDiscoveredContactAndValidatesExactBoundaries() {
     var discovered = CreatorManualDraft(profile: creatorProfile())
     #expect(discovered.email == "")

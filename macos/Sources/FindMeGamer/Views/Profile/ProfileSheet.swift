@@ -143,9 +143,17 @@ struct ProfileSheet: View {
         save: { try await onSaveEdit(profileType, state.currentProfile.id, $0) },
         onSaved: {
           editRefreshMessage = "Profile saved."
+          let generation = state.beginEditedProfileRefresh()
+          let type = profileType
+          let id = state.currentProfile.id
           Task {
-            do { state.replaceEditedProfile(try await onRefreshEdit(profileType, state.currentProfile.id)) }
-            catch { editRefreshMessage = "Profile saved. Refresh failed; reopen the profile to see current values." }
+            do {
+              let refreshed = try await onRefreshEdit(type, id)
+              state.replaceEditedProfile(refreshed, generation: generation)
+            } catch {
+              guard state.isCurrentEditedProfileRefresh(generation) else { return }
+              editRefreshMessage = "Profile saved. Refresh failed; reopen the profile to see current values."
+            }
           }
         })
     }
