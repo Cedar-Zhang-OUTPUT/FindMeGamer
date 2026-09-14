@@ -18,6 +18,8 @@ Final covering command: `swift test --package-path macos --no-parallel` — **35
 
 Final app command: `./script/build_and_run.sh --demo` — **build succeeded (8.09 seconds)** and launched the app bundle. Log: `/tmp/fmg-task5-build-final.log`. GUI used `/Users/cedar/Documents/ChatGPT/FindMeGamer/.worktrees/native-profile-editing/dist/FindMeGamer.app`, never raw `swift run`. `git diff --check` passed.
 
+Preserved RED evidence: `swift test --package-path macos --no-parallel --filter SettingsModelTests` (`/tmp/fmg-task5-settings-red.log`) ran 17 tests in 1 suite and failed with 3 issues. The expected regression was `model.connectionServices` returning `[.steam, .youtube, .deepSeek, .googleAI]` rather than `[.steam, .youtube, .x, .deepSeek, .googleAI]` at SettingsModelTests.swift:48 and :357; the ordered API connection-load expectation also failed at :356. This was before adding X to the model's fixed list, and the final full GREEN above covers the correction. Other earlier RED results were observed in tool output but not retained as separate log artifacts.
+
 Tests cover local select-all/deselect-all without writes; sheet cancellation; retained selection/mode/key after uncertain batch response; pagination/search; startup load; session-owned context; generated request authentication/idempotency/mode and explicit reused mapping; nullable X identity; existing profile editing and broader regression suite.
 
 ## Actual Demo GUI observations
