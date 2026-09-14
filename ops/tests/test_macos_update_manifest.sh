@@ -14,8 +14,8 @@ import uuid
 root = Path(sys.argv[1])
 expected = {
     "schema_version": 1,
-    "version": "0.1.4",
-    "release_page_url": "https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/v0.1.4-internal.1",
+    "version": "0.3.0",
+    "release_page_url": "https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/v0.3.0-internal.1",
 }
 
 

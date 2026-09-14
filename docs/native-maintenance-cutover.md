@@ -1,6 +1,6 @@
 # Native restoration maintenance cutover
 
-Status: deployment authorized on 2026-09-14. The user confirmed keeping the complete v2 database and switching the native release to a new empty database, importing only compatible settings and service secrets. Execution evidence will be recorded separately; authorization alone is not deployment completion.
+Status: deployment and client publication completed on 2026-09-14; see [executed cutover and release evidence](native-release-0.3.0-2026-09-14.md). The user confirmed keeping the complete v2 database and switching the native release to a new empty database, importing only compatible settings and service secrets. The checklist below remains the procedure for future maintenance; it is not authorization for another data reset.
 
 ## Why a separate database
 
