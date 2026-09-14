@@ -14,6 +14,20 @@ def contract():
     return importlib.import_module("app.schemas.creator_import").CreatorImport
 
 
+def test_curated_freshness_keeps_strict_thirty_day_boundary():
+    from datetime import timedelta
+    from types import SimpleNamespace
+    from app.services.profile_source_visibility import curated_source_is_expired
+
+    now = datetime.now(UTC)
+    profile = SimpleNamespace(
+        platform="twitch", last_analyzed_at=now - timedelta(days=30)
+    )
+    assert not curated_source_is_expired(profile, now=now)
+    profile.last_analyzed_at -= timedelta(microseconds=1)
+    assert curated_source_is_expired(profile, now=now)
+
+
 def record(platform="twitch"):
     host = "twitch.tv" if platform == "twitch" else "instagram.com"
     return dict(

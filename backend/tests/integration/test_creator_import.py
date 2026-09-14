@@ -180,3 +180,40 @@ def test_batch_refresh_deduplicates_existing_contact_without_session_reload(sess
     data = contract().model_validate({"schema_version": 1, "records": [raw, newer]})
     importer().import_profiles(session, data, on_conflict="replace-unedited")
     assert session.scalar(select(func.count()).select_from(CreatorContact)) == 1
+
+
+@pytest.mark.parametrize("platform", ["twitch", "instagram"])
+def test_expired_import_and_natural_aging_hide_sources_without_reacquisition(
+    session, auth_client, platform
+):
+    from app.repositories.profiles import ProfilesRepository
+
+    old = datetime.now(UTC) - timedelta(days=31)
+    raw = record(platform)
+    raw["collected_at"] = (old - timedelta(days=1)).isoformat()
+    raw["analysis"] = supplied_analysis(old)
+    importer().import_profiles(
+        session, contract().model_validate({"schema_version": 1, "records": [raw]})
+    )
+    profile = session.scalar(select(CreatorProfile))
+    assert profile.source_status["freshness"] == "stale"
+    assert profile.source_status[platform] == "unavailable"
+    # Simulate natural aging before the periodic stale-marker has run.
+    profile.source_status = {**profile.source_status, "freshness": "current"}
+    session.flush()
+    detail = auth_client.get(f"/api/v1/profiles/creators/{profile.id}").json()
+    assert detail["current_facts"] == {}
+    assert detail["analysis"] == {}
+    assert detail["brief"] == {}
+    assert detail["source_status"]["freshness"] == "stale"
+    assert ProfilesRepository(session).mark_stale_creators(datetime.now(UTC)) == 1
+    session.expire_all()
+    assert profile.source_status["freshness"] == "stale"
+    assert profile.source_status[platform] == "unavailable"
+    assert profile.source_status["live_collection"] == "unavailable"
+    assert profile.next_analysis_at is None
+    assert ProfilesRepository(session).mark_stale_creators(datetime.now(UTC)) == 0
+    assert (
+        ProfilesRepository(session).list_due_profiles(now=datetime.now(UTC), limit=100)
+        == []
+    )

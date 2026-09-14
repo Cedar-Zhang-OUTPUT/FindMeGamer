@@ -35,6 +35,8 @@ Common evidence references must use `source_type: public_link` and one of `profi
 
 Only a resolved, explicitly curated record with validated synthesis and matching Brief, a current analysis timestamp, and current source freshness participates in ordinary Library-wide Match. The existing 30-day analysis cutoff still applies. `analyzed_at` must follow collection and cannot be in the future. Fact-only imports have no analysis timestamp or Brief and remain ineligible. Neither platform is automatically reacquired or reanalyzed; the next analysis schedule remains disabled. Importing never changes the platform's live collection status from unavailable.
 
+Expired analysis is marked stale on import and by the existing periodic stale-marker. Public Profile and Match views also enforce aging at read time, so the interval between marker runs cannot expose expired source facts, analysis, Brief or nonmanual contacts. Historical Match outreach requires a manual contact once curated material expires. Manual overrides and contacts remain available, and the live platform status remains unavailable.
+
 ## Official API availability and authorization
 
 Research checked 2026-09-14; this contract does not claim successful provider calls or verified app authorization.

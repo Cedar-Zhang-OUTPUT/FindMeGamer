@@ -10,6 +10,7 @@ from sqlalchemy import select
 from app.db.models.jobs import acquire_job_change_lock
 from app.db.models.profiles import CreatorContact, CreatorProfile
 from app.schemas.creator_import import CreatorImport
+from app.services.profile_source_visibility import curated_source_is_expired
 
 
 def import_profiles(
@@ -122,6 +123,8 @@ def import_profiles(
                 },
                 "freshness": "current" if record.analysis else "unanalyzed",
             }
+            if curated_source_is_expired(profile):
+                profile.source_status = {**profile.source_status, "freshness": "stale"}
             profile.model_metadata = {"origin": "curated_import"}
             profile.prompt_metadata = {}
             session.flush()

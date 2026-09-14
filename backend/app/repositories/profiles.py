@@ -219,7 +219,25 @@ class ProfilesRepository:
             .values(source_status=CreatorProfile.source_status.op("||")(stale_patch))
             .execution_options(synchronize_session=False)
         )
-        return result.rowcount
+        curated_result = self._session.execute(
+            update(CreatorProfile)
+            .where(
+                CreatorProfile.platform.in_(("twitch", "instagram")),
+                CreatorProfile.last_analyzed_at < cutoff,
+                CreatorProfile.source_status["curated_import"]["status"].astext
+                == "available",
+                func.lower(
+                    CreatorProfile.source_status["freshness"].astext
+                ).is_distinct_from("stale"),
+            )
+            .values(
+                source_status=CreatorProfile.source_status.op("||")(
+                    {"freshness": "stale"}
+                )
+            )
+            .execution_options(synchronize_session=False)
+        )
+        return result.rowcount + curated_result.rowcount
 
     def set_game_favorite(
         self, profile_id: UUID, *, favorite: bool

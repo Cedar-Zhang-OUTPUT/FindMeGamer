@@ -179,7 +179,17 @@ struct CreatorProfilePresentation: Equatable {
 
   init(profile original: FindMeGamerCore.CreatorProfile) {
     var profile = original
-    platformTitle = CreatorPlatform.isX(url: profile.canonicalURL) ? "X" : "YouTube"
+    let platform: String
+    if case .string(let retainedPlatform) = profile.currentFacts["platform"] {
+      platform = retainedPlatform
+    } else {
+      switch URL(string: profile.canonicalURL)?.host?.lowercased() {
+      case "twitch.tv", "www.twitch.tv": platform = "twitch"
+      case "instagram.com", "www.instagram.com": platform = "instagram"
+      default: platform = CreatorPlatform.isX(url: profile.canonicalURL) ? "x" : "youtube"
+      }
+    }
+    platformTitle = CreatorPlatform.title(platform)
     profile.currentFacts = ProfileManualPresentation.annotatedFacts(
       profile.currentFacts, overrides: profile.manualOverrides)
     name = profile.name
@@ -187,7 +197,9 @@ struct CreatorProfilePresentation: Equatable {
     let isStale = CreatorStalePolicy.isStale(profile.sourceStatus)
     staleWarning =
       isStale
-      ? (platformTitle == "X" ? "X data is stale. Re-analysis is required." : Self.staleCopy) : nil
+      ? (["twitch", "instagram"].contains(platform)
+        ? "\(platformTitle) curated data is stale. Updated source material is required."
+        : "\(platformTitle) data is stale. Re-analysis is required.") : nil
 
     if isStale {
       artworkURL = nil

@@ -21,7 +21,10 @@ from app.services.profile_editing import (
     effective_name,
     effective_section,
 )
-from app.services.profile_source_visibility import _creator_youtube_is_stale
+from app.services.profile_source_visibility import (
+    creator_source_is_stale,
+    visible_creator_source_status,
+)
 from app.schemas.common import CursorPage
 from app.schemas.profiles import (
     CreatorContactResponse,
@@ -234,7 +237,7 @@ def _game_detail(profile: GameProfile) -> GameProfileDetail:
 
 
 def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
-    stale = _creator_youtube_is_stale(profile.source_status)
+    stale = creator_source_is_stale(profile)
     contacts = _available_contacts(profile, manual_only=stale)
     current_facts = effective_section(profile, "facts", source_visible=not stale)
     brief = effective_section(profile, "brief", source_visible=not stale)
@@ -250,7 +253,7 @@ def _creator_card(profile: CreatorProfile) -> CreatorProfileCard:
         favorite=profile.favorite,
         current_facts=public_json_object(current_facts),
         brief=public_json_object(brief),
-        source_status=public_json_object(profile.source_status),
+        source_status=public_json_object(visible_creator_source_status(profile)),
         last_analyzed_at=profile.last_analyzed_at,
         next_analysis_at=profile.next_analysis_at,
         contact=contacts[0] if contacts else None,
@@ -262,7 +265,7 @@ def _creator_detail(profile: CreatorProfile) -> CreatorProfileDetail:
     analysis = effective_section(
         profile,
         "analysis",
-        source_visible=not _creator_youtube_is_stale(profile.source_status),
+        source_visible=not creator_source_is_stale(profile),
     )
     return CreatorProfileDetail(
         **_creator_card(profile).model_dump(),

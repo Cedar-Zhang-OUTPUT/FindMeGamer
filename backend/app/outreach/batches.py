@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.crypto import SecretCipher
 from app.core.errors import APIError
+from app.services.profile_source_visibility import curated_source_is_expired
 from app.db.models.match import MatchResultItem, MatchStatus, MatchTask
 from app.db.models.outreach import (
     CampaignCreatorResponse,
@@ -343,7 +344,11 @@ def _load_composition(
                 "Every Creator must belong to the Match result.",
             )
         available = _available_contacts(
-            contacts[creator_id], manual_only=_creator_is_stale(creator.source_status)
+            contacts[creator_id],
+            manual_only=(
+                _creator_is_stale(creator.source_status)
+                or curated_source_is_expired(creator)
+            ),
         )
         if not available:
             raise _error(

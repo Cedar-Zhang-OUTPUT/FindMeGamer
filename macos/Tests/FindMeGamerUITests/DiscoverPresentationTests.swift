@@ -5,6 +5,23 @@ import Testing
 @testable import FindMeGamer
 
 @Suite struct DiscoverPresentationTests {
+  @Test(arguments: [("Twitch", "https://www.twitch.tv/synthetic_fixture"),
+                    ("Instagram", "https://www.instagram.com/synthetic_fixture")])
+  func curatedProfileRetainsPlatformWhenStaleFactsAreHidden(platform: String, url: String) {
+    let profile = CreatorProfile(
+      id: UUID(), name: "Synthetic fixture", youtubeChannelID: nil,
+      platformAccountID: "990000001", canonicalURL: url, favorite: false,
+      currentFacts: ["followers_count": .number(42)], brief: [:],
+      sourceStatus: ["freshness": .string("stale")], lastAnalyzedAt: nil,
+      nextAnalysisAt: nil, contact: nil, manualNotes: nil,
+      analysis: [:], modelMetadata: [:], promptMetadata: [:])
+    let presentation = CreatorProfilePresentation(profile: profile)
+    #expect(presentation.platformTitle == platform)
+    #expect(presentation.sourceURL?.absoluteString == url)
+    #expect(presentation.staleWarning?.contains(platform) == true)
+    #expect(presentation.staleWarning?.contains("YouTube") == false)
+  }
+
   @Test func xProfileUsesFollowerAndPostEvidenceWithRealIdentity() {
     let profile = CreatorProfile(
       id: UUID(), name: "Indie X", youtubeChannelID: nil,

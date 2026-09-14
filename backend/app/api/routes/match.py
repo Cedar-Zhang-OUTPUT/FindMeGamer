@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.errors import APIError, safe_correlation_id
+from app.services.profile_source_visibility import curated_source_is_expired
 from app.core.idempotency import (
     IDEMPOTENCY_RETENTION,
     InvalidIdempotencyKey,
@@ -319,7 +320,9 @@ def _available_text(value: object) -> str | None:
 
 
 def _creator_card(creator: CreatorProfile) -> MatchCreatorCard:
-    stale = _creator_is_stale(creator.source_status)
+    stale = _creator_is_stale(creator.source_status) or curated_source_is_expired(
+        creator
+    )
     facts = (
         creator.current_facts
         if not stale and isinstance(creator.current_facts, dict)
