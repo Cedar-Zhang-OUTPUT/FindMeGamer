@@ -20,15 +20,19 @@ Final Task 4 backend run: **1,858 passed, 3 skipped, 1 warning**, 107.48 s, exit
 
 `NativeProfileHTTPAcceptanceTests` runs the shipping Swift `OpenAPIService`, generated client, auth middleware, URLSession transport and `ProfileEditorState` against real loopback FastAPI/PostgreSQL. It verifies draft/Cancel leave server state unchanged, Save/reopen, stale revision rejection, reset, separate contact Save and old/new Match revision metadata. Only an inert in-memory key is supplied; no Keychain access occurs. This is native HTTP integration, not an app-window walkthrough.
 
+After the final outreach correction, the controller independently restarted only the dedicated HTTP fixture server to load the final code, retaining its DB, and ran `FMG_NATIVE_HTTP_ACCEPTANCE=1 swift test --package-path macos --filter NativeProfileHTTPAcceptanceTests`: **1 test in 1 suite passed**, 1.482 s, exit 0 (`root-final-native-http.log`). The native source/test tree is unchanged from the earlier 344-test run.
+
 Focused evidence: backend vertical slice 1 passed; fixture database guard RED 3 missing-helper failures then GREEN 3 passed; Swift HTTP RED connection refused without server, then GREEN 1 passed in 1.60 s. Logs are under ignored `.superpowers/sdd/2026-09-14-native-profile-editing/`: `task-4-http-red.log`, `task-4-http-green.log`, `task-4-backend-full.log`, `task-4-native-full.log`, `task-4-outreach-probe.log`. Existing Starlette/AnyIO deprecation and OpenAPI nullable/PublicJSON schema warnings remain; successful runs are not warning-free.
 
-## Remaining issue and release gates
+## Outreach correction and release gates
 
-An actual isolated API diagnostic confirmed a new-outreach-preview propagation gap: after successful Game/Creator name PATCHes, a new preview still renders `Source Creator × Tactics Together` instead of `Human Creator × Human Game`. `app/outreach/batches.py` builds the new context from source `sort_name`/`current_facts.title`. RED reproduction is preserved as `task-4-outreach-probe.py` under SDD. The controller owns the narrow fix and final whole-branch review. Historical recipient/delivery/email snapshots must remain immutable. A passing general suite does not close this known issue.
+The final review's outreach composition issue is corrected at the new-composition boundary. Authenticated PATCH/preview regressions reproduced two name failures (`Source Creator × Tactics Together` instead of `Human Creator × Human Game`) before the fix. New preview display names, channel names, subjects and new-batch rendered content now use effective names; reset restores source names. Existing recipient addresses and rendered subject/Markdown/HTML remain unchanged after later name edits and resets. The original RED diagnostic remains preserved as `task-4-outreach-probe.py` under SDD.
+
+Summary regressions also reproduced two failures before correction: new outreach ignored manual Brief values frozen at Match creation. Composition now checks frozen manual positioning premise, then frozen manual gameplay loop, using the locked source claim only when that field has no override. An explicit empty override suppresses its old source claim. Later current-profile Brief edits do not change the locked summary; only the no-summary name fallback uses the current effective game name. Tests exercise real PATCH and Match creation to capture inputs, then use the existing deterministic published-result fixture for preview/batch composition; they do not claim a live model run. Covering outreach verification: **197 passed, 1 skipped, 1 existing warning**, 22.72 s, exit 0. Final once-only full backend on the finished correction: **1,862 passed, 3 skipped, 1 existing warning**, 94.47 s, exit 0 (`docker compose -p fmg-native-edit -f compose.test.yaml run --rm test pytest -q`).
 
 GUI release acceptance remains outstanding. Earlier Demo accessibility checks reached Library, details and Edit profile. Opening/reading the editor repeatedly crashed `SkyComputerUseService` (`EXC_BREAKPOINT/SIGTRAP`, Swift `Array.remove(at:)`) while FindMeGamer remained running. Screenshot/reconnect attempts also failed through the native pipe. No further CUA retries or GUI harness were added; no successful editor-save screenshot is claimed.
 
-Before release, manually walk both real API profiles through edit, Cancel, Save, reopen, reset, conflict/reload and separate contacts/notes Save; inspect keyboard/focus/layout/error feedback and Match revision notices. Use in-memory fixture credentials for local acceptance, never overwrite the fixed Keychain entry. Complete controller review and the outreach fix, then separately authorize live-provider checks, maintenance cutover and packaging/publication. Tests do not establish those gates.
+Before release, manually walk both real API profiles through edit, Cancel, Save, reopen, reset, conflict/reload and separate contacts/notes Save; inspect keyboard/focus/layout/error feedback and Match revision notices. Use in-memory fixture credentials for local acceptance, never overwrite the fixed Keychain entry. Complete controller verification of the scoped correction, then separately authorize live-provider checks, maintenance cutover and packaging/publication. Tests do not establish those gates.
 
 ## Approved tradeoffs
 
@@ -37,6 +41,7 @@ Before release, manually walk both real API profiles through edit, Cancel, Save,
 | Contacts/notes retain a separate explicit Save. | One additional Save; no cross-endpoint atomicity promise. |
 | Dedicated typed editor GET/PATCH preserve existing detail routes. | One additional endpoint pair/contract to maintain. |
 | Manual matching context is frozen separately from source claims. | Maintain prompt precedence and snapshot tests; no fabricated source evidence. |
+| New outreach names follow current effective edits; locked Match summaries/reasons and existing delivery snapshots stay frozen. | A new email name can differ from its historical Match label; the existing revision notice explains the distinction. |
 
 ## Reproduce real HTTP acceptance
 

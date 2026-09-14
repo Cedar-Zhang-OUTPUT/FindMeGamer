@@ -43,6 +43,7 @@ from app.schemas.outreach import (
     TemplateContext,
     TemplateData,
 )
+from app.services.profile_editing import effective_name, effective_section
 
 
 _PREVIEW_URLS = ResponseURLs(
@@ -222,10 +223,18 @@ def _game_summary(task: MatchTask, game: GameProfile) -> str:
         raise _error(
             409, "match_result_invalid", "The Match result is invalid."
         ) from None
-    for claim in (brief.positioning_premise, brief.core_gameplay_loop):
+    overrides = (task.locked_game_context or {}).get("overrides", {})
+    for field in ("positioning_premise", "core_gameplay_loop"):
+        key = f"brief.{field}"
+        if key in overrides:
+            value = overrides[key]
+            if isinstance(value, str) and value.strip():
+                return value
+            continue
+        claim = getattr(brief, field)
         if claim.status == "available":
             return claim.value
-    return game.sort_name
+    return effective_name(game)
 
 
 def _load_composition(
@@ -365,12 +374,11 @@ def _load_composition(
                     "recipient_email_selection_invalid",
                     "The selected email is not active for this Creator.",
                 )
-        current = (
-            creator.current_facts if isinstance(creator.current_facts, dict) else {}
-        )
+        current = effective_section(creator, "facts")
+        creator_name = effective_name(creator)
         channel_name = current.get("title")
         if not isinstance(channel_name, str) or not channel_name:
-            channel_name = creator.sort_name
+            channel_name = creator_name
         reasons = results[creator_id].match_reasons
         if (
             not isinstance(reasons, list)
@@ -379,9 +387,9 @@ def _load_composition(
         ):
             raise _error(409, "match_result_invalid", "The Match result is invalid.")
         context = TemplateContext(
-            creator_name=creator.sort_name,
+            creator_name=creator_name,
             channel_name=channel_name,
-            game_name=game.sort_name,
+            game_name=effective_name(game),
             steam_url=game.canonical_url,
             game_summary=game_summary,
             match_reason=" ".join(reasons),
@@ -396,7 +404,7 @@ def _load_composition(
         composed.append(
             _ComposedItem(
                 creator_id=creator.id,
-                creator_name=creator.sort_name,
+                creator_name=creator_name,
                 recipient_email=str(selected.email),
                 subject=rendered.subject,
                 markdown=rendered.markdown,

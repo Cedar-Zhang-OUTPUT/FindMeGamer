@@ -294,6 +294,123 @@ def _create_batch(auth_client, payload: dict, key: str = "send-batch-0001"):
     )
 
 
+@pytest.mark.parametrize("manual_summary,expected", [
+    ("Frozen human premise", "Frozen human premise"),
+    ("", "Frozen human loop"),
+])
+def test_outreach_summary_uses_match_frozen_manual_brief(
+    auth_client, session: Session, smtp_gateway, manual_summary, expected
+) -> None:
+    task, creators, _campaign = _published_match(
+        session, [("Source Creator", "fixture@example.com")]
+    )
+    url = f"/api/v1/profiles/game/{task.game_id}/edit"
+
+    def edit(changes):
+        revision = auth_client.get(url).json()["revision"]
+        response = auth_client.patch(url, json={
+            "expected_revision": revision, "changes": changes, "reset_fields": [],
+        })
+        assert response.status_code == 200, response.text
+
+    edit({"brief.positioning_premise": manual_summary,
+          "brief.core_gameplay_loop": "Frozen human loop"})
+    created_match = auth_client.post(
+        "/api/v1/matches", json={"game_id": str(task.game_id)},
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert created_match.status_code == 202, created_match.text
+    frozen = session.get(MatchTask, UUID(created_match.json()["id"]))
+    assert frozen.locked_game_context["overrides"]["brief.positioning_premise"] == manual_summary
+    # Use real captured inputs with the deterministic published-result fixture.
+    task.locked_game_brief = frozen.locked_game_brief
+    task.locked_game_context = frozen.locked_game_context
+    session.flush()
+    _configure(auth_client)
+    payload = _payload(task, creators, body_markdown_override="{{game_summary}}")
+    edit({"brief.positioning_premise": "Later premise", "brief.core_gameplay_loop": "Later loop"})
+    preview = auth_client.post(f"{SEND_BATCH_PATH}/preview", json=payload)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["items"][0]["markdown"] == expected
+    created = _create_batch(auth_client, payload)
+    assert created.status_code == 201, created.text
+    delivery = session.get(Delivery, UUID(created.json()["deliveries"][0]["id"]))
+    assert delivery.rendered_markdown == expected
+    edit({"brief.positioning_premise": "Still later premise"})
+    session.refresh(delivery)
+    assert delivery.rendered_markdown == expected
+    assert smtp_gateway.sends == []
+
+
+@pytest.mark.parametrize("locked_summary_available", [True, False])
+def test_new_outreach_uses_edited_names_and_preserves_existing_delivery(
+    auth_client, session: Session, smtp_gateway, locked_summary_available: bool
+) -> None:
+    task, creators, _ = _published_match(
+        session, [("Source Creator", "fixture@example.com")]
+    )
+    if not locked_summary_available:
+        unavailable = {"status": "unavailable", "reason": "Not available."}
+        task.locked_game_brief = {name: unavailable for name in task.locked_game_brief}
+        session.flush()
+    template = _configure(auth_client)
+    payload = _payload(task, creators, template_id=template["id"])
+
+    def edit_names(game_name, creator_name):
+        for kind, profile_id, field, value in (
+            ("game", task.game_id, "facts.name", game_name),
+            ("creator", creators[0].id, "facts.title", creator_name),
+        ):
+            url = f"/api/v1/profiles/{kind}/{profile_id}/edit"
+            revision = auth_client.get(url).json()["revision"]
+            response = auth_client.patch(url, json={
+                "expected_revision": revision,
+                "changes": {field: value} if value is not None else {},
+                "reset_fields": [field] if value is None else [],
+            })
+            assert response.status_code == 200, response.text
+
+    edit_names("Human Game", "Human Creator")
+    preview = auth_client.post(f"{SEND_BATCH_PATH}/preview", json=payload)
+    assert preview.status_code == 200
+    item = preview.json()["items"][0]
+    assert item["subject"] == "Human Creator × Human Game"
+    assert item["creator_name"] == "Human Creator"
+    summary = "A tactical cooperative adventure." if locked_summary_available else "Human Game"
+    assert item["markdown"].startswith(f"Hello Human Creator. {summary}")
+    assert "Source Creator fits the launch." in item["markdown"]
+
+    created = _create_batch(auth_client, payload)
+    assert created.status_code == 201, created.text
+    delivery = session.get(Delivery, UUID(created.json()["deliveries"][0]["id"]))
+    assert delivery.rendered_subject == "Human Creator × Human Game"
+    assert delivery.rendered_markdown.startswith(f"Hello Human Creator. {summary}")
+    assert "Human Creator" in delivery.rendered_html
+    snapshot = (delivery.recipient_email, delivery.rendered_subject,
+                delivery.rendered_markdown, delivery.rendered_html)
+
+    edit_names("Later Game", "Later Creator")
+    later = auth_client.post(f"{SEND_BATCH_PATH}/preview", json=payload)
+    assert later.json()["items"][0]["subject"] == "Later Creator × Later Game"
+    session.refresh(delivery)
+    assert (delivery.recipient_email, delivery.rendered_subject,
+            delivery.rendered_markdown, delivery.rendered_html) == snapshot
+
+    edit_names(None, None)
+    reset = auth_client.post(f"{SEND_BATCH_PATH}/preview", json=payload)
+    assert reset.status_code == 200
+    reset_item = reset.json()["items"][0]
+    assert reset_item["subject"] == "Source Creator × Tactics Together"
+    assert reset_item["creator_name"] == "Source Creator"
+    assert reset_item["markdown"].startswith("Hello Source Creator Channel.")
+    if not locked_summary_available:
+        assert "Tactics Together" in reset_item["markdown"]
+    session.refresh(delivery)
+    assert (delivery.recipient_email, delivery.rendered_subject,
+            delivery.rendered_markdown, delivery.rendered_html) == snapshot
+    assert smtp_gateway.sends == []
+
+
 def test_preview_applies_send_only_overrides_per_creator_without_side_effects(
     auth_client, session: Session, smtp_gateway, smtp_rate_limiter
 ) -> None:
