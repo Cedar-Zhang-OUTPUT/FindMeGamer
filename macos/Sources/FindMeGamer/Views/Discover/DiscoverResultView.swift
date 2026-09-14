@@ -48,8 +48,8 @@ struct DiscoverResultView: View {
               Text(CreatorPlatform.title(candidate.platform)).frame(width: 85, alignment: .leading)
               VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.name).lineLimit(1)
-                if candidate.inLibrary {
-                  Text("In Library").font(.caption).foregroundStyle(.secondary)
+                if let state = model.analysisState(for: candidate) {
+                  Text(state).font(.caption).foregroundStyle(.secondary)
                 }
               }.frame(width: 200, alignment: .leading)
               if let url = URL(string: candidate.url) {
@@ -71,7 +71,8 @@ struct DiscoverResultView: View {
         if !model.selectedIDs.isEmpty {
           Button("Add Analysis") { model.presentAnalysisConfirmation() }
             .buttonStyle(.borderedProminent)
-            .disabled(model.selectedIDs.count > 100 || !writesEnabled)
+            .disabled(!model.canAddAnalysis || !writesEnabled)
+            .help("Select only creators that are not already analyzing or in Library.")
         }
       }
       if !model.batches.isEmpty {

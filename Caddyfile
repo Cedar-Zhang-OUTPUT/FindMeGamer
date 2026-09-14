@@ -24,7 +24,7 @@
 			X-Content-Type-Options "nosniff"
 			-Server
 		}
-		respond `{"schema_version":1,"version":"0.4.0","release_page_url":"https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/v0.4.0-internal.1"}` 200
+		respond `{"schema_version":1,"version":"0.4.1","release_page_url":"https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/v0.4.1-internal.1"}` 200
 	}
 
 	handle @backend {

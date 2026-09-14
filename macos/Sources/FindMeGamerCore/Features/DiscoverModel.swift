@@ -18,10 +18,14 @@ import Observation
   public private(set) var isLoadingGames = false
   public private(set) var isSubmitting = false
   public private(set) var isSubmittingBatch = false
+  public private(set) var isOpening = false
   public var conditionsPresented = false
   public var analysisConfirmationPresented = false
   @ObservationIgnored private let api: any DiscoverAPIService
   @ObservationIgnored private let idempotencyKey: @Sendable () -> String
+  @ObservationIgnored private let onJobActivity: @Sendable () async -> Void
+  private var analysisJobs: [UUID: AnalysisJob] = [:]
+  private var loadedBatchRecords: Set<UUID> = []
   @ObservationIgnored private var createKeys: [CreateIntent: String] = [:]
   @ObservationIgnored private var batchKeys: [BatchIntent: String] = [:]
   @ObservationIgnored private var selections: [UUID: Set<UUID>] = [:]
@@ -33,15 +37,60 @@ import Observation
 
   public init(
     api: any DiscoverAPIService,
-    idempotencyKey: @escaping @Sendable () -> String = { UUID().uuidString }
+    idempotencyKey: @escaping @Sendable () -> String = { UUID().uuidString },
+    onJobActivity: @escaping @Sendable () async -> Void = {}
   ) {
     self.api = api
     self.idempotencyKey = idempotencyKey
+    self.onJobActivity = onJobActivity
   }
   public var filteredGames: [DiscoverGame] {
     games.filter { gameQuery.isEmpty || $0.name.localizedCaseInsensitiveContains(gameQuery) }
   }
   public var canStart: Bool { selectedGame != nil && !isResolving && !isSubmitting }
+  public var canAddAnalysis: Bool {
+    guard let record, loadedBatchRecords.contains(record.id), !isOpening,
+      !isSubmittingBatch, !selectedIDs.isEmpty, selectedIDs.count <= 100
+    else { return false }
+    let selected = record.candidates.filter { selectedIDs.contains($0.id) }
+    return selected.count == selectedIDs.count && selected.allSatisfy { analysisState(for: $0) == nil }
+  }
+  public func analysisState(for candidate: DiscoverCandidate) -> String? {
+    if candidate.inLibrary { return "In Library" }
+    let items = batches.flatMap(\.items).filter { $0.candidateID == candidate.id }
+    if items.contains(where: { $0.status == "succeeded" }) { return "In Library" }
+    let latest = analysisJobs.values.filter { matches($0, candidate: candidate) }
+      .max { $0.updatedAt < $1.updatedAt }
+    if latest?.status == .succeeded, latest?.profileID != nil { return "In Library" }
+    if items.contains(where: { $0.status == "queued" || $0.status == "running" })
+      || latest?.status == .queued || latest?.status == .running
+    { return "Analyzing" }
+    return nil
+  }
+  public func consume(jobBatch: JobChangeBatch) {
+    for change in jobBatch.changes {
+      guard case .analysis(let job) = change, job.profileType == .creator else { continue }
+      if let old = analysisJobs[job.id], old.updatedAt > job.updatedAt { continue }
+      analysisJobs[job.id] = job
+    }
+    if let id = record?.id { batches = projectedBatches(id: id) }
+  }
+  private func matches(_ job: AnalysisJob, candidate: DiscoverCandidate) -> Bool {
+    job.canonicalTargetID == (candidate.platform == "youtube"
+      ? candidate.accountID : "\(candidate.platform):\(candidate.accountID)")
+  }
+  private func projectedBatches(id: UUID) -> [DiscoverBatch] {
+    (batchCache[id] ?? []).map { batch in
+      .init(id: batch.id, discoverID: batch.discoverID, mode: batch.mode, status: batch.status,
+        items: batch.items.map { item in
+          guard item.status == "queued" || item.status == "running",
+            let jobID = item.analysisJobID, let job = analysisJobs[jobID]
+          else { return item }
+          return .init(candidateID: item.candidateID, status: job.status.rawValue,
+            reused: item.reused, error: job.failure?.message, analysisJobID: jobID)
+        }, matchID: batch.matchID, error: batch.error)
+    }
+  }
   public var canSubmitConditions: Bool {
     canStart && conditions.isValid
       && conditions.platforms.isSubset(of: Set(capabilities.filter(\.available).map(\.platform)))
@@ -57,6 +106,7 @@ import Observation
       self.error = "Could not load platform availability. Open Settings to check connections."
     }
     _ = await (games, history)
+    if let id = record?.id { await open(id: id) }
   }
   public func loadGames() async {
     guard !isLoadingGames else { return }
@@ -116,11 +166,13 @@ import Observation
   public func open(id: UUID) async {
     openGeneration += 1
     let generation = openGeneration
+    isOpening = true
+    defer { if generation == openGeneration { isOpening = false } }
     if let current = record { selections[current.id] = selectedIDs }
     if let cached = records[id] {
       record = cached
       selectedIDs = selections[id] ?? []
-      batches = batchCache[id] ?? []
+      batches = projectedBatches(id: id)
     }
     do {
       let value = try await api.discover(id: id)
@@ -165,7 +217,10 @@ import Observation
   private func saveSelection() { if let record { selections[record.id] = selectedIDs } }
   public func presentConditions() { conditionsPresented = true }
   public func cancelConditions() { conditionsPresented = false }
-  public func presentAnalysisConfirmation() { analysisConfirmationPresented = true }
+  public func presentAnalysisConfirmation() {
+    guard canAddAnalysis else { return }
+    analysisConfirmationPresented = true
+  }
   public func cancelAnalysisConfirmation() { analysisConfirmationPresented = false }
   public func submit() async {
     guard canSubmitConditions, let selectedGame else { return }
@@ -185,13 +240,14 @@ import Observation
       record = value
       selectedIDs = []
       batches = []
+      loadedBatchRecords.insert(value.id)
       upsert(value)
     } catch is CancellationError {} catch {
       self.error = "Could not confirm Discover submission. Retry keeps the same request key."
     }
   }
   public func submitAnalysis(mode: DiscoverAnalysisMode) async {
-    guard let record, !selectedIDs.isEmpty, selectedIDs.count <= 100, !isSubmittingBatch else {
+    guard let record, canAddAnalysis else {
       return
     }
     let intent = BatchIntent(recordID: record.id, ids: selectedIDs, mode: mode)
@@ -213,7 +269,9 @@ import Observation
       batchCache[intent.recordID] = values
       batchSubmissionRevisions[intent.recordID, default: 0] += 1
       trackedBatchRecords.insert(intent.recordID)
-      if self.record?.id == intent.recordID { batches = values }
+      loadedBatchRecords.insert(intent.recordID)
+      if self.record?.id == intent.recordID { batches = projectedBatches(id: intent.recordID) }
+      await onJobActivity()
     } catch is CancellationError {} catch {
       self.error =
         "Could not confirm analysis. Retry keeps the same selection, mode and request key."
@@ -225,6 +283,8 @@ import Observation
       let active = Set(
         records.values.filter(\.isActive).map(\.id)
           + history.filter { $0.status == "queued" || $0.status == "running" }.map(\.id))
+        .union(trackedBatchRecords)
+        .union(record.map { [$0.id] } ?? [])
       for id in active {
         do {
           let value = try await api.discover(id: id)
@@ -247,12 +307,14 @@ import Observation
       // A pre-submission snapshot must not erase an acknowledged batch or stop its polling.
       guard submissionRevision == batchSubmissionRevisions[id, default: 0] else { return }
       batchCache[id] = values
+      loadedBatchRecords.insert(id)
       if values.contains(where: \.isActive) {
         trackedBatchRecords.insert(id)
       } else {
         trackedBatchRecords.remove(id)
       }
-      if record?.id == id { batches = values }
+      if record?.id == id { batches = projectedBatches(id: id) }
+      if values.contains(where: \.isActive) { await onJobActivity() }
     } catch is CancellationError {} catch {
       self.error = "Could not refresh analysis history. Existing progress is retained."
     }

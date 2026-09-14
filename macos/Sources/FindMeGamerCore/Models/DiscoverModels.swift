@@ -94,6 +94,7 @@ public struct DiscoverBatchItem: Identifiable, Sendable, Equatable {
   public let status: String
   public let reused: Bool
   public let error: String?
+  public var analysisJobID: UUID? = nil
 }
 public struct DiscoverBatch: Identifiable, Sendable, Equatable {
   public let id: UUID

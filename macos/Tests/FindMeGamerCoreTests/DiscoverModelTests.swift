@@ -4,13 +4,41 @@ import Testing
 @testable import FindMeGamerCore
 
 @Suite(.serialized) struct DiscoverModelTests {
+  @MainActor @Test func acknowledgedAnalysisCannotBeSubmittedAgainAfterReopening() async {
+    let api = RecordingDiscoverAPI()
+    await api.enableBatchRace()
+    let model = DiscoverModel(api: api)
+    await model.open(id: api.record.id)
+    model.selectAll()
+    await model.submitAnalysis(mode: .analyze)
+    await model.open(id: api.record.id)
+    model.presentAnalysisConfirmation()
+    #expect(!model.analysisConfirmationPresented)
+    await model.submitAnalysis(mode: .analyze)
+    #expect(await api.batchKeys.count == 1)
+  }
+
+  @MainActor @Test func selectionContainingLibraryCreatorCannotSubmitButNewOnlyCan() async {
+    let api = RecordingDiscoverAPI()
+    await api.markFirstInLibrary()
+    let model = DiscoverModel(api: api)
+    await model.open(id: api.record.id)
+    model.selectAll()
+    model.presentAnalysisConfirmation()
+    #expect(!model.analysisConfirmationPresented)
+    await model.submitAnalysis(mode: .analyze)
+    #expect(await api.batchKeys.isEmpty)
+    model.toggleCandidate(api.record.candidates[0].id)
+    model.presentAnalysisConfirmation()
+    #expect(model.analysisConfirmationPresented)
+  }
   @MainActor @Test func staleBatchPollCannotEraseAcknowledgedBatchOrStopMatchPolling() async throws
   {
     let api = RecordingDiscoverAPI()
     await api.enableBatchRace()
     let model = DiscoverModel(api: api)
     await model.open(id: api.record.id)
-    model.selectAll()
+    model.toggleCandidate(api.record.candidates[0].id)
     await model.submitAnalysis(mode: .analyzeAndMatch)
     let polling = Task { await model.runPolling() }
     defer { polling.cancel() }
@@ -19,6 +47,8 @@ import Testing
       try await Task.sleep(for: .milliseconds(10))
     }
     try #require(await api.batchReadSuspended)
+    model.deselectAll()
+    model.toggleCandidate(api.record.candidates[1].id)
     await model.submitAnalysis(mode: .analyzeAndMatch)
     let newest = try #require(model.batches.first?.id)
     await api.releaseBatchRead()
@@ -40,6 +70,9 @@ import Testing
     coordinator.discover.selectedGame = coordinator.discover.games.first
     await coordinator.discover.submit()
     coordinator.discover.selectAll()
+    for candidate in coordinator.discover.record?.candidates ?? [] where candidate.inLibrary {
+      coordinator.discover.toggleCandidate(candidate.id)
+    }
     let selected = coordinator.discover.selectedIDs
     let recordID = coordinator.discover.record?.id
     await coordinator.discover.submitAnalysis(mode: .analyzeAndMatch)
@@ -121,12 +154,14 @@ actor RecordingDiscoverAPI: DiscoverAPIService {
   var batchModes: [DiscoverAnalysisMode] = []
   var createKeys: [String] = []
   var readsFail = false
+  var firstInLibrary = false
   var batchRace = false
   var batchReadSuspended = false
   var batchReadGate: CheckedContinuation<Void, Never>?
   var acknowledgedBatches: [DiscoverBatch] = []
   nonisolated let completedMatchID = UUID()
   func enableBatchRace() { batchRace = true }
+  func markFirstInLibrary() { firstInLibrary = true }
   func releaseBatchRead() {
     batchReadGate?.resume()
     batchReadGate = nil
@@ -139,6 +174,15 @@ actor RecordingDiscoverAPI: DiscoverAPIService {
   }
   func discover(id: UUID) async throws -> DiscoverRecord {
     if readsFail { throw APIError.invalidResponse }
+    if firstInLibrary {
+      return .init(
+        id: record.id, gameID: record.gameID, gameName: record.gameName,
+        status: record.status, stage: record.stage,
+        candidates: record.candidates.enumerated().map { index, c in
+          .init(id: c.id, platform: c.platform, accountID: c.accountID, name: c.name,
+                url: c.url, inLibrary: index == 0)
+        }, issues: record.issues, createdAt: record.createdAt)
+    }
     return record
   }
   func resolveDiscoverGame(url: String) async throws -> DiscoverGame {
@@ -161,10 +205,12 @@ actor RecordingDiscoverAPI: DiscoverAPIService {
     guard batchRace else { return [] }
     let snapshot = acknowledgedBatches.map {
       DiscoverBatch(
-        id: $0.id, discoverID: id, mode: $0.mode, status: "done", items: [],
+        id: $0.id, discoverID: id, mode: $0.mode, status: "done", items: $0.items.map {
+          .init(candidateID: $0.candidateID, status: "succeeded", reused: false, error: nil)
+        },
         matchID: completedMatchID, error: nil)
     }
-    if acknowledgedBatches.count == 1 && !batchReadSuspended {
+    if acknowledgedBatches.count == 1 && !batchReadSuspended && batchModes.first == .analyzeAndMatch {
       await withCheckedContinuation {
         batchReadGate = $0
         batchReadSuspended = true
@@ -180,7 +226,9 @@ actor RecordingDiscoverAPI: DiscoverAPIService {
     if batchRace {
       let batch = DiscoverBatch(
         id: UUID(), discoverID: id, mode: mode, status: "running",
-        items: [], matchID: nil, error: nil)
+        items: candidateIDs.map {
+          .init(candidateID: $0, status: "queued", reused: false, error: nil)
+        }, matchID: nil, error: nil)
       acknowledgedBatches.append(batch)
       return batch
     }

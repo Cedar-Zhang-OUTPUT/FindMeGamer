@@ -86,12 +86,12 @@ struct DiscoverView: View {
           Button("Cancel") { model.cancelAnalysisConfirmation() }.keyboardShortcut(.cancelAction)
           Spacer()
           Button("Just analyze") { Task { await model.submitAnalysis(mode: .analyze) } }
-            .disabled(model.isSubmittingBatch || !writesEnabled)
+            .disabled(!model.canAddAnalysis || !writesEnabled)
           Button("Do matching immediately") {
             Task { await model.submitAnalysis(mode: .analyzeAndMatch) }
           }
           .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
-          .disabled(model.isSubmittingBatch || !writesEnabled)
+          .disabled(!model.canAddAnalysis || !writesEnabled)
         }
         if model.isSubmittingBatch { ProgressView("Submitting analysis…") }
       }.padding(24).frame(width: 590)

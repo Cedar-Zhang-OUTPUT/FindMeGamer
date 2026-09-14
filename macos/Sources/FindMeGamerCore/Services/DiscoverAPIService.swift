@@ -130,7 +130,8 @@ private func mapDiscoverBatch(_ value: Components.Schemas.DiscoverBatchDetail) t
     items: value.items.map {
       .init(
         candidateID: try discoverUUID($0.candidate_id),
-        status: $0.status.rawValue, reused: $0.reused ?? false, error: $0.error?.value1.message)
+        status: $0.status.rawValue, reused: $0.reused ?? false, error: $0.error?.value1.message,
+        analysisJobID: try $0.analysis_job_id.map(discoverUUID))
     },
     matchID: value.match_task_id.map(discoverUUID), error: value.error?.value1.message)
 }

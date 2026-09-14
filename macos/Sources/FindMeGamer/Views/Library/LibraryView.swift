@@ -217,7 +217,7 @@ struct LibraryView: View {
     .padding(.vertical, WorkspaceDesign.pageVerticalPadding)
     .workspaceCanvas()
     .task {
-      model.selectType(model.selectedType)
+      await model.loadFirstPage()
     }
     .onChange(of: paginationObservation, initial: true) { _, observation in
       pagination.observe(observation)

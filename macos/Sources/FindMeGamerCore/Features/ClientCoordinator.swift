@@ -58,8 +58,9 @@ public final class ClientCoordinator {
     disconnect: @escaping @MainActor @Sendable () async -> Void = {}
   ) {
     self.api = api
-    discover = DiscoverModel(api: api, idempotencyKey: idempotencyKey)
     let poller = JobPoller(api: api, clock: clock)
+    discover = DiscoverModel(api: api, idempotencyKey: idempotencyKey,
+      onJobActivity: { await poller.refreshNow() })
     jobPoller = poller
     library = LibraryModel(api: api, clock: clock)
     analyze = AnalyzeRequestModel(
@@ -117,6 +118,7 @@ public final class ClientCoordinator {
 
   public func consume(_ batch: JobChangeBatch) async {
     analyze.consume(jobBatch: batch)
+    discover.consume(jobBatch: batch)
     let routing = ClientBatchRouting(batch: batch)
     if routing.refreshLibrary {
       await library.consume(jobBatch: batch)
