@@ -1,6 +1,6 @@
 # Native restoration maintenance cutover
 
-Status: preparation, not an executed deployment. Implementation authorization does not authorize another data reset or an immediate live database switch.
+Status: deployment authorized on 2026-09-14. The user confirmed keeping the complete v2 database and switching the native release to a new empty database, importing only compatible settings and service secrets. Execution evidence will be recorded separately; authorization alone is not deployment completion.
 
 ## Why a separate database
 
@@ -8,7 +8,7 @@ The deployed v2 schema previously reached `0023`; native now ends at `20260914_n
 
 ## Release checkpoint
 
-1. Finish the isolated tests, manual app-window editor walkthrough and bounded whole-branch review. Real HTTP client verification has passed; GUI acceptance remains outstanding after the computer-use service crash. Resolve the confirmed new-outreach-preview manual-name propagation gap. Record exact server/client commits and target migration head; test counts do not close these gates.
+1. Isolated tests, real HTTP client verification and bounded whole-branch review have passed. The user manually checked the editor and reported no issue after automation repeatedly crashed. The new-outreach-preview propagation gap was fixed in `de7e962`. This is user GUI acceptance, not a claim that the automation walkthrough succeeded.
 2. Read the live database head, business table counts, active jobs, queue state and configured services again. The September 13 reset is not evidence that the database is still empty.
 3. If any business data exists, obtain the user's choice of preserving/migrating it before any switch. There is no current authorization to discard it. This restoration does not contain a general v2-to-native business-data converter.
 4. Agree a maintenance window. Stop API, Worker and Beat for the actual switch; no old/new Worker concurrency is required.
