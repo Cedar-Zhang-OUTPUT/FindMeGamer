@@ -14,6 +14,14 @@ from app.core.idempotency import (
     request_hash,
 )
 from app.db.models.discover import DiscoverJob
+from app.db.models.discover import DiscoverCandidate
+from app.db.models.discover_batch import DiscoverAnalysisBatch, DiscoverAnalysisItem
+from app.repositories.discover_batch import DiscoverBatchRepository
+from app.schemas.discover_batch import (
+    DiscoverBatchCreate,
+    DiscoverBatchDetail,
+    DiscoverBatchHistory,
+)
 from app.db.models.enums import TargetType
 from app.db.models.profiles import GameProfile
 from app.db.models.settings import ServiceSecret
@@ -266,5 +274,115 @@ def create_router(authenticate_workspace, *, session_factory):
             result = repo.detail(job)
             session.commit()
             return result
+
+    @router.post(
+        "/{discover_id}/analysis-batches",
+        response_model=DiscoverBatchDetail,
+        status_code=202,
+        operation_id="createDiscoverAnalysisBatch",
+    )
+    def create_batch(
+        discover_id: UUID,
+        payload: DiscoverBatchCreate,
+        idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
+    ):
+        try:
+            key = validate_idempotency_key(idempotency_key)
+        except InvalidIdempotencyKey:
+            raise APIError(
+                422, "idempotency_key_invalid", "Provide an Idempotency-Key."
+            ) from None
+        digest = request_hash(
+            method="POST",
+            path=f"/api/v1/discover/{discover_id}/analysis-batches",
+            canonical_request=payload.model_dump(mode="json"),
+        )
+        with session_factory() as session:
+            session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                {"key": "discover-batch:" + key},
+            )
+            repo = DiscoverBatchRepository(session)
+            prior = session.scalar(
+                select(DiscoverAnalysisBatch).where(
+                    DiscoverAnalysisBatch.idempotency_key == key
+                )
+            )
+            if prior:
+                if prior.request_hash != digest:
+                    raise APIError(
+                        409,
+                        "idempotency_conflict",
+                        "This key was already used for a different request.",
+                    )
+                return repo.detail(prior)
+            if session.get(DiscoverJob, discover_id) is None:
+                raise APIError(404, "discover_not_found", "Discover request not found.")
+            ids = set(
+                session.scalars(
+                    select(DiscoverCandidate.id).where(
+                        DiscoverCandidate.discover_id == discover_id,
+                        DiscoverCandidate.id.in_(payload.candidate_ids),
+                    )
+                )
+            )
+            if ids != set(payload.candidate_ids):
+                raise APIError(
+                    422,
+                    "discover_selection_invalid",
+                    "Select candidates from this Discover request.",
+                )
+            batch = DiscoverAnalysisBatch(
+                discover_id=discover_id,
+                idempotency_key=key,
+                request_hash=digest,
+                mode=payload.mode,
+            )
+            session.add(batch)
+            session.flush()
+            session.add_all(
+                [
+                    DiscoverAnalysisItem(batch_id=batch.id, candidate_id=value)
+                    for value in payload.candidate_ids
+                ]
+            )
+            session.flush()
+            result = repo.detail(batch)
+            session.commit()
+            # Beat publishes this durable request, including after a lost HTTP response.
+            return result
+
+    @router.get(
+        "/{discover_id}/analysis-batches",
+        response_model=DiscoverBatchHistory,
+        operation_id="listDiscoverAnalysisBatches",
+    )
+    def batch_history(discover_id: UUID):
+        with session_factory() as session:
+            if session.get(DiscoverJob, discover_id) is None:
+                raise APIError(404, "discover_not_found", "Discover request not found.")
+            rows = session.scalars(
+                select(DiscoverAnalysisBatch)
+                .where(DiscoverAnalysisBatch.discover_id == discover_id)
+                .order_by(DiscoverAnalysisBatch.created_at.desc())
+            ).all()
+            return DiscoverBatchHistory(
+                items=[DiscoverBatchRepository(session).detail(row) for row in rows]
+            )
+
+    @router.get(
+        "/{discover_id}/analysis-batches/{batch_id}",
+        response_model=DiscoverBatchDetail,
+        operation_id="getDiscoverAnalysisBatch",
+    )
+    def batch_detail(discover_id: UUID, batch_id: UUID):
+        with session_factory() as session:
+            repo = DiscoverBatchRepository(session)
+            batch = repo.get(batch_id)
+            if batch is None or batch.discover_id != discover_id:
+                raise APIError(
+                    404, "discover_batch_not_found", "Analysis batch not found."
+                )
+            return repo.detail(batch)
 
     return router

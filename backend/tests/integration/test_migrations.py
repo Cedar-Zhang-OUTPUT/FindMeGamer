@@ -58,7 +58,7 @@ def test_creator_contact_purpose_migrates_from_and_back_to_0006(
         with database_engine.connect() as connection:
             assert (
                 connection.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260914_native_0011"
+                == "20260914_native_0012"
             )
 
         command.downgrade(alembic_config, "20260904_0006")
@@ -746,7 +746,7 @@ def test_runtime_job_mutation_and_public_state_migration_share_lock_order(
         with database_engine.connect() as verification:
             assert (
                 verification.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260914_native_0011"
+                == "20260914_native_0012"
             )
     finally:
         release_worker.set()
@@ -837,7 +837,7 @@ def test_public_state_migration_does_not_deadlock_frozen_old_writer_order(
         with database_engine.connect() as verification:
             assert (
                 verification.scalar(text("SELECT version_num FROM alembic_version"))
-                == "20260914_native_0011"
+                == "20260914_native_0012"
             )
             assert (
                 verification.scalar(

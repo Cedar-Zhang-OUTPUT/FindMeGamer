@@ -35,3 +35,14 @@ def build_discover_service():
         provider_factory=provider_factory,
         analysis_dispatcher=CeleryJobDispatcher(),
     )
+
+
+def build_discover_batch_service():
+    from app.api.routes.match import CeleryMatchAPIDispatcher
+    from app.discovery.batches import DiscoverBatchService
+
+    return DiscoverBatchService(
+        session_factory=session_scope,
+        analysis_dispatcher=CeleryJobDispatcher(),
+        match_dispatcher=CeleryMatchAPIDispatcher(),
+    )

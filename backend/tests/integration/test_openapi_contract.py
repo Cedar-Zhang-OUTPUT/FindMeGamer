@@ -18,6 +18,18 @@ EXPORTER = BACKEND_ROOT / "scripts" / "export_openapi.py"
 COMMITTED_SCHEMA = BACKEND_ROOT / "openapi.json"
 
 EXPECTED_OPERATIONS = {
+    (
+        "POST",
+        "/api/v1/discover/{discover_id}/analysis-batches",
+    ): "createDiscoverAnalysisBatch",
+    (
+        "GET",
+        "/api/v1/discover/{discover_id}/analysis-batches",
+    ): "listDiscoverAnalysisBatches",
+    (
+        "GET",
+        "/api/v1/discover/{discover_id}/analysis-batches/{batch_id}",
+    ): "getDiscoverAnalysisBatch",
     ("GET", "/api/v1/discover/capabilities"): "getDiscoverCapabilities",
     ("POST", "/api/v1/discover/resolve-game"): "resolveDiscoverGame",
     ("POST", "/api/v1/discover"): "createDiscover",

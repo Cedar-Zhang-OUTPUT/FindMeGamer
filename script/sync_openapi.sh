@@ -109,6 +109,9 @@ import sys
 
 
 expected = [
+    "createDiscoverAnalysisBatch",
+    "listDiscoverAnalysisBatches",
+    "getDiscoverAnalysisBatch",
     "getDiscoverCapabilities",
     "resolveDiscoverGame",
     "createDiscover",
@@ -286,4 +289,4 @@ cmp -s "$NORMALIZED_SCHEMA" "$TARGET_SCHEMA" || {
 
 swift build --package-path "$PACKAGE_DIR" --target FindMeGamerAPI
 SCHEMA_REPLACED=0
-echo "OpenAPI schema synchronized and FindMeGamerAPI built (50 operations; offline export)."
+echo "OpenAPI schema synchronized and FindMeGamerAPI built (53 operations; offline export)."

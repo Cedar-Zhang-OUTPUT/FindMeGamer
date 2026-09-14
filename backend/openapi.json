@@ -1034,6 +1034,217 @@
         "title": "CursorPage[GameProfileCard]",
         "type": "object"
       },
+      "DiscoverBatchCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Candidate Ids",
+            "type": "array"
+          },
+          "mode": {
+            "enum": [
+              "analyze",
+              "analyze_and_match"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_ids",
+          "mode"
+        ],
+        "title": "DiscoverBatchCreate",
+        "type": "object"
+      },
+      "DiscoverBatchDetail": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "discover_id": {
+            "format": "uuid",
+            "title": "Discover Id",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscoverBatchError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverBatchItemDetail"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "match_task_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Task Id"
+          },
+          "mode": {
+            "enum": [
+              "analyze",
+              "analyze_and_match"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "partial",
+              "failed",
+              "blocked"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "discover_id",
+          "mode",
+          "status",
+          "items",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DiscoverBatchDetail",
+        "type": "object"
+      },
+      "DiscoverBatchError": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "DiscoverBatchError",
+        "type": "object"
+      },
+      "DiscoverBatchHistory": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DiscoverBatchDetail"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "DiscoverBatchHistory",
+        "type": "object"
+      },
+      "DiscoverBatchItemDetail": {
+        "properties": {
+          "analysis_job_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Job Id"
+          },
+          "candidate_id": {
+            "format": "uuid",
+            "title": "Candidate Id",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscoverBatchError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "profile_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Id"
+          },
+          "reused": {
+            "default": false,
+            "title": "Reused",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_id",
+          "status"
+        ],
+        "title": "DiscoverBatchItemDetail",
+        "type": "object"
+      },
       "DiscoverCandidateResponse": {
         "properties": {
           "canonical_url": {
@@ -4682,6 +4893,177 @@
           }
         ],
         "summary": "Detail",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
+    "/api/v1/discover/{discover_id}/analysis-batches": {
+      "get": {
+        "operationId": "listDiscoverAnalysisBatches",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discover_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Discover Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverBatchHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Batch History",
+        "tags": [
+          "Discover"
+        ]
+      },
+      "post": {
+        "operationId": "createDiscoverAnalysisBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discover_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Discover Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiscoverBatchCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverBatchDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Batch",
+        "tags": [
+          "Discover"
+        ]
+      }
+    },
+    "/api/v1/discover/{discover_id}/analysis-batches/{batch_id}": {
+      "get": {
+        "operationId": "getDiscoverAnalysisBatch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "discover_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Discover Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "batch_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Batch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoverBatchDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Batch Detail",
         "tags": [
           "Discover"
         ]

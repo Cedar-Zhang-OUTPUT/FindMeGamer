@@ -15,6 +15,7 @@ def create_celery_app(*, broker_url: str | None = None) -> Celery:
             "app.matching.retention",
             "app.workers.analysis_tasks",
             "app.workers.discover_tasks",
+            "app.workers.discover_batch_tasks",
             "app.workers.match_tasks",
             "app.workers.outreach_tasks",
             "app.workers.schedules",
@@ -40,6 +41,10 @@ def create_celery_app(*, broker_url: str | None = None) -> Celery:
         worker_prefetch_multiplier=1,
         worker_concurrency=5,
         beat_schedule={
+            "discover-batch-recovery": {
+                "task": "find_me_gamer.discover_batch.sweep",
+                "schedule": 30.0,
+            },
             "discover-recovery": {
                 "task": "find_me_gamer.discover.sweep",
                 "schedule": 30.0,
