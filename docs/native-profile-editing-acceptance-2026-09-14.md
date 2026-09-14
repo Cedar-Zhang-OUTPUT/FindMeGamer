@@ -2,6 +2,8 @@
 
 Status: local backend/native implementation verified; release acceptance incomplete. No production deployment/migration, data reset, live-provider validation, email delivery or package publication occurred.
 
+Final independent code acceptance: **approved at `de7e962`**. The whole-branch review found one outreach propagation issue; the single scoped fix wave corrected names and frozen manual Brief precedence, and its scoped re-review marked the issue addressed with no new blocking breakage. This approval does not replace the outstanding actual editor-window and release checks below.
+
 ## Baseline evidence
 
 - Worktree: `.worktrees/native-profile-editing`, native base `97bcd95`, design/plan commits `73ed748` and `5ff9190`.
@@ -32,7 +34,7 @@ Summary regressions also reproduced two failures before correction: new outreach
 
 GUI release acceptance remains outstanding. Earlier Demo accessibility checks reached Library, details and Edit profile. Opening/reading the editor repeatedly crashed `SkyComputerUseService` (`EXC_BREAKPOINT/SIGTRAP`, Swift `Array.remove(at:)`) while FindMeGamer remained running. Screenshot/reconnect attempts also failed through the native pipe. No further CUA retries or GUI harness were added; no successful editor-save screenshot is claimed.
 
-Before release, manually walk both real API profiles through edit, Cancel, Save, reopen, reset, conflict/reload and separate contacts/notes Save; inspect keyboard/focus/layout/error feedback and Match revision notices. Use in-memory fixture credentials for local acceptance, never overwrite the fixed Keychain entry. Complete controller verification of the scoped correction, then separately authorize live-provider checks, maintenance cutover and packaging/publication. Tests do not establish those gates.
+Before release, manually walk both real API profiles through edit, Cancel, Save, reopen, reset, conflict/reload and separate contacts/notes Save; inspect keyboard/focus/layout/error feedback and Match revision notices. Use in-memory fixture credentials for local acceptance, never overwrite the fixed Keychain entry. The scoped correction is independently approved; live-provider checks, maintenance cutover and packaging/publication still require their separate release checkpoint. Tests do not establish those gates.
 
 ## Approved tradeoffs
 
