@@ -6,38 +6,35 @@ import Testing
 @Suite(.serialized)
 struct LibraryModelTests {
   @MainActor
-  @Test func thousandCreatorsAreLoadedInFiftyItemPagesOnlyOnDemand() async {
-    let catalog = (0..<1_025).map { creatorCard(UUID(), name: "Creator \($0)") }
-    let outcomes: [ListOutcome] = stride(from: 0, to: catalog.count, by: 50).map { start in
-      let end = min(start + 50, catalog.count)
-      return .page(page(Array(catalog[start..<end]), cursor: end < catalog.count ? "page-\(end)" : nil))
-    }
-    let api = LibraryAPI(listOutcomes: outcomes)
+  @Test func creatorPagesReplaceRatherThanAccumulateAndSupportDirectJumps() async {
+    let catalog = (0..<1_200).map { creatorCard(UUID(), name: "Creator \($0)") }
+    let api = LibraryAPI(listOutcomes: [
+      .page(ProfileCardPage(items: Array(catalog[0..<20]), nextCursor: "2", page: 1, totalCount: 1200, totalPages: 60)),
+      .page(ProfileCardPage(items: Array(catalog[20..<40]), nextCursor: "3", page: 2, totalCount: 1200, totalPages: 60)),
+      .page(ProfileCardPage(items: Array(catalog[1180..<1200]), nextCursor: nil, page: 60, totalCount: 1200, totalPages: 60)),
+      .page(ProfileCardPage(items: Array(catalog[0..<20]), nextCursor: "2", page: 1, totalCount: 1200, totalPages: 60)),
+    ])
     let model = LibraryModel(api: api, clock: ManualClock())
 
     await model.loadFirstPage()
     for _ in 0..<20 { await Task.yield() }
-    #expect(model.items.count == 50)
+    #expect(model.items == Array(catalog[0..<20]))
     #expect(await api.listCallCount == 1)
 
     await model.loadNextPage()
     for _ in 0..<20 { await Task.yield() }
-    #expect(model.items.count == 100)
+    #expect(model.items == Array(catalog[20..<40]))
     #expect(await api.listCallCount == 2)
 
-    for pageIndex in 2..<outcomes.count {
-      await model.loadNextPage()
-      #expect(model.items.count == min((pageIndex + 1) * 50, catalog.count))
-    }
-    #expect(model.items.map(\.id) == catalog.map(\.id))
-    #expect(model.nextCursor == nil)
+    await model.loadCreatorPage(60)
+    #expect(model.items == Array(catalog[1180..<1200]))
+    #expect(model.currentPage == 60)
+    #expect(!model.canLoadNextPage)
     await model.loadNextPage()
-    let calls = await api.listCalls
-    #expect(calls.count == 21)
-    #expect(calls.allSatisfy { $0.limit == 50 })
-    #expect(calls[0].cursor == nil)
-    #expect(calls[1].cursor == "page-50")
-    #expect(calls[20].cursor == "page-1000")
+    #expect(await api.listCallCount == 3)
+    await model.loadCreatorPage(1)
+    #expect(model.items == Array(catalog[0..<20]))
+    #expect(await api.requestedPages == [1, 2, 60, 1])
   }
 
   @MainActor
@@ -49,6 +46,51 @@ struct LibraryModelTests {
 
     #expect(await eventually { await api.listCallCount == 1 })
     #expect(await eventually { !model.isLoadingFirstPage })
+  }
+
+  @MainActor
+  @Test func jobRefreshDuringNewSearchUsesFirstPageNotOldPage() async {
+    let id = UUID()
+    let card = creatorCard(id, name: "Creator")
+    let api = LibraryAPI(listOutcomes: [
+      .page(ProfileCardPage(items: [card], nextCursor: "2", page: 1, totalCount: 120, totalPages: 6)),
+      .page(ProfileCardPage(items: [card], nextCursor: "6", page: 5, totalCount: 120, totalPages: 6)),
+      .page(ProfileCardPage(items: [card], nextCursor: "2", page: 1, totalCount: 120, totalPages: 6)),
+    ])
+    let clock = ManualClock()
+    let model = LibraryModel(api: api, clock: clock)
+    await model.loadFirstPage()
+    await model.loadCreatorPage(5)
+    model.setSearch("new query")
+    await model.consume(jobBatch: JobChangeBatch(
+      changes: [.analysis(analysisJob(type: .creator, status: .succeeded, profileID: id))],
+      affectedProfileIDs: [id], affectedMatchTaskIDs: [], affectedGameIDs: [], hasActiveJobs: false))
+    #expect(await api.requestedPages == [1, 5, 1])
+    #expect(model.currentPage == 1 && model.query == "new query")
+  }
+
+  @MainActor
+  @Test func failedPageKeepsVisibleItemsAndRetryTargetsThatPage() async {
+    let first = creatorCard(UUID(), name: "First")
+    let second = creatorCard(UUID(), name: "Second")
+    let api = LibraryAPI(listOutcomes: [
+      .page(ProfileCardPage(items: [first], nextCursor: "2", page: 1, totalCount: 21, totalPages: 2)),
+      .failure(APIError.invalidResponse),
+      .page(ProfileCardPage(items: [second], nextCursor: nil, page: 2, totalCount: 21, totalPages: 2)),
+      .page(ProfileCardPage(items: [first], nextCursor: nil, page: 1, totalCount: 1, totalPages: 1)),
+    ])
+    let model = LibraryModel(api: api, clock: ManualClock())
+    await model.loadFirstPage()
+    await model.loadCreatorPage(2)
+    #expect(model.items == [first])
+    #expect(model.currentPage == 1)
+    #expect(model.error != nil)
+    await model.reloadCurrentPage()
+    #expect(model.items == [second])
+    #expect(model.currentPage == 2)
+    model.setOnlyCollection(true)
+    #expect(await eventually { model.items == [first] && model.currentPage == 1 })
+    #expect(await api.requestedPages == [1, 2, 2, 1])
   }
 
   @MainActor
@@ -94,7 +136,7 @@ struct LibraryModelTests {
 
     let calls = await api.listCalls
     #expect(
-      calls[0] == ListCall(type: .creator, query: "", onlyCollection: false, cursor: nil, limit: 50)
+      calls[0] == ListCall(type: .creator, query: "", onlyCollection: false, cursor: nil, limit: 20)
     )
     #expect(
       calls[1] == ListCall(type: .game, query: "", onlyCollection: false, cursor: nil, limit: 50))
@@ -103,7 +145,7 @@ struct LibraryModelTests {
         == ListCall(type: .game, query: "game query", onlyCollection: false, cursor: nil, limit: 50)
     )
     #expect(
-      calls[3] == ListCall(type: .creator, query: "", onlyCollection: true, cursor: nil, limit: 50))
+      calls[3] == ListCall(type: .creator, query: "", onlyCollection: true, cursor: nil, limit: 20))
   }
 
   @MainActor
@@ -135,7 +177,7 @@ struct LibraryModelTests {
     let call = await api.listCalls[1]
     #expect(
       call
-        == ListCall(type: .creator, query: "latest", onlyCollection: true, cursor: nil, limit: 50))
+        == ListCall(type: .creator, query: "latest", onlyCollection: true, cursor: nil, limit: 20))
   }
 
   @MainActor
@@ -230,7 +272,7 @@ struct LibraryModelTests {
   }
 
   @MainActor
-  @Test func pagingUsesOpaqueCursorSuppressesDuplicatesAndDeduplicatesInOrder() async {
+  @Test func creatorPageNavigationIsSingleFlightAndEndsAtLastPage() async {
     let nextGate = CompletionGate<ProfileCardPage>()
     let firstID = UUID(uuidString: "00000000-0000-0000-0000-000000000301")!
     let secondID = UUID(uuidString: "00000000-0000-0000-0000-000000000302")!
@@ -259,7 +301,7 @@ struct LibraryModelTests {
     #expect(!model.canLoadNextPage)
     await model.loadNextPage()
     #expect(await api.listCallCount == 2)
-    #expect(await api.listCalls[1].cursor == "opaque==cursor")
+    #expect(await api.requestedPages == [1, 2])
   }
 
   @MainActor
@@ -310,7 +352,8 @@ struct LibraryModelTests {
     let id = UUID(uuidString: "00000000-0000-0000-0000-000000000402")!
     let api = LibraryAPI(
       listOutcomes: [
-        .page(page([creatorCard(id, name: "Favorite", favorite: true)], cursor: "next"))
+        .page(ProfileCardPage(items: [creatorCard(id, name: "Favorite", favorite: true)], nextCursor: nil, page: 2, totalCount: 21, totalPages: 2)),
+        .page(ProfileCardPage(items: [], nextCursor: nil, page: 1, totalCount: 20, totalPages: 1)),
       ],
       favoriteOutcomes: [.card(creatorCard(id, name: "Favorite", favorite: false))])
     let model = LibraryModel(api: api, clock: ManualClock())
@@ -320,7 +363,9 @@ struct LibraryModelTests {
     await model.toggleFavorite(id: id)
 
     #expect(model.items.isEmpty)
-    #expect(model.nextCursor == "next")
+    #expect(model.currentPage == 1)
+    #expect(model.totalCount == 20)
+    #expect(await api.requestedPages == [1, 2])
     #expect(model.error == nil)
   }
 
@@ -460,7 +505,7 @@ struct LibraryModelTests {
     #expect(
       await api.listCalls[1]
         == ListCall(
-          type: .creator, query: "latest query", onlyCollection: false, cursor: nil, limit: 50)
+          type: .creator, query: "latest query", onlyCollection: false, cursor: nil, limit: 20)
     )
   }
 
@@ -550,7 +595,7 @@ struct LibraryModelTests {
     #expect(model.nextCursor == "filtered-cursor")
     #expect(
       await api.listCalls[1]
-        == ListCall(type: .creator, query: "", onlyCollection: true, cursor: nil, limit: 50))
+        == ListCall(type: .creator, query: "", onlyCollection: true, cursor: nil, limit: 20))
   }
 
   @MainActor
@@ -732,6 +777,18 @@ private actor LibraryAPI: APIService {
   private var favoriteOutcomes: [FavoriteOutcome]
   private(set) var listCalls: [ListCall] = []
   private(set) var favoriteCalls: [FavoriteCall] = []
+  private(set) var requestedPages: [Int] = []
+
+  func listCreatorPage(query: String, onlyCollection: Bool, page: Int) async throws -> ProfileCardPage {
+    requestedPages.append(page)
+    var result = try await listProfiles(type: .creator, query: query, onlyCollection: onlyCollection,
+      cursor: page == 1 ? nil : String(page), limit: 20)
+    if result.totalCount == nil {
+      result.page = page
+      result.totalPages = result.nextCursor == nil ? page : page + 1
+    }
+    return result
+  }
 
   init(listOutcomes: [ListOutcome], favoriteOutcomes: [FavoriteOutcome] = []) {
     self.listOutcomes = listOutcomes

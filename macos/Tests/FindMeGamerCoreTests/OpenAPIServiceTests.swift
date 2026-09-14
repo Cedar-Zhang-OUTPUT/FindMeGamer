@@ -207,6 +207,21 @@ import Testing
     #expect(!descriptions.contains("WORKSPACE-KEY-CANARY"))
   }
 
+  @Test func creatorPageUsesGeneratedNumberedEndpointAndMapsTotals() async throws {
+    let transport = RecordingTransport()
+    let service = OpenAPIService(baseURL: URL(string: "https://api.example.test")!,
+      transport: transport, keyProvider: { "key" }, correlationIDProvider: { "cid" })
+    let page = try await service.listCreatorPage(query: "alpha", onlyCollection: true, page: 3)
+    #expect(page.page == 3 && page.totalPages == 4 && page.totalCount == 65)
+    #expect(page.items.count == 1 && page.nextCursor == "4")
+    let request = try #require(await transport.requests.first)
+    #expect(request.path.contains("/api/v1/profiles/creators/pages?"))
+    #expect(request.path.contains("page=3"))
+    #expect(request.path.contains("query=alpha"))
+    #expect(request.path.contains("only_collection=true"))
+    #expect(request.authorization == "Bearer key")
+  }
+
   @Test func emptyRecipientSelectionsAreOmittedFromTheWireRequest() async throws {
     let transport = RecordingTransport()
     let service = OpenAPIService(
@@ -426,6 +441,8 @@ private func responseFixture(operationID: String, request: HTTPRequest, body: Da
   case "listGameProfiles": return (200, "{\"items\":[\(gameCardFixture)],\"next_cursor\":null}")
   case "listCreatorProfiles":
     return (200, "{\"items\":[\(creatorCardFixture)],\"next_cursor\":\"opaque-next\"}")
+  case "listCreatorProfilePage":
+    return (200, "{\"items\":[\(creatorCardFixture)],\"page\":3,\"page_size\":20,\"total_count\":65,\"total_pages\":4}")
   case "getProfile": return (200, creatorRoute ? creatorDetailFixture : gameDetailFixture)
   case "setProfileFavorite": return (200, creatorRoute ? creatorCardFixture : gameCardFixture)
   case "updateCreatorManual":

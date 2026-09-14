@@ -23,6 +23,29 @@ NEXT_ANALYSIS_AT = datetime(2026, 9, 13, 4, 5, tzinfo=timezone.utc)
 ROUTE_ERROR_CANARY = "ROUTE-SECRET-REPR-CANARY"
 
 
+def test_creator_numbered_pages_bound_rows_and_scope_counts(auth_client, session):
+    for index in range(45):
+        add_creator(session, channel_id=f"paging-{index}",
+                    name=f"Paged {index:02d}", favorite=index < 23)
+    session.commit()
+    url = "/api/v1/profiles/creators/pages"
+    pages = [auth_client.get(url, params={"page": page}) for page in (1, 2, 3)]
+    assert [response.status_code for response in pages] == [200, 200, 200]
+    bodies = [response.json() for response in pages]
+    assert [len(body["items"]) for body in bodies] == [20, 20, 5]
+    assert [body["page"] for body in bodies] == [1, 2, 3]
+    assert all(body["total_count"] == 45 and body["total_pages"] == 3 for body in bodies)
+    assert len({item["id"] for body in bodies for item in body["items"]}) == 45
+    filtered = auth_client.get(url, params={"page": 2, "only_collection": True}).json()
+    assert filtered["total_count"] == 23
+    assert len(filtered["items"]) == 3
+    search = auth_client.get(url, params={"query": "Paged 01", "page": 3}).json()
+    assert search["page"] == 1 and search["total_pages"] == 1
+    assert search["total_count"] == 1
+    empty = auth_client.get(url, params={"query": "no matches"}).json()
+    assert empty["items"] == [] and empty["page"] == 1 and empty["total_pages"] == 1
+
+
 class RouteErrorCanaryObject:
     def __repr__(self) -> str:
         return f"RouteErrorCanaryObject(api_secret='{ROUTE_ERROR_CANARY}')"

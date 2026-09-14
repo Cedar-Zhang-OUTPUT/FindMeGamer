@@ -59,6 +59,7 @@ EXPECTED_OPERATIONS = {
     ): "testConnection",
     ("GET", "/api/v1/profiles/games"): "listGameProfiles",
     ("GET", "/api/v1/profiles/creators"): "listCreatorProfiles",
+    ("GET", "/api/v1/profiles/creators/pages"): "listCreatorProfilePage",
     (
         "PATCH",
         "/api/v1/profiles/creators/{profile_id}/manual",

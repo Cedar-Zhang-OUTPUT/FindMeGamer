@@ -147,6 +147,7 @@ expected = [
     "duplicateOutreachTemplate",
     "previewOutreachTemplate",
     "listCreatorProfiles",
+    "listCreatorProfilePage",
     "updateCreatorManual",
     "listGameProfiles",
     "rejectUnknownProfileType",

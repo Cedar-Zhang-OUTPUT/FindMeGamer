@@ -10,6 +10,7 @@ public protocol APIService: DiscoverAPIService, Sendable {
     type: ProfileType, query: String, onlyCollection: Bool, cursor: String?, limit: Int
   ) async throws -> ProfileCardPage
   func profile(type: ProfileType, id: UUID) async throws -> Profile
+  func listCreatorPage(query: String, onlyCollection: Bool, page: Int) async throws -> ProfileCardPage
   func profileEdit(type: ProfileType, id: UUID) async throws -> ProfileEditDocument
   func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws
     -> ProfileEditDocument
@@ -42,4 +43,10 @@ public protocol APIService: DiscoverAPIService, Sendable {
   func replaceConnection(_ service: ConnectionService, secret: String) async throws
     -> ConnectionStatus
   func testConnection(_ service: ConnectionService) async throws -> ConnectionTestResult
+}
+
+extension APIService {
+  public func listCreatorPage(query: String, onlyCollection: Bool, page: Int) async throws -> ProfileCardPage {
+    throw APIError.invalidResponse
+  }
 }

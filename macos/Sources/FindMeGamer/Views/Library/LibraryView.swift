@@ -212,6 +212,10 @@ struct LibraryView: View {
       }
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .clipped()
+
+      if model.selectedType == .creator {
+        creatorPageControls
+      }
     }
     .padding(.horizontal, WorkspaceDesign.pageHorizontalPadding)
     .padding(.vertical, WorkspaceDesign.pageVerticalPadding)
@@ -250,7 +254,8 @@ struct LibraryView: View {
           HStack {
             Text(
               LibraryCopy.profileCount(
-                model.items.count, type: model.selectedType, hasMore: model.nextCursor != nil)
+                model.selectedType == .creator ? model.totalCount : model.items.count,
+                type: model.selectedType, hasMore: model.selectedType == .game && model.nextCursor != nil)
             )
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -284,12 +289,39 @@ struct LibraryView: View {
           }
           .accessibilityIdentifier(LibraryAccessibility.grid)
 
-          paginationFooter
-            .padding(.vertical, 12)
+          if model.selectedType == .game {
+            paginationFooter.padding(.vertical, 12)
+          }
         }
       }
       .scrollIndicators(.automatic)
+      .id(model.selectedType == .creator ? model.currentPage : 0)
     }
+  }
+
+  private var creatorPageControls: some View {
+    HStack(spacing: 16) {
+      Text("\(model.items.count) of \(model.totalCount) creators")
+        .font(.caption).foregroundStyle(.secondary)
+      Spacer()
+      Button("Previous") { Task { await model.loadCreatorPage(model.currentPage - 1) } }
+        .disabled(model.currentPage <= 1)
+      Picker("Page", selection: Binding(
+        get: { model.currentPage },
+        set: { value in Task { await model.loadCreatorPage(value) } }
+      )) {
+        ForEach(1...max(1, model.totalPages), id: \.self) { page in
+          Text("\(page)").tag(page)
+        }
+      }
+      .frame(width: 110)
+      Text("of \(model.totalPages)").foregroundStyle(.secondary)
+      Button("Next") { Task { await model.loadNextPage() } }
+        .disabled(!model.canLoadNextPage)
+    }
+    .disabled(model.isLoadingFirstPage || model.isLoadingNextPage)
+    .padding(.top, 8)
+    .accessibilityIdentifier("library.creatorPagination")
   }
 
   private var emptyState: some View {
@@ -334,6 +366,10 @@ struct LibraryView: View {
         .textSelection(.enabled)
       Spacer()
       Button("Try Again") {
+        if model.selectedType == .creator {
+          Task { await model.reloadCurrentPage() }
+          return
+        }
         switch LibraryRetryPolicy.action(
           failedRequest: pagination.failedRequest,
           current: paginationObservation.request)

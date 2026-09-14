@@ -30,6 +30,7 @@ from app.schemas.profiles import (
     CreatorContactResponse,
     CreatorManualUpdate,
     CreatorProfileCard,
+    CreatorProfilePage,
     CreatorProfileDetail,
     FavoriteUpdate,
     GameProfileCard,
@@ -358,6 +359,25 @@ def create_router(
     ):
         return edit_document(
             editable_profile(profile_type, profile_id, database_session)
+        )
+
+    @router.get(
+        "/creators/pages",
+        response_model=CreatorProfilePage,
+        operation_id="listCreatorProfilePage",
+    )
+    def creator_page(
+        page: Annotated[int, Query(ge=1)] = 1,
+        query: Annotated[str, Query(max_length=255)] = "",
+        only_collection: bool = False,
+        database_session: Session = Depends(get_session),
+    ) -> CreatorProfilePage:
+        rows, current_page, total, total_pages = ProfilesRepository(database_session).creator_page(
+            query=query, only_collection=only_collection, page=page,
+        )
+        return CreatorProfilePage(
+            items=[_creator_card(profile) for profile in rows], page=current_page,
+            total_count=total, total_pages=total_pages,
         )
 
     @router.patch(

@@ -373,6 +373,14 @@ class CreatorProfileCard(PublicProfileResponse):
     contacts: list[CreatorContactResponse] = Field(default_factory=list)
 
 
+class CreatorProfilePage(BaseModel):
+    items: list[CreatorProfileCard]
+    page: int
+    page_size: int = 20
+    total_count: int
+    total_pages: int
+
+
 class GameProfileDetail(GameProfileCard):
     analysis: PublicJSONObject
     model_metadata: PublicJSONObject

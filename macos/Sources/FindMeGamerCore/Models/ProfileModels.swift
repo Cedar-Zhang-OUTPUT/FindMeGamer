@@ -199,4 +199,7 @@ public enum Profile: Identifiable, Sendable, Equatable {
 public struct ProfileCardPage: Sendable, Equatable {
   public let items: [ProfileCard]
   public let nextCursor: String?
+  public var page: Int = 1
+  public var totalCount: Int? = nil
+  public var totalPages: Int = 1
 }

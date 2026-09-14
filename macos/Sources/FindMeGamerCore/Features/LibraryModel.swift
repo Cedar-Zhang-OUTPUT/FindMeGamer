@@ -52,6 +52,10 @@ public final class LibraryModel {
     var query = ""
     var onlyCollection = false
     var nextCursor: String?
+    var page = 1
+    var totalPages = 1
+    var totalCount = 0
+    var requestedPage = 1
     var selectedProfileID: UUID?
     var isLoadingFirstPage = false
     var isLoadingNextPage = false
@@ -81,6 +85,20 @@ public final class LibraryModel {
   public var favoriteUpdatingIDs: Set<UUID> { currentState.favoriteUpdatingIDs }
   public var error: APIError? { currentState.error }
   public var highlightedProfileID: UUID? { currentState.highlightedProfileID }
+  public var currentPage: Int { currentState.page }
+  public var totalPages: Int { currentState.totalPages }
+  public var totalCount: Int { currentState.totalCount }
+
+  public func loadCreatorPage(_ page: Int) async {
+    guard selectedType == .creator, page >= 1, page <= totalPages,
+      !isLoadingFirstPage, !isLoadingNextPage, !currentState.pendingReload else { return }
+    _ = await loadFirstPage(for: .creator, pageNumber: page)
+  }
+
+  public func reloadCurrentPage() async {
+    _ = await loadFirstPage(for: selectedType,
+      pageNumber: selectedType == .creator ? currentState.requestedPage : 1)
+  }
 
   public var canLoadNextPage: Bool {
     nextCursor != nil && !isLoadingFirstPage && !isLoadingNextPage
@@ -165,6 +183,11 @@ public final class LibraryModel {
   }
 
   public func loadNextPage() async {
+    if selectedType == .creator {
+      guard canLoadNextPage else { return }
+      await loadCreatorPage(currentPage + 1)
+      return
+    }
     let type = selectedType
     let initialState = state(for: type)
     guard let cursor = initialState.nextCursor, !initialState.isLoadingFirstPage,
@@ -250,6 +273,10 @@ public final class LibraryModel {
           state.items[index] = canonical
         }
       }
+      if type == .creator, state(for: type).onlyCollection,
+        !canonical.isFavorite, !state(for: type).pendingReload {
+        _ = await loadFirstPage(for: type, pageNumber: state(for: type).page)
+      }
     } catch {
       restoreFavoriteFailure(
         id: id, type: type, original: original, originalIndex: location.index,
@@ -275,7 +302,8 @@ public final class LibraryModel {
 
     let type = selectedType
     guard let affectedIDs = idsByType[type], !affectedIDs.isEmpty else { return }
-    guard await loadFirstPage(for: type) else { return }
+    let refreshedPage = type == .creator && !state(for: type).pendingReload ? state(for: type).page : 1
+    guard await loadFirstPage(for: type, pageNumber: refreshedPage) else { return }
     let presentIDs = Set(state(for: type).items.map(\.id))
     guard let highlightedID = affectedIDs.last(where: { presentIDs.contains($0) }) else { return }
     showHighlight(highlightedID, for: type)
@@ -314,7 +342,8 @@ public final class LibraryModel {
   private func loadFirstPage(
     for type: ProfileType,
     expectedCriteriaGeneration: UInt64? = nil,
-    skipIfLoading: Bool = false
+    skipIfLoading: Bool = false,
+    pageNumber: Int = 1
   ) async -> Bool {
     let existing = state(for: type)
     if let expectedCriteriaGeneration,
@@ -334,19 +363,37 @@ public final class LibraryModel {
       $0.isLoadingNextPage = false
       $0.errorGeneration = errorGeneration
       $0.error = nil
+      $0.requestedPage = pageNumber
     }
     let snapshot = state(for: type)
     let favoriteRevisions = snapshot.favoriteOverlays.mapValues(\.revision)
 
     do {
-      let page = try await api.listProfiles(
-        type: type, query: snapshot.query, onlyCollection: snapshot.onlyCollection,
-        cursor: nil, limit: 50)
+      let page: ProfileCardPage
+      if type == .creator {
+        page = try await api.listCreatorPage(query: snapshot.query,
+          onlyCollection: snapshot.onlyCollection, page: pageNumber)
+      } else {
+        page = try await api.listProfiles(type: type, query: snapshot.query,
+          onlyCollection: snapshot.onlyCollection, cursor: nil, limit: 50)
+      }
       guard state(for: type).listGeneration == generation else { return false }
       updateState(for: type) { state in
         state.items = reconciled(
           page.items, with: state, requestFavoriteRevisions: favoriteRevisions)
         state.nextCursor = page.nextCursor
+        if type == .creator {
+          state.items = Array(state.items.prefix(20))
+          state.page = page.page
+          state.requestedPage = page.page
+          state.totalPages = page.totalPages
+          state.totalCount = page.totalCount ?? page.items.count
+          let visibleIDs = Set(state.items.map(\.id))
+          state.favoriteOverlays = state.favoriteOverlays.filter { visibleIDs.contains($0.key) || $0.value.isUpdating }
+          if let selected = state.selectedProfileID, !visibleIDs.contains(selected) {
+            state.selectedProfileID = nil
+          }
+        }
         state.isLoadingFirstPage = false
         state.loaded = true
         state.dirty = false

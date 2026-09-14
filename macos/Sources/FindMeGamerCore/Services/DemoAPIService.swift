@@ -278,6 +278,19 @@ actor DemoAPIService: APIService {
     return ProfileCardPage(items: cards, nextCursor: nil)
   }
 
+  func listCreatorPage(query: String, onlyCollection: Bool, page: Int) async throws -> ProfileCardPage {
+    let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let filtered = creators.filter {
+      (!onlyCollection || $0.favorite) && (needle.isEmpty || $0.name.lowercased().contains(needle))
+    }.sorted { $0.name < $1.name }
+    let pages = max(1, (filtered.count + 19) / 20)
+    let current = min(max(1, page), pages)
+    return ProfileCardPage(
+      items: filtered.dropFirst((current - 1) * 20).prefix(20).map { .creator(DemoFixtures.card($0)) },
+      nextCursor: current < pages ? String(current + 1) : nil,
+      page: current, totalCount: filtered.count, totalPages: pages)
+  }
+
   func profile(type: ProfileType, id: UUID) async throws -> Profile {
     switch type {
     case .game:

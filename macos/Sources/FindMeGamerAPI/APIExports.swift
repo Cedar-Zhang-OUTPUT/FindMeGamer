@@ -30,6 +30,7 @@ public enum GeneratedOperationNames {
     "duplicateOutreachTemplate",
     "previewOutreachTemplate",
     "listCreatorProfiles",
+    "listCreatorProfilePage",
     "updateCreatorManual",
     "listGameProfiles",
     "rejectUnknownProfileType",

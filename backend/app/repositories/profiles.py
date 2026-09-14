@@ -87,6 +87,21 @@ class ProfilesRepository:
         rows = self._session.scalars(statement.limit(limit + 1)).all()
         return rows[:limit], len(rows) > limit
 
+    def creator_page(self, *, query: str, only_collection: bool, page: int):
+        filtered = self._apply_search_and_collection(
+            select(CreatorProfile), CreatorProfile,
+            query=query, only_collection=only_collection,
+        )
+        total = self._session.scalar(select(func.count()).select_from(filtered.subquery())) or 0
+        total_pages = max(1, (total + 19) // 20)
+        page = min(page, total_pages)
+        rows = self._session.scalars(
+            filtered.options(selectinload(CreatorProfile.contacts))
+            .order_by(CreatorProfile.sort_name.collate("C"), CreatorProfile.id)
+            .offset((page - 1) * 20).limit(20)
+        ).all()
+        return rows, page, total, total_pages
+
     def cursor_matches(
         self,
         profile_type: str,

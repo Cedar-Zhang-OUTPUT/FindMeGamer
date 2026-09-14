@@ -109,6 +109,19 @@ public struct OpenAPIService: APIService, Sendable {
     }
   }
 
+  public func listCreatorPage(query: String, onlyCollection: Bool, page: Int) async throws -> ProfileCardPage {
+    let value = try await perform {
+      try await client.listCreatorProfilePage(.init(query: .init(
+        page: page, query: query, only_collection: onlyCollection)))
+    }.ok.body.json
+    guard value.page >= 1, value.total_pages >= value.page,
+      value.items.count <= 20, value.total_count >= 0 else { throw APIError.invalidResponse }
+    return ProfileCardPage(
+      items: try value.items.map { .creator(try DomainMapper.creatorCard($0)) },
+      nextCursor: value.page < value.total_pages ? String(value.page + 1) : nil,
+      page: value.page, totalCount: value.total_count, totalPages: value.total_pages)
+  }
+
   public func profile(type: ProfileType, id: UUID) async throws -> Profile {
     let value = try await perform {
       try await client.getProfile(

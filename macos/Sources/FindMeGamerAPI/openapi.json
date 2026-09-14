@@ -814,6 +814,42 @@
         "title": "CreatorProfileDetail",
         "type": "object"
       },
+      "CreatorProfilePage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CreatorProfileCard"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 20,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total_count": {
+            "title": "Total Count",
+            "type": "integer"
+          },
+          "total_pages": {
+            "title": "Total Pages",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "total_count",
+          "total_pages"
+        ],
+        "title": "CreatorProfilePage",
+        "type": "object"
+      },
       "CursorPage_CreatorProfileCard_": {
         "properties": {
           "items": {
@@ -5894,6 +5930,76 @@
         ]
       }
     },
+    "/api/v1/profiles/creators/pages": {
+      "get": {
+        "operationId": "listCreatorProfilePage",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "default": "",
+              "maxLength": 255,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "only_collection",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Only Collection",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatorProfilePage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Creator Page",
+        "tags": [
+          "profiles"
+        ]
+      }
+    },
     "/api/v1/profiles/creators/{profile_id}/manual": {
       "patch": {
         "operationId": "updateCreatorManual",
@@ -6828,5 +6934,5 @@
       }
     }
   },
-  "x-find-me-gamer-source-sha256": "10c31f9365a45a93015fb8fe02a6071c947fc4a347702828be69946f44f258bb"
+  "x-find-me-gamer-source-sha256": "c86a57b9c75b9c5f35e43d15609bf00ea5828db6b0783e3bb2c45566ab6fa707"
 }

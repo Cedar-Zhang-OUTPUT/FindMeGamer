@@ -240,6 +240,11 @@ private actor VerticalSliceAPI: APIService {
     self.heldFirstCampaignRead = heldFirstCampaignRead
   }
 
+  func listCreatorPage(query: String, onlyCollection: Bool, page: Int) async throws -> ProfileCardPage {
+    try await listProfiles(type: .creator, query: query, onlyCollection: onlyCollection,
+      cursor: nil, limit: 20)
+  }
+
   func listProfiles(
     type: ProfileType, query: String, onlyCollection: Bool, cursor: String?, limit: Int
   ) async throws -> ProfileCardPage {

@@ -294,8 +294,8 @@ import Testing
     swiftDocument["x-find-me-gamer-source-sha256"] as? String
   )
 
-  // Native Discover contract from fd14223:backend/openapi.json.
-  #expect(recordedDigest == "10c31f9365a45a93015fb8fe02a6071c947fc4a347702828be69946f44f258bb")
+  // Native Creator numbered-page contract: backend/openapi.json.
+  #expect(recordedDigest == "c86a57b9c75b9c5f35e43d15609bf00ea5828db6b0783e3bb2c45566ab6fa707")
 }
 
 private func decodeGenerated<Value: Decodable>(

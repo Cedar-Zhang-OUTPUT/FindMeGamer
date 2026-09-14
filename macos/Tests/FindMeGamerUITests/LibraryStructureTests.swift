@@ -146,9 +146,9 @@ import Testing
     let firstID = UUID(uuidString: "30000000-0000-4000-8000-000000000001")!
     let secondID = UUID(uuidString: "30000000-0000-4000-8000-000000000002")!
     let heldPage = PaginationPageGate()
-    let first = paginationCreator(firstID, name: "First", favorite: true)
-    let unfavorite = paginationCreator(firstID, name: "First")
-    let second = paginationCreator(secondID, name: "Second", favorite: true)
+    let first = paginationGame(firstID, name: "First", favorite: true)
+    let unfavorite = paginationGame(firstID, name: "First")
+    let second = paginationGame(secondID, name: "Second", favorite: true)
     let api = PaginationAPI(
       outcomes: [
         .page(ProfileCardPage(items: [first], nextCursor: "cursor-a")),
@@ -159,6 +159,7 @@ import Testing
     let model = LibraryModel(api: api)
     let pagination = LibraryPaginationCoordinator()
 
+    model.selectType(.game)
     model.setOnlyCollection(true)
     #expect(await paginationEventually { await api.listCallCount == 1 })
     #expect(await paginationEventually { !model.isLoadingFirstPage })
@@ -214,15 +215,16 @@ import Testing
       outcomes: [
         .page(
           ProfileCardPage(
-            items: [paginationCreator(firstID, name: "First")], nextCursor: "cursor-a")),
+            items: [paginationGame(firstID, name: "First")], nextCursor: "cursor-a")),
         .failure(APIError(code: "offline", message: "offline", retryable: true)),
         .page(
-          ProfileCardPage(items: [paginationCreator(secondID, name: "Second")], nextCursor: nil)),
+          ProfileCardPage(items: [paginationGame(secondID, name: "Second")], nextCursor: nil)),
       ])
     let model = LibraryModel(api: api)
     let pagination = LibraryPaginationCoordinator()
 
-    await model.loadFirstPage()
+    model.selectType(.game)
+    #expect(await paginationEventually { await api.listCallCount == 1 && !model.isLoadingFirstPage })
     let request = paginationRequest(model)
     await pagination.run(
       taskID: pagination.taskID(for: request),
@@ -250,7 +252,7 @@ import Testing
         == .firstPage)
 
     let sameCursor = LibraryPaginationRequest(
-      profileType: .creator, query: "", onlyCollection: false, cursor: "cursor-a")
+      profileType: .game, query: "", onlyCollection: false, cursor: "cursor-a")
     let previousRevision = pagination.revision
     pagination.observe(
       LibraryPaginationObservation(
@@ -263,7 +265,7 @@ import Testing
     #expect(pagination.revision == previousRevision + 1)
 
     let changedCriteria = LibraryPaginationRequest(
-      profileType: .creator, query: "new", onlyCollection: false, cursor: "cursor-a")
+      profileType: .game, query: "new", onlyCollection: false, cursor: "cursor-a")
     #expect(pagination.taskID(for: changedCriteria) != pagination.taskID(for: sameCursor))
   }
 }
@@ -303,6 +305,14 @@ private actor PaginationAPI: APIService {
   private var activeListCalls = 0
   private(set) var maximumConcurrentListCalls = 0
   private(set) var listCallCount = 0
+
+  func listCreatorPage(query: String, onlyCollection: Bool, page: Int) async throws -> ProfileCardPage {
+    var result = try await listProfiles(type: .creator, query: query,
+      onlyCollection: onlyCollection, cursor: page == 1 ? nil : String(page), limit: 20)
+    result.page = page
+    result.totalPages = result.nextCursor == nil ? page : page + 1
+    return result
+  }
 
   init(outcomes: [PaginationListOutcome], favoriteResult: ProfileCard? = nil) {
     self.outcomes = outcomes
@@ -436,15 +446,15 @@ private func paginationObservation(_ model: LibraryModel) -> LibraryPaginationOb
     isLoadingNextPage: model.isLoadingNextPage, hasError: model.error != nil)
 }
 
-private func paginationCreator(
+private func paginationGame(
   _ id: UUID, name: String, favorite: Bool = false
 ) -> ProfileCard {
-  .creator(
-    CreatorProfileCard(
-      id: id, name: name, youtubeChannelID: "channel-\(id)",
-      canonicalURL: "https://youtube.example/\(id)", favorite: favorite,
+  .game(
+    GameProfileCard(
+      id: id, name: name, steamAppID: "730",
+      canonicalURL: "https://store.steampowered.com/app/730", favorite: favorite,
       currentFacts: [:], brief: [:], sourceStatus: [:], lastAnalyzedAt: nil,
-      nextAnalysisAt: nil, contact: nil))
+      nextAnalysisAt: nil))
 }
 
 @MainActor
