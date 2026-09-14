@@ -19,6 +19,59 @@ def importer():
     return importlib.import_module("app.cli.import_creator_profiles")
 
 
+def test_provisional_ig_import_keeps_uuid_and_is_explicitly_unverified(session):
+    from app.api.routes.profiles import _creator_detail
+
+    raw = record("instagram")
+    raw.update(platform_account_id="ig-synthetic_fixture", account_id_source_url=None)
+    data = contract().model_validate({"schema_version": 1, "records": [raw]})
+    importer().import_profiles(session, data)
+    profile = session.scalar(select(CreatorProfile))
+    original_uuid = profile.id
+    assert profile.source_status["identity"] == {
+        "status": "provisional",
+        "platform_account_id": None,
+        "key": "ig-synthetic_fixture",
+    }
+    assert profile.last_analyzed_at is None and profile.brief == {}
+    assert (
+        _creator_detail(profile).model_dump(mode="json")["platform_account_id"]
+        == "ig-synthetic_fixture"
+    )
+    assert importer().import_profiles(session, data)[0]["status"] == "duplicate"
+    assert profile.id == original_uuid
+    assert session.scalar(select(func.count()).select_from(CreatorProfile)) == 1
+
+
+@pytest.mark.parametrize("provisional_first", [True, False])
+def test_ig_provisional_and_real_id_same_username_do_not_duplicate_or_overwrite(
+    session, provisional_first
+):
+    real = record("instagram")
+    provisional = {
+        **real,
+        "platform_account_id": "ig-synthetic_fixture",
+        "account_id_source_url": None,
+    }
+    first, second = (provisional, real) if provisional_first else (real, provisional)
+    first_data = contract().model_validate({"schema_version": 1, "records": [first]})
+    second_data = contract().model_validate({"schema_version": 1, "records": [second]})
+    importer().import_profiles(session, first_data)
+    profile = session.scalar(select(CreatorProfile))
+    original_uuid = profile.id
+    assert (
+        importer().import_profiles(session, second_data, on_conflict="skip")[0][
+            "status"
+        ]
+        == "skipped"
+    )
+    with pytest.raises(ValueError, match="identity"):
+        importer().import_profiles(session, second_data, on_conflict="replace-unedited")
+    assert profile.id == original_uuid
+    assert profile.platform_account_id == first["platform_account_id"]
+    assert session.scalar(select(func.count()).select_from(CreatorProfile)) == 1
+
+
 def test_import_dedup_and_manual_preservation(session):
     raw = record()
     raw["contacts"] = [

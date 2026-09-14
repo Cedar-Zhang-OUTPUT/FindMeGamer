@@ -83,6 +83,34 @@ def test_collection_normalizes_without_dropping_facts():
     assert contract().model_validate_json(parsed.model_dump_json()) == parsed
 
 
+def test_instagram_provisional_identity_is_bound_to_username_without_fake_source():
+    raw = record("instagram")
+    raw.update(platform_account_id="ig-synthetic_fixture", account_id_source_url=None)
+    parsed = contract().model_validate({"schema_version": 1, "records": [raw]})
+    assert parsed.records[0].platform_account_id == "ig-synthetic_fixture"
+    assert parsed.records[0].account_id_source_url is None
+    assert contract().model_validate_json(parsed.model_dump_json()) == parsed
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"platform_account_id": "ig-another_account"},
+        {"account_id_source_url": "https://www.instagram.com/synthetic_fixture"},
+        {
+            "platform": "twitch",
+            "profile_url": "https://www.twitch.tv/synthetic_fixture",
+        },
+    ],
+)
+def test_provisional_identity_cannot_impersonate_another_account_or_verified_id(change):
+    raw = record("instagram")
+    raw.update(platform_account_id="ig-synthetic_fixture", account_id_source_url=None)
+    raw.update(change)
+    with pytest.raises(ValidationError):
+        contract().model_validate({"schema_version": 1, "records": [raw]})
+
+
 def test_collected_works_metrics_and_observations_survive_roundtrip():
     raw = record()
     raw["works"] = [

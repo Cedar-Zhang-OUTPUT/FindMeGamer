@@ -102,7 +102,9 @@ class CuratedAnalysis(StrictAIModel):
 
 class CreatorImportRecord(StrictAIModel):
     platform: Literal["twitch", "instagram"]
-    platform_account_id: Annotated[str, Field(pattern=r"^[0-9]{1,128}$")] | None = None
+    platform_account_id: (
+        Annotated[str, Field(pattern=r"^(?:[0-9]{1,128}|ig-[a-z0-9_.]{1,30})$")] | None
+    ) = None
     account_id_source_url: PublicURL | None = None
     profile_url: PublicURL
     username: Annotated[str, Field(pattern=r"^[A-Za-z0-9_.]{1,30}$")]
@@ -140,7 +142,22 @@ class CreatorImportRecord(StrictAIModel):
             raise ValueError(
                 "profile URL and platform username must identify the same account"
             )
-        if self.platform_account_id and not self.account_id_source_url:
+        provisional = bool(
+            self.platform_account_id and self.platform_account_id.startswith("ig-")
+        )
+        if provisional and (
+            self.platform != "instagram"
+            or self.platform_account_id != f"ig-{self.username.lower()}"
+            or self.account_id_source_url is not None
+        ):
+            raise ValueError(
+                "provisional Instagram identity requires its lowercase username and no claimed platform ID source"
+            )
+        if (
+            self.platform_account_id
+            and not provisional
+            and not self.account_id_source_url
+        ):
             raise ValueError("resolved identity requires account_id_source_url")
         if self.followers_count is None and self.followers_precision != "unknown":
             raise ValueError("unknown followers require unknown precision")

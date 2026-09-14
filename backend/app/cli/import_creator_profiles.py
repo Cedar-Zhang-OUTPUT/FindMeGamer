@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import sys
 
-from sqlalchemy import select
+from sqlalchemy import select, or_, func
 
 from app.db.models.jobs import acquire_job_change_lock
 from app.db.models.profiles import CreatorContact, CreatorProfile
@@ -34,9 +34,15 @@ def import_profiles(
                 if not dry_run:
                     raise ValueError("identity resolution required before import")
                 continue
+            identity = CreatorProfile.platform_account_id == record.platform_account_id
+            if record.platform == "instagram":
+                identity = or_(
+                    identity,
+                    func.lower(CreatorProfile.current_facts["username"].astext)
+                    == record.username.lower(),
+                )
             query = select(CreatorProfile).where(
-                CreatorProfile.platform == record.platform,
-                CreatorProfile.platform_account_id == record.platform_account_id,
+                CreatorProfile.platform == record.platform, identity
             )
             profile = session.scalar(query if dry_run else query.with_for_update())
             material = record.model_dump(mode="json", exclude={"analysis"})
@@ -46,6 +52,15 @@ def import_profiles(
                 else {}
             )
             if profile is not None:
+                if profile.platform_account_id != record.platform_account_id:
+                    result["status"] = (
+                        "skipped" if on_conflict == "skip" else "identity_conflict"
+                    )
+                    if not dry_run and on_conflict != "skip":
+                        raise ValueError(
+                            "existing username identity conflict; use skip or resolve separately"
+                        )
+                    continue
                 manual = bool(
                     profile.manual_overrides
                     or profile.manual_notes
@@ -123,6 +138,15 @@ def import_profiles(
                 },
                 "freshness": "current" if record.analysis else "unanalyzed",
             }
+            if (
+                record.platform == "instagram"
+                and record.platform_account_id.startswith("ig-")
+            ):
+                profile.source_status["identity"] = {
+                    "status": "provisional",
+                    "platform_account_id": None,
+                    "key": record.platform_account_id,
+                }
             if curated_source_is_expired(profile):
                 profile.source_status = {**profile.source_status, "freshness": "stale"}
             profile.model_metadata = {"origin": "curated_import"}

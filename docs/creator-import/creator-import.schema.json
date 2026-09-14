@@ -816,7 +816,7 @@
         "platform_account_id": {
           "anyOf": [
             {
-              "pattern": "^[0-9]{1,128}$",
+              "pattern": "^(?:[0-9]{1,128}|ig-[a-z0-9_.]{1,30})$",
               "type": "string"
             },
             {
