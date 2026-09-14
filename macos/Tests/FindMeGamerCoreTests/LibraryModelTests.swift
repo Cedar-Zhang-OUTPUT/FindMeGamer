@@ -6,6 +6,41 @@ import Testing
 @Suite(.serialized)
 struct LibraryModelTests {
   @MainActor
+  @Test func thousandCreatorsAreLoadedInFiftyItemPagesOnlyOnDemand() async {
+    let catalog = (0..<1_025).map { creatorCard(UUID(), name: "Creator \($0)") }
+    let outcomes: [ListOutcome] = stride(from: 0, to: catalog.count, by: 50).map { start in
+      let end = min(start + 50, catalog.count)
+      return .page(page(Array(catalog[start..<end]), cursor: end < catalog.count ? "page-\(end)" : nil))
+    }
+    let api = LibraryAPI(listOutcomes: outcomes)
+    let model = LibraryModel(api: api, clock: ManualClock())
+
+    await model.loadFirstPage()
+    for _ in 0..<20 { await Task.yield() }
+    #expect(model.items.count == 50)
+    #expect(await api.listCallCount == 1)
+
+    await model.loadNextPage()
+    for _ in 0..<20 { await Task.yield() }
+    #expect(model.items.count == 100)
+    #expect(await api.listCallCount == 2)
+
+    for pageIndex in 2..<outcomes.count {
+      await model.loadNextPage()
+      #expect(model.items.count == min((pageIndex + 1) * 50, catalog.count))
+    }
+    #expect(model.items.map(\.id) == catalog.map(\.id))
+    #expect(model.nextCursor == nil)
+    await model.loadNextPage()
+    let calls = await api.listCalls
+    #expect(calls.count == 21)
+    #expect(calls.allSatisfy { $0.limit == 50 })
+    #expect(calls[0].cursor == nil)
+    #expect(calls[1].cursor == "page-50")
+    #expect(calls[20].cursor == "page-1000")
+  }
+
+  @MainActor
   @Test func selectingDefaultUnloadedTypeSchedulesItsFirstPage() async {
     let api = LibraryAPI(listOutcomes: [.page(page([], cursor: nil))])
     let model = LibraryModel(api: api, clock: ManualClock())
