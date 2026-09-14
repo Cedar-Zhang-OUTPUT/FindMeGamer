@@ -65,7 +65,7 @@ def test_platform_profiles_remain_distinct_and_edit_without_youtube_id(
 
 def test_unavailable_platforms_are_not_scheduled_or_marked_youtube_stale(session):
     now = datetime.now(UTC)
-    for platform in ("x", "twitch", "instagram"):
+    for platform in ("twitch", "instagram"):
         session.add(
             CreatorProfile(
                 platform=platform,

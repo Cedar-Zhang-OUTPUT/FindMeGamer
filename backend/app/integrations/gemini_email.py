@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 import httpx
 
-from app.analysis.contracts import CreatorSource
+from app.analysis.contracts import CreatorSource, XCreatorSource
 from app.core.config import validate_external_base_url
 from app.integrations.errors import (
     PermanentIntegrationError,
@@ -124,7 +124,7 @@ class GeminiEmailResearchGateway:
         *,
         existing_contacts: tuple[str, ...] = (),
     ) -> tuple[GeminiEmailRecord, ...]:
-        if not isinstance(source, CreatorSource):
+        if not isinstance(source, (CreatorSource, XCreatorSource)):
             raise TypeError("email research requires a CreatorSource")
         if (
             not isinstance(existing_contacts, tuple)
@@ -206,7 +206,7 @@ def _request_payload(
         (
             "Research this specific creator:",
             f"Name: {_clean_field(source.title, 'Unknown')}",
-            "Platform: YouTube",
+            "Platform: X" if isinstance(source, XCreatorSource) else "Platform: YouTube",
             f"Profile URL: {_clean_field(source.canonical_url, 'Not provided')}",
             "Existing public contact entry: "
             f"{_clean_field(contact_entry, 'Not provided')}",

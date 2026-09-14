@@ -1503,6 +1503,22 @@
             ],
             "title": "Performance Summary"
           },
+          "platform": {
+            "default": "youtube",
+            "title": "Platform",
+            "type": "string"
+          },
+          "platform_account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Account Id"
+          },
           "recent_average_views": {
             "anyOf": [
               {
@@ -1540,8 +1556,15 @@
             "title": "Subscriber Count"
           },
           "youtube_channel_id": {
-            "title": "Youtube Channel Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Youtube Channel Id"
           }
         },
         "required": [
@@ -2426,9 +2449,32 @@
             "title": "Name",
             "type": "string"
           },
-          "youtube_channel_id": {
-            "title": "Youtube Channel Id",
+          "platform": {
+            "default": "youtube",
+            "title": "Platform",
             "type": "string"
+          },
+          "platform_account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Platform Account Id"
+          },
+          "youtube_channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Youtube Channel Id"
           }
         },
         "required": [

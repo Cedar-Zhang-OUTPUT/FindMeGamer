@@ -28,7 +28,9 @@ class MatchCreatorContact(PublicMatchModel):
 class MatchCreatorCard(PublicMatchModel):
     id: UUID
     name: str
-    youtube_channel_id: str
+    youtube_channel_id: str | None
+    platform: str = "youtube"
+    platform_account_id: str | None = None
     canonical_url: str
     avatar_url: str | None = None
     favorite: bool

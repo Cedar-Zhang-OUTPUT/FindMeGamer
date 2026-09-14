@@ -320,7 +320,7 @@ def get_analysis_executor() -> AnalysisJobExecutor:
     runtime = build_production_runtime()
     return AnalysisJobExecutor(
         session_factory=session_scope,
-        pipeline_factory=runtime.pipeline_for,
+        pipeline_factory=runtime.dispatch_for,
     )
 
 

@@ -499,6 +499,8 @@ def test_fastapi_match_response_contains_only_explicit_closed_fields() -> None:
     assert set(body["creator"]) == {
         "id",
         "name",
+        "platform",
+        "platform_account_id",
         "youtube_channel_id",
         "canonical_url",
         "avatar_url",

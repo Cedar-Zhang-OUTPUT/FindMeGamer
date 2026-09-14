@@ -103,3 +103,26 @@ class ArtifactStore(Protocol):
         name: str,
         payload: Mapping[str, Any],
     ) -> str: ...
+
+
+class XPostSource(_SourceModel):
+    id: str
+    canonical_url: str
+    text: str
+    published_at: datetime | None = None
+    public_metrics: dict[str, int] = Field(default_factory=dict)
+
+
+class XCreatorSource(_SourceModel):
+    platform: Literal["x"] = "x"
+    platform_account_id: str
+    canonical_url: str
+    title: str
+    username: str
+    description: str = ""
+    avatar_url: str | None = None
+    follower_count: int | None = None
+    post_count: int | None = None
+    posts: tuple[XPostSource, ...] = ()
+    raw_account: dict[str, Any]
+    raw_posts: dict[str, Any]

@@ -28,17 +28,24 @@ class ProductionConnectionProbe:
         deepseek_base_url: str,
         youtube_base_url: str,
         google_ai_base_url: str,
+        x_base_url: str = "https://api.x.com/2",
         http_client: httpx.Client | None = None,
     ) -> None:
         self._deepseek_base_url = validate_external_base_url(deepseek_base_url)
         self._youtube_base_url = validate_external_base_url(youtube_base_url)
         self._google_ai_base_url = validate_external_base_url(google_ai_base_url)
+        self._x_base_url = validate_external_base_url(x_base_url)
         self._http_client = http_client
 
     def test_connection(self, service: str, secret: str) -> bool:
         if not _valid_secret(secret):
             return False
         try:
+            if service == "x":
+                return self._get_succeeded(
+                    f"{self._x_base_url}/users/by/username/XDevelopers",
+                    headers={"Authorization": f"Bearer {secret}"},
+                )
             if service == "deepseek":
                 return self._get_succeeded(
                     f"{self._deepseek_base_url}/models",

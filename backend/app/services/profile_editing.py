@@ -78,6 +78,16 @@ CREATOR_FIELDS = (
 
 
 def catalog(profile):
+    if isinstance(profile, CreatorProfile) and profile.platform == "x":
+        unsupported = {
+            "facts.country",
+            "analysis.representative_video_context",
+            "analysis.production_quality",
+            "analysis.livestream_tendency",
+            "analysis.long_form_tendency",
+            "analysis.short_form_tendency",
+        }
+        return tuple(field for field in CREATOR_FIELDS if field.key not in unsupported)
     return GAME_FIELDS if isinstance(profile, GameProfile) else CREATOR_FIELDS
 
 

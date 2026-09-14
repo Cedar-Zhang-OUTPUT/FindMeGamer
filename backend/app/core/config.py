@@ -85,6 +85,7 @@ class Settings(BaseSettings):
     master_key_file: Path = Path("/etc/find-me-gamer/master.key")
     steam_store_base_url: str = "https://store.steampowered.com/api"
     youtube_api_base_url: str = "https://www.googleapis.com/youtube/v3"
+    x_api_base_url: str = "https://api.x.com/2"
     deepseek_api_base_url: str = "https://api.deepseek.com"
     google_ai_api_base_url: str = (
         "https://generativelanguage.googleapis.com/v1beta/models"
@@ -134,6 +135,7 @@ class Settings(BaseSettings):
     @field_validator(
         "steam_store_base_url",
         "youtube_api_base_url",
+        "x_api_base_url",
         "deepseek_api_base_url",
         "google_ai_api_base_url",
         "external_base_url",

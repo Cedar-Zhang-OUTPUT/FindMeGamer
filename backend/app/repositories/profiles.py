@@ -4,8 +4,16 @@ from datetime import datetime, timedelta
 from typing import TypeVar
 from uuid import UUID
 
-from sqlalchemy import Select, cast, func, literal, select, tuple_, union_all, update
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import (
+    Select,
+    case,
+    func,
+    literal,
+    select,
+    tuple_,
+    union_all,
+    update,
+)
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.models.enums import JobStatus, TargetType
@@ -121,6 +129,10 @@ class ProfilesRepository:
         )
 
     def list_due_profiles(self, *, now: datetime, limit: int) -> list[DueProfile]:
+        creator_target_id = case(
+            (CreatorProfile.platform == "youtube", CreatorProfile.platform_account_id),
+            else_=CreatorProfile.platform + ":" + CreatorProfile.platform_account_id,
+        )
         active_game = (
             select(AnalysisJob.id)
             .where(
@@ -134,7 +146,7 @@ class ProfilesRepository:
             select(AnalysisJob.id)
             .where(
                 AnalysisJob.target_type == TargetType.CREATOR,
-                AnalysisJob.canonical_target_id == CreatorProfile.youtube_channel_id,
+                AnalysisJob.canonical_target_id == creator_target_id,
                 AnalysisJob.status.in_((JobStatus.QUEUED, JobStatus.RUNNING)),
             )
             .exists()
@@ -155,11 +167,11 @@ class ProfilesRepository:
                 CreatorProfile.next_analysis_at.label("next_analysis_at"),
                 literal(TargetType.CREATOR.value).label("target_type"),
                 CreatorProfile.id.label("profile_id"),
-                CreatorProfile.youtube_channel_id.label("canonical_target_id"),
+                creator_target_id.label("canonical_target_id"),
                 CreatorProfile.canonical_url.label("canonical_url"),
             ).where(
                 CreatorProfile.next_analysis_at.is_not(None),
-                CreatorProfile.platform == "youtube",
+                CreatorProfile.platform.in_(("youtube", "x")),
                 CreatorProfile.next_analysis_at <= now,
                 ~active_creator,
             ),
@@ -186,19 +198,18 @@ class ProfilesRepository:
 
     def mark_stale_creators(self, now: datetime) -> int:
         cutoff = now - timedelta(days=30)
-        stale_patch = cast(
-            {"youtube": "stale", "freshness": "stale"},
-            JSONB,
+        stale_patch = func.jsonb_build_object(
+            CreatorProfile.platform, "stale", "freshness", "stale"
         )
         result = self._session.execute(
             update(CreatorProfile)
             .where(
                 CreatorProfile.last_analyzed_at.is_not(None),
-                CreatorProfile.platform == "youtube",
+                CreatorProfile.platform.in_(("youtube", "x")),
                 CreatorProfile.last_analyzed_at < cutoff,
                 (
                     func.lower(
-                        CreatorProfile.source_status["youtube"].astext
+                        CreatorProfile.source_status.op("->>")(CreatorProfile.platform)
                     ).is_distinct_from("stale")
                     | func.lower(
                         CreatorProfile.source_status["freshness"].astext

@@ -366,7 +366,9 @@ class MatchRepository:
     ) -> CreatorBrief | None:
         if creator.last_analyzed_at is None or creator.last_analyzed_at < cutoff:
             return None
-        if not self._youtube_source_is_current(creator.source_status):
+        if not self._youtube_source_is_current(
+            creator.source_status, platform=creator.platform
+        ):
             return None
         try:
             return CreatorBrief.model_validate(creator.brief)
@@ -374,7 +376,9 @@ class MatchRepository:
             return None
 
     @staticmethod
-    def _youtube_source_is_current(source_status: object) -> bool:
+    def _youtube_source_is_current(
+        source_status: object, *, platform: str = "youtube"
+    ) -> bool:
         if (
             not isinstance(source_status, dict)
             or source_status.get("seed") == "incomplete"
@@ -388,7 +392,11 @@ class MatchRepository:
                 return value["status"].casefold()
             return None
 
-        youtube = status(source_status.get("youtube"))
+        youtube = (
+            status(source_status.get(platform))
+            if platform in {"youtube", "x"}
+            else None
+        )
         freshness = status(source_status.get("freshness"))
         if freshness is not None and freshness != "current":
             return False

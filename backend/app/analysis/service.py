@@ -11,7 +11,12 @@ from uuid import UUID, uuid4
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.analysis.contracts import CreatorSource, SteamGameSource, VideoSource
+from app.analysis.contracts import (
+    CreatorSource,
+    SteamGameSource,
+    VideoSource,
+    XCreatorSource,
+)
 from app.analysis.creator_metrics import CreatorComputedMetrics
 from app.analysis.prompts.creator import (
     CREATOR_METADATA_PROMPT_VERSION,
@@ -23,6 +28,7 @@ from app.analysis.prompts.game import (
     GAME_SYNTHESIS_PROMPT_VERSION,
     GAME_VISUAL_PROMPT_VERSION,
 )
+from app.analysis.prompts.x_creator import X_CREATOR_PROMPT_VERSION
 from app.core.analysis_job_contract import valid_analysis_job_state
 from app.db.models.enums import AnalysisStage, JobStatus, TargetType
 from app.db.models.jobs import AnalysisJob, acquire_job_change_lock
@@ -328,7 +334,7 @@ class CreatorJobLease:
 
 @dataclass(frozen=True, slots=True)
 class CreatorAnalysisPublication:
-    source: CreatorSource
+    source: CreatorSource | XCreatorSource
     synthesis: CreatorSynthesis
     visual: CreatorVisualAnalysis
     contacts: BoundCreatorContacts
@@ -339,7 +345,7 @@ class CreatorAnalysisPublication:
 
     def __post_init__(self) -> None:
         expected = (
-            (self.source, CreatorSource),
+            (self.source, (CreatorSource, XCreatorSource)),
             (self.synthesis, CreatorSynthesis),
             (self.visual, CreatorVisualAnalysis),
             (self.contacts, BoundCreatorContacts),
@@ -481,7 +487,12 @@ class CreatorAnalysisService:
             if job.stage is not AnalysisStage.FINALIZING:
                 raise PermanentIntegrationError("analysis_job_stage_invalid")
             source = publication.source
-            if source.channel_id != lease.channel_id or source.canonical_url.rstrip(
+            platform = "x" if isinstance(source, XCreatorSource) else "youtube"
+            account_id = (
+                source.platform_account_id if platform == "x" else source.channel_id
+            )
+            target_id = f"x:{account_id}" if platform == "x" else account_id
+            if target_id != lease.channel_id or source.canonical_url.rstrip(
                 "/"
             ) != lease.canonical_url.rstrip("/"):
                 raise PermanentIntegrationError("youtube_source_identity_mismatch")
@@ -500,17 +511,17 @@ class CreatorAnalysisService:
             profile = session.scalar(
                 select(CreatorProfile)
                 .where(
-                    CreatorProfile.platform == "youtube",
-                    CreatorProfile.platform_account_id == lease.channel_id,
+                    CreatorProfile.platform == platform,
+                    CreatorProfile.platform_account_id == account_id,
                 )
                 .with_for_update()
             )
             if profile is None:
                 profile = CreatorProfile(
                     id=uuid4(),
-                    youtube_channel_id=lease.channel_id,
-                    platform="youtube",
-                    platform_account_id=lease.channel_id,
+                    youtube_channel_id=account_id if platform == "youtube" else None,
+                    platform=platform,
+                    platform_account_id=account_id,
                     canonical_url=source.canonical_url,
                     sort_name=self._sort_name(source.title, lease.channel_id),
                 )
@@ -541,7 +552,7 @@ class CreatorAnalysisService:
             profile.brief = public_json_object(synthesis["creator_brief"])
             profile.source_status = public_json_object(
                 {
-                    "youtube": "available",
+                    platform: "available",
                     "visual_analysis": publication.visual.status,
                     "contact_discovery": publication.contact_status,
                     "freshness": "current",
@@ -557,9 +568,19 @@ class CreatorAnalysisService:
             )
             profile.prompt_metadata = public_json_object(
                 {
-                    "metadata_prompt_version": CREATOR_METADATA_PROMPT_VERSION,
-                    "visual_prompt_version": CREATOR_VISUAL_PROMPT_VERSION,
-                    "synthesis_prompt_version": CREATOR_SYNTHESIS_PROMPT_VERSION,
+                    "metadata_prompt_version": (
+                        X_CREATOR_PROMPT_VERSION
+                        if platform == "x"
+                        else CREATOR_METADATA_PROMPT_VERSION
+                    ),
+                    "visual_prompt_version": (
+                        None if platform == "x" else CREATOR_VISUAL_PROMPT_VERSION
+                    ),
+                    "synthesis_prompt_version": (
+                        X_CREATOR_PROMPT_VERSION
+                        if platform == "x"
+                        else CREATOR_SYNTHESIS_PROMPT_VERSION
+                    ),
                 }
             )
             profile.last_analyzed_at = analyzed_at
@@ -624,6 +645,8 @@ class CreatorAnalysisService:
     @staticmethod
     def _current_facts(publication: CreatorAnalysisPublication) -> dict[str, object]:
         source = publication.source
+        if isinstance(source, XCreatorSource):
+            return source.model_dump(mode="json", exclude={"raw_account", "raw_posts"})
         return {
             "channel_id": source.channel_id,
             "canonical_url": source.canonical_url,

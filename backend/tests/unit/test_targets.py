@@ -9,6 +9,40 @@ from app.analysis.targets import (
 from app.db.models.enums import TargetType
 
 
+def test_x_id_url_is_namespaced():
+    target = canonicalize_target(TargetType.CREATOR, "https://x.com/i/user/12345")
+    assert target.canonical_id == "x:12345"
+    assert target.canonical_url == "https://x.com/i/user/12345"
+
+
+@pytest.mark.parametrize(
+    "host", ["x.com", "twitter.com", "www.x.com", "www.twitter.com"]
+)
+def test_x_alias_resolves_to_stable_id(host):
+    class Resolver:
+        def resolve_channel(self, target):
+            assert target.canonical_id == "x:@example"
+            return "12345"
+
+    target = resolve_target(TargetType.CREATOR, f"https://{host}/Example", Resolver())
+    assert target.canonical_id == "x:12345"
+    assert target.canonical_url == "https://x.com/i/user/12345"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://x.com/example/status/123",
+        "https://x.com.evil.test/example",
+        "https://user:secret@x.com/example",
+        "https://x.com/home",
+    ],
+)
+def test_x_rejects_non_profile_urls(url):
+    with pytest.raises(InvalidTarget):
+        canonicalize_target(TargetType.CREATOR, url)
+
+
 @pytest.mark.parametrize(
     ("target_type", "url", "expected"),
     [
@@ -29,9 +63,7 @@ from app.db.models.enums import TargetType
         ),
     ],
 )
-def test_canonical_target(
-    target_type: TargetType, url: str, expected: str
-) -> None:
+def test_canonical_target(target_type: TargetType, url: str, expected: str) -> None:
     assert canonicalize_target(target_type, url).canonical_id == expected
 
 
@@ -229,9 +261,7 @@ def test_handle_is_resolved_to_channel_id_and_url() -> None:
         resolver,
     )
 
-    assert [value.canonical_id for value in resolver.targets] == [
-        "@examplecreator"
-    ]
+    assert [value.canonical_id for value in resolver.targets] == ["@examplecreator"]
     assert target == CanonicalTarget(
         target_type=TargetType.CREATOR,
         canonical_id="UCresolved123",

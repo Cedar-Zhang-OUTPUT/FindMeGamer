@@ -22,15 +22,26 @@ def _creator_youtube_is_stale(source_status: object) -> bool:
         if key in source_status
     ):
         return True
-    if _canonical_status_is_stale(source_status.get("youtube")):
+    if any(
+        _canonical_status_is_stale(source_status.get(platform))
+        for platform in ("youtube", "x")
+    ):
         return True
     if any(
         _canonical_status_is_stale(source_status.get(key))
-        for key in ("youtube_status", "youtube_state", "youtube_freshness")
+        for key in (
+            "youtube_status",
+            "youtube_state",
+            "youtube_freshness",
+            "x_status",
+            "x_state",
+            "x_freshness",
+        )
         if key in source_status
     ):
         return True
     sources = source_status.get("sources")
-    return isinstance(sources, dict) and _canonical_status_is_stale(
-        sources.get("youtube")
+    return isinstance(sources, dict) and any(
+        _canonical_status_is_stale(sources.get(platform))
+        for platform in ("youtube", "x")
     )

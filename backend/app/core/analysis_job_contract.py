@@ -18,6 +18,17 @@ QUEUE_FAILURE_MESSAGE = "Analysis could not be queued. Please retry."
 
 INTEGRATION_ERROR_CODES = frozenset(
     {
+        "x_configuration_invalid",
+        "x_target_invalid",
+        "x_account_not_found",
+        "x_response_invalid",
+        "x_response_too_large",
+        "x_source_identity_mismatch",
+        "x_payment_required",
+        "x_spend_cap_reached",
+        "x_request_rejected",
+        "x_rate_limited",
+        "x_unavailable",
         "analysis_clock_invalid",
         "analysis_cleanup_failed",
         "analysis_configuration_invalid",
@@ -77,6 +88,8 @@ INTEGRATION_ERROR_CODES = frozenset(
 )
 RETRYABLE_INTEGRATION_ERROR_CODES = frozenset(
     {
+        "x_rate_limited",
+        "x_unavailable",
         "deepseek_model_contacts_invalid",
         "deepseek_model_evidence_invalid",
         "deepseek_model_output_invalid",

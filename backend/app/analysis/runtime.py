@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.analysis.creator_checkpoints import CreatorAnalysisCheckpointStore
 from app.analysis.creator_map_reduce_pipeline import CreatorMapReducePipeline
+from app.analysis.x_creator_pipeline import XCreatorAnalysisPipeline
 from app.analysis.game_pipeline import GameAnalysisPipeline
 from app.analysis.service import CreatorAnalysisService, GameAnalysisService
 from app.analysis.targets import (
@@ -23,6 +24,7 @@ from app.core.crypto import EncryptedValue, SecretCipher
 from app.core.database import session_scope
 from app.db.models.enums import TargetType
 from app.db.models.settings import ServiceSecret
+from app.db.models.jobs import AnalysisJob
 from app.integrations.deepseek import DeepSeekGateway
 from app.integrations.errors import (
     PermanentIntegrationError,
@@ -34,6 +36,7 @@ from app.integrations.public_pages import PublicPageGateway
 from app.integrations.s3 import S3ArtifactStore
 from app.integrations.steam import SteamGateway
 from app.integrations.youtube import YouTubeGateway
+from app.integrations.x import XGateway
 
 
 SessionFactory = Callable[[], AbstractContextManager[Session]]
@@ -93,7 +96,7 @@ class ProductionSecretProvider:
             not required
             or len(required) != len(set(required))
             or any(
-                service not in {"youtube", "deepseek", "google_ai"}
+                service not in {"youtube", "deepseek", "google_ai", "x"}
                 for service in required
             )
         ):
@@ -110,6 +113,8 @@ class ProductionSecretProvider:
                 if row.service in required
             }
         if set(encrypted) != set(required):
+            if "x" in required and "x" not in encrypted:
+                raise PermanentIntegrationError("x_configuration_invalid")
             raise PermanentIntegrationError("analysis_configuration_invalid")
         try:
             cipher = self._cipher_factory()
@@ -118,7 +123,7 @@ class ProductionSecretProvider:
             raise PermanentIntegrationError("analysis_configuration_invalid") from None
 
     def load_optional(self, service: str) -> str | None:
-        if service not in {"youtube", "deepseek", "google_ai"}:
+        if service not in {"youtube", "deepseek", "google_ai", "x"}:
             raise PermanentIntegrationError("analysis_configuration_invalid")
         with self._session_factory() as session:
             row = session.scalar(
@@ -150,7 +155,7 @@ class ProductionAnalysisRuntime:
         self._secret_provider = secret_provider
 
     @contextmanager
-    def pipeline_for(self, target_type: TargetType):
+    def pipeline_for(self, target_type: TargetType, *, platform: str = "youtube"):
         secrets_by_service: dict[str, str] = {}
         try:
             with _owned_resources() as stack:
@@ -175,16 +180,22 @@ class ProductionAnalysisRuntime:
                         deepseek=deepseek,
                     )
                 elif target_type is TargetType.CREATOR:
+                    if platform not in {"youtube", "x"}:
+                        raise PermanentIntegrationError("analysis_job_target_invalid")
                     secrets_by_service = self._secret_provider.load(
-                        ("youtube", "deepseek")
+                        (platform, "deepseek")
                     )
                     google_ai_key = self._secret_provider.load_optional("google_ai")
                     if google_ai_key is not None:
                         secrets_by_service["google_ai"] = google_ai_key
                     youtube = stack.enter_context(
-                        YouTubeGateway(
-                            api_key=secrets_by_service["youtube"],
-                            base_url=self._settings.youtube_api_base_url,
+                        (XGateway if platform == "x" else YouTubeGateway)(
+                            api_key=secrets_by_service[platform],
+                            base_url=(
+                                self._settings.x_api_base_url
+                                if platform == "x"
+                                else self._settings.youtube_api_base_url
+                            ),
                         )
                     )
                     artifacts = stack.enter_context(_artifact_store_for(self._settings))
@@ -204,11 +215,15 @@ class ProductionAnalysisRuntime:
                         if "google_ai" in secrets_by_service
                         else None
                     )
-                    yield CreatorMapReducePipeline(
+                    yield (
+                        XCreatorAnalysisPipeline
+                        if platform == "x"
+                        else CreatorMapReducePipeline
+                    )(
                         service=CreatorAnalysisService(
                             session_factory=self._session_factory
                         ),
-                        youtube=youtube,
+                        **({"x": youtube} if platform == "x" else {"youtube": youtube}),
                         artifacts=artifacts,
                         public_pages=PublicPageGateway(),
                         deepseek=deepseek,
@@ -222,6 +237,25 @@ class ProductionAnalysisRuntime:
         finally:
             secrets_by_service.clear()
 
+    @contextmanager
+    def dispatch_for(self, target_type: TargetType):
+        """Keep the worker factory signature while selecting the persisted platform."""
+        runtime = self
+
+        class Dispatch:
+            def run(self, job_id):
+                with runtime._session_factory() as session:
+                    job = session.get(AnalysisJob, job_id)
+                    if job is None or job.target_type is not target_type:
+                        raise PermanentIntegrationError("analysis_job_target_invalid")
+                    platform = (
+                        "x" if job.canonical_target_id.startswith("x:") else "youtube"
+                    )
+                with runtime.pipeline_for(target_type, platform=platform) as pipeline:
+                    return pipeline.run(job_id)
+
+        yield Dispatch()
+
 
 class ProductionChannelResolver:
     def __init__(self, *, settings: Settings, secret_provider: SecretProvider) -> None:
@@ -231,12 +265,17 @@ class ProductionChannelResolver:
     def resolve_channel(self, target: CanonicalTarget) -> str:
         secrets_by_service: dict[str, str] = {}
         try:
-            secrets_by_service = self._secret_provider.load(("youtube",))
+            platform = "x" if target.canonical_id.startswith("x:@") else "youtube"
+            secrets_by_service = self._secret_provider.load((platform,))
             with _owned_resources() as stack:
                 youtube = stack.enter_context(
-                    YouTubeGateway(
-                        api_key=secrets_by_service["youtube"],
-                        base_url=self._settings.youtube_api_base_url,
+                    (XGateway if platform == "x" else YouTubeGateway)(
+                        api_key=secrets_by_service[platform],
+                        base_url=(
+                            self._settings.x_api_base_url
+                            if platform == "x"
+                            else self._settings.youtube_api_base_url
+                        ),
                     )
                 )
                 return youtube.resolve_channel(target)

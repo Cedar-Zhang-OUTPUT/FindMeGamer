@@ -18,6 +18,41 @@ from app.integrations.errors import PermanentIntegrationError
 from app.integrations.errors import TransientIntegrationError
 
 
+def test_runtime_builds_x_without_youtube_credentials(monkeypatch):
+    loaded = []
+
+    class Secrets:
+        def load(self, services):
+            loaded.append(tuple(services))
+            return {service: "fixture-token" for service in services}
+
+        def load_optional(self, service):
+            return None
+
+    for name in ("XGateway", "DeepSeekGateway", "S3ArtifactStore"):
+        monkeypatch.setattr(
+            f"app.analysis.runtime.{name}", ClosableGateway, raising=False
+        )
+    monkeypatch.setattr(
+        "app.analysis.runtime.XCreatorAnalysisPipeline", FakePipeline, raising=False
+    )
+    runtime = ProductionAnalysisRuntime(
+        settings=get_settings(), session_factory=lambda: None, secret_provider=Secrets()
+    )
+    with runtime.pipeline_for(TargetType.CREATOR, platform="x") as pipeline:
+        assert isinstance(pipeline, FakePipeline)
+        assert loaded == [("x", "deepseek")]
+
+
+def test_missing_x_secret_has_x_configuration_failure(session):
+    provider = ProductionSecretProvider(
+        session_factory=lambda: _session_factory(session),
+        cipher_factory=lambda: SecretCipher(bytes(range(32))),
+    )
+    with pytest.raises(PermanentIntegrationError, match="x_configuration_invalid"):
+        provider.load(("x", "deepseek"))
+
+
 @contextmanager
 def _session_factory(session: Session):
     yield session

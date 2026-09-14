@@ -426,6 +426,8 @@ def test_openapi_campaign_history_responses_are_closed_and_secret_free(client) -
         "OutreachCreatorIdentity": {
             "id",
             "name",
+            "platform",
+            "platform_account_id",
             "youtube_channel_id",
             "canonical_url",
             "avatar_url",

@@ -580,6 +580,8 @@ def _creator_identity(creator: CreatorProfile) -> OutreachCreatorIdentity:
         id=creator.id,
         name=title if isinstance(title, str) and title else creator.sort_name,
         youtube_channel_id=creator.youtube_channel_id,
+        platform=creator.platform,
+        platform_account_id=creator.platform_account_id,
         canonical_url=creator.canonical_url,
         avatar_url=avatar if isinstance(avatar, str) and avatar else None,
     )

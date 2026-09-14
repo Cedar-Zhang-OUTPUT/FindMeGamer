@@ -8,7 +8,13 @@ from uuid import UUID
 
 from email_validator import EmailNotValidError, validate_email
 
-from app.analysis.contracts import ArtifactStore, CreatorSource, Message, VideoSource
+from app.analysis.contracts import (
+    ArtifactStore,
+    CreatorSource,
+    Message,
+    VideoSource,
+    XCreatorSource,
+)
 from app.analysis.creator_metrics import (
     compute_creator_metrics,
     select_representative_thumbnails,
@@ -304,7 +310,7 @@ def build_creator_contact_evidence(
 def _discover_creator_contacts(
     source: CreatorSource, *, pages: PublicPageGateway
 ) -> tuple[CreatorContactEvidence, str]:
-    if not isinstance(source, CreatorSource):
+    if not isinstance(source, (CreatorSource, XCreatorSource)):
         raise TypeError("contact discovery requires a CreatorSource")
     candidates: list[EmailContactCandidate | URLContactCandidate] = []
     email_keys: set[str] = set()
@@ -362,21 +368,29 @@ def _discover_creator_contacts(
         url_keys.add(key)
         counters[label] += 1
         candidates.append(candidate)
-        if kind == "linked_site" and source_type == "channel_description":
+        if kind == "linked_site" and source_type in {
+            "channel_description",
+            "profile_description",
+        }:
             linked_pages.append(value)
 
     channel_text = source.description[:MAX_CONTACT_TEXT_CHARACTERS]
+    description_source = (
+        "profile_description"
+        if isinstance(source, XCreatorSource)
+        else "channel_description"
+    )
     for kind, value in _ordered_contacts(channel_text):
         if kind == "email":
             add_email(
                 value,
-                source_type="channel_description",
+                source_type=description_source,
                 source_url=source.canonical_url,
             )
         else:
             add_url(
                 value,
-                source_type="channel_description",
+                source_type=description_source,
                 source_url=source.canonical_url,
             )
 

@@ -423,6 +423,7 @@ URLValue = Annotated[
 ]
 ContactValidationState = Literal["validated", "unvalidated"]
 ContactEvidenceSource = Literal[
+    "profile_description",
     "channel_description",
     "linked_public_page",
     "public_web_research",

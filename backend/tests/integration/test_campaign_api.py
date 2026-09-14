@@ -272,6 +272,8 @@ def test_campaign_and_delivery_history_is_complete_frozen_and_safe(
     assert set(by_id[original[1].id]["creator"]) == {
         "id",
         "name",
+        "platform",
+        "platform_account_id",
         "youtube_channel_id",
         "canonical_url",
         "avatar_url",
