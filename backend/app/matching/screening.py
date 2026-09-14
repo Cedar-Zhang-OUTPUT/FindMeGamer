@@ -20,7 +20,7 @@ from app.schemas.ai_game import GameBrief
 from app.schemas.ai_match import ScreeningOutput, ScreeningSelection
 
 
-SCREENING_MODEL = "deepseek-v4-flash"
+SCREENING_MODEL = "deepseek-flash"
 
 
 class InvalidScreeningOutput(ValueError):

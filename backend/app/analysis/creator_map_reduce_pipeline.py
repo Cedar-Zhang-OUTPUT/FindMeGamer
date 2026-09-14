@@ -65,9 +65,9 @@ from app.schemas.ai_game import EvidenceCatalog, StageOutput, validate_stage_evi
 
 logger = logging.getLogger(__name__)
 
-MAP_MODEL = "deepseek-v4-flash"
-REDUCTION_MODEL = "deepseek-v4-flash"
-BRIEF_MODEL = "deepseek-v4-pro"
+MAP_MODEL = "deepseek-flash"
+REDUCTION_MODEL = "deepseek-flash"
+BRIEF_MODEL = "deepseek-flash"
 VISUAL_MAX_TOKENS = 2_048
 MAX_PARALLEL_CALLS = 5
 

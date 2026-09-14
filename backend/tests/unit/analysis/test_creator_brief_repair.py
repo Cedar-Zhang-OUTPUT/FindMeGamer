@@ -39,6 +39,7 @@ def test_brief_repairs_only_overlong_text_without_rewriting_other_fields():
     original["creator_brief"]["positioning"]["value"] = (
         "Comedy-focused horror gaming commentary, with edited reactions and occasional "
         "story-driven playthroughs; not a competitive esports analysis or tutorial channel."
+        + " More context." * 400
     )
     replacement = "Comedy horror reactions and story playthroughs, not esports analysis or tutorials."
     gateway, requests = _gateway([original, {"text_0": replacement}])
@@ -52,7 +53,7 @@ def test_brief_repairs_only_overlong_text_without_rewriting_other_fields():
     repair = requests[1]
     assert repair["max_tokens"] <= 3072
     instruction = repair["messages"][0]["content"]
-    assert '"maxLength":144' in instruction
+    assert '"maxLength":4000' in instruction
     assert '"text_0"' in instruction
     prompt = repair["messages"][1]["content"]
     assert "negation" in prompt
@@ -62,9 +63,9 @@ def test_brief_repairs_only_overlong_text_without_rewriting_other_fields():
 
 def test_brief_stubborn_overlong_repair_fails_without_truncating_or_dropping_claim():
     original = _brief_payload()
-    original["creator_brief"]["positioning"]["value"] = "Long context. " * 30
+    original["creator_brief"]["positioning"]["value"] = "Long context." * 400
     gateway, requests = _gateway(
-        [original, {"text_0": "Still long. " * 30}, {"text_0": "Still long. " * 30}]
+        [original, {"text_0": "Still long." * 400}, {"text_0": "Still long." * 400}]
     )
     with pytest.raises(InvalidModelOutput, match="deepseek_model_output_invalid"):
         gateway.complete_structured("deepseek-v4-pro", [], CreatorBriefSynthesis)
@@ -104,11 +105,11 @@ def test_brief_compaction_does_not_hide_other_invalid_claim_fields():
 
 def test_brief_repairs_multiple_lengths_in_one_call_with_original_evidence():
     original = _brief_payload()
-    original["creator_brief"]["positioning"]["value"] = "Positioning context. " * 20
-    original["creator_brief"]["formats"]["values"] = ["Extended format name. " * 10]
+    original["creator_brief"]["positioning"]["value"] = "Positioning context." * 220
+    original["creator_brief"]["formats"]["values"] = ["Extended format name." * 30]
     original["creator_brief"]["brand_safety"] = {
         "status": "unavailable",
-        "reason": "Insufficient public context. " * 20,
+        "reason": "Insufficient public context." * 160,
     }
     gateway, requests = _gateway(
         [
@@ -131,7 +132,7 @@ def test_brief_repairs_multiple_lengths_in_one_call_with_original_evidence():
 
 def test_brief_repairs_length_remaining_after_general_repair_with_bounded_calls():
     overlong = _brief_payload()
-    overlong["creator_brief"]["positioning"]["value"] = "Context. " * 30
+    overlong["creator_brief"]["positioning"]["value"] = "Context." * 510
     malformed = deepcopy(overlong)
     malformed["english_language_check"] = False
     gateway, requests = _gateway(
@@ -145,7 +146,7 @@ def test_brief_repairs_length_remaining_after_general_repair_with_bounded_calls(
 def test_brief_repaired_list_must_still_obey_uniqueness():
     original = _brief_payload()
     original["creator_brief"]["formats"]["values"] = [
-        "Long reactions. " * 10,
+        "Long reactions." * 40,
         "Reactions",
     ]
     gateway, requests = _gateway([original, {"text_0": "Reactions"}])

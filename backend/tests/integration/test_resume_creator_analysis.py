@@ -37,6 +37,20 @@ from tests.unit.analysis.test_creator_pipeline import _source
 NOW = datetime(2026, 9, 7, 10, 0, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def align_created_job_clock():
+    """Keep DB-created retry jobs before this module's injected service clock."""
+    def set_created_at(mapper, connection, job):
+        if job.created_at is None:
+            job.created_at = NOW - timedelta(minutes=1)
+
+    event.listen(AnalysisJob, "before_insert", set_created_at)
+    try:
+        yield
+    finally:
+        event.remove(AnalysisJob, "before_insert", set_created_at)
+
+
 def seed(factory, *, succeeded=False, missing_content_format=False):
     source = _source()
     videos = tuple(

@@ -32,7 +32,7 @@ from app.schemas.ai_game import GameBrief
 from app.schemas.ai_match import PairwiseMatchBrief
 
 
-PAIRWISE_MODEL = "deepseek-v4-pro"
+PAIRWISE_MODEL = "deepseek-flash"
 
 
 class PairwiseCheckpointError(PermanentIntegrationError):

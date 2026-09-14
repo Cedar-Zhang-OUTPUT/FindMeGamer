@@ -796,18 +796,18 @@ def test_briefs_reject_full_profile_sized_claims() -> None:
         GameBrief.model_validate(game)
 
     creator = creator_synthesis_payload()["creator_brief"]
-    creator["positioning"] = compact_text_claim("x" * 4_000)
+    creator["positioning"] = compact_text_claim("x" * 4_001)
     with pytest.raises(ValidationError):
         CreatorBrief.model_validate(creator)
 
 
 def test_creator_brief_accepts_bounded_descriptive_list_items() -> None:
     payload = creator_synthesis_payload()["creator_brief"]
-    payload["collaboration_risks"]["values"] = ["r" * 64]
+    payload["collaboration_risks"]["values"] = ["r" * 512]
 
     CreatorBrief.model_validate(payload)
 
-    payload["collaboration_risks"]["values"] = ["r" * 65]
+    payload["collaboration_risks"]["values"] = ["r" * 513]
     with pytest.raises(ValidationError):
         CreatorBrief.model_validate(payload)
 

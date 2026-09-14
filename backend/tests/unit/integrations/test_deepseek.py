@@ -193,7 +193,7 @@ def test_deepseek_logs_truncation_with_safe_usage_only(caplog, unsafe_usage) -> 
     assert len(events) == 1
     event = events[0]
     assert event["event"] == "deepseek_output_truncated"
-    assert event["model"] == "deepseek-v4-flash"
+    assert event["model"] == "deepseek-flash"
     assert event["finish_reason"] == "length"
     assert event["max_tokens"] == 6_144
     assert event["usage"]["completion_tokens"] == 6_144
@@ -550,6 +550,7 @@ def test_deepseek_first_vision_request_uses_json_object_with_actual_schema() -> 
 
     assert result.title == "Visual"
     payload = json.loads(requests[0].read())
+    assert payload["model"] == "deepseek-flash"
     assert payload["response_format"] == {"type": "json_object"}
     assert payload["thinking"] == {"type": "disabled"}
     instruction = payload["messages"][0]

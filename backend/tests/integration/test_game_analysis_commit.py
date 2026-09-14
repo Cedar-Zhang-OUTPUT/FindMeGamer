@@ -479,9 +479,9 @@ def test_create_publishes_profile_and_job_atomically_with_current_interval(
             "visual_analysis": "unavailable",
         }
         assert profile.model_metadata == {
-            "extraction_model": "deepseek-v4-flash",
-            "vision_model": "deepseek-v4-flash-vision-exp",
-            "synthesis_model": "deepseek-v4-pro",
+            "extraction_model": "deepseek-flash",
+            "vision_model": "deepseek-flash",
+            "synthesis_model": "deepseek-flash",
             "vision_available": False,
         }
         assert job.status is JobStatus.SUCCEEDED

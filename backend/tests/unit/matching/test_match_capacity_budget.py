@@ -25,9 +25,9 @@ from tests.helpers.match_capacity import synthetic_pairwise_brief
 
 
 STAGES = [
-    (ScreeningOutput, "deepseek-v4-flash", 16_384),
-    (PairwiseMatchBrief, "deepseek-v4-pro", 16_384),
-    (FinalRankingOutput, "deepseek-v4-pro", 65_536),
+    (ScreeningOutput, "deepseek-flash", 16_384),
+    (PairwiseMatchBrief, "deepseek-flash", 16_384),
+    (FinalRankingOutput, "deepseek-flash", 65_536),
 ]
 
 

@@ -146,7 +146,7 @@ class CapacityAI:
         self.calls.append((model, schema, messages))
         payload = "\n".join(message.content for message in messages)
         if schema is ScreeningOutput:
-            assert model == "deepseek-v4-flash"
+            assert model == "deepseek-flash"
             assert len(messages) > 2  # All Library candidates span multiple messages.
             for creator_id in self.creator_ids:
                 assert payload.count(str(creator_id)) == 1
@@ -165,7 +165,7 @@ class CapacityAI:
                     ],
                 }
             )
-        assert model == "deepseek-v4-pro"
+        assert model == "deepseek-flash"
         if schema is PairwiseMatchBrief:
             represented = [item for item in self.creator_ids if str(item) in payload]
             assert len(represented) == 1

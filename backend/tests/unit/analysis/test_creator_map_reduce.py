@@ -203,7 +203,7 @@ def test_map_reduce_schemas_are_strict_frozen_and_bounded() -> None:
         batch.content_format = batch.content_format
 
     oversized = _batch_payload()
-    oversized["presentation"]["style_and_pacing"]["value"] = "x" * 513
+    oversized["presentation"]["style_and_pacing"]["value"] = "x" * 4001
     with pytest.raises(ValidationError):
         CreatorVideoBatchDigest.model_validate(oversized)
 
@@ -244,11 +244,11 @@ def test_map_reduce_claims_accept_up_to_three_evidence_references() -> None:
 
 def test_presentation_style_accepts_bounded_descriptive_values() -> None:
     payload = _presentation_reduction_payload()
-    payload["style"]["values"] = ["s" * 128]
+    payload["style"]["values"] = ["s" * 512]
 
     CreatorPresentationReduction.model_validate(payload)
 
-    payload["style"]["values"] = ["s" * 129]
+    payload["style"]["values"] = ["s" * 513]
     with pytest.raises(ValidationError):
         CreatorPresentationReduction.model_validate(payload)
 

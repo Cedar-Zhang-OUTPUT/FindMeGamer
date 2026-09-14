@@ -247,9 +247,9 @@ class GameAnalysisService:
                 "visual_analysis": publication.visual.status,
             }
             model_metadata = {
-                "extraction_model": "deepseek-v4-flash",
-                "vision_model": "deepseek-v4-flash-vision-exp",
-                "synthesis_model": "deepseek-v4-pro",
+                "extraction_model": "deepseek-flash",
+                "vision_model": "deepseek-flash",
+                "synthesis_model": "deepseek-flash",
                 "vision_available": publication.visual.status == "available",
             }
             prompt_metadata = {
@@ -544,9 +544,9 @@ class CreatorAnalysisService:
             )
             profile.model_metadata = public_json_object(
                 {
-                    "metadata_model": "deepseek-v4-flash",
-                    "vision_model": "deepseek-v4-flash-vision-exp",
-                    "synthesis_model": "deepseek-v4-pro",
+                    "metadata_model": "deepseek-flash",
+                    "vision_model": "deepseek-flash",
+                    "synthesis_model": "deepseek-flash",
                     "vision_available": publication.visual.status == "available",
                 }
             )

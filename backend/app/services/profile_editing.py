@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from app.core.errors import APIError
 from app.db.models.profiles import CreatorProfile, GameProfile
+from app.services.profile_source_visibility import _creator_youtube_is_stale
 from app.schemas.profile_editing import (
     ProfileEditDocument,
     ProfileEditField,
@@ -81,6 +82,10 @@ def catalog(profile):
 
 
 def _source_value(profile, field):
+    if isinstance(profile, CreatorProfile) and _creator_youtube_is_stale(
+        profile.source_status
+    ):
+        return None
     section, *path = field.key.split(".")
     value = getattr(profile, "current_facts" if section == "facts" else section) or {}
     for component in path:

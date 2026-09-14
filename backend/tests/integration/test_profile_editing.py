@@ -74,8 +74,23 @@ def test_stale_creator_keeps_only_manual_projection_and_separate_contacts(
     session.add(creator)
     session.flush()
     url = f"/api/v1/profiles/creator/{creator.id}/edit"
-    revision = auth_client.get(url).json()["revision"]
+    before = auth_client.get(url).json()
+    revision = before["revision"]
+    assert all(field["source_value"] is None for field in before["fields"])
+    assert all(field["value"] in ("", []) for field in before["fields"])
+    unrelated = auth_client.patch(
+        url,
+        json={
+            "expected_revision": revision,
+            "changes": {"facts.country": "Canada"},
+            "reset_fields": [],
+        },
+    )
+    assert unrelated.status_code == 200
+    revision = unrelated.json()["revision"]
+    assert all(field["source_value"] is None for field in unrelated.json()["fields"])
     changes = {
+        "facts.country": "Canada",
         "facts.title": "Human stale title",
         "analysis.content_summary": "Human retained summary",
     }
@@ -84,8 +99,12 @@ def test_stale_creator_keeps_only_manual_projection_and_separate_contacts(
         json={"expected_revision": revision, "changes": changes, "reset_fields": []},
     )
     assert response.status_code == 200
+    assert all(field["source_value"] is None for field in response.json()["fields"])
+    fields = {field["key"]: field for field in response.json()["fields"]}
+    assert fields["analysis.content_summary"]["value"] == "Human retained summary"
+    assert fields["analysis.content_summary"]["is_overridden"]
     detail = auth_client.get(f"/api/v1/profiles/creators/{creator.id}").json()
-    assert detail["current_facts"] == {"title": "Human stale title"}
+    assert detail["current_facts"] == {"title": "Human stale title", "country": "Canada"}
     assert detail["analysis"] == {
         "content_summary": {
             "status": "available",
