@@ -97,7 +97,7 @@ def test_x_id_url_is_namespaced():
 - `POST /discover/resolve-game`: `{steam_url}` → `{steam_app_id, name, canonical_url, game_id?}`; public Steam metadata lookup only, no analysis job.
 - `GET /discover/capabilities`: platform availability and safe reason, no secrets.
 - `POST /discover` with `Idempotency-Key`: `{game_id? OR steam_url?, conditions:{platforms, content_languages:[], min_followers?, max_followers?, keywords:''}}` → Discover detail.
-- `GET /discover?cursor=...` → `{items,next_cursor}`; `GET /discover/{id}` → `{id,game_id?,game_name,status,stage,conditions,candidates,issues,created_at,updated_at}`.
+- `GET /discover?cursor=...` → `{items,next_cursor}` with compact summary rows (identity/game/status/stage/counts/timestamps; no candidate bodies); `GET /discover/{id}` → `{id,game_id?,game_name,status,stage,conditions,candidates,issues,created_at,updated_at}`.
 - `POST /discover/{id}/retry` idempotent, only incomplete work.
 - Candidates: `{id,platform,platform_account_id,display_name,canonical_url,followers?,content_languages:[],in_library,profile_id?}`.
 - Internal status `queued|running|done|partial|failed`; stage `preparing_game|finding_creators|null`. UI may display corresponding readable labels.
@@ -151,7 +151,7 @@ model.deselectAll()
 
 ## Task 6: Curated Twitch/Instagram import contract
 
-**Files:** Create `docs/creator-import/README.md`, `creator-import.schema.json`, `twitch.example.json`, `instagram.example.json`; create `backend/app/schemas/creator_import.py`, `backend/app/cli/import_creator_profiles.py`, tests `tests/unit/test_creator_import_contract.py`, `tests/integration/test_creator_import.py`.
+**Files:** Create `docs/creator-import/README.md`, `creator-import.schema.json`, `twitch.example.json`, `instagram.example.json`; create `backend/app/schemas/creator_import.py`, `backend/app/cli/import_creator_profiles.py`, tests `tests/unit/test_creator_import_contract.py`, `tests/integration/test_creator_import.py`. Adapt `backend/app/repositories/match.py` and source visibility consumers only as required for honest curated-source eligibility.
 
 **Interfaces:** `python -m app.cli.import_creator_profiles --file INPUT --dry-run` validates a versioned `schema_version:1` envelope with records carrying platform identity, canonical URL, public facts, dated works/evidence/metrics, contacts with purpose/source, optional validated common analysis/Brief. Explicit non-dry-run import is idempotent by platform/account identity and refuses overwriting an existing manually edited Profile without explicit conflict handling. No actual data import as part of development.
 
@@ -159,6 +159,7 @@ The early handoff in `docs/creator-import/COLLECTION-HANDOFF.md` and `*.collecti
 
 - [ ] Research official Twitch and Meta APIs, record field availability and whose authorization is required; distinguish obtainable from optional/private/unavailable. Shared Profile core with typed native metrics, not coerced YouTube fields. Country/language/email may be unknown.
 - [ ] RED contract tests accept supplied fact-only fixtures but do not make them Match-eligible until valid analysis/Brief exists; reject identity/source mismatches, secret-bearing fields and duplicate contact noise. Roundtrip template/schema uses real Pydantic validation, not source-text assertions.
+- [ ] Prove a source-bound curated record with valid common analysis/Brief and current analysis timestamp can enter an ordinary Library-wide Match. Task2 freshness currently allows only YouTube/X: extend eligibility for explicitly curated Twitch/Instagram provenance without pretending their live source is available. Fact-only records remain ineligible; automatic acquisition remains disabled. Retain existing freshness cutoff rather than granting permanent eligibility.
 - [ ] Implement validation/dry-run and explicit import transaction, preserving manual ownership and disabling unsupported automated reanalysis. Deliver empty fillable templates separately from clearly synthetic test examples. No fake public person claims in fixtures.
 - [ ] GREEN test schema examples and DB dedup/manual protection, commit research and contract. Provide the user required fields, not only technical research prose.
 
