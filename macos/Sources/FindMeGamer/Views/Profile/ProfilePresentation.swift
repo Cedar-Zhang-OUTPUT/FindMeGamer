@@ -78,7 +78,9 @@ struct GameProfilePresentation: Equatable {
   let sections: [GameProfileSection: [ProfileDisplayField]]
   let briefFields: [ProfileDisplayField]
 
-  init(profile: FindMeGamerCore.GameProfile) {
+  init(profile original: FindMeGamerCore.GameProfile) {
+    var profile = original
+    profile.currentFacts = ProfileManualPresentation.annotatedFacts(profile.currentFacts, overrides: profile.manualOverrides)
     name = profile.name
     sourceURL = ProfileLinkPolicy.validated(profile.canonicalURL)
     artworkURL =
@@ -173,7 +175,9 @@ struct CreatorProfilePresentation: Equatable {
   let contacts: [CreatorContactPresentation]
   let staleWarning: String?
 
-  init(profile: FindMeGamerCore.CreatorProfile) {
+  init(profile original: FindMeGamerCore.CreatorProfile) {
+    var profile = original
+    profile.currentFacts = ProfileManualPresentation.annotatedFacts(profile.currentFacts, overrides: profile.manualOverrides)
     name = profile.name
     sourceURL = ProfileLinkPolicy.validated(profile.canonicalURL)
     let isStale = CreatorStalePolicy.isStale(profile.sourceStatus)
@@ -181,9 +185,12 @@ struct CreatorProfilePresentation: Equatable {
 
     if isStale {
       artworkURL = nil
-      sourceFacts = []
-      sections = Dictionary(uniqueKeysWithValues: CreatorProfileSection.allCases.map { ($0, []) })
-      briefFields = []
+      profile.currentFacts = ProfileManualPresentation.onlyManual(profile.currentFacts)
+      profile.analysis = ProfileManualPresentation.onlyManual(profile.analysis)
+      profile.brief = ProfileManualPresentation.onlyManual(profile.brief)
+      sourceFacts = Self.makeSourceFacts(profile: profile).filter { $0.annotation == "Manual" }
+      sections = Self.makeSections(profile: profile)
+      briefFields = Self.makeBriefFields(profile.brief)
     } else {
       artworkURL = ProfileJSON.webURL(profile.currentFacts["avatar_url"])
       sourceFacts = Self.makeSourceFacts(profile: profile)
@@ -436,7 +443,7 @@ enum ProfileManualEditorMode: Equatable {
 @MainActor
 @Observable
 final class ProfileSheetState {
-  let profile: Profile
+  private(set) var profile: Profile
   private(set) var favorite: Bool
   private(set) var creatorOverride: FindMeGamerCore.CreatorProfile?
   var manualDraft: CreatorManualDraft
@@ -462,6 +469,13 @@ final class ProfileSheetState {
   var currentProfile: Profile {
     if let creatorOverride { return .creator(creatorOverride) }
     return profile
+  }
+
+  func replaceEditedProfile(_ value: Profile) {
+    guard value.id == profile.id else { return }
+    profile = value
+    creatorOverride = nil
+    if case .creator(let creator) = value { manualDraft = CreatorManualDraft(profile: creator) }
   }
 
   var hasUnsavedManualChanges: Bool {
@@ -704,6 +718,7 @@ private enum ProfileJSON {
   }
 
   private static func claimAnnotation(_ object: JSONObject, inference: Bool) -> String? {
+    if text(object["provenance"]) == "manual" { return "Manual" }
     var parts: [String] = []
     if inference {
       parts.append("AI Inference")

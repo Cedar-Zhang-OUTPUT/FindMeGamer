@@ -5,6 +5,9 @@ struct ProfileSheet: View {
   let onFavorite: ProfileFavoriteAction
   let onReanalyze: ProfileReanalyzeAction
   let onSaveManual: ProfileSaveManualAction
+  let onReadEdit: (ProfileType, UUID) async throws -> ProfileEditDocument
+  let onSaveEdit: (ProfileType, UUID, ProfileEditPatch) async throws -> ProfileEditDocument
+  let onRefreshEdit: (ProfileType, UUID) async throws -> Profile
   let makeIdempotencyKey: @Sendable () -> String
 
   @Environment(\.dismiss) private var dismiss
@@ -13,17 +16,25 @@ struct ProfileSheet: View {
   @State private var state: ProfileSheetState
   @State private var destination: ProfileDetailDestination = .overview
   @State private var isConfirmingDiscard = false
+  @State private var isEditingProfile = false
+  @State private var editRefreshMessage: String?
 
   init(
     profile: Profile,
     onFavorite: @escaping ProfileFavoriteAction,
     onReanalyze: @escaping ProfileReanalyzeAction,
     onSaveManual: @escaping ProfileSaveManualAction,
+    onReadEdit: @escaping (ProfileType, UUID) async throws -> ProfileEditDocument = { _, _ in throw CancellationError() },
+    onSaveEdit: @escaping (ProfileType, UUID, ProfileEditPatch) async throws -> ProfileEditDocument = { _, _, _ in throw CancellationError() },
+    onRefreshEdit: @escaping (ProfileType, UUID) async throws -> Profile = { _, _ in throw CancellationError() },
     makeIdempotencyKey: @escaping @Sendable () -> String = { UUID().uuidString }
   ) {
     self.onFavorite = onFavorite
     self.onReanalyze = onReanalyze
     self.onSaveManual = onSaveManual
+    self.onReadEdit = onReadEdit
+    self.onSaveEdit = onSaveEdit
+    self.onRefreshEdit = onRefreshEdit
     self.makeIdempotencyKey = makeIdempotencyKey
     _state = State(initialValue: ProfileSheetState(profile: profile))
   }
@@ -98,6 +109,10 @@ struct ProfileSheet: View {
       }
 
       HStack {
+        Button("Edit profile") { isEditingProfile = true }
+          .disabled(!writesEnabled || state.hasUnsavedManualChanges || state.isManualSaveInFlight || state.isReanalyzeInFlight)
+          .accessibilityIdentifier("profile.edit")
+        if let editRefreshMessage { Text(editRefreshMessage).font(.caption).foregroundStyle(.secondary) }
         if let success = state.actionSuccessMessage {
           Label(success, systemImage: "checkmark.circle")
             .font(.caption)
@@ -122,6 +137,18 @@ struct ProfileSheet: View {
     .workspaceCanvas()
     .accessibilityIdentifier("profile.sheet")
     .interactiveDismissDisabled(state.hasUnsavedManualChanges || state.isManualSaveInFlight)
+    .sheet(isPresented: $isEditingProfile) {
+      ProfileEditor(type: profileType,
+        read: { try await onReadEdit(profileType, state.currentProfile.id) },
+        save: { try await onSaveEdit(profileType, state.currentProfile.id, $0) },
+        onSaved: {
+          editRefreshMessage = "Profile saved."
+          Task {
+            do { state.replaceEditedProfile(try await onRefreshEdit(profileType, state.currentProfile.id)) }
+            catch { editRefreshMessage = "Profile saved. Refresh failed; reopen the profile to see current values." }
+          }
+        })
+    }
     .confirmationDialog(
       "Discard unsaved contact changes?", isPresented: $isConfirmingDiscard,
       titleVisibility: .visible

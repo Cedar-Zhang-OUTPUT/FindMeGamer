@@ -137,6 +137,28 @@ public struct OpenAPIService: APIService, Sendable {
     }
   }
 
+  public func profileEdit(type: ProfileType, id: UUID) async throws -> ProfileEditDocument {
+    let value = try await perform {
+      try await client.getProfileEdit(.init(path: .init(profile_type: type.rawValue, profile_id: id.uuidString)))
+    }.ok.body.json
+    return try DomainMapper.profileEdit(value)
+  }
+
+  public func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws -> ProfileEditDocument {
+    let generated = Components.Schemas.ProfileEditPatch(
+      changes: .init(additionalProperties: patch.changes.mapValues { value in
+        switch value {
+        case .text(let text): .init(value1: text)
+        case .list(let items): .init(value2: items)
+        }
+      }), expected_revision: patch.expectedRevision, reset_fields: patch.resetFields)
+    let value = try await perform {
+      try await client.updateProfileEdit(.init(
+        path: .init(profile_type: type.rawValue, profile_id: id.uuidString), body: .json(generated)))
+    }.ok.body.json
+    return try DomainMapper.profileEdit(value)
+  }
+
   public func updateCreatorManual(id: UUID, email: String?, notes: String) async throws
     -> CreatorProfile
   {

@@ -218,6 +218,14 @@ struct MatchResultView: View {
   private func availableContent(_ result: MatchResult) -> some View {
     let presentation = MatchResultPresentation(result: result)
     return VStack(spacing: 0) {
+      if result.profileRevisions.contains(where: \.hasChanged) {
+        Label("Current profiles have changed. This Match keeps its original results. Start a new Match to use the updates.", systemImage: "clock.arrow.circlepath")
+          .font(.callout).foregroundStyle(.secondary).padding(12)
+          .accessibilityIdentifier("match.profileRevisionNotice")
+      } else if result.profileRevisions.contains(where: { $0.snapshotRevision == nil }) {
+        Text("Historical profile versions are unknown. Opening a Profile shows its current data.")
+          .font(.caption).foregroundStyle(.secondary).padding(12)
+      }
       if let batch = acceptedBatch, batch.matchTaskID == matchID {
         ViewThatFits(in: .horizontal) {
           HStack(spacing: 12) {

@@ -10,6 +10,8 @@ public protocol APIService: Sendable {
     type: ProfileType, query: String, onlyCollection: Bool, cursor: String?, limit: Int
   ) async throws -> ProfileCardPage
   func profile(type: ProfileType, id: UUID) async throws -> Profile
+  func profileEdit(type: ProfileType, id: UUID) async throws -> ProfileEditDocument
+  func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws -> ProfileEditDocument
   func setFavorite(type: ProfileType, id: UUID, favorite: Bool) async throws -> ProfileCard
   func updateCreatorManual(id: UUID, email: String?, notes: String) async throws
     -> CreatorProfile

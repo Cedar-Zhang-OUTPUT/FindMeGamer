@@ -180,6 +180,7 @@ public struct MatchCandidate: Identifiable, Sendable, Equatable, Hashable {
 }
 
 public struct MatchResult: Identifiable, Sendable, Equatable, Hashable {
+  public var profileRevisions: [ProfileRevisionComparison] = []
   public let id: UUID
   public let game: MatchGameHeader
   public let status: JobStatus
@@ -198,4 +199,12 @@ public struct MatchResult: Identifiable, Sendable, Equatable, Hashable {
   public let state: MatchResultState
   public let recommendedMatches: [MatchCandidate]
   public let otherMatches: [MatchCandidate]
+}
+
+public struct ProfileRevisionComparison: Sendable, Equatable, Hashable {
+  public let profileType: ProfileType
+  public let profileID: UUID
+  public let snapshotRevision: Int?
+  public let currentRevision: Int
+  public var hasChanged: Bool { snapshotRevision.map { $0 != currentRevision } ?? false }
 }

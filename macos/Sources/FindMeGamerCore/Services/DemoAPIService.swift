@@ -1,6 +1,8 @@
 import Foundation
 
 actor DemoAPIService: APIService {
+  private var editDocuments: [UUID: ProfileEditDocument] = [:]
+  private var editSources: [UUID: Profile] = [:]
   private let scenario: DemoScenario
   private var pendingMatchResults: [UUID: MatchResult] = [:]
   private var scenarioMatchPolls: [UUID: Int] = [:]
@@ -201,6 +203,48 @@ actor DemoAPIService: APIService {
     }
   }
 
+  func profileEdit(type: ProfileType, id: UUID) async throws -> ProfileEditDocument {
+    if let document = editDocuments[id] { return document }
+    let source = try await profile(type: type, id: id)
+    let document = DemoProfileEditing.document(source, type: type)
+    editSources[id] = source
+    editDocuments[id] = document
+    return document
+  }
+
+  func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws -> ProfileEditDocument {
+    var document = try await profileEdit(type: type, id: id)
+    guard document.revision == patch.expectedRevision else {
+      throw APIError(code: "profile_revision_conflict", message: "Profile changed. Read the latest profile.", retryable: false)
+    }
+    let keys = Set(document.fields.map(\.key))
+    guard Set(patch.changes.keys).union(patch.resetFields).isSubset(of: keys),
+      Set(patch.changes.keys).isDisjoint(with: patch.resetFields) else { throw APIError.invalidResponse }
+    for index in document.fields.indices {
+      let field = document.fields[index]
+      if let value = patch.changes[field.key] {
+        let isList: Bool = if case .list = value { true } else { false }
+        guard isList == (field.kind == "list"), !field.required || !value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+          throw APIError(code: "profile_edit_invalid", message: "Check required fields.", retryable: false)
+        }
+        document.fields[index].value = value
+        document.fields[index].isOverridden = true
+      } else if patch.resetFields.contains(field.key) {
+        document.fields[index].value = field.sourceValue ?? (field.kind == "list" ? .list([]) : .text(""))
+        document.fields[index].isOverridden = false
+      }
+    }
+    document.revision += 1
+    let current = try await profile(type: type, id: id)
+    let effective = DemoProfileEditing.applying(document, to: current, source: editSources[id] ?? current)
+    switch effective {
+    case .game(let value): games[games.firstIndex { $0.id == id }!] = value
+    case .creator(let value): creators[creators.firstIndex { $0.id == id }!] = value
+    }
+    editDocuments[id] = document
+    return document
+  }
+
   func updateCreatorManual(id: UUID, email: String?, notes: String) async throws
     -> CreatorProfile
   {
@@ -228,7 +272,7 @@ actor DemoAPIService: APIService {
     let contacts =
       manualContact.map { [$0] + visibleDiscoveredContacts } ?? canonicalDiscoveredContacts
     let primaryContact = manualContact ?? canonicalDiscoveredContacts.first
-    let updated = CreatorProfile(
+    var updated = CreatorProfile(
       id: old.id, name: old.name, youtubeChannelID: old.youtubeChannelID,
       canonicalURL: old.canonicalURL, favorite: old.favorite,
       currentFacts: old.currentFacts, brief: old.brief, sourceStatus: old.sourceStatus,
@@ -236,6 +280,9 @@ actor DemoAPIService: APIService {
       contact: primaryContact, manualNotes: notes, analysis: old.analysis,
       modelMetadata: old.modelMetadata, promptMetadata: old.promptMetadata,
       contacts: contacts)
+    updated.profileRevision = old.profileRevision + 1
+    updated.manualOverrides = old.manualOverrides
+    if var document = editDocuments[id] { document.revision = updated.profileRevision; editDocuments[id] = document }
     creators[index] = updated
     return updated
   }
@@ -1089,36 +1136,45 @@ private struct DemoFixtures {
   }
 
   static func card(_ profile: GameProfile) -> GameProfileCard {
-    GameProfileCard(
+    var result = GameProfileCard(
       id: profile.id, name: profile.name, steamAppID: profile.steamAppID,
       canonicalURL: profile.canonicalURL, favorite: profile.favorite,
       currentFacts: profile.currentFacts, brief: profile.brief,
       sourceStatus: profile.sourceStatus, lastAnalyzedAt: profile.lastAnalyzedAt,
       nextAnalysisAt: profile.nextAnalysisAt)
+    result.profileRevision = profile.profileRevision
+    result.manualOverrides = profile.manualOverrides
+    return result
   }
 
   static func card(_ profile: CreatorProfile) -> CreatorProfileCard {
-    CreatorProfileCard(
+    var result = CreatorProfileCard(
       id: profile.id, name: profile.name, youtubeChannelID: profile.youtubeChannelID,
       canonicalURL: profile.canonicalURL, favorite: profile.favorite,
       currentFacts: profile.currentFacts, brief: profile.brief,
       sourceStatus: profile.sourceStatus, lastAnalyzedAt: profile.lastAnalyzedAt,
       nextAnalysisAt: profile.nextAnalysisAt, contact: profile.contact,
       contacts: profile.contacts)
+    result.profileRevision = profile.profileRevision
+    result.manualOverrides = profile.manualOverrides
+    return result
   }
 
   static func replacingFavorite(_ profile: GameProfile, favorite: Bool) -> GameProfile {
-    GameProfile(
+    var result = GameProfile(
       id: profile.id, name: profile.name, steamAppID: profile.steamAppID,
       canonicalURL: profile.canonicalURL, favorite: favorite,
       currentFacts: profile.currentFacts, brief: profile.brief,
       sourceStatus: profile.sourceStatus, lastAnalyzedAt: profile.lastAnalyzedAt,
       nextAnalysisAt: profile.nextAnalysisAt, analysis: profile.analysis,
       modelMetadata: profile.modelMetadata, promptMetadata: profile.promptMetadata)
+    result.profileRevision = profile.profileRevision
+    result.manualOverrides = profile.manualOverrides
+    return result
   }
 
   static func replacingFavorite(_ profile: CreatorProfile, favorite: Bool) -> CreatorProfile {
-    CreatorProfile(
+    var result = CreatorProfile(
       id: profile.id, name: profile.name, youtubeChannelID: profile.youtubeChannelID,
       canonicalURL: profile.canonicalURL, favorite: favorite,
       currentFacts: profile.currentFacts, brief: profile.brief,
@@ -1127,6 +1183,9 @@ private struct DemoFixtures {
       manualNotes: profile.manualNotes, analysis: profile.analysis,
       modelMetadata: profile.modelMetadata, promptMetadata: profile.promptMetadata,
       contacts: profile.contacts)
+    result.profileRevision = profile.profileRevision
+    result.manualOverrides = profile.manualOverrides
+    return result
   }
 
   static func replacingDefault(_ template: OutreachTemplate, isDefault: Bool)

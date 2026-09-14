@@ -176,6 +176,24 @@ public final class ClientCoordinator {
     isLoadingProfile = false
   }
 
+  public func profileEdit(type: ProfileType, id: UUID) async throws -> ProfileEditDocument {
+    try await api.profileEdit(type: type, id: id)
+  }
+
+  public func saveProfileEdit(type: ProfileType, id: UUID, patch: ProfileEditPatch) async throws -> ProfileEditDocument {
+    try await api.saveProfileEdit(type: type, id: id, patch: patch)
+  }
+
+  public func refreshEditedProfile(type: ProfileType, id: UUID) async throws -> Profile {
+    // The PATCH is already acknowledged. Refresh errors must never change its save outcome.
+    let profile = try await api.profile(type: type, id: id)
+    Task {
+      await refreshLibraryIfSelected(type)
+      await match.refreshSelectedResult()
+    }
+    return profile
+  }
+
   public func setProfileFavorite(type: ProfileType, id: UUID, favorite: Bool) async throws
     -> ProfileCard
   {

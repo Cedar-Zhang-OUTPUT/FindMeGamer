@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ProfileType: String, Sendable, Equatable, Hashable, CaseIterable {
+public enum ProfileType: String, Sendable, Equatable, Hashable, CaseIterable, Codable {
   case game
   case creator
 
@@ -43,6 +43,8 @@ public struct CreatorContact: Sendable, Equatable, Hashable {
 }
 
 public struct GameProfileCard: Identifiable, Sendable, Equatable {
+  public var profileRevision: Int = 0
+  public var manualOverrides: [String: ProfileEditValue] = [:]
   public let id: UUID
   public let name: String
   public let steamAppID: String
@@ -56,6 +58,8 @@ public struct GameProfileCard: Identifiable, Sendable, Equatable {
 }
 
 public struct CreatorProfileCard: Identifiable, Sendable, Equatable {
+  public var profileRevision: Int = 0
+  public var manualOverrides: [String: ProfileEditValue] = [:]
   public let id: UUID
   public let name: String
   public let youtubeChannelID: String
@@ -95,36 +99,40 @@ public struct CreatorProfileCard: Identifiable, Sendable, Equatable {
 }
 
 public struct GameProfile: Identifiable, Sendable, Equatable {
+  public var profileRevision: Int = 0
+  public var manualOverrides: [String: ProfileEditValue] = [:]
   public let id: UUID
-  public let name: String
+  public var name: String
   public let steamAppID: String
   public let canonicalURL: String
   public let favorite: Bool
-  public let currentFacts: JSONObject
-  public let brief: JSONObject
+  public var currentFacts: JSONObject
+  public var brief: JSONObject
   public let sourceStatus: JSONObject
   public let lastAnalyzedAt: Date?
   public let nextAnalysisAt: Date?
-  public let analysis: JSONObject
+  public var analysis: JSONObject
   public let modelMetadata: JSONObject
   public let promptMetadata: JSONObject
 }
 
 public struct CreatorProfile: Identifiable, Sendable, Equatable {
+  public var profileRevision: Int = 0
+  public var manualOverrides: [String: ProfileEditValue] = [:]
   public let id: UUID
-  public let name: String
+  public var name: String
   public let youtubeChannelID: String
   public let canonicalURL: String
   public let favorite: Bool
-  public let currentFacts: JSONObject
-  public let brief: JSONObject
+  public var currentFacts: JSONObject
+  public var brief: JSONObject
   public let sourceStatus: JSONObject
   public let lastAnalyzedAt: Date?
   public let nextAnalysisAt: Date?
   public let contact: CreatorContact?
   public let contacts: [CreatorContact]
   public let manualNotes: String?
-  public let analysis: JSONObject
+  public var analysis: JSONObject
   public let modelMetadata: JSONObject
   public let promptMetadata: JSONObject
 

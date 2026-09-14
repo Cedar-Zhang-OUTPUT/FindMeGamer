@@ -3,30 +3,52 @@ import Foundation
 import OpenAPIRuntime
 
 enum DomainMapper {
+  static func profileEdit(_ value: Components.Schemas.ProfileEditDocument) throws -> ProfileEditDocument {
+    func editValue(_ value: Components.Schemas.EditValue) throws -> ProfileEditValue {
+      switch (value.value1, value.value2) {
+      case (let text?, nil): .text(text)
+      case (nil, let items?): .list(items)
+      default: throw APIError.invalidResponse
+      }
+    }
+    return ProfileEditDocument(profileType: value.profile_type == .game ? .game : .creator,
+      profileID: try uuid(value.profile_id), revision: value.revision,
+      fields: try value.fields.map {
+        .init(key: $0.key, section: $0.section.rawValue, label: $0.label, kind: $0.kind.rawValue,
+          required: $0.required, value: try editValue($0.value), sourceValue: try $0.source_value.map { try editValue($0.value1) },
+          isOverridden: $0.is_overridden)
+      })
+  }
   static func gameCard(_ value: Components.Schemas.GameProfileCard) throws -> GameProfileCard {
-    GameProfileCard(
+    var result = GameProfileCard(
       id: try uuid(value.id), name: value.name, steamAppID: value.steam_app_id,
       canonicalURL: value.canonical_url, favorite: value.favorite,
       currentFacts: try json(value.current_facts), brief: try json(value.brief),
       sourceStatus: try json(value.source_status), lastAnalyzedAt: value.last_analyzed_at,
       nextAnalysisAt: value.next_analysis_at)
+    result.profileRevision = value.profile_revision ?? 0
+    result.manualOverrides = try overrides(value.manual_overrides?.additionalProperties)
+    return result
   }
 
   static func creatorCard(_ value: Components.Schemas.CreatorProfileCard) throws
     -> CreatorProfileCard
   {
     let preferredContact = contact(value.contact?.value1)
-    return CreatorProfileCard(
+    var result = CreatorProfileCard(
       id: try uuid(value.id), name: value.name, youtubeChannelID: value.youtube_channel_id,
       canonicalURL: value.canonical_url, favorite: value.favorite,
       currentFacts: try json(value.current_facts), brief: try json(value.brief),
       sourceStatus: try json(value.source_status), lastAnalyzedAt: value.last_analyzed_at,
       nextAnalysisAt: value.next_analysis_at, contact: preferredContact,
       contacts: contacts(value.contacts, fallback: preferredContact))
+    result.profileRevision = value.profile_revision ?? 0
+    result.manualOverrides = try overrides(value.manual_overrides?.additionalProperties)
+    return result
   }
 
   static func gameProfile(_ value: Components.Schemas.GameProfileDetail) throws -> GameProfile {
-    GameProfile(
+    var result = GameProfile(
       id: try uuid(value.id), name: value.name, steamAppID: value.steam_app_id,
       canonicalURL: value.canonical_url, favorite: value.favorite,
       currentFacts: try json(value.current_facts), brief: try json(value.brief),
@@ -34,13 +56,16 @@ enum DomainMapper {
       nextAnalysisAt: value.next_analysis_at, analysis: try json(value.analysis),
       modelMetadata: try json(value.model_metadata), promptMetadata: try json(value.prompt_metadata)
     )
+    result.profileRevision = value.profile_revision ?? 0
+    result.manualOverrides = try overrides(value.manual_overrides?.additionalProperties)
+    return result
   }
 
   static func creatorProfile(_ value: Components.Schemas.CreatorProfileDetail) throws
     -> CreatorProfile
   {
     let preferredContact = contact(value.contact?.value1)
-    return CreatorProfile(
+    var result = CreatorProfile(
       id: try uuid(value.id), name: value.name, youtubeChannelID: value.youtube_channel_id,
       canonicalURL: value.canonical_url, favorite: value.favorite,
       currentFacts: try json(value.current_facts), brief: try json(value.brief),
@@ -51,6 +76,19 @@ enum DomainMapper {
       promptMetadata: try json(value.prompt_metadata),
       contacts: contacts(value.contacts, fallback: preferredContact)
     )
+    result.profileRevision = value.profile_revision ?? 0
+    result.manualOverrides = try overrides(value.manual_overrides?.additionalProperties)
+    return result
+  }
+
+  private static func overrides(_ values: [String: Components.Schemas.EditValue]?) throws -> [String: ProfileEditValue] {
+    try (values ?? [:]).mapValues {
+      switch ($0.value1, $0.value2) {
+      case (let text?, nil): .text(text)
+      case (nil, let list?): .list(list)
+      default: throw APIError.invalidResponse
+      }
+    }
   }
 
   static func analysisJob(_ value: Components.Schemas.AnalysisJobResponse) throws -> AnalysisJob {
@@ -129,7 +167,7 @@ enum DomainMapper {
   }
 
   static func matchResult(_ value: Components.Schemas.MatchDetail) throws -> MatchResult {
-    MatchResult(
+    var result = MatchResult(
       id: try uuid(value.id), game: try matchGame(value.game),
       status: try jobStatus(value.status.rawValue), stage: try matchStage(value.stage.rawValue),
       completedUnits: value.completed_units, totalUnits: value.total_units,
@@ -142,6 +180,12 @@ enum DomainMapper {
       completedAt: value.completed_at, state: try resultState(value.result_state.rawValue),
       recommendedMatches: try value.recommended_matches.map(candidate),
       otherMatches: try value.other_matches.map(candidate))
+    result.profileRevisions = try (value.profile_revisions ?? []).map {
+      .init(profileType: $0.profile_type == .game ? .game : .creator,
+        profileID: try uuid($0.profile_id), snapshotRevision: $0.snapshot_revision,
+        currentRevision: $0.current_revision)
+    }
+    return result
   }
 
   static func campaign(_ value: Components.Schemas.OutreachCampaignDetail) throws

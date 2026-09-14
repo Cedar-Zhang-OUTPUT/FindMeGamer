@@ -22,8 +22,12 @@ struct CreatorProfileDetail: View {
     VStack(alignment: .leading, spacing: WorkspaceDesign.spaceM) {
       switch destination {
       case .overview:
-        if presentation.staleWarning == nil {
+        if presentation.staleWarning == nil || !presentation.briefFields.isEmpty {
           ProfileOverview(fields: presentation.briefFields, type: .creator)
+          if let warning = presentation.staleWarning {
+            Label(warning + " Manual values are shown.", systemImage: "exclamationmark.triangle")
+              .font(.callout).foregroundStyle(.secondary)
+          }
         } else {
           ContentUnavailableView {
             Label("YouTube data is stale", systemImage: "arrow.clockwise")

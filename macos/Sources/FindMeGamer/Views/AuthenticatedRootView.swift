@@ -313,7 +313,10 @@ struct AuthenticatedRootView: View {
         },
         onSaveManual: { id, email, notes in
           try await coordinator.updateCreatorManual(id: id, email: email, notes: notes)
-        })
+        },
+        onReadEdit: { try await coordinator.profileEdit(type: $0, id: $1) },
+        onSaveEdit: { try await coordinator.saveProfileEdit(type: $0, id: $1, patch: $2) },
+        onRefreshEdit: { try await coordinator.refreshEditedProfile(type: $0, id: $1) })
     } else {
       VStack(spacing: 14) {
         ContentUnavailableView(

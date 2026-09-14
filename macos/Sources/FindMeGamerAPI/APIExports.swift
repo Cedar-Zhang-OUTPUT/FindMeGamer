@@ -31,6 +31,8 @@ public enum GeneratedOperationNames {
     "listGameProfiles",
     "rejectUnknownProfileType",
     "getProfile",
+    "getProfileEdit",
+    "updateProfileEdit",
     "setProfileFavorite",
     "validateSession",
     "getConnectionStatus",

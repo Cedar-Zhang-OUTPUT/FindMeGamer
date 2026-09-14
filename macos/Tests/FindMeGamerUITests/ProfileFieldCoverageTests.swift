@@ -184,6 +184,22 @@ import Testing
     #expect(staleManual.contact?.availability == .manual)
   }
 
+  @Test func staleCreatorRetainsManualFactsAndClaimsWithoutRevivingSource() {
+    var profile = replacingCreator(creatorProfile(), sourceStatus: ["youtube": .string("stale")])
+    profile.manualOverrides = ["facts.description": .text("Human description")]
+    profile.currentFacts["description"] = .string("Human description")
+    profile.analysis["content_summary"] = .object(["status": .string("available"), "value": .string("Human analysis"), "provenance": .string("manual")])
+    profile.brief["audience"] = .object(["status": .string("available"), "value": .string("Human audience"), "provenance": .string("manual")])
+    let presentation = CreatorProfilePresentation(profile: profile)
+    #expect(presentation.sourceFacts.flatMap(\.values) == ["Human description"])
+    #expect(presentation.sourceFacts.first?.annotation == "Manual")
+    let analysis = presentation.sections.values.flatMap { $0 }.flatMap(\.values)
+    #expect(analysis.contains("Human analysis"))
+    #expect(!analysis.contains("Measured"))
+    #expect(presentation.briefFields.flatMap(\.values) == ["Human audience"])
+    #expect(presentation.briefFields.first?.annotation == "Manual")
+  }
+
   @Test func manualDraftNeverPromotesDiscoveredContactAndValidatesExactBoundaries() {
     var discovered = CreatorManualDraft(profile: creatorProfile())
     #expect(discovered.email == "")

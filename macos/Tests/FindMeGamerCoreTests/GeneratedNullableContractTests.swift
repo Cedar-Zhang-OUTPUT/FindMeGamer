@@ -294,9 +294,8 @@ import Testing
     swiftDocument["x-find-me-gamer-source-sha256"] as? String
   )
 
-  // This client-only branch is pinned to
-  // 8bb8f65913a65039d19542a4e9f85f24e05d255a:backend/openapi.json.
-  #expect(recordedDigest == "2e5f1ee3128e39f26d941eea626d29189a309e1efbaea81e5c436c1eae0848ff")
+  // Native profile editing contract from cef6ceb:backend/openapi.json.
+  #expect(recordedDigest == "a1fdf37b15c0360ac2066296c625c949c47f1547cd1ca4000dafea1b63e682bb")
 }
 
 private func decodeGenerated<Value: Decodable>(
