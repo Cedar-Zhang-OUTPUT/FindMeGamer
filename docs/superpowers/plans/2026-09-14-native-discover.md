@@ -71,7 +71,7 @@ def creator_job_identity(platform: str, account_id: str) -> str:
 
 ## Task 2: X URL resolution and full Creator analysis
 
-**Files:** Create `backend/app/integrations/x.py`, `backend/app/analysis/x_creator_pipeline.py`, `backend/app/analysis/prompts/x_creator.py`; modify `analysis/targets.py`, `analysis/runtime.py`, `analysis/service.py`, `analysis/contracts.py`, `core/config.py`, `core/analysis_job_contract.py`, `integrations/connection_probe.py`, `schemas/settings.py`, `api/routes/settings.py` only for X support. Tests in `tests/unit/integrations/test_x.py`, `tests/unit/analysis/test_x_creator_pipeline.py`, `tests/integration/test_x_creator_analysis.py` and existing target/runtime/worker tests.
+**Files:** Create `backend/app/integrations/x.py`, `backend/app/analysis/x_creator_pipeline.py`, `backend/app/analysis/prompts/x_creator.py`, `backend/migrations/versions/20260914_native_0010_x_analysis.py`; modify `analysis/targets.py`, `analysis/runtime.py`, `analysis/service.py`, `analysis/contracts.py`, `core/config.py`, `core/analysis_job_contract.py`, `integrations/connection_probe.py`, `schemas/settings.py`, `api/routes/settings.py` only for X support. Tests in `tests/unit/integrations/test_x.py`, `tests/unit/analysis/test_x_creator_pipeline.py`, `tests/integration/test_x_creator_analysis.py` and existing target/runtime/worker tests.
 
 **Interfaces:** X homepage aliases resolve through official user lookup to stable account ID and canonical `https://x.com/i/user/{id}`; internal canonical target key is `x:{id}`. Extend the existing resolver/runtime instead of bypassing JobsRepository. `XGateway` supports account lookup and recent public content; `XCreatorAnalysisPipeline` produces the existing common Creator analysis/Brief contract with platform-specific facts and source references. No fabricated video statistics or YouTube identity.
 
@@ -84,12 +84,14 @@ def test_x_id_url_is_namespaced():
     assert target.canonical_id == 'x:12345'
 ```
 - [ ] Add real-persistence analysis tests: account/posts → common Profile/Brief; missing public email invokes existing Gemini fallback; multiple contacts retain purpose; failed refresh retains prior Profile/manual overrides. Missing X configuration/402/403 spend cap/429 become distinct safe errors, not empty success. No-video/visual-unavailable is explicit, not fatal invented media.
+- [ ] Additive native0010 migration must replace the succeeded-job validation SQL function introduced in `20260902_0004_analysis_job_public_state.py` to accept true generic identity and safe canonical X URLs without weakening YouTube validation. Test actual X successful publication against the migrated DB, not merely ORM Profile insertion. Coordinate native Match freshness checks currently keyed to YouTube source status so real X source evidence is eligible without masquerading as YouTube.
+- [ ] Extend public Creator identity DTOs and serializers in `schemas/match.py`, `schemas/outreach.py`, their route/repository consumers, and required source editability rules. These still require `youtube_channel_id` in the baseline. Test reading X through Match and outreach preview, not just Library; no fake legacy ID and no real send.
 - [ ] Run focused RED, implement X gateway and pipeline using existing HTTP safeguards, artifact provenance, optional email fallback and DeepSeek configuration. Reuse existing validation instead of restoring v2 activity logic. Keep checkpoint/retry behavior consistent for completed stages.
 - [ ] Run focused GREEN + existing YouTube worker/contact/Match regressions + full backend. Commit and report exact supported X account/content endpoints for later real acceptance.
 
 ## Task 3: Durable Discover search and game prerequisite
 
-**Files:** Create `backend/app/schemas/discover.py`, `db/models/discover.py`, `repositories/discover.py`, `api/routes/discover.py`, `discovery/service.py`, `discovery/runtime.py`, `discovery/planning.py`, `integrations/youtube_discovery.py`, `integrations/x_discovery.py`, `workers/discover_tasks.py`, migration `20260914_native_0010_discover.py`. Register in `db/models/__init__.py`, `main.py`, existing Celery application/Beat configuration. Tests `tests/unit/discovery/test_discover_providers.py`, `test_discover_planning.py`, `tests/integration/test_native_discover.py` and migration test.
+**Files:** Create `backend/app/schemas/discover.py`, `db/models/discover.py`, `repositories/discover.py`, `api/routes/discover.py`, `discovery/service.py`, `discovery/runtime.py`, `discovery/planning.py`, `integrations/youtube_discovery.py`, `integrations/x_discovery.py`, `workers/discover_tasks.py`, migration `20260914_native_0011_discover.py`. Register in `db/models/__init__.py`, `main.py`, existing Celery application/Beat configuration. Tests `tests/unit/discovery/test_discover_providers.py`, `test_discover_planning.py`, `tests/integration/test_native_discover.py` and migration test.
 
 **Interfaces (freeze DTOs here before native work):**
 - `POST /discover/resolve-game`: `{steam_url}` → `{steam_app_id, name, canonical_url, game_id?}`; public Steam metadata lookup only, no analysis job.
@@ -114,7 +116,7 @@ assert response.json()['status'] == 'queued'
 
 ## Task 4: Selected Analyze batch and exactly-once automatic Match
 
-**Files:** Create `backend/app/schemas/discover_batch.py`, `db/models/discover_batch.py`, `repositories/discover_batch.py`, `discovery/batches.py`, `workers/discover_batch_tasks.py`, migration `20260914_native_0011_discover_batches.py`. Extend Discover routes/runtime, worker registration and exported OpenAPI. Tests `tests/integration/test_discover_analysis_batches.py`, `test_discover_auto_match.py`.
+**Files:** Create `backend/app/schemas/discover_batch.py`, `db/models/discover_batch.py`, `repositories/discover_batch.py`, `discovery/batches.py`, `workers/discover_batch_tasks.py`, migration `20260914_native_0012_discover_batches.py`. Extend Discover routes/runtime, worker registration and exported OpenAPI. Tests `tests/integration/test_discover_analysis_batches.py`, `test_discover_auto_match.py`.
 
 **Interfaces:** `POST /discover/{id}/analysis-batches` with idempotency key and `{candidate_ids:[UUID],mode:'analyze'|'analyze_and_match'}`; `GET /discover/{id}/analysis-batches` → history; `GET /discover/{id}/analysis-batches/{batch_id}` → `{id,discover_id,mode,status,items:[{candidate_id,profile_id?,analysis_job_id?,status,error?}],match_task_id?,error?}`. Cancel has no endpoint because it makes no submission. Use existing `JobsRepository` and `MatchRepository.create_locked_task` transaction semantics. Unique persisted batch follow-up Match link.
 
@@ -152,6 +154,8 @@ model.deselectAll()
 **Files:** Create `docs/creator-import/README.md`, `creator-import.schema.json`, `twitch.example.json`, `instagram.example.json`; create `backend/app/schemas/creator_import.py`, `backend/app/cli/import_creator_profiles.py`, tests `tests/unit/test_creator_import_contract.py`, `tests/integration/test_creator_import.py`.
 
 **Interfaces:** `python -m app.cli.import_creator_profiles --file INPUT --dry-run` validates a versioned `schema_version:1` envelope with records carrying platform identity, canonical URL, public facts, dated works/evidence/metrics, contacts with purpose/source, optional validated common analysis/Brief. Explicit non-dry-run import is idempotent by platform/account identity and refuses overwriting an existing manually edited Profile without explicit conflict handling. No actual data import as part of development.
+
+The early handoff in `docs/creator-import/COLLECTION-HANDOFF.md` and `*.collection-template.json` is already shared with colleagues. Also accept/normalize its `collection_schema_version:1` envelope without losing fields. Unknown account IDs may be collected but must be resolved/confirmed before Library insertion; dry-run reports those records as needing identity resolution. Do not require colleagues to rewrite supplied work evidence into internal AI response schemas.
 
 - [ ] Research official Twitch and Meta APIs, record field availability and whose authorization is required; distinguish obtainable from optional/private/unavailable. Shared Profile core with typed native metrics, not coerced YouTube fields. Country/language/email may be unknown.
 - [ ] RED contract tests accept supplied fact-only fixtures but do not make them Match-eligible until valid analysis/Brief exists; reject identity/source mismatches, secret-bearing fields and duplicate contact noise. Roundtrip template/schema uses real Pydantic validation, not source-text assertions.
