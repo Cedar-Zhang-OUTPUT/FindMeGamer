@@ -162,6 +162,6 @@ Example next prompt:
 - **403 / insufficient scope:** a valid token can lack a particular capability. Catalog success is not permission to send.
 - **Installation failure:** inspect checksums, destination permissions and existing `.previous` Skill backups. Preserve the prior installation and user files; do not delete directories to force success.
 - **Download/runtime permissions:** follow the host's approval mechanism. If blocked, explain it rather than claiming completion or finding a bypass.
-- **Current service limits (2026-09-15):** SMTP is not configured; previews work but real delivery does not. Steam Store game lookup/recommendations work without a key; Steam Web API methods requiring a key are unavailable until configured. Instagram/Twitch live APIs are not included. Monetary API cost and Codex/Work per-task usage remain unknown unless actual attributable data is available.
+- **Current service limits (2026-09-15):** SMTP is not configured; previews work but real delivery does not. Steam Store game lookup/recommendations work without a key; Steam Web API methods requiring a key are unavailable until configured. Instagram/Twitch live APIs are not included. Version 0.2.0 reports estimated API costs and unpriced exclusions, not invoices. Skills separately check available Codex account quota before/after work; precise per-task consumption may still be unavailable.
 
 This document contains no access token. Installing a public client does not grant access to company services or permission to send emails.

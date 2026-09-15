@@ -17,4 +17,10 @@ The user's previous external-environment run supplies the behavioral regression:
 
 Independent review exercised the pricing/usage/installer tests, real PostgreSQL migration, Go suite, and Skill scenarios (available host tool, missing tool, reset window, partial Gemini pricing). No blockers found. Initial new pricing tests failed on missing cost output/estimator/grounding counts; new installer/Go tests failed on missing latest-selector/combined update and blocked repeated Skill backups before implementation.
 
-Deployment and public-download acceptance results are recorded below once performed.
+## Deployment verification
+
+Backend deployed at `/opt/fmg-agent-0.2.0-b97f52b`, image `fmg-agent:0.2.0-b97f52b`; package reports 0.2.0 and database revision is `0005_cost`. API is healthy and Worker is running. All 69 existing ledger rows remain present and unpriced. Maintenance backup: `/var/backups/find-me-gamer-agent/upgrade-0.2.0-b97f52b/agent-20260915T101626Z.dump`; subsequent scheduled-backup service invocation completed successfully (local plus S3).
+
+116 service tests passed across the full image-enabled suite (115 plus separately enabled compiled-CLI/email E2E). Real PostgreSQL old-schema migration preserves an existing usage record with null price. Four installer/bundle tests, Go tests/vet, CLI HTTP smoke, and both Skill metadata validators passed. The existing third-party AnyIO deprecation warning remains nonblocking.
+
+Public HTTPS smoke run `release-020-smoke`: X user lookup returned an estimated USD 0.010; Steam Store search returned USD 0 marginal API charge. The authoritative run total was USD 0.010 for two successful requests with no unknown components. This is an estimate before discounts/deduplication, not observed billing. No real email sent and no additional Gemini invocation made for this deployment.
