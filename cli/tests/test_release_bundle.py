@@ -41,4 +41,4 @@ def test_actual_bundle_installs_skills_and_reports_release_version(tmp_path):
     )
     assert version.returncode == 0
     assert "0.1.0-dev" not in version.stdout
-    assert "0.1.0" in version.stdout
+    assert "0.2.0" in version.stdout

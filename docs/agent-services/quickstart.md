@@ -1,6 +1,6 @@
 # FMG CLI and Skills — company setup
 
-To delegate setup to an Agent, give it the public [Agent installation guide](https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.1.0/AGENT-INSTALL.md). It covers environment checks, verified installation, private-token login, Skill loading and no-quota acceptance checks.
+To delegate setup to an Agent, give it the public [Agent installation guide](https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.2.0/AGENT-INSTALL.md). It covers environment checks, verified installation, private-token login, Skill loading and no-quota acceptance checks.
 
 The CLI gateway is `https://44.233.174.193` (base URL, without `/v1`). The legacy macOS backend is intentionally stopped. Old client credentials do not work here. Ask the administrator for a personal revocable CLI token; provider keys are never installed on the user's machine.
 
@@ -17,7 +17,7 @@ Default binary directory is `$HOME/.local/bin`; add it to PATH if needed. Skills
 Install the explicit CLI release and both Skills:
 
 ```sh
-curl -fsSL https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.1.0/install.py | python3 - --tag fmg-v0.1.0 --skills
+curl -fsSL https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.2.0/install.py | python3 - --tag fmg-v0.2.0 --skills
 ```
 
 For inspection before execution, download the installer and review it first. Asset URLs come from exact GitHub release metadata; binary/Skill archives are checked against SHA256SUMS. Checksums detect corruption, not a compromised release publisher. Unsigned macOS binaries may require normal local approval; no automatic Gatekeeper disabling is performed.
@@ -50,8 +50,8 @@ The workflow defaults to a bounded target and announces its request budget. It s
 
 ## Costs, updates and limits
 
-Use `fmg --run-id RUN_ID ...` and `fmg --run-id RUN_ID usage`. Request counts and available Gemini tokens are measured; monetary costs are currently unknown. YouTube quota estimates cite their dated source and are not money. Codex shared-account usage does not measure one task.
+Use `fmg --run-id RUN_ID ...` and `fmg --run-id RUN_ID usage`. Responses include price snapshots; the ledger returns known estimated USD subtotals, pricing versions and unpriced components. Estimates precede discounts/free allowances and X daily deduplication, exclude infrastructure/subscriptions, and are not invoices. Historical unpriced calls remain unknown. YouTube quota estimates are separate. Skills now call the host's `get_usage_limits` at run start/end when available: shared-account changes are reported separately, never as precise task use.
 
-`fmg upgrade --tag fmg-vX.Y.Z` replaces only the CLI after verification; Skills remain unchanged. Re-run the matching installer with `--skills` to update both. A failed checksum keeps the existing binary. See the dated rollout record for live checks. SMTP is currently unconfigured: preview works, real sending is unavailable. Steam Store helpers work without a key; Web API operations requiring a Steam key remain unavailable until configured.
+`fmg upgrade --latest --skills` updates the CLI and both Skills with checksums, preserving credentials and numbered Skill backups. Use `--tag fmg-vX.Y.Z` to pin a version, or omit `--skills` for binary only. CLI 0.1.0 users bootstrap with the 0.2.0 installer and `--skills`; see the Agent guide. SMTP is currently unconfigured: preview works, real sending is unavailable. Steam Store helpers work without a key; Web API operations requiring a Steam key remain unavailable until configured.
 
 Only YouTube/X/Steam API reads, public business email enrichment and templated sends are included. No legacy Library/Match database, social platform writes, Instagram/Twitch API, reply ingestion, Yes/No callbacks or attachment sending is claimed.

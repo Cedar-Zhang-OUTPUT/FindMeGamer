@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-var Version = "0.1.0-dev"
+var Version = "0.2.0-dev"
 
 type runIDKey struct{}
 
@@ -25,7 +25,8 @@ fmg youtube|x|steam operations
 fmg youtube|x|steam describe OPERATION
 fmg youtube|x|steam call OPERATION --params JSON [--max-pages N] [--max-items N]
 fmg version
-fmg upgrade --tag fmg-vX.Y.Z
+fmg upgrade --latest --skills [--skill-dir DIRECTORY]
+fmg upgrade --tag fmg-vX.Y.Z [--skills]
 fmg --run-id RUN_ID usage
 Prefix other commands with --run-id RUN_ID to attribute requests.
 fmg email enrich --url URL --idempotency-key KEY [--name NAME] [--platform PLATFORM]
@@ -70,7 +71,9 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	if args[0] == "email" {
 		return runEmail(ctx, args[1:], stdout, stderr)
 	}
-    if args[0]=="upgrade" {return runUpgrade(ctx,args[1:],stdout,stderr)}
+	if args[0] == "upgrade" {
+		return runUpgrade(ctx, args[1:], stdout, stderr)
+	}
 	if args[0] == "usage" {
 		id, _ := ctx.Value(runIDKey{}).(string)
 		if len(args) != 1 || id == "" {

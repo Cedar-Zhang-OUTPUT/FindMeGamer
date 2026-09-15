@@ -62,6 +62,16 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 ),
                 {"digest": "0" * 64},
             )
+        previous = migrate(url, schema, revision="0004_usage")
+        assert previous.returncode == 0, previous.stderr
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"""INSERT INTO "{schema}".usage_records
+                (request_id, token_id, run_id, provider, operation, status, resource_counts, usage, created_at)
+                VALUES ('old-request', 'migration-survivor', 'old-run', 'x', 'searchPostsRecent', 'succeeded', '{{}}', '{{}}', CURRENT_TIMESTAMP)"""
+                )
+            )
         first = migrate(url, schema)
         assert first.returncode == 0, first.stderr
         second = migrate(url, schema)
@@ -86,8 +96,15 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
             }
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0004_usage"
+                == "0005_cost"
             )
+            legacy = conn.execute(
+                text(
+                    f'SELECT status, cost FROM "{schema}".usage_records WHERE request_id = :id'
+                ),
+                {"id": "old-request"},
+            ).one()
+            assert legacy == ("succeeded", None)
         # Use the same migrated schema through the actual application factory.
         settings = Settings(
             database_url=str(

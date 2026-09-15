@@ -27,6 +27,8 @@ runs/<run-id>/
   evidence/                 # raw API pages plus concise source notes
   matches/<local-key>.json
   usage.json
+  codex-usage-before.json    # sanitized host quota snapshot or unavailable reason
+  codex-usage-after.json
   summary.md
 outreach/<batch-id>/        # variable inputs, previews, approval record, receipts
 ```

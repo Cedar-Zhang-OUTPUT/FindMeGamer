@@ -7,6 +7,18 @@ from .enrichment import EMAIL, EnrichmentError
 from .urls import public_url
 
 
+def response_usage(payload):
+    usage = dict(payload.get("usageMetadata") or {})
+    candidates = payload.get("candidates") or []
+    # Absence of grounding metadata is not evidence of zero searches.
+    queries = [
+        c.get("groundingMetadata", {}).get("webSearchQueries") for c in candidates
+    ]
+    if queries and all(isinstance(q, list) for q in queries):
+        usage["search_queries"] = sum(len(q) for q in queries)
+    return usage
+
+
 def parse_response(payload):
     try:
         candidate = payload["candidates"][0]
@@ -45,7 +57,7 @@ def parse_response(payload):
                 seen.add(email)
         return {
             "emails": emails,
-            "usage": payload.get("usageMetadata"),
+            "usage": response_usage(payload),
             "model_version": payload.get("modelVersion"),
         }
     except (KeyError, IndexError, TypeError, ValueError, AttributeError):
@@ -126,7 +138,7 @@ class GeminiGateway:
                         return parse_response(decoded)
                     except EnrichmentError as error:
                         error.usage = (
-                            decoded.get("usageMetadata")
+                            response_usage(decoded)
                             if isinstance(decoded, dict)
                             else None
                         )

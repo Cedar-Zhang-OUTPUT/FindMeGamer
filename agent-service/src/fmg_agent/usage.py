@@ -1,6 +1,7 @@
 """Per-token/run request ledger. Unknown prices are never zero."""
 
 import re
+from decimal import Decimal
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
@@ -23,6 +24,7 @@ class UsageRecord(Base):
     status: Mapped[str] = mapped_column(String(100))
     resource_counts: Mapped[dict] = mapped_column(JSON, default=dict)
     usage: Mapped[dict] = mapped_column(JSON, default=dict)
+    cost: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
@@ -50,6 +52,7 @@ def numbers(value):
         "toolUsePromptTokenCount",
         "returned_items",
         "emails",
+        "search_queries",
     }
     return (
         {
@@ -87,7 +90,18 @@ class Ledger:
                 return False
             return True
 
-    def finish(self, request_id, status, *, resource_counts=None, usage=None):
+    def finish(
+        self,
+        request_id,
+        status,
+        *,
+        resource_counts=None,
+        usage=None,
+        data=None,
+        model=None
+    ):
+        from .pricing import estimate
+
         with self.sessions() as session:
             row = session.get(UsageRecord, request_id)
             if row is None:
@@ -95,7 +109,16 @@ class Ledger:
             row.status = status
             row.resource_counts = numbers(resource_counts)
             row.usage = numbers(usage)
+            row.cost = estimate(
+                row.provider,
+                row.operation,
+                status,
+                data=data,
+                usage=row.usage,
+                model=model,
+            )
             session.commit()
+            return row.cost
 
     def summary(self, token_id, run):
         providers = {}
@@ -119,9 +142,39 @@ class Ledger:
                         "estimated_cost": None,
                         "currency": None,
                         "pricing_version": None,
+                        "cost_breakdown": [],
+                        "unpriced_request_count": 0,
                     },
                 )
                 p["request_count"] += 1
+                cost = row.cost or {
+                    "estimated_cost": None,
+                    "complete": False,
+                    "unpriced_components": ["legacy_or_incomplete_record"],
+                }
+                p["cost_breakdown"].append(
+                    {
+                        "request_id": row.request_id,
+                        "operation": row.operation,
+                        "status": row.status,
+                        **cost,
+                    }
+                )
+                if cost.get("estimated_cost") is not None:
+                    p["estimated_cost"] = str(
+                        Decimal(p["estimated_cost"] or "0")
+                        + Decimal(cost["estimated_cost"])
+                    )
+                    p["currency"] = "USD"
+                if not cost.get("complete"):
+                    p["unpriced_request_count"] += 1
+                p["pricing_version"] = sorted(
+                    {
+                        c["pricing_version"]
+                        for c in p["cost_breakdown"]
+                        if c.get("pricing_version")
+                    }
+                )
                 if row.provider == "youtube":
                     quota = p.setdefault(
                         "quota_estimate",
@@ -164,16 +217,25 @@ class Ledger:
                 for group in ("resource_counts", "usage"):
                     for key, val in getattr(row, group).items():
                         p[group][key] = p[group].get(key, 0) + val
+        known = [
+            Decimal(p["estimated_cost"])
+            for p in providers.values()
+            if p["estimated_cost"] is not None
+        ]
+        unpriced = sum(p["unpriced_request_count"] for p in providers.values())
         return {
             "run_id": run,
             "request_count": count,
             "providers": providers,
             "actual_cost": None,
-            "estimated_cost": None,
-            "currency": None,
-            "pricing_version": None,
-            "complete_cost_known": False,
-            "cost_note": "No attributable provider billing or verified pricing configured; request counts are not money. Started requests may have completed upstream.",
+            "estimated_cost": str(sum(known, Decimal(0))) if known else None,
+            "currency": "USD" if known else None,
+            "pricing_version": sorted(
+                {v for p in providers.values() for v in p["pricing_version"] or []}
+            ),
+            "complete_cost_known": count > 0 and unpriced == 0,
+            "unpriced_request_count": unpriced,
+            "cost_note": "Estimated USD subtotal, not an invoice. Unknown components excluded. Before discounts/free allowances/X daily deduplication; excludes hosting and subscriptions. Historical records are not repriced. Started requests may have completed upstream.",
             "codex_task_usage": None,
         }
 

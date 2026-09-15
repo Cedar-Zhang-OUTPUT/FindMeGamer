@@ -63,7 +63,7 @@ async def call(
     try:
         result = await execute(provider, body, request, operation, path, params)
     except ApiError as error:
-        ledger.finish(rid, error.code)
+        error.cost = ledger.finish(rid, error.code)
         raise
     except Exception:
         ledger.finish(rid, "execution_unknown")
@@ -74,13 +74,15 @@ async def call(
         if isinstance(data, dict)
         else None
     )
-    ledger.finish(
+    cost = ledger.finish(
         rid,
         "succeeded",
+        data=data,
         resource_counts=(
             {"returned_items": len(items)} if isinstance(items, list) else None
         ),
     )
+    result["meta"]["cost"] = cost
     return result
 
 

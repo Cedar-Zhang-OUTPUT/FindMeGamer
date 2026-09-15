@@ -32,5 +32,6 @@ async def error_response(request: Request, exc: ApiError):
                 "retry_after_seconds": exc.retry_after_seconds,
             },
             "request_id": request.state.request_id,
+            "meta": {"cost": getattr(exc, "cost", None)},
         },
     )

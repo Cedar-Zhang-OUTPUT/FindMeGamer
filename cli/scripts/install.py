@@ -17,6 +17,18 @@ REPO = "Cedar-Zhang-OUTPUT/FindMeGamer"
 MAX = 32 * 1024 * 1024
 
 
+def latest_tag(releases):
+    candidates = []
+    for release in releases:
+        tag = release.get("tag_name", "")
+        match = re.fullmatch(r"fmg-v(\d+)\.(\d+)\.(\d+)", tag)
+        if match and not release.get("draft"):
+            candidates.append((tuple(map(int, match.groups())), tag))
+    if not candidates:
+        raise ValueError("No published CLI release")
+    return max(candidates)[1]
+
+
 class HTTPSRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         if not newurl.startswith("https://"):
@@ -107,10 +119,10 @@ def skills(data, destination):
             current = destination / name
             backup = destination / (name + ".previous")
             if current.exists():
-                if backup.exists():
-                    raise ValueError(
-                        "Previous Skill backup exists; move it before another update"
-                    )
+                index = 0
+                while backup.exists():
+                    index += 1
+                    backup = destination / (name + f".previous-{index}")
                 current.rename(backup)
             try:
                 (root / name).rename(current)
@@ -123,10 +135,16 @@ def skills(data, destination):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--tag")
+    p.add_argument("--latest", action="store_true")
     p.add_argument("--release-dir", type=Path)
     p.add_argument("--bin-dir", type=Path, default=Path.home() / ".local/bin")
     p.add_argument("--skills", action="store_true")
-    p.add_argument("--skill-dir", type=Path, default=Path.home() / ".codex/skills")
+    p.add_argument(
+        "--skill-dir",
+        type=Path,
+        default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
+        / "skills",
+    )
     args = p.parse_args()
     try:
         system = {"Darwin": "darwin", "Linux": "linux"}.get(platform.system())
@@ -145,6 +163,16 @@ def main():
                 return data
 
         else:
+            if args.latest:
+                if args.tag:
+                    raise ValueError("Choose --latest or --tag")
+                args.tag = latest_tag(
+                    json.loads(
+                        fetch(
+                            f"https://api.github.com/repos/{REPO}/releases?per_page=100"
+                        )
+                    )
+                )
             if not args.tag or not re.fullmatch(
                 r"fmg-v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?", args.tag
             ):

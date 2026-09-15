@@ -146,12 +146,14 @@ def run_job(store, job_id, enricher):
                         usage_id,
                         getattr(error, "code", "execution_unknown"),
                         usage=getattr(error, "usage", None),
+                        model=getattr(enricher.gemini, "model", None),
                     )
                     raise
-                ledger.finish(
+                enriched["cost"] = ledger.finish(
                     usage_id,
                     "succeeded",
                     usage=enriched.get("usage"),
+                    model=getattr(enricher.gemini, "model", None),
                     resource_counts={"emails": len(enriched["emails"])},
                 )
                 if not store.checkpoint(job_id, lease, "enrichment", enriched):

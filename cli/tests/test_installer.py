@@ -5,6 +5,50 @@ from pathlib import Path
 import subprocess
 import sys
 import tarfile
+import importlib.util
+
+
+def installer():
+    spec = importlib.util.spec_from_file_location("fmg_install", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_latest_ignores_macos_and_drafts_and_sorts_semver():
+    assert (
+        installer().latest_tag(
+            [
+                {"tag_name": "v99.0.0"},
+                {"tag_name": "fmg-v0.9.0"},
+                {"tag_name": "fmg-v0.10.0", "prerelease": True},
+                {"tag_name": "fmg-v9.0.0", "draft": True},
+            ]
+        )
+        == "fmg-v0.10.0"
+    )
+
+
+def test_repeated_skill_upgrade_preserves_all_backups(tmp_path):
+    module = installer()
+    dest = tmp_path / "skills"
+
+    def bundle(text):
+        out = io.BytesIO()
+        with tarfile.open(fileobj=out, mode="w:gz") as tar:
+            for name in ("fmg-api", "fmg-research"):
+                entry = tarfile.TarInfo(name + "/SKILL.md")
+                entry.size = len(text)
+                tar.addfile(entry, io.BytesIO(text))
+        return out.getvalue()
+
+    module.skills(bundle(b"one"), dest)
+    module.skills(bundle(b"two"), dest)
+    module.skills(bundle(b"three"), dest)
+    assert (dest / "fmg-api/SKILL.md").read_bytes() == b"three"
+    assert (dest / "fmg-api.previous/SKILL.md").read_bytes() == b"one"
+    assert (dest / "fmg-api.previous-1/SKILL.md").read_bytes() == b"two"
+
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/install.py"
 
