@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fmg-agent-service"
+version = "0.1.0"
+description = "Company API gateway for the fmg CLI"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "fastapi>=0.115,<0.116",
+  "httpx>=0.28,<0.29",
+  "sqlalchemy>=2.0,<2.1",
+  "alembic>=1.14,<2",
+  "psycopg[binary]>=3.2,<4",
+  "pydantic-settings>=2.7,<3",
+  "uvicorn>=0.32,<1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<9", "black==25.1.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "--strict-markers"
+markers = ["postgres: real isolated PostgreSQL migration test"]
+
+[tool.black]
+target-version = ["py313"]

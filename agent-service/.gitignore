@@ -1,0 +1,9 @@
+.venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+*.sqlite*
+build/
+dist/
