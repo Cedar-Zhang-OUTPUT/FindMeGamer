@@ -19,6 +19,8 @@
 
 ## A. 服务端版本化模板（基础 Task 5 前）
 
+进度：模板定义/纯渲染/HTTP 目录与描述/Go CLI 已完成并通过独立审查，实际文件 `agent-service/src/fmg_agent/email/template_data/game-outreach.json` 随 Python 包分发。7 项模板测试通过，模板命令加入真实 CLI/HTTP 隔离端到端验收。预览快照与发送仍在基础 Task 5，因此下方涉及 preview 的步骤尚不勾选。当前整体验证 79 项 Python 测试、16 项 Go 测试及 go vet 通过。
+
 **Files:** create `agent-service/src/fmg_agent/email/templates.py`, `agent-service/email-templates/game-outreach.json`, `agent-service/tests/test_email_templates.py`; modify email routes, `cli/internal/email.go`, corresponding Go tests。
 
 **Interfaces:** GET `/v1/email/templates`, GET `/v1/email/templates/{id}`；纯函数 `render_template(template, variables) -> {subject,text,html}`。preview 输入 `{template_id,template_version,variables,to}`，变量有 name/required/type 描述，缺失返回字段名而不泄漏值。初始模板含游戏名称/介绍/链接、创作者称呼、基于真实依据的个性化段落与公司签名；不硬编码 LIMINAL。

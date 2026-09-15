@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ..auth import Principal, require_scope
+from ..auth import Principal, require_scope, authenticate
+from .templates import get_template, list_templates
 from .jobs import JobStore
 from .urls import public_url
 
@@ -22,6 +23,18 @@ class EnrichRequest(BaseModel):
 
 def result(request, data):
     return {"data": data, "meta": {"request_id": request.state.request_id}}
+
+
+@router.get("/templates")
+def templates(request: Request, principal: Principal = Depends(authenticate)):
+    return result(request, list_templates())
+
+
+@router.get("/templates/{template_id}")
+def template(
+    request: Request, template_id: str, principal: Principal = Depends(authenticate)
+):
+    return result(request, get_template(template_id))
 
 
 @router.post("/enrich", status_code=202)

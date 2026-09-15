@@ -8,6 +8,26 @@ import (
 	"testing"
 )
 
+func TestEmailTemplateListAndDescribe(t *testing.T) {
+	paths := []string{}
+	setup(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.Method != "GET" {
+			t.Error("must read only")
+		}
+		w.Write([]byte(`{"data":{"id":"game-outreach"},"meta":{}}`))
+	})
+	for _, args := range [][]string{{"email", "templates"}, {"email", "template", "game-outreach"}} {
+		var out, err bytes.Buffer
+		if code := Run(args, strings.NewReader(""), &out, &err); code != 0 {
+			t.Fatalf("exit=%d %s", code, err.String())
+		}
+	}
+	if len(paths) != 2 || paths[0] != "/v1/email/templates" || paths[1] != "/v1/email/templates/game-outreach" {
+		t.Fatal(paths)
+	}
+}
+
 func TestEmailEnrichUsesExplicitIdempotencyKey(t *testing.T) {
 	calls := 0
 	setup(t, func(w http.ResponseWriter, r *http.Request) {

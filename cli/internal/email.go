@@ -21,6 +21,23 @@ func runEmail(ctx context.Context, args []string, out, diagnostics io.Writer) in
 		return writeError(diagnostics, &APIError{Code: "login_required", Message: err.Error(), Exit: 3})
 	}
 	client := newClient(config)
+	if args[0] == "templates" || args[0] == "template" {
+		path := "/v1/email/templates"
+		if args[0] == "templates" && len(args) != 1 {
+			return writeError(diagnostics, errors.New("templates takes no arguments"))
+		}
+		if args[0] == "template" {
+			if len(args) != 2 || args[1] == "" || strings.ContainsAny(args[1], "/?#") {
+				return writeError(diagnostics, errors.New("template requires one template ID"))
+			}
+			path += "/" + url.PathEscape(args[1])
+		}
+		response, e := client.request(ctx, http.MethodGet, path, nil)
+		if e != nil {
+			return writeError(diagnostics, e)
+		}
+		return emitEmail(out, diagnostics, response)
+	}
 	if args[0] == "enrich" {
 		flags := flag.NewFlagSet("enrich", flag.ContinueOnError)
 		flags.SetOutput(io.Discard)

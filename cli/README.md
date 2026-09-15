@@ -59,6 +59,15 @@ No automatic retries are performed. For a quota/429 failure inspect the structur
 
 ## Public business email enrichment
 
+To inspect server-owned templates (read-only; does not send or consume model quota):
+
+```sh
+fmg email templates
+fmg email template game-outreach
+```
+
+Template descriptions include a version, required variables, and text/HTML/subject bodies. The game is supplied through variables, not hard-coded. Template preview and confirmed sending commands are still being implemented; do not invent them from this checkpoint.
+
 Requires an `email:enrich` token scope. These commands can consume company model/search quota:
 
 ```sh

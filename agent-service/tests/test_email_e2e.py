@@ -84,6 +84,12 @@ def test_cli_email_worker_restart(tmp_path):
             ).returncode
             == 0
         )
+        listed = cli("email", "templates")
+        assert listed.returncode == 0, listed.stderr
+        assert json.loads(listed.stdout)["data"][0]["id"] == "game-outreach"
+        described = cli("email", "template", "game-outreach")
+        assert described.returncode == 0, described.stderr
+        assert "game_summary" in json.loads(described.stdout)["data"]["variables"]
         created = cli(
             "email",
             "enrich",

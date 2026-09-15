@@ -1,0 +1,17 @@
+{
+  "id": "game-outreach",
+  "version": "1",
+  "name": "Game creator outreach",
+  "variables": {
+    "creator_name": {"type": "string", "required": true, "description": "Public name or channel name; do not invent a personal name."},
+    "game_name": {"type": "string", "required": true},
+    "game_summary": {"type": "string", "required": true},
+    "game_url": {"type": "url", "required": true},
+    "personalization": {"type": "string", "required": true, "description": "Grounded relevance statement; do not claim viewing unless supported."},
+    "sender_name": {"type": "string", "required": true},
+    "company_name": {"type": "string", "required": true}
+  },
+  "subject": "Creator collaboration: ${game_name}",
+  "text": "Hi ${creator_name},\n\n${personalization}\n\nWe would like to introduce ${game_name}. ${game_summary}\n\nGame details: ${game_url}\n\nWould you be interested in discussing coverage or a collaboration? Please reply if you would like more information. If this is not relevant, let us know and we will not follow up.\n\nBest,\n${sender_name}\n${company_name}",
+  "html": "<p>Hi ${creator_name},</p><p>${personalization}</p><p>We would like to introduce <strong>${game_name}</strong>. ${game_summary}</p><p><a href=\"${game_url}\">Game details</a></p><p>Would you be interested in discussing coverage or a collaboration? Please reply if you would like more information. If this is not relevant, let us know and we will not follow up.</p><p>Best,<br>${sender_name}<br>${company_name}</p>"
+}
