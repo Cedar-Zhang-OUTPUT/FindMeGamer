@@ -15,7 +15,7 @@
 - CLI 名称 `fmg`；macOS/Linux，arm64/amd64；JSON stdout，诊断 stderr。
 - 公司密钥只在服务器；每位同事或 Agent 独立可撤销令牌。
 - 新数据库 `find_me_gamer_agent`，新队列 `fmg_agent`；不消费旧任务，不恢复旧 API/Worker/Beat。
-- 不实现 Library、Profile、Match 或业务编排；技术 Skill 可交付，业务工作流 Skill 等用户定义。
+- 网关不实现 Library、Profile、Match；用户已确认本地 Agent 工作流，按补充计划实现技术 Skill 和业务 Skill。
 - 默认一页，显式有限分页；不无限重试、不默认付费遍历、不自动发真实邮件。
 - 每单元 TDD、独立审查、针对性回归后提交。审查阻塞项限于正常业务、数据/重复执行、明确安全问题、当前迁移和真实操作错误；纯防御性扩展记后续。
 - 本文为开发计划，未执行项全部保持未勾选。测试示例定义验收接口，不代表已有实现。
@@ -164,6 +164,8 @@ return checkpoint.result()
 
 ## Task 5：邮件预览、确认发送与未知结果保护
 
+本单元开始前先完成补充计划的版本化模板模块；preview 输入模板 ID、版本与变量，随后继续本单元的快照和发送保护。不得回退成仅支持任意正文的旧计划。
+
 **Files — create:** `agent-service/src/fmg_agent/email/{sending,smtp}.py`、`agent-service/migrations/versions/0003_email_sends.py`、`agent-service/tests/test_email_sending.py`。**Modify:** email routes/models、`cli/internal/email.go` 及测试。
 
 **Interfaces:** `POST /v1/email/previews` → 不可变 `preview_id`；`POST /v1/email/sends` 输入 `{preview_id,confirm:true}` + Idempotency-Key；`GET /v1/email/sends/{id}`。CLI `email preview --input message.json`、`email send --preview-id <id> --confirm --idempotency-key <key>`、`email receipt <id>`。
@@ -194,6 +196,8 @@ return deliver_and_record_outcome(record, smtp)
 - [ ] 审查提交 `feat: add confirmed idempotent email sending`。
 
 ## Task 6：技术 Skill 与文档行为验证
+
+用户已授权工作流 Skill；本单元技术说明保留，新增业务 Skill 按 `2026-09-15-agent-workflow-extension.md` 实施。完成补充计划全部验收后再执行 Task 7 发布。
 
 **Files — create:** `skills/fmg-api/SKILL.md`、`skills/fmg-api/references/{youtube,x,steam,email,errors-and-quotas}.md`、`cli/tests/skill_examples.sh`、`docs/agent-services/quickstart.md`。
 
