@@ -1,0 +1,19 @@
+# Deployment and rollback boundary
+
+No production command in this folder has been executed for the CLI release. User requested stopping before deployment. Existing desktop API/Worker/Beat remain stopped; their backups are unrelated to this new database.
+
+On later approval, inventory the existing Docker network, Postgres version, proxy HTTPS certificate and private backup. Create dedicated `find_me_gamer_agent` DB/role in the existing Postgres (manual admin step), not a new legacy Library. Transfer company API credentials in memory/server-side from their existing protected storage; never print them or put them in an image. Configure the verified Gemini model, not a guessed default. SMTP can remain absent. Existing private Redis credentials must be included in its URL if required.
+
+Export only non-secret paths/names for Compose: `FMG_AGENT_IMAGE` (verified immutable release tag), `FMG_AGENT_ENV_FILE`, `FMG_AGENT_PG_ENV_FILE`, `FMG_AGENT_NETWORK`, optional `FMG_AGENT_PORT`. The two private env files must be owner-readable only. `docker compose config --quiet` validates without dumping resolved secrets. PostgreSQL backup client major 17 is for the current version; recheck server version before deployment.
+
+First installation: explicitly confirm the dedicated new DB has no data, then `sh deploy.sh --apply --first-install /var/backups/find-me-gamer-agent`. Subsequent releases: omit `--first-install`; a new-service custom-format dump is mandatory. Maintenance windows are allowed. Script stops only the new project's API/Worker, takes backup, migrates and starts the new stack; it does not edit proxy routes or start old services. If a step fails, leave new services stopped and investigate; don't resume the old client accidentally.
+
+Before publishing a URL, verify HTTPS with a normal certificate-validating client; no remote HTTP or `--insecure`. Apply the Caddy fragment to the existing verified site only after private-container health and auth pass. Confirm the proxy shares the new API's Docker network, or use an explicitly reachable upstream. Do not claim loopback success verifies public HTTPS.
+
+Rollback: stop `fmg-agent` API/Worker, retain current new DB snapshot, restore the previous verified image tag. These migrations are additive, but verify the old new-service image against the current schema before restarting. If restoring data is necessary, restore a known backup into a separate test DB first and compare record counts. Then, with explicit approval and services stopped, recreate only `find_me_gamer_agent` and restore using PostgreSQL 17 `pg_restore --no-owner --no-acl`. Never apply a new-service dump to the legacy database. Keep old and failed-upgrade dumps for recovery; no automatic destructive restore is provided.
+
+After restart: health, token revocation/scope, catalog reads, controlled async email job, preview and usage checks. Real SMTP requires an approved test recipient. A receipt labelled sent is only SMTP acceptance. Backup retention/copying to the existing S3 backup prefix should be configured during actual rollout, not inferred from these local scripts.
+
+For `smoke.sh HTTPS_SERVER`, set `FMG_CONFIG` to the explicit private CLI configuration file for that same server and optionally `FMG_BIN` to the verified binary. The script rejects a different configured server before any network call. It checks health, auth and local catalogs/templates only; it does not prove provider authorization or SMTP delivery.
+
+Local rehearsal: `test_release_container.py`, explicitly enabled for `fmg-agent:predeploy`, runs the built image against the dedicated local test database using a random schema. It verifies repeat migrations, non-root API, actual CLI smoke, a Worker job rejected locally for a private URL, PostgreSQL custom-format dump/restore and retained token/job counts. Its generated containers and schema are removed afterwards; no production database is touched.

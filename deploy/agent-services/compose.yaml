@@ -1,0 +1,38 @@
+name: fmg-agent
+x-agent: &agent
+  image: ${FMG_AGENT_IMAGE:?Set an explicit verified image tag}
+  env_file: ${FMG_AGENT_ENV_FILE:?Set private service env path}
+  networks: [existing]
+  init: true
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: {max-size: "10m", max-file: "3"}
+services:
+  api:
+    <<: *agent
+    ports: ["127.0.0.1:${FMG_AGENT_PORT:-8017}:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 6
+  worker:
+    <<: *agent
+    command: ["python", "-m", "fmg_agent.worker"]
+    stop_grace_period: 620s
+  migrate:
+    <<: *agent
+    restart: "no"
+    profiles: [tools]
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+  backup:
+    image: postgres:17-alpine
+    profiles: [tools]
+    env_file: ${FMG_AGENT_PG_ENV_FILE:?Set private backup PG env path}
+    networks: [existing]
+    entrypoint: ["pg_dump", "--format=custom", "--no-owner", "--no-acl", "--dbname=find_me_gamer_agent"]
+networks:
+  existing:
+    external: true
+    name: ${FMG_AGENT_NETWORK:?Set existing Postgres/Redis Docker network}

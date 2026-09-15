@@ -207,7 +207,7 @@ return deliver_and_record_outcome(record, smtp)
 
 **Interfaces:** 只使用 Tasks 1–5 已验证命令；入口说明如何查目录，平台参考按需读取。业务工作流不在本 Task 编写。
 
-- [ ] 使用 skill-creator 和 writing-skills，完整读取其要求再创建文件；先把技术示例作为可执行验收脚本，使尚未支持的命令产生明确失败。脚本使用隔离网关和 mock 上游，不默认消费真实额度。
+- [x] 使用 skill-creator 和 writing-skills，完整读取其要求再创建文件；先把技术示例作为可执行验收脚本，使尚未支持的命令产生明确失败。脚本使用隔离网关和 mock 上游，不默认消费真实额度。
 
 ```sh
 set -eu
@@ -217,7 +217,7 @@ fmg youtube call search.list --params '{"part":"snippet","q":"indie","maxResults
 jq -e '.data' result.json >/dev/null
 ```
 
-- [ ] Skill 入口包含真实元数据与范围声明：
+- [x] Skill 入口包含真实元数据与范围声明：
 
 ```yaml
 ---
@@ -226,17 +226,19 @@ description: Use the fmg CLI to access company-hosted YouTube, X, Steam, public 
 ---
 ```
 
-- [ ] 写参数发现、授权不足、429/余额、分页保存、异步查询、发信确认示例；“不知道配额”必须输出 unknown，不把 API 成功等同于内容证据充分。
-- [ ] 运行脚本及 Skill 校验器；按照 Skill 让隔离 Agent 或独立审查者完成查目录、取一页、查任务、预览、不确认则不发送的场景，记录实际命令。禁止臆造业务步骤。
-- [ ] 审查提交 `docs: add verified fmg API usage skill`。
+- [x] 写参数发现、授权不足、429/余额、分页保存、异步查询、发信确认示例；“不知道配额”必须输出 unknown，不把 API 成功等同于内容证据充分。
+- [x] 运行脚本及 Skill 校验器；按照 Skill 让隔离 Agent 或独立审查者完成查目录、取一页、查任务、预览、不确认则不发送的场景，记录实际命令。禁止臆造业务步骤。
+- [x] 独立审查完成，技术及业务 Skill 一并保存提交。
 
 ## Task 7：部署、安装升级与 GitHub 发布
+
+2026-09-15 执行边界更新：用户要求完成到部署上线前。本地实现、四平台构建、安装/升级、镜像运行、迁移和备份恢复演练完成后结项本轮；下列生产配置、部署、代理切换、GitHub 推送及发布项明确留待后续授权，不因本地验收通过而标成已上线。Task 6 的技术 Skill、独立行为验证和校验均已完成，实际文件布局与验收见 `docs/agent-services/skill-validation.md`。
 
 **Files — create:** `deploy/agent-services/{compose.yaml,Caddyfile.fragment,env.example,deploy.sh,smoke.sh,rollback.md}`、`cli/scripts/{build-release.sh,install.sh}`、`.github/workflows/agent-cli-release.yml`、`docs/agent-services/release-acceptance.md`。**Modify:** CLI command 路由添加 `upgrade`，新增 `cli/internal/upgrade.go` 与测试。
 
 **Interfaces:** 四个独立发行包、SHA256SUMS、固定 release tag、安装器；新 HTTPS `/v1` 服务。公开下载地址不能包含访问令牌；token 仍单独提供。安装器默认不安装业务工作流 Skill，技术 Skill 提供明确安装选项。
 
-- [ ] 写安装测试：校验和不匹配不覆盖旧二进制；不支持平台明确退出；升级失败保留旧版本；shell 脚本不得输出配置中的秘密。
+- [x] 写安装测试：校验和不匹配不覆盖旧二进制；不支持平台明确退出；升级失败保留旧版本；shell 脚本不得输出配置中的秘密。
 
 ```sh
 GOOS=darwin GOARCH=arm64 go build -trimpath -o dist/darwin-arm64/fmg ./cmd/fmg
@@ -245,8 +247,8 @@ GOOS=linux GOARCH=arm64 go build -trimpath -o dist/linux-arm64/fmg ./cmd/fmg
 GOOS=linux GOARCH=amd64 go build -trimpath -o dist/linux-amd64/fmg ./cmd/fmg
 ```
 
-- [ ] 先在本地 release fixture 验证损坏归档拒绝，再实现下载到临时目录、SHA256 验证、原子替换；从 GitHub release 元数据确定精确资产 URL，不能猜 latest 资源文件名。
-- [ ] 完整回归：Python 全量新服务测试、Go tests/vet、CLI/Skill smoke；真实 macOS 执行与 Linux 容器执行分别记录。没有执行的平台只记交叉编译成功，不写运行验收成功。
+- [x] 先在本地 release fixture 验证损坏归档拒绝，再实现下载到临时目录、SHA256 验证、原子替换；从 GitHub release 元数据确定精确资产 URL，不能猜 latest 资源文件名。
+- [x] 完整回归：Python 全量新服务测试、Go tests/vet、CLI/Skill smoke；真实 macOS 执行与 Linux 容器执行分别记录。没有执行的平台只记交叉编译成功，不写运行验收成功。
 - [ ] 只读核对服务器状态、旧备份仍在、数据库/Redis隔离、HTTPS证书；新建新服务私有配置，受控复用公司密钥，避免明文进入 shell 历史/日志。部署前备份新服务已有状态；首次部署不迁移旧业务数据。
 - [ ] 执行新库迁移，启动新 API/Worker，代理路由指向新服务；确认旧 API/Worker/Beat 仍停止。健康、撤销令牌、只读 API、异步任务、预览、错误分类实测，禁止真实外发。
 - [ ] 失败则停止新 API/Worker，回滚新镜像/配置；数据库恢复按已演练方法执行，不自动恢复旧客户端服务。演练新服务备份恢复，报告恢复证据。

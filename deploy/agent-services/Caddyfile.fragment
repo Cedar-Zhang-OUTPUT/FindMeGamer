@@ -1,0 +1,6 @@
+# Merge into the existing VERIFIED HTTPS site, not a new unreviewed listener.
+# The upstream must be reachable from the proxy container. If using the same
+# Docker network, use fmg-agent-api-1:8000; a host Caddy can use 127.0.0.1:8017.
+handle /v1/* {
+    reverse_proxy fmg-agent-api-1:8000
+}

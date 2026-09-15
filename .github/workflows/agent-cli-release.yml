@@ -1,0 +1,31 @@
+name: FMG CLI release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Explicit fmg-vX.Y.Z release tag
+        required: true
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli/go.mod
+      - name: Validate tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: python3 -c 'import os,re; assert re.fullmatch(r"fmg-v[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?",os.environ["RELEASE_TAG"])'
+      - run: cd cli && go test ./... && go vet ./...
+      - name: Build four platform archives and Skills
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: sh cli/scripts/build-release.sh "$RELEASE_TAG" "$RUNNER_TEMP/fmg-release"
+      - name: Publish an explicit draft for final acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: gh release create "$RELEASE_TAG" "$RUNNER_TEMP/fmg-release/"* --target "$GITHUB_SHA" --title "FMG CLI $RELEASE_TAG" --draft --notes 'Draft only. Publish after backend deployment and downloaded-checksum acceptance.'
