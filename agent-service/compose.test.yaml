@@ -1,5 +1,9 @@
 name: fmg-agent-tests
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:55440:6379"
   postgres:
     image: postgres:17-alpine
     environment:

@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     youtube_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
     x_bearer_token: SecretStr = Field(default=SecretStr(""), repr=False)
     steam_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    gemini_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    gemini_model: str = ""
+    broker_url: SecretStr = Field(
+        default=SecretStr("redis://127.0.0.1:6379/0"), repr=False
+    )
+    email_retention_days: int = Field(default=30, ge=1, le=30)
     catalog_dir: Path = Path(__file__).resolve().parents[3] / "api-catalog"
 
     @field_validator("database_url")

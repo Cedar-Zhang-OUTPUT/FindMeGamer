@@ -36,6 +36,10 @@ func newClient(config Config) *Client {
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body any) (Response, error) {
+	return c.requestWithKey(ctx, method, path, body, "")
+}
+
+func (c *Client) requestWithKey(ctx context.Context, method, path string, body any, key string) (Response, error) {
 	var result Response
 	var data []byte
 	var err error
@@ -51,6 +55,9 @@ func (c *Client) request(ctx context.Context, method, path string, body any) (Re
 	}
 	req.Header.Set("Authorization", "Bearer "+c.config.Token)
 	req.Header.Set("Accept", "application/json")
+	if key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

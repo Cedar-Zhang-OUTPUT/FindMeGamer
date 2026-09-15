@@ -1,17 +1,24 @@
-# Verified Task 1 environment: Python 3.13.15, macOS arm64.
+# Verified Tasks 1–4 environment: Python 3.13.15, macOS arm64.
 # Install: pip install -c constraints.txt -e '.[dev]'
 alembic==1.20.0
+amqp==5.3.1
 annotated-types==0.8.0
 anyio==4.15.1
 black==25.1.0
+billiard==4.2.4
+celery==5.6.3
 certifi==2026.7.22
 click==8.5.0
+click-didyoumean==0.3.1
+click-plugins==1.1.1.2
+click-repl==0.3.0
 fastapi==0.115.14
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
 idna==3.19
 iniconfig==2.3.0
+kombu==5.6.2
 Mako==1.4.1
 MarkupSafe==3.0.3
 mypy_extensions==1.1.0
@@ -19,6 +26,7 @@ packaging==26.3
 pathspec==1.1.1
 platformdirs==4.11.8
 pluggy==1.6.0
+prompt-toolkit==3.0.53
 psycopg==3.3.5
 psycopg-binary==3.3.5
 pydantic==2.13.5
@@ -27,8 +35,15 @@ pydantic_core==2.46.5
 Pygments==2.21.0
 pytest==8.4.2
 python-dotenv==1.2.3
+python-dateutil==2.9.0.post0
+redis==6.4.0
+six==1.17.0
 SQLAlchemy==2.0.53
 starlette==0.46.2
 typing-inspection==0.4.4
 typing_extensions==4.16.0
+tzdata==2026.4
+tzlocal==5.4.4
 uvicorn==0.53.0
+vine==5.1.0
+wcwidth==0.8.3

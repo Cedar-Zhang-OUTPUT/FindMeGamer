@@ -134,13 +134,13 @@ Task 3 验证记录：官方校验和确认的 Go 1.27.1（本机 macOS arm64）
 
 ## Task 4：独立邮箱补强异步任务
 
-进行中（基础子单元）：已实现任务创建/查询/显式重试、令牌归属、幂等唯一约束、原子认领与 lease 隔离、成功 checkpoint 保留、过期执行转失败。60 项回归通过，包含真实 PostgreSQL 从 0001 到 0002 保留原令牌数据的迁移、重复迁移、四并发提交/认领/重试。独立审查无阻塞。尚未接入主页抓取、Gemini、Celery、CLI 或保留期清理，因此本 Task 仍未完成、不部署这些未完整执行的路由。入口 URL 校验仅语法/显式私网拒绝，网络执行时还必须实现 DNS pinning 和重定向校验。
+Task 4 完成记录：基础持久化已于 d486d00 提交。现接入独立安全公开网页抓取、Gemini 多邮箱/来源/usage、专用 Celery Worker 与内置恢复派发/30天清理、CLI enrich/job/retry。72 项 Python 测试、15 项 Go 测试及 go vet/pip check 通过。编译 CLI→真实 HTTP→隔离 PostgreSQL→Redis→Celery，失败后重启 Worker 再显式续跑测试通过；仅外部网页/模型模拟。另真实访问 example.com 验证新网络传输成功。独立审查两项问题均通过红→绿修复及复核。没有执行付费 Gemini smoke，没有部署或真实发信。
 
 **Files — create:** `agent-service/src/fmg_agent/email/{__init__,models,jobs,enrichment,routes}.py`、`agent-service/src/fmg_agent/worker.py`、`agent-service/migrations/versions/0002_email_jobs.py`、`agent-service/tests/test_email_enrichment.py`、`cli/internal/email.go`、`cli/internal/email_test.go`。**Modify:** `app.py`、CLI command 路由。
 
 **Interfaces:** `POST /v1/email/enrich`（Idempotency-Key）；`GET /v1/email/jobs/{id}`；`POST /v1/email/jobs/{id}/retry`。结果字段见规格第 5 节。CLI `email enrich --url`、`email job <id> --wait`。
 
-- [ ] 写测试：公开主页有邮箱不调用 Gemini，无邮箱触发补强，多邮箱含 purpose/source，失败续跑复用已成功阶段；同幂等键不重复计费，跨令牌无法读取任务，私网 URL 和重定向到私网均拒绝。
+- [x] 写测试：公开主页有邮箱不调用 Gemini，无邮箱触发补强，多邮箱含 purpose/source，失败续跑复用已成功阶段；同幂等键不重复计费，跨令牌无法读取任务，私网 URL 和重定向到私网均拒绝。
 
 ```python
 def test_direct_email_skips_enrichment(enrichment_service, public_page, gemini):
@@ -150,8 +150,8 @@ def test_direct_email_skips_enrichment(enrichment_service, public_page, gemini):
     gemini.assert_not_called()
 ```
 
-- [ ] 运行 `.venv/bin/pytest tests/test_email_enrichment.py -q`，确认预期失败。
-- [ ] 迁移旧提取/补强中的纯逻辑，改成公开商务用途输入输出；写入 durable checkpoint、任务租约/终态、retry；新队列专用 Worker 不订阅旧队列。使用数据库待派发记录恢复入库后尚未入队的任务，Worker 启动及周期循环扫描，不另加 Beat 服务。
+- [x] 运行 `.venv/bin/pytest tests/test_email_enrichment.py -q`，确认预期失败。
+- [x] 迁移旧提取/补强中的纯逻辑，改成公开商务用途输入输出；写入 durable checkpoint、任务租约/终态、retry；新队列专用 Worker 不订阅旧队列。使用数据库待派发记录恢复入库后尚未入队的任务，Worker 启动及周期循环扫描，不另加 Beat 服务。
 
 ```python
 if not checkpoint.has('public_pages'):
@@ -161,8 +161,8 @@ if not checkpoint.emails and not checkpoint.has('enrichment'):
 return checkpoint.result()
 ```
 
-- [ ] 单元测试通过后跑真实 API + Worker + 隔离 DB/Redis（上游 mock），重启 Worker 验证续跑。最多用一个用户认可的公开账号真实验证补强，报告来源而非“保证可投递”。
-- [ ] 审查提交 `feat: add resumable business email enrichment jobs`。
+- [x] 单元测试通过后跑真实 API + Worker + 隔离 DB/Redis（上游 mock），重启 Worker 验证续跑。最多用一个用户认可的公开账号真实验证补强，报告来源而非“保证可投递”。本次未消耗模型额度，真实 Gemini 验证仍未执行。
+- [x] 审查提交 `feat: add resumable business email enrichment jobs`。
 
 ## Task 5：邮件预览、确认发送与未知结果保护
 

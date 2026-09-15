@@ -1,6 +1,6 @@
 # fmg CLI — development checkpoint
 
-Calls the company gateway, not YouTube/X/Steam directly. Provider keys never belong in this client. CLI source is working locally; this checkpoint is not yet a public release or a complete email tool.
+Calls the company gateway, not YouTube/X/Steam directly. Provider keys never belong in this client. CLI source is working locally; this checkpoint is not yet a public release. Email enrichment is available locally; sending is not implemented yet.
 
 ## Build and test
 
@@ -57,6 +57,23 @@ Multiple pages are NDJSON: one complete response envelope per output line. `--ma
 
 No automatic retries are performed. For a quota/429 failure inspect the structured stderr error and any retry delay; do not interpret retryable as authorization to loop indefinitely.
 
+## Public business email enrichment
+
+Requires an `email:enrich` token scope. These commands can consume company model/search quota:
+
+```sh
+fmg email enrich --url https://example.com/creator --name 'Creator' --idempotency-key unique-logical-request
+fmg email job JOB_ID
+fmg email job JOB_ID --wait --timeout 5m
+fmg email retry JOB_ID
+```
+
+Reuse the same idempotency key after an uncertain submission; do not create a new key merely because the HTTP response was lost. Keys are scoped to your token. Completed/failed records expire after the server retention window (default 30 days); keys are not permanent reservations.
+
+`--wait` emits NDJSON snapshots every two seconds and does not repeat enrichment. Ctrl-C or timeout stops waiting, not the server task. Query the same job ID later. `retry` explicitly requeues a failed job while preserving successful checkpoints. A process lost mid-execution becomes failed after its lease expires; it is not automatically replayed at additional model cost.
+
+Results include multiple `emails` with purpose, public source URL, discovery method and verification status. `model_reported_unverified` is not independently verified, and no result guarantees delivery. Only a completed job with an empty array means no contact was found. Failures, missing configuration and incomplete public-page work are not Not Found. No emails are sent by enrichment.
+
 ## Output and exit status
 
-Command results: JSON stdout (NDJSON for pages). Help is human-readable text. Errors: structured JSON stderr. Exit 0 success, 2 parameters, 3 authentication/permission, 4 quota/rate limit, 5 network/upstream/output, 130 user cancellation. Email-specific 6/7 are reserved for later tasks. The actual error code distinguishes company configuration, provider permission and quota failures.
+Command results: JSON stdout (NDJSON for pages or job polling). Help is human-readable text. Errors: structured JSON stderr. Exit 0 success, 2 parameters, 3 authentication/permission, 4 quota/rate limit, 5 network/upstream/output/wait timeout, 6 failed email job, 130 user cancellation. Exit 7 is reserved for unknown send outcomes. The actual error code distinguishes company configuration, provider permission and quota failures.

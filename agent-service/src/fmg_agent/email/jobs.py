@@ -3,10 +3,11 @@
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import select, update, delete
 from sqlalchemy.exc import IntegrityError
 
 from ..errors import ApiError
+from ..db import AccessToken
 from .models import EmailJob
 
 
@@ -104,9 +105,27 @@ class JobStore:
         now = now or utcnow()
         lease = str(uuid4())
         with self.sessions() as session:
+            active = select(AccessToken.id).where(AccessToken.revoked_at.is_(None))
+            session.execute(
+                update(EmailJob)
+                .where(
+                    EmailJob.id == job_id,
+                    EmailJob.state == "queued",
+                    EmailJob.token_id.not_in(active),
+                )
+                .values(
+                    state="failed",
+                    error={"code": "access_revoked", "retryable": False},
+                    updated_at=now,
+                )
+            )
             changed = session.execute(
                 update(EmailJob)
-                .where(EmailJob.id == job_id, EmailJob.state == "queued")
+                .where(
+                    EmailJob.id == job_id,
+                    EmailJob.state == "queued",
+                    EmailJob.token_id.in_(active),
+                )
                 .values(
                     state="running",
                     lease=lease,
@@ -116,6 +135,17 @@ class JobStore:
             ).rowcount
             session.commit()
         return lease if changed else None
+
+    def cleanup(self, retention_days):
+        with self.sessions() as session:
+            changed = session.execute(
+                delete(EmailJob).where(
+                    EmailJob.state.in_(["completed", "failed"]),
+                    EmailJob.updated_at < utcnow() - timedelta(days=retention_days),
+                )
+            ).rowcount
+            session.commit()
+            return changed
 
     def checkpoint(self, job_id, lease, stage, value):
         with self.sessions() as session:

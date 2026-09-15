@@ -56,3 +56,22 @@ The PostgreSQL test creates a uniquely named schema in `find_me_gamer_agent_test
 Use `docker compose -f compose.test.yaml stop postgres` to stop this dedicated test container. Do not run old product Compose commands. No test needs company credentials or sends real email.
 
 Known non-blocking dependency notice: Starlette 0.46.2 emits a deprecation warning for the AnyIO BlockingPortal alias during tests. This does not affect the production API and is tracked for a future framework upgrade, not hidden by disabling warnings.
+# Email enrichment worker (local development checkpoint)
+
+The independent email routes require `email:enrich`: POST `/v1/email/enrich` with `Idempotency-Key`, GET `/v1/email/jobs/{id}`, POST `/v1/email/jobs/{id}/retry`. They operate only on the agent database, with the `0002_email_jobs` migration applied.
+
+Set `FMG_AGENT_GEMINI_API_KEY` and `FMG_AGENT_GEMINI_MODEL` privately on the server. There is deliberately no guessed default model: use the company's verified configured model. Set `FMG_AGENT_BROKER_URL` to the company Redis connection. Never provide these credentials to CLI users.
+
+Run `.venv/bin/python -m fmg_agent.worker`. The worker consumes only `fmg_agent`, uses the Redis key prefix `fmg_agent:`, and contains a small periodic dispatcher: no old Worker or Beat is started. Pending DB rows survive broker failures. Duplicate queue deliveries cannot claim the same running job. A 15-minute expired lease becomes an explicit retryable failure instead of automatically repeating uncertain paid work. Production prefork execution has a 10-minute hard limit; tests use solo workers with bounded external fixtures.
+
+Public pages are fetched with validated/pinned DNS addresses and bounded redirects/content/time. At most two explicitly linked contact-like URLs are followed. Public-page business contact extraction precedes Gemini search. Failed stages are not treated as successful checkpoints; model-reported emails include public source URLs but are not claimed independently verified or deliverable.
+
+`FMG_AGENT_EMAIL_RETENTION_DAYS` defaults to 30 (1–30 allowed). Cleanup only removes terminal new-service email jobs. Persist required results locally before expiry; idempotency keys expire with their records. No old product data is cleaned.
+
+For the compiled-CLI/real-HTTP/PostgreSQL/Redis/restarted-Worker test, start the isolated compose services, build `../cli/fmg`, then run:
+
+```sh
+FMG_AGENT_TEST_DATABASE_URL='postgresql+psycopg://fmg_agent_test:local-test-only@127.0.0.1:55439/find_me_gamer_agent_test' FMG_AGENT_TEST_CLI='../cli/fmg' .venv/bin/pytest tests/test_email_e2e.py -q
+```
+
+Only external pages/model data are simulated in this test. No paid Gemini smoke or real email delivery has been performed for this checkpoint. This is not a deployment announcement.

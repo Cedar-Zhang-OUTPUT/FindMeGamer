@@ -23,6 +23,9 @@ fmg youtube|x|steam operations
 fmg youtube|x|steam describe OPERATION
 fmg youtube|x|steam call OPERATION --params JSON [--max-pages N] [--max-items N]
 fmg version
+fmg email enrich --url URL --idempotency-key KEY [--name NAME] [--platform PLATFORM]
+fmg email job ID [--wait] [--timeout 5m]
+fmg email retry ID
 
 Default: one upstream page, JSON stdout, diagnostics stderr.
 With --max-pages: NDJSON, one whole response envelope per page.
@@ -46,6 +49,9 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	}
 	if args[0] == "auth" {
 		return runAuth(ctx, args[1:], stdin, stdout, stderr)
+	}
+	if args[0] == "email" {
+		return runEmail(ctx, args[1:], stdout, stderr)
 	}
 	provider := args[0]
 	if provider != "youtube" && provider != "x" && provider != "steam" {
