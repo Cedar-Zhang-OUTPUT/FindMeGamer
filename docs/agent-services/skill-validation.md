@@ -1,0 +1,11 @@
+# Skill verification evidence (2026-09-15)
+
+Baseline without a Skill: independent Agent explicitly could not determine command names, budgets or artifact contracts. It said: “Without CLI help, a Skill, or documented examples, the exact fmg commands, default request budget, artifact schemas, and paths are unknowable.” It correctly kept unknown delivery and failed email lookup separate; no extra prohibitions were added to fix failures that did not occur.
+
+Technical Skill: independently read entrypoint and references, executed compiled CLI→HTTP provider smoke and PostgreSQL/Redis/Worker/local SMTP email E2E. Both passed. Agent correctly used current X `searchPostsRecent`, string template version, source-aware Steam helpers, explicit mail approval, unchanged key recovery and unknown monetary accounting. These were isolated fixtures, not live authorization or external delivery.
+
+Business Skill: independent Agent used a temporary synthetic workspace `/tmp/fmg-forward.OpMpqK/steam-4952700`. It executed init/index/repeated index/summary, created and verified an actual JSON Match Brief, source-relative paths and profile SHA256. Previously seen but not recommended YouTube account was excluded; same-name X identity was distinct. Next-run discovery excluded all newly seen accounts. Four identities, three current-run seen, one recommended, zero contacted were verified. Three drafts did not become sends; missing recipient/signature stayed explicit. Failed enrichment remained failed, unknown prior mail was not resent, money and Codex task usage remained unknown. Synthetic evidence was labelled and never imported into a real service.
+
+One omission in the evaluator's own artifact preparation (two draft leads initially missing seen events) was caught during its verification and corrected. The Skill already required recording seen identities; no broader workflow restrictions were added. The helper unit tests separately cover history preservation, cross-platform identity, invalid input and failed atomic replacement preserving the old index.
+
+Both Skills pass the bundled skill-creator validator (PyYAML 6.0.2 used only in the local validation environment). No Skill was installed into the user's active global Skills directory during development.

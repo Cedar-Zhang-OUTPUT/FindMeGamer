@@ -78,11 +78,13 @@ def test_unknown_cost_stays_unknown(ledger):
 
 ## D. 本地资料辅助脚本与业务 Skill
 
+2026-09-15 完成记录：脚本红→绿测试、两份 Skill 校验、独立 Agent 的实际文件/命令行为验证均通过；详见 `docs/agent-services/skill-validation.md`。后续只准备 Task 7 的本地发行与验收，按用户最新要求不部署、不上传。
+
 **Files:** create `skills/fmg-research/SKILL.md`, `references/{research,outreach,files}.md`, `scripts/workspace.py`, `tests/test_workflow_workspace.py`; update技术 Skill 与 quickstart。
 
 **Interfaces:** 辅助脚本 `workspace.py init --root PATH --app-id ID`、`index --root PATH --input JSON`、`summary --root PATH --run-id ID`。稳定 ID 用平台+账号 ID；保留 seen/recommended/rejected/contacted 状态与 run ID；原子保存小索引，不改用户已有证据文件。
 
-- [ ] 先写测试：重复账号不重复深挖索引、同名异平台不合并、条件变化保留历史、原子保存中断不破坏上次索引、成本未知不归零。
+- [x] 先写测试：重复账号不重复深挖索引、同名异平台不合并、条件变化保留历史、原子保存中断不破坏上次索引、成本未知不归零。
 
 ```python
 def test_cross_platform_names_do_not_merge(workspace):
@@ -91,6 +93,6 @@ def test_cross_platform_names_do_not_merge(workspace):
     assert len(workspace.accounts()) == 2
 ```
 
-- [ ] 读取 skill-creator/writing-skills 后编写最小入口及按需参考；默认预算、硬条件/偏好/扩展、先筛后深挖、公开邮箱补强、文件证据、局部恢复与批次确认均来自规格。已有用户信息不重复询问；首次实际使用简短介绍能力。
-- [ ] 用隔离上游数据验证：首次找人、继续找去重、质疑匹配读取证据、直接给定账号评估、补邮箱失败不写 Not Found、模板变量与未确认不发信、usage unknown。独立 Agent 按 Skill 实际运行命令，报告偏差后修正。
-- [ ] 校验 Skill、回归辅助脚本和 CLI 示例，提交；然后进入基础计划 Task 7 的部署与全平台打包发布，不提前宣称安装完成。
+- [x] 读取 skill-creator/writing-skills 后编写最小入口及按需参考；默认预算、硬条件/偏好/扩展、先筛后深挖、公开邮箱补强、文件证据、局部恢复与批次确认均来自规格。已有用户信息不重复询问；首次实际使用简短介绍能力。
+- [x] 用隔离上游数据验证：首次找人、继续找去重、质疑匹配读取证据、直接给定账号评估、补邮箱失败不写 Not Found、模板变量与未确认不发信、usage unknown。独立 Agent 按 Skill 实际运行命令，报告偏差后修正。
+- [x] 校验 Skill、回归辅助脚本和 CLI 示例，提交；进入 Task 7 本地打包验收。生产部署与上传按最新要求暂不执行。
