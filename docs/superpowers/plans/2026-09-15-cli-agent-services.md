@@ -72,8 +72,8 @@ Task 1 验证记录：Python 3.13.15，PostgreSQL 17.11。实现前测试记录�
 
 **Interfaces:** `POST /v1/providers/{provider}/call` 输入 `{operation:str,params:object}`，输出 `{data:any,meta:object}`；`GET /v1/providers/{provider}/operations` 及 `/operations/{operation}`；错误契约见规格第 4 节。
 
-- [ ] 根据规格中的官方文档核验只读操作清单，记录 operation、method、host、path、参数位置、分页字段、所需授权、文档 URL、核验日期、测试状态。YouTube 使用官方 Discovery 元数据；X 依据官方端点目录；Steam 依据 GetSupportedAPIList，Store 辅助接口单列。不能仅收录旧 Profile 使用的少量操作。
-- [ ] 写 mock 上游测试，验证未知响应字段保留、分页游标原样返回、401/429/余额错误脱敏分类、嵌套部分错误保留、任意 host/认证参数拒绝。
+- [x] 根据规格中的官方文档核验只读操作清单，记录 operation、method、host、path、参数位置、分页字段、所需授权、文档 URL、核验日期、测试状态。YouTube 使用官方 Discovery 元数据；X 依据官方端点目录；Steam 依据 GetSupportedAPIList，Store 辅助接口单列。不能仅收录旧 Profile 使用的少量操作。
+- [x] 写 mock 上游测试，验证未知响应字段保留、分页游标原样返回、401/429/余额错误脱敏分类、嵌套部分错误保留、任意 host/认证参数拒绝。
 
 ```python
 def test_preserves_provider_fields(client, youtube_mock, read_headers):
@@ -84,8 +84,8 @@ def test_preserves_provider_fields(client, youtube_mock, read_headers):
     assert r.json()['data']['nextPageToken'] == 'p2'
 ```
 
-- [ ] 运行 `.venv/bin/pytest tests/test_provider_calls.py -q`，确认未注册路由/实现导致失败。
-- [ ] 实现目录驱动请求；服务器注入密钥，固定主机且禁用任意重定向，不以严格 Profile schema 校验上游响应。批量参数保留原语义，CLI 的分页上限不是上游新增参数。
+- [x] 运行 `.venv/bin/pytest tests/test_provider_calls.py -q`，确认未注册路由/实现导致失败。
+- [x] 实现目录驱动请求；服务器注入密钥，固定主机且禁用任意重定向，不以严格 Profile schema 校验上游响应。批量参数保留原语义，CLI 的分页上限不是上游新增参数。
 
 ```python
 operation = catalog.resolve(provider, request.operation)
@@ -94,8 +94,10 @@ payload, headers = await transport.call(operation, params)
 return {'data': payload, 'meta': safe_metadata(headers, request_id)}
 ```
 
-- [ ] 重跑测试；各平台至少一次低成本真实只读 smoke，实际权限不足记录 requires-authorization，不扩大授权或自动重试消费。核对目录缺项并明确不支持的流式/二进制能力。
-- [ ] 审查提交 `feat: expose catalog-driven platform read APIs`。
+- [x] 重跑测试；各平台至少一次低成本真实只读 smoke，实际权限不足记录 requires-authorization，不扩大授权或自动重试消费。核对目录缺项并明确不支持的流式/二进制能力。
+- [x] 审查提交 `feat: expose catalog-driven platform read APIs`。
+
+Task 2 验证记录：最终 51 项测试通过。独立审查发现并修复 Steam optional key 和 indexed batch 参数两项 P2，红→绿测试及审查复核通过。服务器临时一次性容器用新代码、旧环境依赖及只读 SQL 读取公司凭据，分别真实成功调用 YouTube `i18nLanguages.list`、X `getUsersByUsername`、Steam `store.appdetails`；凭据没有输出或下发至开发机。此 smoke 不代表新网关已部署或全部操作已实测。API 目录覆盖边界见 `api-catalog/coverage.md`。旧 API/Worker/Beat 未启动。
 
 ## Task 3：可安装 CLI 与有限分页
 

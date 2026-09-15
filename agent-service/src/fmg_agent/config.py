@@ -1,6 +1,7 @@
 """Explicit, isolated service configuration; never load legacy .env files."""
 
-from pydantic import Field, field_validator
+from pathlib import Path
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
 
@@ -10,6 +11,10 @@ class Settings(BaseSettings):
         env_prefix="FMG_AGENT_", hide_input_in_errors=True
     )
     database_url: str = Field(repr=False)
+    youtube_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    x_bearer_token: SecretStr = Field(default=SecretStr(""), repr=False)
+    steam_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
+    catalog_dir: Path = Path(__file__).resolve().parents[3] / "api-catalog"
 
     @field_validator("database_url")
     @classmethod

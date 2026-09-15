@@ -1,0 +1,1166 @@
+{
+  "operations": {
+    "IAuthenticationService.GetPasswordRSAPublicKey.v1": {
+      "auth": "none",
+      "availability": "unsupported",
+      "base_url": "https://api.steampowered.com",
+      "id": "IAuthenticationService.GetPasswordRSAPublicKey.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "account_name": {
+          "description": "user-provided account name to get an RSA key for",
+          "location": "query",
+          "name": "account_name",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        }
+      },
+      "path": "/IAuthenticationService/GetPasswordRSAPublicKey/v1/",
+      "response_schema": {},
+      "summary": "Fetches RSA public key to use to encrypt passwords for a given account name",
+      "transport_mode": "input_json"
+    },
+    "IContentServerDirectoryService.GetCDNForVideo.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IContentServerDirectoryService.GetCDNForVideo.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "client_ip": {
+          "description": "client IP address",
+          "location": "query",
+          "name": "client_ip",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        },
+        "client_region": {
+          "description": "client region",
+          "location": "query",
+          "name": "client_region",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        },
+        "property_type": {
+          "description": "ECDNPropertyType",
+          "location": "query",
+          "name": "property_type",
+          "optional": false,
+          "required": true,
+          "type": "int32"
+        }
+      },
+      "path": "/IContentServerDirectoryService/GetCDNForVideo/v1/",
+      "response_schema": {},
+      "summary": "IContentServerDirectoryService.GetCDNForVideo.v1",
+      "transport_mode": "input_json"
+    },
+    "IContentServerDirectoryService.GetClientUpdateHosts.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IContentServerDirectoryService.GetClientUpdateHosts.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "cached_signature": {
+          "location": "query",
+          "name": "cached_signature",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        }
+      },
+      "path": "/IContentServerDirectoryService/GetClientUpdateHosts/v1/",
+      "response_schema": {},
+      "summary": "IContentServerDirectoryService.GetClientUpdateHosts.v1",
+      "transport_mode": "input_json"
+    },
+    "IContentServerDirectoryService.GetDepotPatchInfo.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IContentServerDirectoryService.GetDepotPatchInfo.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "appid": {
+          "location": "query",
+          "name": "appid",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        },
+        "depotid": {
+          "location": "query",
+          "name": "depotid",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        },
+        "source_manifestid": {
+          "location": "query",
+          "name": "source_manifestid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        },
+        "target_manifestid": {
+          "location": "query",
+          "name": "target_manifestid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        }
+      },
+      "path": "/IContentServerDirectoryService/GetDepotPatchInfo/v1/",
+      "response_schema": {},
+      "summary": "IContentServerDirectoryService.GetDepotPatchInfo.v1",
+      "transport_mode": "input_json"
+    },
+    "IContentServerDirectoryService.GetServersForSteamPipe.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IContentServerDirectoryService.GetServersForSteamPipe.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "cell_id": {
+          "description": "client Cell ID",
+          "location": "query",
+          "name": "cell_id",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        },
+        "current_connections": {
+          "description": "what sources is the client currently using",
+          "location": "query",
+          "name": "current_connections",
+          "optional": false,
+          "required": true,
+          "type": "{message}"
+        },
+        "ip_override": {
+          "description": "client IP address",
+          "location": "query",
+          "name": "ip_override",
+          "optional": true,
+          "required": false,
+          "type": "string"
+        },
+        "ipv6_public": {
+          "description": "client public ipv6 address if it knows it",
+          "location": "query",
+          "name": "ipv6_public",
+          "optional": true,
+          "required": false,
+          "type": "string"
+        },
+        "launcher_type": {
+          "description": "launcher type",
+          "location": "query",
+          "name": "launcher_type",
+          "optional": true,
+          "required": false,
+          "type": "int32"
+        },
+        "max_servers": {
+          "description": "max servers in response list",
+          "location": "query",
+          "name": "max_servers",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        }
+      },
+      "path": "/IContentServerDirectoryService/GetServersForSteamPipe/v1/",
+      "response_schema": {},
+      "summary": "IContentServerDirectoryService.GetServersForSteamPipe.v1",
+      "transport_mode": "input_json"
+    },
+    "IContentServerDirectoryService.PickSingleContentServer.v1": {
+      "auth": "none",
+      "availability": "unsupported",
+      "base_url": "https://api.steampowered.com",
+      "id": "IContentServerDirectoryService.PickSingleContentServer.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "cell_id": {
+          "description": "client Cell ID",
+          "location": "query",
+          "name": "cell_id",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        },
+        "client_ip": {
+          "description": "client IP address",
+          "location": "query",
+          "name": "client_ip",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        },
+        "property_type": {
+          "description": "ECDNPropertyType",
+          "location": "query",
+          "name": "property_type",
+          "optional": false,
+          "required": true,
+          "type": "int32"
+        }
+      },
+      "path": "/IContentServerDirectoryService/PickSingleContentServer/v1/",
+      "response_schema": {},
+      "summary": "IContentServerDirectoryService.PickSingleContentServer.v1",
+      "transport_mode": "input_json"
+    },
+    "IGCVersion_1046930.GetClientVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_1046930.GetClientVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_1046930/GetClientVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_1046930.GetClientVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_1046930.GetServerVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_1046930.GetServerVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_1046930/GetServerVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_1046930.GetServerVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_1269260.GetClientVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_1269260.GetClientVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_1269260/GetClientVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_1269260.GetClientVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_1269260.GetServerVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_1269260.GetServerVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_1269260/GetServerVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_1269260.GetServerVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_1422450.GetClientVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_1422450.GetClientVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_1422450/GetClientVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_1422450.GetClientVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_1422450.GetServerVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_1422450.GetServerVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_1422450/GetServerVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_1422450.GetServerVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_440.GetClientVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_440.GetClientVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_440/GetClientVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_440.GetClientVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_440.GetServerVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_440.GetServerVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_440/GetServerVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_440.GetServerVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_570.GetClientVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_570.GetClientVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_570/GetClientVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_570.GetClientVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_570.GetServerVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_570.GetServerVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_570/GetServerVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_570.GetServerVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_583950.GetClientVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_583950.GetClientVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_583950/GetClientVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_583950.GetClientVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_583950.GetServerVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_583950.GetServerVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_583950/GetServerVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_583950.GetServerVersion.v1",
+      "transport_mode": "query"
+    },
+    "IGCVersion_730.GetServerVersion.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IGCVersion_730.GetServerVersion.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/IGCVersion_730/GetServerVersion/v1/",
+      "response_schema": {},
+      "summary": "IGCVersion_730.GetServerVersion.v1",
+      "transport_mode": "query"
+    },
+    "IPortal2Leaderboards_620.GetBucketizedData.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IPortal2Leaderboards_620.GetBucketizedData.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "leaderboardName": {
+          "description": "The leaderboard name to fetch data for.",
+          "location": "query",
+          "name": "leaderboardName",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        }
+      },
+      "path": "/IPortal2Leaderboards_620/GetBucketizedData/v1/",
+      "response_schema": {},
+      "summary": "IPortal2Leaderboards_620.GetBucketizedData.v1",
+      "transport_mode": "query"
+    },
+    "IPublishedFileService.GetUserVoteSummary.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IPublishedFileService.GetUserVoteSummary.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "publishedfileids": {
+          "location": "query",
+          "name": "publishedfileids",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        }
+      },
+      "path": "/IPublishedFileService/GetUserVoteSummary/v1/",
+      "response_schema": {},
+      "summary": "Get user vote summary",
+      "transport_mode": "input_json"
+    },
+    "ISteamApps.GetSDRConfig.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamApps.GetSDRConfig.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "appid": {
+          "description": "AppID of game",
+          "location": "query",
+          "name": "appid",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        }
+      },
+      "path": "/ISteamApps/GetSDRConfig/v1/",
+      "response_schema": {},
+      "summary": "ISteamApps.GetSDRConfig.v1",
+      "transport_mode": "query"
+    },
+    "ISteamApps.GetServersAtAddress.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamApps.GetServersAtAddress.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "addr": {
+          "description": "IP or IP:queryport to list",
+          "location": "query",
+          "name": "addr",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        }
+      },
+      "path": "/ISteamApps/GetServersAtAddress/v1/",
+      "response_schema": {},
+      "summary": "ISteamApps.GetServersAtAddress.v1",
+      "transport_mode": "query"
+    },
+    "ISteamApps.UpToDateCheck.v1": {
+      "auth": "none",
+      "availability": "unsupported",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamApps.UpToDateCheck.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "appid": {
+          "description": "AppID of game",
+          "location": "query",
+          "name": "appid",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        },
+        "version": {
+          "description": "The installed version of the game",
+          "location": "query",
+          "name": "version",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        }
+      },
+      "path": "/ISteamApps/UpToDateCheck/v1/",
+      "response_schema": {},
+      "summary": "ISteamApps.UpToDateCheck.v1",
+      "transport_mode": "query"
+    },
+    "ISteamBroadcast.ViewerHeartbeat.v1": {
+      "auth": "none",
+      "availability": "unsupported",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamBroadcast.ViewerHeartbeat.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "sessionid": {
+          "description": "Broadcast Session ID",
+          "location": "query",
+          "name": "sessionid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        },
+        "steamid": {
+          "description": "Steam ID of the broadcaster",
+          "location": "query",
+          "name": "steamid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        },
+        "stream": {
+          "description": "video stream representation watching",
+          "location": "query",
+          "name": "stream",
+          "optional": true,
+          "required": false,
+          "type": "int32"
+        }
+      },
+      "path": "/ISteamBroadcast/ViewerHeartbeat/v1/",
+      "response_schema": {},
+      "summary": "ISteamBroadcast.ViewerHeartbeat.v1",
+      "transport_mode": "query"
+    },
+    "ISteamDirectory.GetCMList.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamDirectory.GetCMList.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "cellid": {
+          "description": "Client's Steam cell ID",
+          "location": "query",
+          "name": "cellid",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        },
+        "maxcount": {
+          "description": "Max number of servers to return",
+          "location": "query",
+          "name": "maxcount",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        }
+      },
+      "path": "/ISteamDirectory/GetCMList/v1/",
+      "response_schema": {},
+      "summary": "ISteamDirectory.GetCMList.v1",
+      "transport_mode": "query"
+    },
+    "ISteamDirectory.GetCMListForConnect.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamDirectory.GetCMListForConnect.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "cellid": {
+          "description": "Client's Steam cell ID, uses IP location if blank",
+          "location": "query",
+          "name": "cellid",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        },
+        "cmtype": {
+          "description": "Optional CM type filter",
+          "location": "query",
+          "name": "cmtype",
+          "optional": true,
+          "required": false,
+          "type": "string"
+        },
+        "maxcount": {
+          "description": "Max number of servers to return",
+          "location": "query",
+          "name": "maxcount",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        },
+        "qoslevel": {
+          "description": "Desired connection priority",
+          "location": "query",
+          "name": "qoslevel",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        },
+        "realm": {
+          "description": "Optional Steam Realm filter",
+          "location": "query",
+          "name": "realm",
+          "optional": true,
+          "required": false,
+          "type": "string"
+        }
+      },
+      "path": "/ISteamDirectory/GetCMListForConnect/v1/",
+      "response_schema": {},
+      "summary": "ISteamDirectory.GetCMListForConnect.v1",
+      "transport_mode": "query"
+    },
+    "ISteamDirectory.GetSteamPipeDomains.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamDirectory.GetSteamPipeDomains.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/ISteamDirectory/GetSteamPipeDomains/v1/",
+      "response_schema": {},
+      "summary": "ISteamDirectory.GetSteamPipeDomains.v1",
+      "transport_mode": "query"
+    },
+    "ISteamNews.GetNewsForApp.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamNews.GetNewsForApp.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "appid": {
+          "description": "AppID to retrieve news for",
+          "location": "query",
+          "name": "appid",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        },
+        "count": {
+          "description": "# of posts to retrieve (default 20)",
+          "location": "query",
+          "name": "count",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        },
+        "enddate": {
+          "description": "Retrieve posts earlier than this date (unix epoch timestamp)",
+          "location": "query",
+          "name": "enddate",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        },
+        "maxlength": {
+          "description": "Maximum length for the content to return, if this is 0 the full content is returned, if it's less then a blurb is generated to fit.",
+          "location": "query",
+          "name": "maxlength",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        },
+        "tags": {
+          "description": "Comma-separated list of tags to filter by (e.g. 'patchnodes')",
+          "location": "query",
+          "name": "tags",
+          "optional": true,
+          "required": false,
+          "type": "string"
+        }
+      },
+      "path": "/ISteamNews/GetNewsForApp/v1/",
+      "response_schema": {},
+      "summary": "ISteamNews.GetNewsForApp.v1",
+      "transport_mode": "query"
+    },
+    "ISteamNews.GetNewsForApp.v2": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamNews.GetNewsForApp.v2",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "appid": {
+          "description": "AppID to retrieve news for",
+          "location": "query",
+          "name": "appid",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        },
+        "count": {
+          "description": "# of posts to retrieve (default 20)",
+          "location": "query",
+          "name": "count",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        },
+        "enddate": {
+          "description": "Retrieve posts earlier than this date (unix epoch timestamp)",
+          "location": "query",
+          "name": "enddate",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        },
+        "feeds": {
+          "description": "Comma-separated list of feed names to return news for",
+          "location": "query",
+          "name": "feeds",
+          "optional": true,
+          "required": false,
+          "type": "string"
+        },
+        "maxlength": {
+          "description": "Maximum length for the content to return, if this is 0 the full content is returned, if it's less then a blurb is generated to fit.",
+          "location": "query",
+          "name": "maxlength",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        },
+        "tags": {
+          "description": "Comma-separated list of tags to filter by (e.g. 'patchnodes')",
+          "location": "query",
+          "name": "tags",
+          "optional": true,
+          "required": false,
+          "type": "string"
+        }
+      },
+      "path": "/ISteamNews/GetNewsForApp/v2/",
+      "response_schema": {},
+      "summary": "ISteamNews.GetNewsForApp.v2",
+      "transport_mode": "query"
+    },
+    "ISteamUserOAuth.GetTokenDetails.v1": {
+      "auth": "none",
+      "availability": "unsupported",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamUserOAuth.GetTokenDetails.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/ISteamUserOAuth/GetTokenDetails/v1/",
+      "response_schema": {},
+      "summary": "ISteamUserOAuth.GetTokenDetails.v1",
+      "transport_mode": "query"
+    },
+    "ISteamUserStats.GetGlobalAchievementPercentagesForApp.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamUserStats.GetGlobalAchievementPercentagesForApp.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "gameid": {
+          "description": "GameID to retrieve the achievement percentages for",
+          "location": "query",
+          "name": "gameid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        }
+      },
+      "path": "/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v1/",
+      "response_schema": {},
+      "summary": "ISteamUserStats.GetGlobalAchievementPercentagesForApp.v1",
+      "transport_mode": "query"
+    },
+    "ISteamUserStats.GetGlobalAchievementPercentagesForApp.v2": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamUserStats.GetGlobalAchievementPercentagesForApp.v2",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "gameid": {
+          "description": "GameID to retrieve the achievement percentages for",
+          "location": "query",
+          "name": "gameid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        }
+      },
+      "path": "/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v2/",
+      "response_schema": {},
+      "summary": "ISteamUserStats.GetGlobalAchievementPercentagesForApp.v2",
+      "transport_mode": "query"
+    },
+    "ISteamUserStats.GetGlobalStatsForGame.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamUserStats.GetGlobalStatsForGame.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "appid": {
+          "description": "AppID that we're getting global stats for",
+          "location": "query",
+          "name": "appid",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        },
+        "count": {
+          "description": "Number of stats get data for",
+          "location": "query",
+          "name": "count",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        },
+        "enddate": {
+          "description": "End date for daily totals (unix epoch timestamp)",
+          "location": "query",
+          "name": "enddate",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        },
+        "name[0]": {
+          "description": "Names of stat to get data for",
+          "location": "query",
+          "name": "name[0]",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        },
+        "startdate": {
+          "description": "Start date for daily totals (unix epoch timestamp)",
+          "location": "query",
+          "name": "startdate",
+          "optional": true,
+          "required": false,
+          "type": "uint32"
+        }
+      },
+      "path": "/ISteamUserStats/GetGlobalStatsForGame/v1/",
+      "response_schema": {},
+      "summary": "ISteamUserStats.GetGlobalStatsForGame.v1",
+      "transport_mode": "query"
+    },
+    "ISteamUserStats.GetNumberOfCurrentPlayers.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamUserStats.GetNumberOfCurrentPlayers.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "appid": {
+          "description": "AppID that we're getting user count for",
+          "location": "query",
+          "name": "appid",
+          "optional": false,
+          "required": true,
+          "type": "uint32"
+        }
+      },
+      "path": "/ISteamUserStats/GetNumberOfCurrentPlayers/v1/",
+      "response_schema": {},
+      "summary": "ISteamUserStats.GetNumberOfCurrentPlayers.v1",
+      "transport_mode": "query"
+    },
+    "ISteamWebAPIUtil.GetServerInfo.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamWebAPIUtil.GetServerInfo.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/ISteamWebAPIUtil/GetServerInfo/v1/",
+      "response_schema": {},
+      "summary": "ISteamWebAPIUtil.GetServerInfo.v1",
+      "transport_mode": "query"
+    },
+    "ISteamWebAPIUtil.GetSupportedAPIList.v1": {
+      "auth": "api-key-optional",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ISteamWebAPIUtil.GetSupportedAPIList.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/ISteamWebAPIUtil/GetSupportedAPIList/v1/",
+      "response_schema": {},
+      "summary": "ISteamWebAPIUtil.GetSupportedAPIList.v1",
+      "transport_mode": "query"
+    },
+    "IStoreService.GetGamesFollowed.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IStoreService.GetGamesFollowed.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "steamid": {
+          "location": "query",
+          "name": "steamid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        }
+      },
+      "path": "/IStoreService/GetGamesFollowed/v1/",
+      "response_schema": {},
+      "summary": "Get the list of games a user is following",
+      "transport_mode": "input_json"
+    },
+    "IStoreService.GetGamesFollowedCount.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IStoreService.GetGamesFollowedCount.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "steamid": {
+          "location": "query",
+          "name": "steamid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        }
+      },
+      "path": "/IStoreService/GetGamesFollowedCount/v1/",
+      "response_schema": {},
+      "summary": "Get the number of games a user is following",
+      "transport_mode": "input_json"
+    },
+    "IStoreService.GetRecommendedTagsForUser.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IStoreService.GetRecommendedTagsForUser.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "country_code": {
+          "location": "query",
+          "name": "country_code",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        },
+        "favor_rarer_tags": {
+          "description": "Biases tags towards tags that are less common. e.g. Favor Zombies over Action if the user plays the same number of games with both tags.",
+          "location": "query",
+          "name": "favor_rarer_tags",
+          "optional": false,
+          "required": true,
+          "type": "bool"
+        },
+        "language": {
+          "location": "query",
+          "name": "language",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        }
+      },
+      "path": "/IStoreService/GetRecommendedTagsForUser/v1/",
+      "response_schema": {},
+      "summary": "Get a set of tags that are recommended for the user based on recent playtime.",
+      "transport_mode": "input_json"
+    },
+    "ITFSystem_440.GetWorldStatus.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "ITFSystem_440.GetWorldStatus.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {},
+      "path": "/ITFSystem_440/GetWorldStatus/v1/",
+      "response_schema": {},
+      "summary": "ITFSystem_440.GetWorldStatus.v1",
+      "transport_mode": "query"
+    },
+    "IWishlistService.GetWishlist.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IWishlistService.GetWishlist.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "steamid": {
+          "location": "query",
+          "name": "steamid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        }
+      },
+      "path": "/IWishlistService/GetWishlist/v1/",
+      "response_schema": {},
+      "summary": "Get a user's wishlist.",
+      "transport_mode": "input_json"
+    },
+    "IWishlistService.GetWishlistItemCount.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IWishlistService.GetWishlistItemCount.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "steamid": {
+          "location": "query",
+          "name": "steamid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        }
+      },
+      "path": "/IWishlistService/GetWishlistItemCount/v1/",
+      "response_schema": {},
+      "summary": "Get the number of items on a user's wishlist.",
+      "transport_mode": "input_json"
+    },
+    "IWishlistService.GetWishlistSortedFiltered.v1": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://api.steampowered.com",
+      "id": "IWishlistService.GetWishlistSortedFiltered.v1",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "context": {
+          "location": "query",
+          "name": "context",
+          "optional": false,
+          "required": true,
+          "type": "{message}"
+        },
+        "data_request": {
+          "description": "If passed, item data will be returned",
+          "location": "query",
+          "name": "data_request",
+          "optional": false,
+          "required": true,
+          "type": "{message}"
+        },
+        "filters": {
+          "location": "query",
+          "name": "filters",
+          "optional": false,
+          "required": true,
+          "type": "{message}"
+        },
+        "page_size": {
+          "location": "query",
+          "name": "page_size",
+          "optional": true,
+          "required": false,
+          "type": "int32"
+        },
+        "share_token": {
+          "description": "The wishlist share token. Determines what items are visible and the effective filters.",
+          "location": "query",
+          "name": "share_token",
+          "optional": false,
+          "required": true,
+          "type": "string"
+        },
+        "sort_order": {
+          "location": "query",
+          "name": "sort_order",
+          "optional": true,
+          "required": false,
+          "type": "{enum}"
+        },
+        "start_index": {
+          "description": "Data in this range will be filled in with StoreBrowse data",
+          "location": "query",
+          "name": "start_index",
+          "optional": true,
+          "required": false,
+          "type": "int32"
+        },
+        "steamid": {
+          "location": "query",
+          "name": "steamid",
+          "optional": false,
+          "required": true,
+          "type": "uint64"
+        }
+      },
+      "path": "/IWishlistService/GetWishlistSortedFiltered/v1/",
+      "response_schema": {},
+      "summary": "Get a user's paginated wishlist applying various sorts and filters",
+      "transport_mode": "input_json"
+    },
+    "store.appdetails": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://store.steampowered.com",
+      "id": "store.appdetails",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "appids": {
+          "location": "query",
+          "required": true,
+          "type": "string"
+        },
+        "cc": {
+          "location": "query",
+          "type": "string"
+        },
+        "filters": {
+          "location": "query",
+          "type": "string"
+        },
+        "l": {
+          "location": "query",
+          "type": "string"
+        }
+      },
+      "path": "/api/appdetails",
+      "response_schema": {},
+      "source_url": "https://store.steampowered.com/api/appdetails",
+      "stability": "store-endpoint",
+      "summary": "Steam Store game details (store endpoint; not a documented Steam Web API guarantee)"
+    }
+  },
+  "provider": "steam",
+  "schemas": {},
+  "source_sha256": "bd9526d07598517c8c4dc1f76b78137106610be49783637438f660a819acf555",
+  "source_url": "https://api.steampowered.com/ISteamWebAPIUtil/GetSupportedAPIList/v1/",
+  "verified_date": "2026-09-15"
+}

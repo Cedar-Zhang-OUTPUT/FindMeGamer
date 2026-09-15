@@ -1,6 +1,6 @@
 # FMG Agent Service
 
-Independent company API gateway. This package does not start or import the old desktop backend. At the first development checkpoint it provides health, access-token authentication and migrations only; platform and email endpoints follow in subsequent tasks.
+Independent company API gateway. This package does not start or import the old desktop backend. It provides health, access-token authentication, migrations and catalog-driven platform read endpoints. Email endpoints and the CLI follow in subsequent tasks. It is not yet deployed as the public CLI service.
 
 ## Local setup
 
@@ -30,6 +30,18 @@ Run on the server (or local test environment) with the new database configured:
 Creation prints JSON containing `id` and the one-time `token` secret. Capture it privately and deliver it via an approved secure channel; never paste it into Git, shared logs or shell command arguments. Only its SHA256 digest is stored. Default scope is `read`; email enrichment/sending require explicit scopes. Revocation takes effect on the next request. There is no API for public token issuance.
 
 `GET /v1/auth/check` requires `Authorization: Bearer …` and returns token ID, label and scopes, never the secret. Use HTTPS for remote requests. The local loopback server is a development-only HTTP exception. `/v1/health` checks database connectivity without calling any platform or model.
+
+## Provider reads
+
+Server-only environment variables: `FMG_AGENT_YOUTUBE_API_KEY`, `FMG_AGENT_X_BEARER_TOKEN`, optional `FMG_AGENT_STEAM_API_KEY`. Keep them in a private environment file, not command arguments. `FMG_AGENT_CATALOG_DIR` can point to the packaged `api-catalog` directory when running outside the source tree.
+
+With a read-scoped access token, the gateway exposes:
+
+- `GET /v1/providers/{youtube|x|steam}/operations` — compact operation inventory.
+- `GET /v1/providers/{provider}/operations/{operation}` — parameters and reachable response definitions.
+- `POST /v1/providers/{provider}/call` with `{"operation":"search.list","params":{"part":"snippet","q":"indie"}}` for YouTube, or the corresponding operation ID for other providers.
+
+The server performs one request and preserves the upstream JSON under `data`. Inspect `meta.next_cursor` and `meta.rate_limit` before deciding whether to request another page. `api-catalog/coverage.md` records scope/authorization limitations. No account-private OAuth or platform write operations are silently enabled by the company key.
 
 ## Tests
 
