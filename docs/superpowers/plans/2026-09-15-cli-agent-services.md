@@ -234,6 +234,8 @@ description: Use the fmg CLI to access company-hosted YouTube, X, Steam, public 
 
 2026-09-15 执行边界更新：用户要求完成到部署上线前。本地实现、四平台构建、安装/升级、镜像运行、迁移和备份恢复演练完成后结项本轮；下列生产配置、部署、代理切换、GitHub 推送及发布项明确留待后续授权，不因本地验收通过而标成已上线。Task 6 的技术 Skill、独立行为验证和校验均已完成，实际文件布局与验收见 `docs/agent-services/skill-validation.md`。
 
+同日后续授权更新：用户明确要求部署服务、推送源码并让新 Codex 环境使用。现已完成新服务上线、源码分支推送、`fmg-v0.1.0` 公开发行，以及重新下载/校验/安装/在线升级/生产连接验收。下列生产项已按该授权完成；完整证据和仍未配置的 SMTP、Steam key 限制见 `docs/agent-services/rollout-2026-09-15.md`。没有合并或强推 main，没有启动旧客户端后端。
+
 **Files — create:** `deploy/agent-services/{compose.yaml,Caddyfile.fragment,env.example,deploy.sh,smoke.sh,rollback.md}`、`cli/scripts/{build-release.sh,install.sh}`、`.github/workflows/agent-cli-release.yml`、`docs/agent-services/release-acceptance.md`。**Modify:** CLI command 路由添加 `upgrade`，新增 `cli/internal/upgrade.go` 与测试。
 
 **Interfaces:** 四个独立发行包、SHA256SUMS、固定 release tag、安装器；新 HTTPS `/v1` 服务。公开下载地址不能包含访问令牌；token 仍单独提供。安装器默认不安装业务工作流 Skill，技术 Skill 提供明确安装选项。
@@ -249,10 +251,10 @@ GOOS=linux GOARCH=amd64 go build -trimpath -o dist/linux-amd64/fmg ./cmd/fmg
 
 - [x] 先在本地 release fixture 验证损坏归档拒绝，再实现下载到临时目录、SHA256 验证、原子替换；从 GitHub release 元数据确定精确资产 URL，不能猜 latest 资源文件名。
 - [x] 完整回归：Python 全量新服务测试、Go tests/vet、CLI/Skill smoke；真实 macOS 执行与 Linux 容器执行分别记录。没有执行的平台只记交叉编译成功，不写运行验收成功。
-- [ ] 只读核对服务器状态、旧备份仍在、数据库/Redis隔离、HTTPS证书；新建新服务私有配置，受控复用公司密钥，避免明文进入 shell 历史/日志。部署前备份新服务已有状态；首次部署不迁移旧业务数据。
-- [ ] 执行新库迁移，启动新 API/Worker，代理路由指向新服务；确认旧 API/Worker/Beat 仍停止。健康、撤销令牌、只读 API、异步任务、预览、错误分类实测，禁止真实外发。
-- [ ] 失败则停止新 API/Worker，回滚新镜像/配置；数据库恢复按已演练方法执行，不自动恢复旧客户端服务。演练新服务备份恢复，报告恢复证据。
-- [ ] 审查提交 `release: publish fmg agent services and CLI`，使用 `gh` 上传源代码分支及 release 资产，重新下载安装并对比 SHA256。向用户给出实际安装命令、版本、技术 Skill 安装入口、已验接口与 SMTP 等剩余限制。
+- [x] 只读核对服务器状态、旧备份仍在、数据库/Redis隔离、HTTPS证书；新建新服务私有配置，受控复用公司密钥，避免明文进入 shell 历史/日志。部署前备份新服务已有状态；首次部署不迁移旧业务数据。
+- [x] 执行新库迁移，启动新 API/Worker，代理路由指向新服务；确认旧 API/Worker/Beat 仍停止。健康、撤销令牌、只读 API、异步任务、预览、错误分类实测，禁止真实外发。
+- [x] 提供明确回滚步骤；新服务备份恢复在本地真实 PostgreSQL 已演练，线上备份上传 S3 成功并启用每日定时器。没有为了验收而破坏性恢复生产库，也没有恢复旧客户端服务。
+- [x] 独立审查通过，部署记录保存提交；使用 `gh` 上传源码分支及 release，重新下载、校验、安装和在线升级通过。安装入口与 SMTP 等限制已写入 quickstart 和 rollout 记录。
 
 ## 验收覆盖与停止点
 
