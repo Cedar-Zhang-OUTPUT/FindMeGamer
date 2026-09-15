@@ -173,6 +173,15 @@ def test_failed_gemini_retry_reuses_pages_and_returns_multiple_contacts(gateway)
     ]
     assert len(page_calls) == 1
     assert result["checkpoints"]["enrichment"]["usage"]["totalTokenCount"] == 100
+    from fmg_agent.usage import Ledger
+
+    summary = Ledger(app.state.sessions).summary(token.id, "unassigned")
+    assert summary["providers"]["gemini"]["request_count"] == 2
+    assert summary["providers"]["gemini"]["usage"] == {"totalTokenCount": 100}
+    assert summary["providers"]["gemini"]["statuses"] == {
+        "upstream_rate_limited": 1,
+        "succeeded": 1,
+    }
 
 
 def test_gemini_response_retains_usage_and_rejects_invalid_or_truncated_output():

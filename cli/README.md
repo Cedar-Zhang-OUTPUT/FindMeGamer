@@ -103,7 +103,7 @@ Requires `email:send`. Company SMTP credentials stay on the server. Create a loc
 ```json
 {
   "template_id": "game-outreach",
-  "template_version": 1,
+  "template_version": "1",
   "to": "creator@example.com",
   "variables": {
     "creator_name": "Creator",
@@ -140,5 +140,9 @@ One preview permits at most one SMTP attempt. Repeating the same key returns its
 Compiled-CLI/HTTP/database tests and a local SMTP capture server cover accepted, refused and unknown outcomes. Company SMTP and external delivery have **not** been verified yet.
 
 ## Output and exit status
+
+Attribute work with a leading `--run-id ID` (letters, digits, dots, underscores or hyphens, up to 100 characters): `fmg --run-id research-1 youtube call ...`. Query `fmg --run-id research-1 usage`. Jobs retain their initial run ID when resumed. Requests without the flag are grouped as `unassigned`. Only the current token's records are visible; reads of catalogs, job status or usage do not create provider usage entries.
+
+The ledger records platform attempts, SMTP attempts, and each Gemini enrichment attempt with available numeric token usage. In-progress/interrupted attempts remain visible. It excludes message text, provider credentials and API response bodies. Recognized list counts are returned; unfamiliar response shapes do not become zero items. Monetary billing and pricing are currently unavailable and explicitly null, not free. YouTube known successful read quotas are estimates based on the dated official source returned in the summary (search calls and other units are separate); failures remain unresolved. Codex/Work task usage remains null unless the Agent has separate genuine task-specific measurements. Never derive it from shared-account percentage changes.
 
 Command results: JSON stdout (NDJSON for pages or job polling). Help is human-readable text. Errors: structured JSON stderr. Exit 0 successful request (inspect receipt state), 2 parameters, 3 authentication/permission, 4 quota/rate limit, 5 network/upstream/output/wait timeout, 6 failed email job or delivery, 7 unknown send outcome, 130 user cancellation. The actual error code distinguishes company configuration, provider permission and quota failures.

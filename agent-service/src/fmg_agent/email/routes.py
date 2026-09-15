@@ -7,6 +7,7 @@ from .jobs import JobStore
 from .urls import public_url
 from .sending import SendStore, email_address
 from typing import Literal
+from ..usage import Ledger
 
 router = APIRouter(prefix="/v1/email")
 
@@ -68,6 +69,19 @@ def create_send(
     from .smtp import deliver
 
     transport = getattr(request.app.state, "smtp_transport", None) or deliver
+
+    def tracked(config, message, send_id):
+        ledger = Ledger(request.app.state.sessions)
+        key = "smtp:" + send_id
+        ledger.start(key, principal.id, request.state.run_id, "smtp", "send")
+        try:
+            outcome = transport(config, message, send_id)
+        except Exception:
+            ledger.finish(key, "unknown")
+            raise
+        ledger.finish(key, outcome["state"])
+        return outcome
+
     return result(
         request,
         SendStore(request.app.state.sessions).send(
@@ -75,7 +89,7 @@ def create_send(
             body.preview_id,
             idempotency_key,
             request.app.state.settings,
-            transport,
+            tracked,
         ),
     )
 
@@ -129,7 +143,10 @@ def enrich(
 ):
     store = JobStore(request.app.state.sessions)
     return result(
-        request, store.create(principal.id, idempotency_key, body.model_dump())
+        request,
+        store.create(
+            principal.id, idempotency_key, body.model_dump(), request.state.run_id
+        ),
     )
 
 

@@ -13,6 +13,7 @@ from .errors import ApiError, error_response
 from .email.routes import router as email_router
 from .providers.catalog import Catalog
 from .providers.routes import router as provider_router
+from .usage import router as usage_router, run_id
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -38,10 +39,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.provider_transport = None
     app.include_router(provider_router)
     app.include_router(email_router)
+    app.include_router(usage_router)
 
     @app.middleware("http")
     async def request_id(request: Request, call_next):
         request.state.request_id = str(uuid4())
+        try:
+            request.state.run_id = run_id(
+                request.headers.get("X-FMG-Run-ID", "unassigned")
+            )
+        except ApiError as error:
+            return await error_response(request, error)
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
         return response

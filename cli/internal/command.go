@@ -15,6 +15,8 @@ import (
 
 var Version = "0.1.0-dev"
 
+type runIDKey struct{}
+
 const help = `fmg — company-hosted API tools
 
 fmg auth login --server https://SERVICE --token-stdin
@@ -23,6 +25,8 @@ fmg youtube|x|steam operations
 fmg youtube|x|steam describe OPERATION
 fmg youtube|x|steam call OPERATION --params JSON [--max-pages N] [--max-items N]
 fmg version
+fmg --run-id RUN_ID usage
+Prefix other commands with --run-id RUN_ID to attribute requests.
 fmg email enrich --url URL --idempotency-key KEY [--name NAME] [--platform PLATFORM]
 fmg email job ID [--wait] [--timeout 5m]
 fmg email retry ID
@@ -44,6 +48,13 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "--run-id" {
+		if len(args) < 3 || args[1] == "" {
+			return writeError(stderr, errors.New("--run-id requires an ID and command"))
+		}
+		ctx = context.WithValue(ctx, runIDKey{}, args[1])
+		args = args[2:]
+	}
 	if len(args) == 0 || args[0] == "--help" || args[0] == "help" {
 		fmt.Fprint(stdout, help)
 		return 0
@@ -57,6 +68,24 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	}
 	if args[0] == "email" {
 		return runEmail(ctx, args[1:], stdout, stderr)
+	}
+	if args[0] == "usage" {
+		id, _ := ctx.Value(runIDKey{}).(string)
+		if len(args) != 1 || id == "" {
+			return writeError(stderr, errors.New("use fmg --run-id ID usage"))
+		}
+		config, err := loadConfig()
+		if err != nil {
+			return writeError(stderr, &APIError{Code: "login_required", Message: err.Error(), Exit: 3})
+		}
+		result, err := newClient(config).request(ctx, http.MethodGet, "/v1/usage?run_id="+url.QueryEscape(id), nil)
+		if err != nil {
+			return writeError(stderr, err)
+		}
+		if err = emit(stdout, result); err != nil {
+			return writeError(stderr, err)
+		}
+		return 0
 	}
 	provider := args[0]
 	if provider != "youtube" && provider != "x" && provider != "steam" {

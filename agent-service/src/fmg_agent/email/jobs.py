@@ -20,6 +20,8 @@ def snapshot(row):
         key: getattr(row, key)
         for key in (
             "id",
+            "token_id",
+            "run_id",
             "input",
             "state",
             "checkpoints",
@@ -35,9 +37,11 @@ class JobStore:
     def __init__(self, sessions):
         self.sessions = sessions
 
-    def create(self, token_id, key, payload):
+    def create(self, token_id, key, payload, run_id=None):
         with self.sessions() as session:
-            row = EmailJob(token_id=token_id, idempotency_key=key, input=payload)
+            row = EmailJob(
+                token_id=token_id, idempotency_key=key, input=payload, run_id=run_id
+            )
             session.add(row)
             try:
                 session.commit()

@@ -128,7 +128,32 @@ def run_job(store, job_id, enricher):
         if not emails:
             enriched = checkpoints.get("enrichment")
             if enriched is None:
-                enriched = enricher.gemini.find(state["input"])
+                from ..usage import Ledger
+
+                ledger = Ledger(store.sessions)
+                usage_id = "gemini:" + lease
+                ledger.start(
+                    usage_id,
+                    state["token_id"],
+                    state.get("run_id") or "unassigned",
+                    "gemini",
+                    "generateContent",
+                )
+                try:
+                    enriched = enricher.gemini.find(state["input"])
+                except Exception as error:
+                    ledger.finish(
+                        usage_id,
+                        getattr(error, "code", "execution_unknown"),
+                        usage=getattr(error, "usage", None),
+                    )
+                    raise
+                ledger.finish(
+                    usage_id,
+                    "succeeded",
+                    usage=enriched.get("usage"),
+                    resource_counts={"emails": len(enriched["emails"])},
+                )
                 if not store.checkpoint(job_id, lease, "enrichment", enriched):
                     return
             emails = enriched["emails"]

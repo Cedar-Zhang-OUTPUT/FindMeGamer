@@ -3,7 +3,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict
 
-from ..auth import require_scope
+from ..auth import require_scope, Principal
+from ..usage import Ledger
+from ..errors import ApiError
 from .transport import call_provider
 from .steam_store import call_store
 
@@ -46,10 +48,43 @@ def describe(provider: str, operation: str, request: Request):
 
 
 @router.post("/{provider}/call")
-async def call(provider: str, body: CallRequest, request: Request):
+async def call(
+    provider: str,
+    body: CallRequest,
+    request: Request,
+    principal: Principal = Depends(require_scope("read")),
+):
     operation, path, params = request.app.state.catalog.prepare(
         provider, body.operation, body.params
     )
+    ledger = Ledger(request.app.state.sessions)
+    rid = request.state.request_id
+    ledger.start(rid, principal.id, request.state.run_id, provider, body.operation)
+    try:
+        result = await execute(provider, body, request, operation, path, params)
+    except ApiError as error:
+        ledger.finish(rid, error.code)
+        raise
+    except Exception:
+        ledger.finish(rid, "execution_unknown")
+        raise
+    data = result["data"]
+    items = (
+        data.get("items", data.get("data", data.get("candidates")))
+        if isinstance(data, dict)
+        else None
+    )
+    ledger.finish(
+        rid,
+        "succeeded",
+        resource_counts=(
+            {"returned_items": len(items)} if isinstance(items, list) else None
+        ),
+    )
+    return result
+
+
+async def execute(provider, body, request, operation, path, params):
     if provider == "steam" and body.operation in {
         "store.search",
         "store.recommendations",

@@ -88,10 +88,13 @@ def main():
             assert related['data']['items'][0]['app_id'] == '10'
             assert related['data']['items'][0]['name'] is None
             assert related['meta']['source_url'].startswith('https://store.steampowered.com/recommended/')
+            tracked = run(['--run-id','smoke-run','steam','call','store.search','--params','{"term":"Game"}'])
+            usage = run(['--run-id','smoke-run','usage'])[0]['data']
+            assert usage['request_count']==1 and usage['actual_cost'] is None
             run(['auth','check'])
             assert run(['auth','logout'])[0]['logged_out']
             assert not (root/'config.json').exists()
-            print(json.dumps({'status':'passed','checks':['login','operations','describe','single-page','two-pages','steam-search','steam-recommendations','auth-check','logout'],'simulated_youtube_calls':len(calls), 'simulated_steam_calls':2}))
+            print(json.dumps({'status':'passed','checks':['login','operations','describe','single-page','two-pages','steam-search','steam-recommendations','run-usage','auth-check','logout'],'simulated_youtube_calls':len(calls), 'simulated_steam_calls':3}))
         finally:
             server.should_exit = True
             thread.join(timeout=5)

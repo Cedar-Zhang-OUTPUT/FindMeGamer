@@ -121,7 +121,16 @@ class GeminiGateway:
                     if len(body) > 2_000_000:
                         raise EnrichmentError("model_response_too_large")
                 try:
-                    return parse_response(json.loads(body))
+                    decoded = json.loads(body)
+                    try:
+                        return parse_response(decoded)
+                    except EnrichmentError as error:
+                        error.usage = (
+                            decoded.get("usageMetadata")
+                            if isinstance(decoded, dict)
+                            else None
+                        )
+                        raise
                 except ValueError:
                     raise EnrichmentError(
                         "model_output_invalid", retryable=True

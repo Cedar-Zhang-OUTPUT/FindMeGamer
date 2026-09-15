@@ -82,10 +82,11 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 "email_jobs",
                 "email_previews",
                 "email_sends",
+                "usage_records",
             }
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0003_email_sends"
+                == "0004_usage"
             )
         # Use the same migrated schema through the actual application factory.
         settings = Settings(

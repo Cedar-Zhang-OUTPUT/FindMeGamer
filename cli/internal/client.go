@@ -55,6 +55,9 @@ func (c *Client) requestWithKey(ctx context.Context, method, path string, body a
 	}
 	req.Header.Set("Authorization", "Bearer "+c.config.Token)
 	req.Header.Set("Accept", "application/json")
+	if runID, ok := ctx.Value(runIDKey{}).(string); ok {
+		req.Header.Set("X-FMG-Run-ID", runID)
+	}
 	if key != "" {
 		req.Header.Set("Idempotency-Key", key)
 	}

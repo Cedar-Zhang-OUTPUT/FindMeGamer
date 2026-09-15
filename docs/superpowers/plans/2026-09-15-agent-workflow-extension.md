@@ -59,11 +59,13 @@ def test_recommendations_deduplicate(store_fixture):
 
 ## C. 按任务记录用量
 
+实现记录：独立 usage_records + 0004 迁移、CLI --run-id/usage、平台/每次 Gemini/实际 SMTP 尝试归属，恢复保留原任务 run ID。记录已获得的数字用量，未知价格/实际账单明确 null；不配置虚构价格。YouTube 配额估算依据 2026-09-14 官方更新，搜索独立 bucket，不与其他配额或金额混加。审查发现非列表响应误记零资源已用红→绿修复。
+
 **Files:** create `agent-service/src/fmg_agent/usage.py`, `agent-service/tests/test_usage.py`, next sequential Alembic migration for usage records; modify provider transport/routes, email worker, Go command/client。
 
 **Interfaces:** CLI `--run-id` 传递 `X-FMG-Run-ID`；GET `/v1/usage?run_id=...` 只返回当前令牌归属。记录 request_id/provider/operation/status/resource_counts/usage/estimated_cost/actual_cost/currency/pricing_version，缺失保持 null。
 
-- [ ] 红灯测试：不同令牌相同 run ID 不混账；成功/失败均记录；一个 request_id 不重复；未知金额不为零，估算与实际不相加重复计费。
+- [x] 红灯测试：不同令牌相同 run ID 不混账；成功/失败均记录；一个 request_id 不重复；未知金额不为零，估算与实际不相加重复计费。
 
 ```python
 def test_unknown_cost_stays_unknown(ledger):
@@ -71,8 +73,8 @@ def test_unknown_cost_stays_unknown(ledger):
     assert ledger.summary('task1')['complete_cost_known'] is False
 ```
 
-- [ ] 实现 DB 唯一请求记录，使用上游实际 usage 与版本化价格依据；不使用全账户余额差额作为单任务费用。邮箱重试每次实际请求独立入账。
-- [ ] pytest、Go test 和隔离网关 smoke，核对日志不包含公司密钥或邮件正文；审查提交。
+- [x] 实现 DB 唯一请求记录，使用上游实际 usage 与版本化价格依据；不使用全账户余额差额作为单任务费用。邮箱重试每次实际请求独立入账。当前金额定价未知，不输出估算金额。
+- [x] pytest、Go test 和隔离网关 smoke，核对日志不包含公司密钥或邮件正文；审查提交。105 项新服务/本地辅助测试通过（含 PostgreSQL/Worker/SMTP 集成），CLI usage 真实 HTTP smoke 通过；独立审查及 P2 修复复核通过。
 
 ## D. 本地资料辅助脚本与业务 Skill
 

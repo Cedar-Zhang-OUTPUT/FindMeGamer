@@ -17,6 +17,7 @@ class EmailJob(Base):
         ForeignKey("access_tokens.id"), nullable=False
     )
     idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    run_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     input: Mapped[dict] = mapped_column(JSON, nullable=False)
     state: Mapped[str] = mapped_column(
         String(20), default="queued", nullable=False, index=True
