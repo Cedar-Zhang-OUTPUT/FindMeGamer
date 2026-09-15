@@ -105,7 +105,7 @@ Task 2 验证记录：最终 51 项测试通过。独立审查发现并修复 St
 
 **Interfaces:** `Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int`；命令 `auth login/logout`、`version`、`{provider} operations/describe/call`。登录 token 从交互隐藏输入或 stdin 获取，不推荐放 shell 参数；配置文件权限 0600，地址必须 HTTPS（本地测试 loopback 除外）。
 
-- [ ] 用 Go httptest 写测试：默认一页，`--max-pages 2` 恰两页，达到 max-items 停止，Ctrl-C 保留已写出的页，401 非零退出，日志不含令牌。
+- [x] 用 Go httptest 写测试：默认一页，`--max-pages 2` 恰两页，达到 max-items 停止，Ctrl-C 保留已写出的页，401 非零退出，日志不含令牌。
 
 ```go
 func TestUnknownCommand(t *testing.T) {
@@ -115,8 +115,8 @@ func TestUnknownCommand(t *testing.T) {
 }
 ```
 
-- [ ] 在 `cli` 运行 `go test ./...` 确认测试因缺 Run/行为而失败。
-- [ ] 实现单页 JSON 与分页 NDJSON（每行一页 `{data,meta}`）；帮助明确输出区别。用共享 catalog 的分页描述读取游标，不推测分页。有限重试只用于安全读取，发送请求禁止通用 HTTP 自动重试。
+- [x] 在 `cli` 运行 `go test ./...` 确认测试因缺 Run/行为而失败。
+- [x] 实现单页 JSON 与分页 NDJSON（每行一页 `{data,meta}`）；帮助明确输出区别。用共享 catalog 的分页描述读取游标，不推测分页。有限重试只用于安全读取，发送请求禁止通用 HTTP 自动重试。
 
 ```go
 for page := 0; page < limits.MaxPages; page++ {
@@ -127,8 +127,10 @@ for page := 0; page < limits.MaxPages; page++ {
 }
 ```
 
-- [ ] `go test ./...`、`go vet ./...`、`go build ./cmd/fmg`；用 Task 2 测试网关验 `operations → describe → call`，确认 stdout 可 JSON 解析。
-- [ ] 审查提交 `feat: add agent-friendly platform CLI`。
+- [x] `go test ./...`、`go vet ./...`、`go build ./cmd/fmg`；用 Task 2 测试网关验 `operations → describe → call`，确认 stdout 可 JSON 解析。
+- [x] 审查提交 `feat: add agent-friendly platform CLI`。
+
+Task 3 验证记录：官方校验和确认的 Go 1.27.1（本机 macOS arm64）；12 项 Go 测试、go vet 和编译通过。编译后的 CLI 连接真实本地 FastAPI 与隔离数据库，完成登录、目录、描述、单页、两页、认证检查和退出，只有上游响应模拟，不产生平台费用。独立审查发现读取正文时取消及未登录 auth check 两项退出码问题，补充红→绿测试并复核通过。max-items 按完整页边界停止，可能超过 N，帮助和 README 明示；无自动网络重试。此阶段尚未发布安装器、多平台二进制或部署新网关。
 
 ## Task 4：独立邮箱补强异步任务
 
