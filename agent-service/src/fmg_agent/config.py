@@ -1,6 +1,7 @@
 """Explicit, isolated service configuration; never load legacy .env files."""
 
 from pathlib import Path
+from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
@@ -20,6 +21,13 @@ class Settings(BaseSettings):
         default=SecretStr("redis://127.0.0.1:6379/0"), repr=False
     )
     email_retention_days: int = Field(default=30, ge=1, le=30)
+    smtp_host: str = ""
+    smtp_port: int = Field(default=465, ge=1, le=65535)
+    smtp_encryption: Literal["tls", "starttls", "none"] = "tls"
+    smtp_username: str = Field(default="", repr=False)
+    smtp_password: SecretStr = Field(default=SecretStr(""), repr=False)
+    smtp_from: str = ""
+    smtp_allow_insecure_loopback: bool = False
     catalog_dir: Path = Path(__file__).resolve().parents[3] / "api-catalog"
 
     @field_validator("database_url")

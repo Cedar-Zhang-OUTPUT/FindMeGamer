@@ -80,10 +80,12 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 "access_tokens",
                 "alembic_version",
                 "email_jobs",
+                "email_previews",
+                "email_sends",
             }
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0002_email_jobs"
+                == "0003_email_sends"
             )
         # Use the same migrated schema through the actual application factory.
         settings = Settings(
@@ -147,6 +149,55 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
             assert store.load(job_id)["checkpoints"] == {"public_pages": {"emails": []}}
             assert store.complete(job_id, store.claim(job_id), [])
             assert store.load(job_id)["state"] == "completed"
+            from fmg_agent.email.sending import SendStore
+            from test_email_templates import variables
+
+            send_store = SendStore(app.state.sessions)
+            send_config = settings.model_copy(
+                update={
+                    "smtp_host": "smtp.example.com",
+                    "smtp_from": "publisher@example.com",
+                    "smtp_username": "user",
+                }
+            )
+            from pydantic import SecretStr
+
+            send_config.smtp_password = SecretStr("local-test-only")
+            send_preview = send_store.preview(
+                email_token.id,
+                {
+                    "template_id": "game-outreach",
+                    "template_version": "1",
+                    "to": "creator@example.com",
+                    "variables": variables(),
+                },
+                send_config,
+            )
+            deliveries = []
+
+            def transport(config, message, message_id):
+                deliveries.append(message_id)
+                return {"state": "sent", "code": None}
+
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                receipts = list(
+                    pool.map(
+                        lambda _: send_store.send(
+                            email_token.id,
+                            send_preview["id"],
+                            "same-send",
+                            send_config,
+                            transport,
+                        ),
+                        range(4),
+                    )
+                )
+            assert len(deliveries) == 1
+            assert len({item["id"] for item in receipts}) == 1
+            assert (
+                send_store.get_receipt(receipts[0]["id"], email_token.id)["state"]
+                == "sent"
+            )
     finally:
         with engine.begin() as conn:
             conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))

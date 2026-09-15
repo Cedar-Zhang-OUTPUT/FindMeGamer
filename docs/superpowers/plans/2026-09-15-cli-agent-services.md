@@ -166,13 +166,15 @@ return checkpoint.result()
 
 ## Task 5：邮件预览、确认发送与未知结果保护
 
+Task 5 完成记录：模板变量生成不可变预览，显式 confirm、token scope、每预览一次 SMTP 尝试、幂等回执、未知结果不自动重发均已实现。新服务完整 89 项 Python 测试通过（含真实 PostgreSQL 并发和迁移、CLI→HTTP→DB→本地 SMTP 捕获、Worker 断点续跑）；18 项 Go 测试、go vet、编译通过。独立审查通过。全量测试暴露的 READ COMMITTED 并发查询冲突已修复并复跑通过，未出现重复投递。沿用 TLS/错误分类原则独立实现 SMTP 传输，不导入旧后端。Demo 采用先持久化 sending 再同步投递，不新增发信队列；SMTP 接受不代表进箱。没有外发、部署或发布，真实 SMTP 配置和指定收件人验收仍待后续。
+
 本单元开始前先完成补充计划的版本化模板模块；preview 输入模板 ID、版本与变量，随后继续本单元的快照和发送保护。不得回退成仅支持任意正文的旧计划。
 
 **Files — create:** `agent-service/src/fmg_agent/email/{sending,smtp}.py`、`agent-service/migrations/versions/0003_email_sends.py`、`agent-service/tests/test_email_sending.py`。**Modify:** email routes/models、`cli/internal/email.go` 及测试。
 
 **Interfaces:** `POST /v1/email/previews` → 不可变 `preview_id`；`POST /v1/email/sends` 输入 `{preview_id,confirm:true}` + Idempotency-Key；`GET /v1/email/sends/{id}`。CLI `email preview --input message.json`、`email send --preview-id <id> --confirm --idempotency-key <key>`、`email receipt <id>`。
 
-- [ ] 写测试：无 confirm 拒绝；相同键同内容只投递一次、异内容冲突；无 SMTP 可预览但不能发送；收件人拒绝/网络断开安全分类；SMTP 接受后丢确认为 unknown 且不重试；并发发送也保持一次。
+- [x] 写测试：无 confirm 拒绝；相同键同内容只投递一次、异内容冲突；无 SMTP 可预览但不能发送；收件人拒绝/网络断开安全分类；SMTP 接受后丢确认为 unknown 且不重试；并发发送也保持一次。
 
 ```python
 def test_ambiguous_send_is_not_retried(sender, smtp, preview):
@@ -183,8 +185,8 @@ def test_ambiguous_send_is_not_retried(sender, smtp, preview):
     assert smtp.delivery_attempts == 1
 ```
 
-- [ ] 运行 `.venv/bin/pytest tests/test_email_sending.py -q`，确认预期失败。
-- [ ] 复用旧 SMTP TLS/错误处理；先提交唯一发送记录与 sending 状态再执行网络投递。进程中断后遗留 sending 不自动重发，标为 unknown；返回已有记录，不声称 exactly-once SMTP。预览快照不可修改。
+- [x] 运行 `.venv/bin/pytest tests/test_email_sending.py -q`，确认预期失败。
+- [x] 复用旧 SMTP TLS/错误处理；先提交唯一发送记录与 sending 状态再执行网络投递。进程中断后遗留 sending 不自动重发，标为 unknown；返回已有记录，不声称 exactly-once SMTP。预览快照不可修改。
 
 ```python
 record, created = reserve_send(token_id, idempotency_key, preview_id)
@@ -194,8 +196,8 @@ mark_sending(record.id)
 return deliver_and_record_outcome(record, smtp)
 ```
 
-- [ ] 运行全部邮箱测试，用本地邮件捕获器检验正文、收件人、HTML/text 与附件策略（第一版无附件则明确拒绝）。不外发；实投仅待 SMTP 与指定测试收件人就绪。
-- [ ] 审查提交 `feat: add confirmed idempotent email sending`。
+- [x] 运行全部邮箱测试，用本地邮件捕获器检验正文、收件人、HTML/text 与附件策略（第一版无附件则明确拒绝）。不外发；实投仅待 SMTP 与指定测试收件人就绪。
+- [x] 审查提交 `feat: add confirmed idempotent email sending`。
 
 ## Task 6：技术 Skill 与文档行为验证
 

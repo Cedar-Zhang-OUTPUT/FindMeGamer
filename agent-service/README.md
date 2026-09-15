@@ -1,6 +1,6 @@
 # FMG Agent Service
 
-Independent company API gateway. This package does not start or import the old desktop backend. It provides health, access-token authentication, migrations and catalog-driven platform read endpoints. Email endpoints and the CLI follow in subsequent tasks. It is not yet deployed as the public CLI service.
+Independent company API gateway. This package does not start or import the old desktop backend. It provides health, access-token authentication, migrations, catalog-driven platform reads, resumable email enrichment and confirmed template sending. It is not yet deployed as the public CLI service.
 
 ## Local setup
 
@@ -75,3 +75,15 @@ FMG_AGENT_TEST_DATABASE_URL='postgresql+psycopg://fmg_agent_test:local-test-only
 ```
 
 Only external pages/model data are simulated in this test. No paid Gemini smoke or real email delivery has been performed for this checkpoint. This is not a deployment announcement.
+
+## Confirmed SMTP sending
+
+Apply migrations through `0003_email_sends`. Read-scoped clients can list templates at GET `/v1/email/templates` and inspect GET `/v1/email/templates/{id}`. The `email:send` scope is required for POST `/v1/email/previews`, GET `/v1/email/previews/{id}`, POST `/v1/email/sends` and GET `/v1/email/sends/{id}`. Preview input is `{template_id,template_version,variables,to}`; sending takes `{preview_id,confirm:true}` and an `Idempotency-Key` header.
+
+Server-only configuration: `FMG_AGENT_SMTP_HOST`, `FMG_AGENT_SMTP_PORT` (default 465), `FMG_AGENT_SMTP_ENCRYPTION` (`tls` or `starttls`), `FMG_AGENT_SMTP_USERNAME`, `FMG_AGENT_SMTP_PASSWORD`, `FMG_AGENT_SMTP_FROM`. Store these privately, never in CLI arguments or Git. TLS certificates are verified. Plaintext `none` is allowed only for a literal loopback host with `FMG_AGENT_SMTP_ALLOW_INSECURE_LOOPBACK=true`, exclusively for local capture tests.
+
+Each immutable preview fixes the recipient, rendered subject/text/HTML, template version and sender. A DB reservation is committed before synchronous SMTP delivery; the small Demo does not add a separate send queue. Unique token/key and preview constraints prevent a second attempt, including concurrent requests. An uncertain HTTP result can be recovered with the same key. A send interrupted for more than five minutes is classified `unknown` on subsequent queries and never automatically resent. SMTP acceptance is not proof of inbox delivery. A failed send requires a new approved preview for another attempt; an unknown result requires investigation first.
+
+Previews without a configured sender remain inspectable but require replacement once the sender is configured. Sender changes and previews older than 30 days block delivery. No CC/BCC/attachments or user-supplied SMTP server are accepted. Send receipts are retained independently of the enrichment-job cleanup.
+
+Local acceptance includes compiled CLI → real HTTP → PostgreSQL → local SMTP capture, refused recipients, confirmation loss, idempotent repeats and concurrent PostgreSQL reservations. No external recipient was contacted; company SMTP acceptance remains pending configuration and an approved test recipient.

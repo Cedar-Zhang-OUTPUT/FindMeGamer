@@ -21,6 +21,9 @@ func runEmail(ctx context.Context, args []string, out, diagnostics io.Writer) in
 		return writeError(diagnostics, &APIError{Code: "login_required", Message: err.Error(), Exit: 3})
 	}
 	client := newClient(config)
+	if args[0] == "preview" || args[0] == "send" || args[0] == "receipt" {
+		return runEmailSending(ctx, client, args, out, diagnostics)
+	}
 	if args[0] == "templates" || args[0] == "template" {
 		path := "/v1/email/templates"
 		if args[0] == "templates" && len(args) != 1 {

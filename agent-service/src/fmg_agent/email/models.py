@@ -36,3 +36,51 @@ class EmailJob(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class EmailPreview(Base):
+    __tablename__ = "email_previews"
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    token_id: Mapped[str] = mapped_column(
+        ForeignKey("access_tokens.id"), nullable=False
+    )
+    template_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    template_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    message: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+
+
+class EmailSend(Base):
+    __tablename__ = "email_sends"
+    __table_args__ = (
+        UniqueConstraint("token_id", "idempotency_key"),
+        UniqueConstraint("preview_id"),
+    )
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=lambda: str(uuid4())
+    )
+    token_id: Mapped[str] = mapped_column(
+        ForeignKey("access_tokens.id"), nullable=False
+    )
+    preview_id: Mapped[str] = mapped_column(
+        ForeignKey("email_previews.id"), nullable=False
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
+    state: Mapped[str] = mapped_column(String(20), nullable=False)
+    code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )

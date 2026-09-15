@@ -15,10 +15,12 @@ from sqlalchemy import create_engine, text
 import uvicorn
 
 from test_migrations import migrate
+from test_smtp_delivery import smtp_server
+from test_email_templates import variables
 
 
 @pytest.mark.postgres
-def test_cli_email_worker_restart(tmp_path):
+def test_cli_email_worker_restart(tmp_path, smtp_server):
     from fmg_agent.app import create_app
     from fmg_agent.auth import issue_token
     from fmg_agent.config import Settings
@@ -46,11 +48,18 @@ def test_cli_email_worker_restart(tmp_path):
         settings = Settings(
             database_url=engine.url.set(
                 query={"options": f"-c search_path={schema}"}
-            ).render_as_string(hide_password=False)
+            ).render_as_string(hide_password=False),
+            smtp_host="127.0.0.1",
+            smtp_port=smtp_server.server_address[1],
+            smtp_encryption="none",
+            smtp_allow_insecure_loopback=True,
+            smtp_from="publisher@example.com",
         )
         app = create_app(settings)
         with app.state.sessions() as session:
-            token = issue_token(session, label="e2e", scopes=["email:enrich"])
+            token = issue_token(
+                session, label="e2e", scopes=["email:enrich", "email:send"]
+            )
         server = uvicorn.Server(uvicorn.Config(app, log_level="error"))
         thread = Thread(target=lambda: server.run(sockets=[listener]), daemon=True)
         thread.start()
@@ -146,6 +155,56 @@ def test_cli_email_worker_restart(tmp_path):
         completed = wait_state("completed")
         assert completed["emails"][0]["email"] == "press@example.com"
         assert completed["checkpoints"]["enrichment"]["usage"]["totalTokenCount"] == 123
+        message_file = tmp_path / "preview.json"
+        message_file.write_text(
+            json.dumps(
+                {
+                    "template_id": "game-outreach",
+                    "template_version": "1",
+                    "to": "creator@example.com",
+                    "variables": variables(),
+                }
+            )
+        )
+        preview_result = cli("email", "preview", "--input", str(message_file))
+        assert preview_result.returncode == 0, preview_result.stderr
+        preview_id = json.loads(preview_result.stdout)["data"]["id"]
+        assert smtp_server.messages == []
+        no_confirm = cli(
+            "email", "send", "--preview-id", preview_id, "--idempotency-key", "send-one"
+        )
+        assert no_confirm.returncode == 2
+        assert smtp_server.messages == []
+        for _ in range(2):
+            sent = cli(
+                "email",
+                "send",
+                "--preview-id",
+                preview_id,
+                "--idempotency-key",
+                "send-one",
+                "--confirm",
+            )
+            assert sent.returncode == 0, sent.stderr
+            assert json.loads(sent.stdout)["data"]["state"] == "sent"
+        assert len(smtp_server.messages) == 1
+        smtp_server.mode = "unknown"
+        preview_id = json.loads(
+            cli("email", "preview", "--input", str(message_file)).stdout
+        )["data"]["id"]
+        uncertain = cli(
+            "email",
+            "send",
+            "--preview-id",
+            preview_id,
+            "--idempotency-key",
+            "send-two",
+            "--confirm",
+        )
+        assert uncertain.returncode == 7, uncertain.stderr
+        send_id = json.loads(uncertain.stdout)["data"]["id"]
+        assert cli("email", "receipt", send_id).returncode == 7
+        assert len(smtp_server.messages) == 2
     finally:
         if process is not None and process.poll() is None:
             process.terminate()

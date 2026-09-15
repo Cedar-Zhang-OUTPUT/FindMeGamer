@@ -4,9 +4,67 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestEmailPreviewInputAndExplicitSend(t *testing.T) {
+	calls := 0
+	setup(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var input map[string]any
+		json.NewDecoder(r.Body).Decode(&input)
+		if r.URL.Path == "/v1/email/previews" {
+			if input["template_id"] != "game-outreach" {
+				t.Error(input)
+			}
+			w.Write([]byte(`{"data":{"id":"preview1","message":{"subject":"Test"}},"meta":{}}`))
+		} else if r.URL.Path == "/v1/email/sends" {
+			if input["confirm"] != true || input["preview_id"] != "preview1" || r.Header.Get("Idempotency-Key") != "send-one" {
+				t.Error(input)
+			}
+			w.Write([]byte(`{"data":{"id":"send1","state":"sent"},"meta":{}}`))
+		} else {
+			t.Error(r.URL.Path)
+		}
+	})
+	path := filepath.Join(t.TempDir(), "message.json")
+	os.WriteFile(path, []byte(`{"template_id":"game-outreach","template_version":"1","to":"creator@example.com","variables":{}}`), 0600)
+	var out, err bytes.Buffer
+	if code := Run([]string{"email", "preview", "--input", path}, strings.NewReader(""), &out, &err); code != 0 {
+		t.Fatalf("exit=%d %s", code, err.String())
+	}
+	args := []string{"email", "send", "--preview-id", "preview1", "--idempotency-key", "send-one"}
+	if code := Run(args, strings.NewReader(""), &out, &err); code != 2 || calls != 1 {
+		t.Fatalf("unconfirmed exit=%d calls=%d", code, calls)
+	}
+	if code := Run(append(args, "--confirm"), strings.NewReader(""), &out, &err); code != 0 {
+		t.Fatalf("exit=%d %s", code, err.String())
+	}
+	if calls != 2 {
+		t.Fatal(calls)
+	}
+}
+
+func TestEmailReceiptUnknownIsNotRetried(t *testing.T) {
+	calls := 0
+	setup(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != "GET" || r.URL.Path != "/v1/email/sends/send1" {
+			t.Error("must query existing receipt")
+		}
+		w.Write([]byte(`{"data":{"id":"send1","state":"unknown"},"meta":{}}`))
+	})
+	var out, err bytes.Buffer
+	if code := Run([]string{"email", "receipt", "send1"}, strings.NewReader(""), &out, &err); code != 7 {
+		t.Fatalf("exit=%d %s", code, err.String())
+	}
+	if calls != 1 || !strings.Contains(out.String(), "unknown") {
+		t.Fatal(out.String())
+	}
+}
 
 func TestEmailTemplateListAndDescribe(t *testing.T) {
 	paths := []string{}

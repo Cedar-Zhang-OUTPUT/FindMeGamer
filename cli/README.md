@@ -1,6 +1,6 @@
 # fmg CLI — development checkpoint
 
-Calls the company gateway, not YouTube/X/Steam directly. Provider keys never belong in this client. CLI source is working locally; this checkpoint is not yet a public release. Email enrichment is available locally; sending is not implemented yet.
+Calls the company gateway, not YouTube/X/Steam directly. Provider keys never belong in this client. Platform reads, email enrichment and confirmed template sending are implemented locally; this checkpoint is not yet a public release.
 
 ## Build and test
 
@@ -66,7 +66,7 @@ fmg email templates
 fmg email template game-outreach
 ```
 
-Template descriptions include a version, required variables, and text/HTML/subject bodies. The game is supplied through variables, not hard-coded. Template preview and confirmed sending commands are still being implemented; do not invent them from this checkpoint.
+Template descriptions include a version, required variables, and text/HTML/subject bodies. The game is supplied through variables, not hard-coded. See confirmed sending below for immutable previews.
 
 Requires an `email:enrich` token scope. These commands can consume company model/search quota:
 
@@ -83,6 +83,49 @@ Reuse the same idempotency key after an uncertain submission; do not create a ne
 
 Results include multiple `emails` with purpose, public source URL, discovery method and verification status. `model_reported_unverified` is not independently verified, and no result guarantees delivery. Only a completed job with an empty array means no contact was found. Failures, missing configuration and incomplete public-page work are not Not Found. No emails are sent by enrichment.
 
+## Preview and confirmed sending
+
+Requires `email:send`. Company SMTP credentials stay on the server. Create a local `message.json` containing:
+
+```json
+{
+  "template_id": "game-outreach",
+  "template_version": 1,
+  "to": "creator@example.com",
+  "variables": {
+    "creator_name": "Creator",
+    "game_name": "Your Game",
+    "game_summary": "An accurate description of the selected game.",
+    "game_url": "https://store.steampowered.com/app/570/",
+    "personalization": "A statement supported by saved public evidence.",
+    "sender_name": "Your Name",
+    "company_name": "Your Company"
+  }
+}
+```
+
+Inspect the current template first; this example is not approved outreach content. Previewing creates a fixed snapshot and does not send:
+
+```sh
+fmg email preview --input message.json
+fmg email preview --id PREVIEW_ID
+```
+
+After the user approves the exact recipients and rendered messages, send each approved preview:
+
+```sh
+fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key unique-approved-message
+fmg email receipt SEND_ID
+```
+
+`--confirm` is mandatory, but an Agent must obtain the user's approval before using it. For a batch, approve the full batch and keep one preview/key/receipt per recipient. This version accepts one plain email address per preview; CC, BCC, attachments and arbitrary message-body fields are not supported.
+
+One preview permits at most one SMTP attempt. Repeating the same key returns its receipt; a different key for the same preview is rejected. If the HTTP response is lost, query the receipt or repeat the **same** preview/key; never invent a new key or preview to automatically retry. `unknown` means delivery may have happened and requires investigation, not resending. An interrupted `sending` record older than five minutes becomes `unknown` when queried. An explicitly failed delivery also requires a new preview and renewed approval for another attempt.
+
+`sent` means the SMTP server accepted the message, not that it reached the inbox or was read. Missing SMTP configuration permits previews but blocks sending. Previews expire for sending after 30 days; changing the configured sender requires a new preview. Send receipts are not removed by enrichment-job cleanup.
+
+Compiled-CLI/HTTP/database tests and a local SMTP capture server cover accepted, refused and unknown outcomes. Company SMTP and external delivery have **not** been verified yet.
+
 ## Output and exit status
 
-Command results: JSON stdout (NDJSON for pages or job polling). Help is human-readable text. Errors: structured JSON stderr. Exit 0 success, 2 parameters, 3 authentication/permission, 4 quota/rate limit, 5 network/upstream/output/wait timeout, 6 failed email job, 130 user cancellation. Exit 7 is reserved for unknown send outcomes. The actual error code distinguishes company configuration, provider permission and quota failures.
+Command results: JSON stdout (NDJSON for pages or job polling). Help is human-readable text. Errors: structured JSON stderr. Exit 0 successful request (inspect receipt state), 2 parameters, 3 authentication/permission, 4 quota/rate limit, 5 network/upstream/output/wait timeout, 6 failed email job or delivery, 7 unknown send outcome, 130 user cancellation. The actual error code distinguishes company configuration, provider permission and quota failures.

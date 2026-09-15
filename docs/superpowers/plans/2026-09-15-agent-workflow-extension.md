@@ -19,13 +19,13 @@
 
 ## A. 服务端版本化模板（基础 Task 5 前）
 
-进度：模板定义/纯渲染/HTTP 目录与描述/Go CLI 已完成并通过独立审查，实际文件 `agent-service/src/fmg_agent/email/template_data/game-outreach.json` 随 Python 包分发。7 项模板测试通过，模板命令加入真实 CLI/HTTP 隔离端到端验收。预览快照与发送仍在基础 Task 5，因此下方涉及 preview 的步骤尚不勾选。当前整体验证 79 项 Python 测试、16 项 Go 测试及 go vet 通过。
+进度：模板定义/纯渲染/HTTP 目录与描述/Go CLI 已完成并通过独立审查，实际文件 `agent-service/src/fmg_agent/email/template_data/game-outreach.json` 随 Python 包分发。7 项模板测试通过，模板命令加入真实 CLI/HTTP 隔离端到端验收。不可变预览与确认发送现已在基础 Task 5 完成并通过独立审查。当前整体验证 89 项 Python 测试、18 项 Go 测试及 go vet 通过，未外发邮件或部署。
 
 **Files:** create `agent-service/src/fmg_agent/email/templates.py`, `agent-service/email-templates/game-outreach.json`, `agent-service/tests/test_email_templates.py`; modify email routes, `cli/internal/email.go`, corresponding Go tests。
 
 **Interfaces:** GET `/v1/email/templates`, GET `/v1/email/templates/{id}`；纯函数 `render_template(template, variables) -> {subject,text,html}`。preview 输入 `{template_id,template_version,variables,to}`，变量有 name/required/type 描述，缺失返回字段名而不泄漏值。初始模板含游戏名称/介绍/链接、创作者称呼、基于真实依据的个性化段落与公司签名；不硬编码 LIMINAL。
 
-- [ ] 添加测试并确认红灯：替换游戏不会残留旧介绍、未知模板/版本/必填缺失拒绝、HTML 变量转义。
+- [x] 添加测试并确认红灯：替换游戏不会残留旧介绍、未知模板/版本/必填缺失拒绝、HTML 变量转义。
 
 ```python
 def test_template_escapes_html(template):
@@ -33,8 +33,8 @@ def test_template_escapes_html(template):
     assert '&lt;b&gt;A&lt;/b&gt;' in result['html']
 ```
 
-- [ ] 实现固定目录加载和受限变量替换，不执行任意模板代码；模板版本写入不可变预览，现有发送只使用快照。
-- [ ] `.venv/bin/pytest tests/test_email_templates.py -q`；Go CLI 测试列表、描述和 preview 输入；独立审查、提交。
+- [x] 实现固定目录加载和受限变量替换，不执行任意模板代码；模板版本写入不可变预览，现有发送只使用快照。
+- [x] `.venv/bin/pytest tests/test_email_templates.py -q`；Go CLI 测试列表、描述和 preview 输入；独立审查、提交。
 
 ## B. Steam 游戏身份与相似推荐
 

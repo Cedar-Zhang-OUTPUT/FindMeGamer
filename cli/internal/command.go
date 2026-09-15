@@ -28,6 +28,9 @@ fmg email job ID [--wait] [--timeout 5m]
 fmg email retry ID
 fmg email templates
 fmg email template TEMPLATE_ID
+fmg email preview --input message.json | --id PREVIEW_ID
+fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key KEY
+fmg email receipt SEND_ID
 
 Default: one upstream page, JSON stdout, diagnostics stderr.
 With --max-pages: NDJSON, one whole response envelope per page.
