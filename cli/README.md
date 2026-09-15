@@ -1,6 +1,6 @@
-# fmg CLI — development checkpoint
+# fmg CLI
 
-Calls the company gateway, not YouTube/X/Steam directly. Provider keys never belong in this client. Platform reads, email enrichment and confirmed template sending are implemented locally; this checkpoint is not yet a public release.
+Calls the company gateway, not YouTube/X/Steam directly. Provider keys never belong in this client. CLI 0.1.0 and the gateway are now published. For installation, use the [public Agent setup guide](https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.1.0/AGENT-INSTALL.md) or [company quickstart](../docs/agent-services/quickstart.md). The commands below are development/API reference, not a setup workflow.
 
 ## Build and test
 

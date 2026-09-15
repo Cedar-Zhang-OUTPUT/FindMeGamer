@@ -1,5 +1,7 @@
 # FMG CLI and Skills — company setup
 
+To delegate setup to an Agent, give it the public [Agent installation guide](https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.1.0/AGENT-INSTALL.md). It covers environment checks, verified installation, private-token login, Skill loading and no-quota acceptance checks.
+
 The CLI gateway is `https://44.233.174.193` (base URL, without `/v1`). The legacy macOS backend is intentionally stopped. Old client credentials do not work here. Ask the administrator for a personal revocable CLI token; provider keys are never installed on the user's machine.
 
 ## Install a prepared bundle locally
