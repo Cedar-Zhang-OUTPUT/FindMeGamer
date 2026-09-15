@@ -1156,6 +1156,63 @@
       "source_url": "https://store.steampowered.com/api/appdetails",
       "stability": "store-endpoint",
       "summary": "Steam Store game details (store endpoint; not a documented Steam Web API guarantee)"
+    },
+    "store.recommendations": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://store.steampowered.com",
+      "id": "store.recommendations",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "appid": {
+          "description": "Positive App ID or https://store.steampowered.com/app/ID/... URL",
+          "location": "query",
+          "required": true,
+          "type": "string"
+        },
+        "cc": {
+          "location": "query",
+          "type": "string"
+        },
+        "l": {
+          "location": "query",
+          "type": "string"
+        }
+      },
+      "path": "/recommended/morelike/app/",
+      "response_schema": {},
+      "source_url": "https://store.steampowered.com/recommended/morelike/app/570/",
+      "stability": "store-helper-not-official-web-api",
+      "summary": "Parse public similar-game cards; unique IDs/URLs, name may be null. name_hint is a URL slug, not a verified title. One page; no automatic detail calls."
+    },
+    "store.search": {
+      "auth": "none",
+      "availability": "simulated",
+      "base_url": "https://store.steampowered.com",
+      "id": "store.search",
+      "method": "GET",
+      "pagination": null,
+      "parameters": {
+        "cc": {
+          "location": "query",
+          "type": "string"
+        },
+        "l": {
+          "location": "query",
+          "type": "string"
+        },
+        "term": {
+          "location": "query",
+          "required": true,
+          "type": "string"
+        }
+      },
+      "path": "/api/storesearch/",
+      "response_schema": {},
+      "source_url": "https://store.steampowered.com/api/storesearch/",
+      "stability": "store-helper-not-official-web-api",
+      "summary": "Search game names; returns multiple candidates and original JSON. One bounded Store request, not exhaustive search."
     }
   },
   "provider": "steam",

@@ -24,9 +24,13 @@ class Catalog:
             for operation in doc["operations"].values():
                 store_operation = (
                     provider == "steam"
-                    and operation["id"] == "store.appdetails"
                     and operation["base_url"] == "https://store.steampowered.com"
-                    and operation["path"] == "/api/appdetails"
+                    and operation["path"]
+                    == {
+                        "store.appdetails": "/api/appdetails",
+                        "store.search": "/api/storesearch/",
+                        "store.recommendations": "/recommended/morelike/app/",
+                    }.get(operation["id"])
                 )
                 if (
                     (operation["base_url"] != host and not store_operation)

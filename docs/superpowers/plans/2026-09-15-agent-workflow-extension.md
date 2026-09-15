@@ -38,11 +38,13 @@ def test_template_escapes_html(template):
 
 ## B. Steam 游戏身份与相似推荐
 
+完成记录：新增两项目录驱动 Store 辅助操作及独立有界传输，9 项新增测试先红后绿，完整 98 项 Python 测试通过；编译 CLI→真实 HTTP 的 Steam 搜索/推荐隔离联调通过，独立审查无阻塞项。新实现通过本机既有 HTTP 代理真实搜索到 LIMINAL: Within（4952700），并提取 Dota 2 的 54 项去重推荐。当前推荐卡片不含正式名称，所以 name 为 null、name_hint 明示来自 URL slug，Agent 按需通过 appdetails 确认正式名称，不自动产生 N+1 请求。页面/地区变化限制写入目录与 CLI README。未部署或发布。
+
 **Files:** create `agent-service/src/fmg_agent/providers/steam_store.py`, `agent-service/tests/test_steam_store.py`; modify provider routes/catalog builder, `api-catalog/steam.json`, CLI tests。
 
 **Interfaces:** 注册 `store.search` 与 `store.recommendations` 操作；返回候选 app ID/name/url 及 source_url/retrieved_at，不返回 AI 游戏判断。URL 和 App ID 从确定的 Steam 域名解析；多名字候选由 Agent 确认。
 
-- [ ] 测试先行：名称返回多个候选不自动取第一个、推荐提取排除当前游戏且去重、空推荐与请求失败区分、固定主机与重定向安全。
+- [x] 测试先行：名称返回多个候选不自动取第一个、推荐提取排除当前游戏且去重、空推荐与请求失败区分、固定主机与重定向安全。
 
 ```python
 def test_recommendations_deduplicate(store_fixture):
@@ -52,8 +54,8 @@ def test_recommendations_deduplicate(store_fixture):
     assert '570' not in ids
 ```
 
-- [ ] 参考旧 Steam 获取实现，验证当前可用页面/接口再注册辅助操作；HTTP 响应采用有界读取。将页面解析稳定性限制写入目录。
-- [ ] 离线 fixture 回归与一次真实 Steam 游戏搜索/推荐 smoke；失败不伪装为空结果；审查提交。
+- [x] 参考旧 Steam 获取实现，验证当前可用页面/接口再注册辅助操作；HTTP 响应采用有界读取。将页面解析稳定性限制写入目录。
+- [x] 离线 fixture 回归与一次真实 Steam 游戏搜索/推荐 smoke；失败不伪装为空结果；审查提交。
 
 ## C. 按任务记录用量
 

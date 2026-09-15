@@ -57,6 +57,19 @@ Multiple pages are NDJSON: one complete response envelope per output line. `--ma
 
 No automatic retries are performed. For a quota/429 failure inspect the structured stderr error and any retry delay; do not interpret retryable as authorization to loop indefinitely.
 
+### Find a Steam game and its similar products
+
+```sh
+fmg steam describe store.search
+fmg steam call store.search --params '{"term":"LIMINAL: Within"}'
+fmg steam call store.recommendations --params '{"appid":"570"}'
+fmg steam call store.recommendations --params '{"appid":"https://store.steampowered.com/app/570/"}'
+```
+
+These are labelled Store convenience helpers, not guaranteed official Web API methods. Each makes one bounded request; no automatic detail lookups or exhaustive paging. Locale defaults to `l=english,cc=US`, with explicit overrides available. Search returns `data.candidates` (App ID/name/canonical URL) and preserves the raw search JSON in `data.upstream`. Multiple name matches remain multiple candidates: the Agent must resolve ambiguity rather than silently selecting the first.
+
+Recommendations return `data.items`, excluding the selected game and duplicate App IDs. Steam's current recommendation cards do not contain verified titles, so `name` is null and `name_hint` is only a readable URL slug. Resolve actual titles/details with `store.appdetails` for the relevant IDs before treating them as game facts. Both helpers return `meta.source_url` and `meta.retrieved_at` for evidence. Recommendations can vary by locale and time and need not match a signed-in user's ordering. An unrecognized or inaccessible page is an error, not a successful empty list.
+
 ## Public business email enrichment
 
 To inspect server-owned templates (read-only; does not send or consume model quota):

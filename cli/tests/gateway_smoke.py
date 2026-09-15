@@ -34,6 +34,15 @@ def main():
             issued = issue_token(session, label='local-cli-test', scopes=['read'])
         calls = []
         def upstream(request):
+            if request.url.host == 'store.steampowered.com':
+                assert 'key' not in request.url.params
+                if request.url.path == '/api/storesearch/':
+                    assert request.url.params['term'] == 'Game'
+                    return httpx.Response(200, json={'total': 2, 'items': [
+                        {'type':'app','id':570,'name':'Game'},
+                        {'type':'app','id':571,'name':'Game Two'}]})
+                assert request.url.path == '/recommended/morelike/app/570/'
+                return httpx.Response(200, text='<div class="similar_grid_ctn"><a class="similar_grid_capsule" data-ds-appid="10" href="https://store.steampowered.com/app/10/Other_Game/"></a></div>')
             assert request.url.host == 'youtube.googleapis.com'
             assert request.url.params['key'] == 'fake-platform-key'
             calls.append(dict(request.url.params))
@@ -72,10 +81,17 @@ def main():
             pages = run(['youtube','call','search.list','--params','{"part":"snippet"}','--max-pages','2'])
             assert len(pages) == 2 and len(calls) == 3
             assert calls[-1]['pageToken'] == 'page2'
+            assert 'term' in run(['steam','describe','store.search'])[0]['data']['parameters']
+            games = run(['steam','call','store.search','--params','{"term":"Game"}'])[0]['data']['candidates']
+            assert [game['app_id'] for game in games] == ['570','571']
+            related = run(['steam','call','store.recommendations','--params','{"appid":"https://store.steampowered.com/app/570/"}'])[0]
+            assert related['data']['items'][0]['app_id'] == '10'
+            assert related['data']['items'][0]['name'] is None
+            assert related['meta']['source_url'].startswith('https://store.steampowered.com/recommended/')
             run(['auth','check'])
             assert run(['auth','logout'])[0]['logged_out']
             assert not (root/'config.json').exists()
-            print(json.dumps({'status':'passed','checks':['login','operations','describe','single-page','two-pages','auth-check','logout'],'simulated_upstream_calls':len(calls)}))
+            print(json.dumps({'status':'passed','checks':['login','operations','describe','single-page','two-pages','steam-search','steam-recommendations','auth-check','logout'],'simulated_youtube_calls':len(calls), 'simulated_steam_calls':2}))
         finally:
             server.should_exit = True
             thread.join(timeout=5)

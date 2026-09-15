@@ -9,6 +9,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from .steam_store import store_operations
+
 DENIED_PARAMS = {
     "key",
     "access_token",
@@ -248,6 +250,7 @@ def steam_catalog(doc):
         "source_url": "https://store.steampowered.com/api/appdetails",
         "stability": "store-endpoint",
     }
+    result["operations"].update(store_operations())
     return result
 
 

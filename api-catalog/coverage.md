@@ -6,13 +6,17 @@ Metadata captured 2026-09-15. These are read-operation candidates, **not a claim
 |---|---:|---:|---:|---:|
 | YouTube Data API v3 | 29 | 14 | 13 | 2 |
 | X API v2 | 104 | 50 | 36 | 18 |
-| Steam unkeyed Web API inventory + Store appdetails | 45 | 40 | 0 | 5 |
+| Steam unkeyed Web API inventory + Store helpers | 47 | 42* | 0 | 5 |
+
+*Two entries use a bounded Store helper instead of the generic raw-JSON transport: `store.search` and `store.recommendations`.
 
 `simulated` means a registered endpoint uses the unit-tested generic transport, not that each endpoint has a dedicated mock or real test. `requires-authorization` means this release does not supply the necessary user-context OAuth; company API keys/app bearer tokens cannot replace it. `unsupported` covers stream/media/authentication/session-changing operations. Platform write methods are omitted entirely.
 
 X Ads and separate Enterprise API products are outside this X API v2 catalog. Steam's unauthenticated GetSupportedAPIList omits key-only interfaces; a later authorized inventory refresh can extend coverage. Neither limitation is presented as full platform coverage. Steam Store `store.appdetails` is a separately labelled convenience endpoint inherited from the product's existing game import, not a formally guaranteed Steam Web API.
 
 ## Rebuilding
+
+The Steam builder also registers `store.search` and `store.recommendations`. These are not official Web API guarantees. Search keeps the original payload in `data.upstream` and adds candidate App IDs/names/URLs without choosing one. Recommendations parse only similar-product cards from the public Store page, deduplicate IDs and exclude the selected game. Current cards lack actual names: `name=null`, `name_hint` is a URL slug; use appdetails for a verified title. No automatic per-result requests. Both helpers use fixed HTTPS Store paths, no redirects, a 2 MiB decompressed response limit, default English/US locale and source URL/time metadata. Empty recognized recommendation pages differ from unrecognized pages and HTTP failures. A signed-in user's recommendations/order can differ.
 
 Download official metadata into local files, then run inside `agent-service`:
 
@@ -52,3 +56,5 @@ Server-side smoke on 2026-09-15 used this new transport in a one-off container, 
 - Steam `store.appdetails`: full game envelope keyed by app ID retained.
 
 This is representative transport verification, not deployed-gateway or exhaustive endpoint acceptance. Generated operation status remains conservatively `simulated`; these specific live results are documented here rather than falsely promoting entire operation families.
+
+Task B local verification on 2026-09-15: the new `call_store` implementation, using an explicit HTTP transport through the developer's existing HTTP proxy, found `LIMINAL: Within` (App ID 4952700) and extracted 54 unique non-self recommendations for App ID 570. These are point-in-time results, not stable counts. Nine new fixture tests cover multi-candidate search, preserved fields, invalid identities, deduplication, unknown/empty pages, HTTP errors, redirects and size limits. Compiled CLI → real loopback HTTP → simulated Steam responses passed. No credentials or model calls were needed, and the new service remains undeployed.

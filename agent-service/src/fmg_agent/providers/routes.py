@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from ..auth import require_scope
 from .transport import call_provider
+from .steam_store import call_store
 
 router = APIRouter(
     prefix="/v1/providers", dependencies=[Depends(require_scope("read"))]
@@ -49,6 +50,16 @@ async def call(provider: str, body: CallRequest, request: Request):
     operation, path, params = request.app.state.catalog.prepare(
         provider, body.operation, body.params
     )
+    if provider == "steam" and body.operation in {
+        "store.search",
+        "store.recommendations",
+    }:
+        return await call_store(
+            operation,
+            params,
+            request.state.request_id,
+            request.app.state.provider_transport,
+        )
     return await call_provider(
         request.app.state.settings,
         operation,
