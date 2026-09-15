@@ -12,12 +12,12 @@ from sqlalchemy import create_engine, inspect, text
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def migrate(url, schema=None):
+def migrate(url, schema=None, revision="head"):
     env = dict(os.environ, FMG_AGENT_DATABASE_URL=url)
     if schema:
         env["PGOPTIONS"] = f"-c search_path={schema}"
     return subprocess.run(
-        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", revision],
         cwd=ROOT,
         env=env,
         capture_output=True,
@@ -51,18 +51,39 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
     with engine.begin() as conn:
         conn.execute(text(f'CREATE SCHEMA "{schema}"'))
     try:
+        original = migrate(url, schema, revision="0001_tokens")
+        assert original.returncode == 0, original.stderr
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"""INSERT INTO "{schema}".access_tokens
+                (id, digest, label, scopes, created_at)
+                VALUES ('migration-survivor', :digest, 'preserve', '[]', CURRENT_TIMESTAMP)"""
+                ),
+                {"digest": "0" * 64},
+            )
         first = migrate(url, schema)
         assert first.returncode == 0, first.stderr
         second = migrate(url, schema)
         assert second.returncode == 0, second.stderr
         with engine.connect() as conn:
+            assert (
+                conn.scalar(
+                    text(
+                        f"""SELECT label FROM "{schema}".access_tokens
+                WHERE id = 'migration-survivor' """
+                    )
+                )
+                == "preserve"
+            )
             assert set(inspect(conn).get_table_names(schema=schema)) == {
                 "access_tokens",
                 "alembic_version",
+                "email_jobs",
             }
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0001_tokens"
+                == "0002_email_jobs"
             )
         # Use the same migrated schema through the actual application factory.
         settings = Settings(
@@ -92,6 +113,40 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 ).status_code
                 == 401
             )
+            from concurrent.futures import ThreadPoolExecutor
+            from fmg_agent.email.jobs import JobStore
+
+            with app.state.sessions() as session:
+                email_token = issue_token(
+                    session, label="email-agent", scopes=["email:enrich"]
+                )
+            store = JobStore(app.state.sessions)
+            # Concurrent requests have one durable record and one active owner.
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                jobs = list(
+                    pool.map(
+                        lambda _: store.create(
+                            email_token.id,
+                            "same-key",
+                            {"url": "https://example.com/creator"},
+                        ),
+                        range(4),
+                    )
+                )
+            ids = {job["id"] for job in jobs}
+            assert len(ids) == 1
+            job_id = jobs[0]["id"]
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                leases = list(pool.map(lambda _: store.claim(job_id), range(4)))
+            assert sum(lease is not None for lease in leases) == 1
+            lease = next(lease for lease in leases if lease is not None)
+            assert store.checkpoint(job_id, lease, "public_pages", {"emails": []})
+            assert store.fail(job_id, lease, "upstream_rate_limited", retryable=True)
+            with ThreadPoolExecutor(max_workers=4) as pool:
+                list(pool.map(lambda _: store.retry(job_id, email_token.id), range(4)))
+            assert store.load(job_id)["checkpoints"] == {"public_pages": {"emails": []}}
+            assert store.complete(job_id, store.claim(job_id), [])
+            assert store.load(job_id)["state"] == "completed"
     finally:
         with engine.begin() as conn:
             conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))

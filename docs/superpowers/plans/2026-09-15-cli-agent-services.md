@@ -134,6 +134,8 @@ Task 3 验证记录：官方校验和确认的 Go 1.27.1（本机 macOS arm64）
 
 ## Task 4：独立邮箱补强异步任务
 
+进行中（基础子单元）：已实现任务创建/查询/显式重试、令牌归属、幂等唯一约束、原子认领与 lease 隔离、成功 checkpoint 保留、过期执行转失败。60 项回归通过，包含真实 PostgreSQL 从 0001 到 0002 保留原令牌数据的迁移、重复迁移、四并发提交/认领/重试。独立审查无阻塞。尚未接入主页抓取、Gemini、Celery、CLI 或保留期清理，因此本 Task 仍未完成、不部署这些未完整执行的路由。入口 URL 校验仅语法/显式私网拒绝，网络执行时还必须实现 DNS pinning 和重定向校验。
+
 **Files — create:** `agent-service/src/fmg_agent/email/{__init__,models,jobs,enrichment,routes}.py`、`agent-service/src/fmg_agent/worker.py`、`agent-service/migrations/versions/0002_email_jobs.py`、`agent-service/tests/test_email_enrichment.py`、`cli/internal/email.go`、`cli/internal/email_test.go`。**Modify:** `app.py`、CLI command 路由。
 
 **Interfaces:** `POST /v1/email/enrich`（Idempotency-Key）；`GET /v1/email/jobs/{id}`；`POST /v1/email/jobs/{id}/retry`。结果字段见规格第 5 节。CLI `email enrich --url`、`email job <id> --wait`。

@@ -10,6 +10,7 @@ from .auth import Principal, authenticate
 from .config import Settings
 from .db import database
 from .errors import ApiError, error_response
+from .email.routes import router as email_router
 from .providers.catalog import Catalog
 from .providers.routes import router as provider_router
 
@@ -36,6 +37,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.catalog = Catalog(settings.catalog_dir)
     app.state.provider_transport = None
     app.include_router(provider_router)
+    app.include_router(email_router)
 
     @app.middleware("http")
     async def request_id(request: Request, call_next):
