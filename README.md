@@ -1,5 +1,18 @@
 # Find Me Gamer
 
+## Current delivery: FMG CLI + Codex Skills
+
+The current company service is the independent CLI gateway, not the legacy macOS
+backend. Install the CLI and `fmg-api` / `fmg-research` Skills using the
+[CLI quickstart](docs/agent-services/quickstart.md). Provider keys stay on the
+company server; each user needs a separate revocable gateway token.
+
+The original macOS source is retained below for reference. Its production API,
+Worker and Beat are intentionally stopped; installing an old DMG does not connect
+it to the CLI service. CLI releases use `fmg-v...` tags and are separate from DMGs.
+
+## Legacy macOS application
+
 An internal macOS workspace for game publishers to analyze Steam games and YouTube
 creators, match games with creators in a shared library, and manage email outreach.
 

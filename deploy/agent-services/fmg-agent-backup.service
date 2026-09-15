@@ -1,0 +1,14 @@
+[Unit]
+Description=FMG CLI isolated database backup to S3
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=FMG_AGENT_IMAGE=fmg-agent:0.1.0-cda2de5
+Environment=FMG_AGENT_ENV_FILE=/etc/fmg-agent/service.env
+Environment=FMG_AGENT_PG_ENV_FILE=/etc/fmg-agent/pg.env
+Environment=FMG_AGENT_NETWORK=find-me-gamer-backend
+Environment=FMG_AGENT_BACKUP_S3=s3://zhangyue-data-493392056671-us-west-2/backups/agent/
+ExecStart=/bin/sh /opt/fmg-agent-0.1.0-cda2de5/deploy/agent-services/backup.sh
+UMask=0077
