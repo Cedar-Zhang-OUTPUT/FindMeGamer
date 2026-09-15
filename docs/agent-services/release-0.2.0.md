@@ -24,3 +24,11 @@ Backend deployed at `/opt/fmg-agent-0.2.0-b97f52b`, image `fmg-agent:0.2.0-b97f5
 116 service tests passed across the full image-enabled suite (115 plus separately enabled compiled-CLI/email E2E). Real PostgreSQL old-schema migration preserves an existing usage record with null price. Four installer/bundle tests, Go tests/vet, CLI HTTP smoke, and both Skill metadata validators passed. The existing third-party AnyIO deprecation warning remains nonblocking.
 
 Public HTTPS smoke run `release-020-smoke`: X user lookup returned an estimated USD 0.010; Steam Store search returned USD 0 marginal API charge. The authoritative run total was USD 0.010 for two successful requests with no unknown components. This is an estimate before discounts/deduplication, not observed billing. No real email sent and no additional Gemini invocation made for this deployment.
+
+## Public upgrade acceptance
+
+Published [fmg-v0.2.0](https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/fmg-v0.2.0), source tag `b97f52b`, with four platform archives, Skills, installer, SHA256SUMS and Agent guide. This remains an internal prerelease and does not change the legacy desktop latest designation.
+
+Downloaded the public installer/checksums anonymously. In an isolated directory containing the actual released 0.1.0 binary/Skills and a copied private configuration, verified the installer checksum and bootstrapped 0.2.0. Then the freshly installed binary executed `upgrade --latest --skills` against real GitHub release metadata/assets. Both replacements succeeded, CLI version remained 0.2.0, numbered Skill backups were retained, configuration bytes were unchanged, and production `auth check` succeeded. No global installation or user Skill edits were overwritten by these checks.
+
+Host quota was checked during development: account/window changed from the initial snapshot, so whole-task quota attribution is unavailable. Two comparable later snapshots showed shared-account usage 33% then 34% (remaining 67% then 66%), not a precise task charge. No reset credit was consumed.
