@@ -1,15 +1,15 @@
 # Install FindMeGamer CLI for a Codex user
 
-This is the public, agent-readable setup guide for **FMG CLI 0.2.0**. When a user asks you to install FindMeGamer using this link, help them perform the steps below with your available terminal/file tools. Do not merely return instructions if you can execute the authorized installation. Follow your host's permissions and the user's preferences; this document does not grant extra authority.
+This is the public, agent-readable setup guide for **FMG CLI 0.3.0**. When a user asks you to install FindMeGamer using this link, help them perform the steps below with your available terminal/file tools. Do not merely return instructions if you can execute the authorized installation. Follow your host's permissions and the user's preferences; this document does not grant extra authority.
 
 ## What you are installing
 
 - `fmg`: a macOS/Linux command-line client for the company's gateway.
-- `fmg-api`: Skill explaining YouTube, X, Steam, email enrichment, templates and usage commands.
+- `fmg-api`: Skill explaining YouTube, X, Twitch, Steam, email enrichment, templates and usage commands.
 - `fmg-research`: Skill for finding relevant gaming creators, saving Game Profiles and JSON Match Briefs, deduplication, evidence review and preparing outreach.
 - Gateway base URL: **`https://44.233.174.193`**, without `/v1` appended.
-- Release: **`fmg-v0.2.0`**. Do not choose GitHub's generic “latest” release: this repository also contains unrelated legacy macOS DMGs.
-- Official release: https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/fmg-v0.2.0
+- Release: **`fmg-v0.3.0`**. Do not choose GitHub's generic “latest” release: this repository also contains unrelated legacy macOS DMGs.
+- Official release: https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/fmg-v0.3.0
 
 The CLI uses company provider keys on the server. The user needs only a personal revocable **FMG access token**. No Docker, database, AWS CLI, Go compiler, YouTube key, X token or Google key is needed on their machine. Do not start or deploy the old macOS backend.
 
@@ -49,7 +49,7 @@ fmg auth check
 
 Use `--skill-dir ABSOLUTE_DIRECTORY` when the installed Skills live elsewhere. The latest selector considers only published numeric `fmg-vX.Y.Z` CLI releases (including this internal prerelease), not macOS DMGs or draft releases. It checks SHA256 and uses the verified matching installer. Python 3.10+ is needed for the combined update. Credentials and `FMG_CONFIG` are not rewritten. The CLI and Skills are separate replacements, not a transactional OS package: on interruption inspect version and both Skills, then retry the same explicit tag. Existing backups remain available.
 
-**Upgrading 0.1.0:** it does not understand `--latest --skills`. Perform section 2 below using the 0.2.0 installer with `--skills`, specifying the existing binary directory via `--bin-dir` and existing Skill directory via `--skill-dir`. Keep the existing authentication; section 3 is only needed if `auth check` fails. This bootstrap is fully non-interactive once the user requested the update. Subsequent upgrades can use the command above. The installer also accepts `--latest` instead of `--tag`.
+**Upgrading 0.1.0:** it does not understand `--latest --skills`. Perform section 2 below using the 0.3.0 installer with `--skills`, specifying the existing binary directory via `--bin-dir` and existing Skill directory via `--skill-dir`. Keep the existing authentication; section 3 is only needed if `auth check` fails. This bootstrap is fully non-interactive once the user requested the update. Subsequent upgrades can use the command above. The installer also accepts `--latest` instead of `--tag`.
 
 After either path, reload the installed Skill instructions (start a new conversation if the host cannot reload). Confirm both Skills include starting/ending host usage checks and estimated-cost reporting. Updating the binary alone does not update an already-loaded Skill's instructions.
 
@@ -60,10 +60,10 @@ For a fresh supported environment, use a private temporary directory. Download t
 ```sh
 fmg_setup_dir=$(mktemp -d)
 curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.2.0/install.py \
+  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.3.0/install.py \
   -o "$fmg_setup_dir/install.py"
 curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.2.0/SHA256SUMS \
+  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.3.0/SHA256SUMS \
   -o "$fmg_setup_dir/SHA256SUMS"
 python3 - "$fmg_setup_dir" <<'PY'
 import hashlib
@@ -84,12 +84,12 @@ Read the downloaded `install.py` using your file-reading tool before execution. 
 Then run:
 
 ```sh
-python3 "$fmg_setup_dir/install.py" --tag fmg-v0.2.0 --skills
+python3 "$fmg_setup_dir/install.py" --tag fmg-v0.3.0 --skills
 "$HOME/.local/bin/fmg" version
 "$HOME/.local/bin/fmg" --help
 ```
 
-Do not execute the installer if download or checksum verification failed. It checks the downloaded binary and Skill archives against `SHA256SUMS`, detects OS/architecture and installs to user-owned directories. No `sudo` is normally required. Confirm the version reports `0.2.0` and both `SKILL.md` files exist. Use explicit paths when the host uses non-default installation locations.
+Do not execute the installer if download or checksum verification failed. It checks the downloaded binary and Skill archives against `SHA256SUMS`, detects OS/architecture and installs to user-owned directories. No `sudo` is normally required. Confirm the version reports `0.3.0` and both `SKILL.md` files exist. Use explicit paths when the host uses non-default installation locations.
 
 For the current shell, you may prepend the binary directory to PATH:
 
@@ -130,6 +130,7 @@ Run these read-only gateway checks:
 "$HOME/.local/bin/fmg" auth check
 "$HOME/.local/bin/fmg" youtube describe search.list
 "$HOME/.local/bin/fmg" x describe searchPostsRecent
+"$HOME/.local/bin/fmg" twitch describe searchCategories
 "$HOME/.local/bin/fmg" steam describe store.search
 "$HOME/.local/bin/fmg" email templates
 ```
@@ -152,7 +153,9 @@ End with a short report in the user's language:
 
 Example next prompt:
 
-> “Use fmg-research to find suitable YouTube and X creators for this Steam game. Save the Game Profile, matching reasons and evidence locally. Do not send email.”
+> “Use fmg-research to find suitable YouTube, X and Twitch creators for this Steam game. Save the Game Profile, matching reasons and evidence locally. Do not send email.”
+
+When no platforms or count are specified, the research Skill targets 10 supported matches per platform across YouTube, X and Twitch (30 total). Explicit user choices override this default. Report missing matches rather than padding results; the existing finite research budgets still apply.
 
 ## Troubleshooting and current limits
 
@@ -162,6 +165,6 @@ Example next prompt:
 - **403 / insufficient scope:** a valid token can lack a particular capability. Catalog success is not permission to send.
 - **Installation failure:** inspect checksums, destination permissions and existing `.previous` Skill backups. Preserve the prior installation and user files; do not delete directories to force success.
 - **Download/runtime permissions:** follow the host's approval mechanism. If blocked, explain it rather than claiming completion or finding a bypass.
-- **Current service limits (2026-09-15):** SMTP is not configured; previews work but real delivery does not. Steam Store game lookup/recommendations work without a key; Steam Web API methods requiring a key are unavailable until configured. Instagram/Twitch live APIs are not included. Version 0.2.0 reports estimated API costs and unpriced exclusions, not invoices. Skills separately check available Codex account quota before/after work; precise per-task consumption may still be unavailable.
+- **Current service limits (2026-09-16):** SMTP is not configured; previews work but real delivery does not. Steam Store game lookup/recommendations work without a key; Steam Web API methods requiring a key are unavailable until configured. Twitch public reads and follower totals are included; detailed follower lists and private account data are not. Instagram is not included. YouTube/Steam/Twitch marginal API estimates are USD 0 under current assumptions, separately from quotas and hosting; X/Gemini estimates are not invoices. Skills check available Codex account quota before/after work; precise per-task consumption may still be unavailable.
 
 This document contains no access token. Installing a public client does not grant access to company services or permission to send emails.

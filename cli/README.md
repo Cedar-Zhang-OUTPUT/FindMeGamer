@@ -1,6 +1,6 @@
 # fmg CLI
 
-Calls the company gateway, not YouTube/X/Twitch/Steam directly. Provider keys never belong in this client. CLI 0.2.1 and the gateway are published; Twitch support in this checkout is pending the 0.3.0 release. For installation, use the [public Agent setup guide](https://raw.githubusercontent.com/Cedar-Zhang-OUTPUT/FindMeGamer/cli/docs/agent-services/AGENT-INSTALL.md) or [company quickstart](../docs/agent-services/quickstart.md). The commands below are development/API reference, not a setup workflow.
+Calls the company gateway, not YouTube/X/Twitch/Steam directly. Provider keys never belong in this client. CLI 0.3.0 and the gateway are published, including Twitch. For installation, use the [public Agent setup guide](https://raw.githubusercontent.com/Cedar-Zhang-OUTPUT/FindMeGamer/cli/docs/agent-services/AGENT-INSTALL.md) or [company quickstart](../docs/agent-services/quickstart.md). The commands below are development/API reference, not a setup workflow.
 
 ## Build and test
 

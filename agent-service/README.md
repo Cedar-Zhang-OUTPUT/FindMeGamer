@@ -1,6 +1,6 @@
 # FMG Agent Service
 
-Independent company API gateway. This package does not start or import the old desktop backend. It provides health, access-token authentication, migrations, catalog-driven platform reads, resumable email enrichment and confirmed template sending. Version 0.2.1 is deployed; the Twitch changes in this checkout are pending release.
+Independent company API gateway. This package does not start or import the old desktop backend. It provides health, access-token authentication, migrations, catalog-driven platform reads, resumable email enrichment and confirmed template sending. Version 0.3.0, including Twitch, is deployed; see the deployment record in docs/agent-services.
 
 ## Twitch configuration
 
