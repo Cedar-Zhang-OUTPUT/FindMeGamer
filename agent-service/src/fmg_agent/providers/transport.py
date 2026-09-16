@@ -31,6 +31,8 @@ def retry_after(headers):
         )
     except (KeyError, ValueError, TypeError):
         reset = int_header(headers, "x-rate-limit-reset")
+        if reset is None:
+            reset = int_header(headers, "ratelimit-reset")
         return (
             max(0, int(reset - datetime.now(timezone.utc).timestamp()))
             if reset is not None
@@ -55,12 +57,30 @@ def encode_query(value):
 
 
 async def call_provider(
-    settings, operation, path, params, provider, request_id, transport=None
+    settings,
+    operation,
+    path,
+    params,
+    provider,
+    request_id,
+    transport=None,
+    *,
+    twitch_auth=None,
 ):
     protect_http_logs()
     query = dict(params)
     headers = {"Accept": "application/json"}
     secret = ""
+    if provider == "twitch":
+        if twitch_auth is None:
+            raise ApiError(
+                503,
+                "configuration_missing",
+                "Twitch authorization manager is unavailable.",
+            )
+        secret = await twitch_auth.token(operation["auth"], transport)
+        headers["Authorization"] = "Bearer " + secret
+        headers["Client-Id"] = settings.twitch_client_id
     if operation["auth"] in {"api-key", "api-key-optional"}:
         secret = getattr(settings, provider + "_api_key").get_secret_value()
         if not secret and operation["auth"] == "api-key":
@@ -80,6 +100,12 @@ async def call_provider(
         headers["Authorization"] = "Bearer " + secret
     if operation.get("transport_mode") == "input_json":
         query = {"input_json": json.dumps(query, separators=(",", ":"))}
+    elif provider == "twitch":
+        query = [
+            (name, encode_query(item))
+            for name, value in query.items()
+            for item in (value if isinstance(value, list) else [value])
+        ]
     else:
         query = {name: encode_query(value) for name, value in query.items()}
     if operation["auth"] in {"api-key", "api-key-optional"} and secret:
@@ -127,6 +153,8 @@ async def call_provider(
                 retry_after_seconds=retry_after(response.headers),
             )
         if response.status_code in {401, 403}:
+            if provider == "twitch" and response.status_code == 401:
+                twitch_auth.invalidate(operation["auth"])
             raise ApiError(
                 403,
                 "provider_authorization_required",
@@ -161,9 +189,22 @@ async def call_provider(
                 cursor_at(payload, pagination["response_path"]) if pagination else None
             ),
             "rate_limit": {
-                "limit": int_header(response.headers, "x-rate-limit-limit"),
-                "remaining": int_header(response.headers, "x-rate-limit-remaining"),
-                "reset_at": int_header(response.headers, "x-rate-limit-reset"),
+                "limit": int_header(
+                    response.headers,
+                    "ratelimit-limit" if provider == "twitch" else "x-rate-limit-limit",
+                ),
+                "remaining": int_header(
+                    response.headers,
+                    (
+                        "ratelimit-remaining"
+                        if provider == "twitch"
+                        else "x-rate-limit-remaining"
+                    ),
+                ),
+                "reset_at": int_header(
+                    response.headers,
+                    "ratelimit-reset" if provider == "twitch" else "x-rate-limit-reset",
+                ),
             },
             "warnings": [],
         },

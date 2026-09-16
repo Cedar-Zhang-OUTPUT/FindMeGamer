@@ -1,6 +1,6 @@
 ---
 name: fmg-api
-description: Use when calling the company fmg CLI for YouTube, X, Steam, business email enrichment, template previews, sending receipts or per-task API usage.
+description: Use when calling the company fmg CLI for YouTube, X, Twitch, Steam, business email enrichment, template previews, sending receipts or per-task API usage.
 ---
 
 # FMG API
@@ -15,7 +15,7 @@ When the user asks to update, use `fmg upgrade --latest --skills` (Python 3.10+)
 
 Read only the reference relevant to the operation:
 
-- [Platforms](references/platforms.md): catalogs, YouTube/X search, Steam identity/recommendations and bounded pagination.
+- [Platforms](references/platforms.md): catalogs, YouTube/X/Twitch search, Steam identity/recommendations and bounded pagination.
 - [Email](references/email.md): asynchronous enrichment, versioned templates, preview, confirmation and receipts.
 - [Usage and errors](references/usage.md): costs, quota failures and recovery.
 

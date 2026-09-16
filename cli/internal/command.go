@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-var Version = "0.2.1-dev"
+var Version = "0.3.0-dev"
 
 type runIDKey struct{}
 
@@ -21,9 +21,9 @@ const help = `fmg — company-hosted API tools
 
 fmg auth login --server https://SERVICE --token-stdin
 fmg auth check | logout
-fmg youtube|x|steam operations
-fmg youtube|x|steam describe OPERATION
-fmg youtube|x|steam call OPERATION --params JSON [--max-pages N] [--max-items N]
+fmg youtube|x|twitch|steam operations
+fmg youtube|x|twitch|steam describe OPERATION
+fmg youtube|x|twitch|steam call OPERATION --params JSON [--max-pages N] [--max-items N]
 fmg version
 fmg pricing
 fmg upgrade --latest --skills [--skill-dir DIRECTORY]
@@ -103,7 +103,7 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 		return 0
 	}
 	provider := args[0]
-	if provider != "youtube" && provider != "x" && provider != "steam" {
+	if provider != "youtube" && provider != "x" && provider != "twitch" && provider != "steam" {
 		return writeError(stderr, errors.New("unknown command; use fmg --help"))
 	}
 	if len(args) < 2 {

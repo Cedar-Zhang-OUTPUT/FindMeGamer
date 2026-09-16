@@ -28,12 +28,23 @@ def main():
     binary = parser.parse_args().binary.resolve()
     with tempfile.TemporaryDirectory(prefix='fmg-cli-smoke-') as temporary:
         root = Path(temporary)
-        app = create_app(Settings(database_url=f'sqlite:///{root / "test.sqlite"}', youtube_api_key='fake-platform-key'))
+        app = create_app(Settings(database_url=f'sqlite:///{root / "test.sqlite"}', youtube_api_key='fake-platform-key', twitch_client_id='test-client', twitch_client_secret='test-secret'))
         Base.metadata.create_all(app.state.engine)
         with app.state.sessions() as session:
             issued = issue_token(session, label='local-cli-test', scopes=['read'])
         calls = []
+        twitch_calls = []
         def upstream(request):
+            if request.url.host == 'id.twitch.tv':
+                if request.url.path.endswith('token'):
+                    return httpx.Response(200, json={'access_token':'test-twitch-token','expires_in':3600})
+                return httpx.Response(200, json={'client_id':'test-client','expires_in':3600})
+            if request.url.host == 'api.twitch.tv':
+                assert request.headers['Client-Id'] == 'test-client'
+                assert request.headers['Authorization'] == 'Bearer test-twitch-token'
+                twitch_calls.append(dict(request.url.params))
+                cursor = {} if 'after' in request.url.params else {'cursor':'next-twitch'}
+                return httpx.Response(200, json={'data':[{'id':'42','future':True}], 'pagination':cursor}, headers={'Ratelimit-Remaining':'798'})
             if request.url.host == 'store.steampowered.com':
                 assert 'key' not in request.url.params
                 if request.url.path == '/api/storesearch/':
@@ -91,10 +102,18 @@ def main():
             tracked = run(['--run-id','smoke-run','steam','call','store.search','--params','{"term":"Game"}'])
             usage = run(['--run-id','smoke-run','usage'])[0]['data']
             assert usage['request_count']==1 and usage['actual_cost'] is None
+            assert 'query' in run(['twitch','describe','searchCategories'])[0]['data']['parameters']
+            twitch = run(['--run-id','twitch-smoke','twitch','call','searchCategories','--params','{"query":"game","first":1}','--max-pages','2'])
+            assert len(twitch) == 2 and twitch_calls[-1]['after'] == 'next-twitch'
+            assert twitch[0]['data']['data'][0]['future'] is True
+            assert twitch[0]['meta']['rate_limit']['remaining'] == 798
+            assert twitch[0]['meta']['cost']['estimated_cost'] == '0'
+            twitch_usage = run(['--run-id','twitch-smoke','usage'])[0]['data']
+            assert twitch_usage['request_count'] == 2
             run(['auth','check'])
             assert run(['auth','logout'])[0]['logged_out']
             assert not (root/'config.json').exists()
-            print(json.dumps({'status':'passed','checks':['login','operations','describe','single-page','two-pages','steam-search','steam-recommendations','run-usage','auth-check','logout'],'simulated_youtube_calls':len(calls), 'simulated_steam_calls':3}))
+            print(json.dumps({'status':'passed','checks':['login','operations','describe','single-page','two-pages','steam-search','steam-recommendations','run-usage','twitch-oauth-paging-cost-usage','auth-check','logout'],'simulated_youtube_calls':len(calls), 'simulated_steam_calls':3, 'simulated_twitch_calls':len(twitch_calls)}))
         finally:
             server.should_exit = True
             thread.join(timeout=5)

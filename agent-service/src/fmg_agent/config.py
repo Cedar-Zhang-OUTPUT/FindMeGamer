@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     database_url: str = Field(repr=False)
     youtube_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
     x_bearer_token: SecretStr = Field(default=SecretStr(""), repr=False)
+    twitch_client_id: str = ""
+    twitch_client_secret: SecretStr = Field(default=SecretStr(""), repr=False)
+    twitch_user_token: SecretStr = Field(default=SecretStr(""), repr=False)
+    twitch_refresh_token: SecretStr = Field(default=SecretStr(""), repr=False)
+    twitch_token_store: Path | None = None
     steam_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
     gemini_api_key: SecretStr = Field(default=SecretStr(""), repr=False)
     gemini_model: str = ""

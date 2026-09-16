@@ -22,7 +22,7 @@ func TestPricingWithoutLogin(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &rules); err != nil {
 		t.Fatal(err)
 	}
-	if rules.Currency != "USD" || len(rules.Providers) != 5 || rules.Recovery["balance_exhausted"] == "" {
+	if rules.Currency != "USD" || len(rules.Providers) != 6 || rules.Recovery["balance_exhausted"] == "" {
 		t.Fatalf("incomplete rules: %+v", rules)
 	}
 }

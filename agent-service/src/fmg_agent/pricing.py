@@ -7,7 +7,7 @@ X's best-effort daily deduplication (including calls outside this gateway).
 from datetime import date
 from decimal import Decimal
 
-VERSION = "fmg-usd-2026-09-15-v1"
+VERSION = "fmg-usd-2026-09-16-v2"
 X_SOURCE = "https://docs.x.com/x-api/getting-started/pricing"
 GEMINI_SOURCE = "https://ai.google.dev/gemini-api/docs/pricing"
 
@@ -55,7 +55,7 @@ def estimate(
     def unknown(reason):
         result["unpriced_components"].append(reason)
 
-    if provider in {"youtube", "steam"} and status == "succeeded":
+    if provider in {"youtube", "steam", "twitch"} and status == "succeeded":
         add("provider_request", 1, "0")
         result["basis"] = "zero_marginal_api_charge_excludes_hosting_and_quota"
         result["source_url"] = (
@@ -63,6 +63,8 @@ def estimate(
             if provider == "youtube"
             else "https://steamcommunity.com/dev"
         )
+        if provider == "twitch":
+            result["source_url"] = "https://dev.twitch.tv/docs/api/guide/"
     elif provider == "x" and status == "succeeded":
         result["source_url"] = X_SOURCE
         primary = (

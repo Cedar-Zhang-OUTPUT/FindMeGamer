@@ -1,4 +1,5 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Request
@@ -12,6 +13,7 @@ from .db import database
 from .errors import ApiError, error_response
 from .email.routes import router as email_router
 from .providers.catalog import Catalog
+from .providers.twitch import TwitchAuth
 from .providers.routes import router as provider_router
 from .usage import router as usage_router, run_id
 
@@ -22,8 +24,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app):
-        yield
-        engine.dispose()
+        maintenance = None
+        if settings.twitch_client_id:
+            maintenance = asyncio.create_task(
+                app.state.twitch_auth.maintain(app.state.provider_transport)
+            )
+        try:
+            yield
+        finally:
+            if maintenance:
+                maintenance.cancel()
+                with suppress(asyncio.CancelledError):
+                    await maintenance
+            engine.dispose()
 
     app = FastAPI(
         title="FMG Agent Services",
@@ -37,6 +50,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.catalog = Catalog(settings.catalog_dir)
     app.state.provider_transport = None
+    app.state.twitch_auth = TwitchAuth(settings)
     app.include_router(provider_router)
     app.include_router(email_router)
     app.include_router(usage_router)

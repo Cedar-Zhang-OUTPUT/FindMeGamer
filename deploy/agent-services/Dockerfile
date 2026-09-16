@@ -3,7 +3,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 FMG_AGENT_CATALOG_DIR=/srv/api-
 WORKDIR /srv/agent-service
 COPY agent-service/constraints.txt agent-service/pyproject.toml ./
 COPY agent-service/src ./src
-RUN pip install --no-cache-dir -c constraints.txt . && useradd --uid 10001 --create-home agent
+RUN pip install --no-cache-dir -c constraints.txt . && useradd --uid 10001 --create-home agent && install -d -m 700 -o agent -g agent /srv/twitch-oauth
 COPY agent-service/alembic.ini ./
 COPY agent-service/migrations ./migrations
 COPY api-catalog /srv/api-catalog

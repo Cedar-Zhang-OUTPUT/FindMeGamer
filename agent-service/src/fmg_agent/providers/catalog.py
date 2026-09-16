@@ -9,6 +9,7 @@ HOSTS = {
     "youtube": "https://youtube.googleapis.com",
     "x": "https://api.x.com",
     "steam": "https://api.steampowered.com",
+    "twitch": "https://api.twitch.tv",
 }
 
 
@@ -111,6 +112,13 @@ class Catalog:
                 "This operation requires additional company-side user authorization.",
             )
         declared = operation["parameters"]
+        if provider == "twitch":
+            selectors = operation.get("selector_group")
+            selected = sum(key in params for key in selectors or [])
+            if selectors and (
+                selected == 0 or operation.get("exclusive_selectors") and selected != 1
+            ):
+                raise invalid("Supply the documented selector combination.")
         normalized = {}
         for key in params:
             exemplar = re.sub(r"\[(?:0|[1-9][0-9]*)\]$", "[0]", key)

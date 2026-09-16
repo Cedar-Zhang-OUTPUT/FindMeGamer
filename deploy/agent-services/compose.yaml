@@ -11,6 +11,7 @@ x-agent: &agent
 services:
   api:
     <<: *agent
+    volumes: ["twitch-oauth:/srv/twitch-oauth"]
     ports: ["127.0.0.1:${FMG_AGENT_PORT:-8017}:8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=5)"]
@@ -36,3 +37,5 @@ networks:
   existing:
     external: true
     name: ${FMG_AGENT_NETWORK:?Set existing Postgres/Redis Docker network}
+volumes:
+  twitch-oauth:

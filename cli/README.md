@@ -1,6 +1,6 @@
 # fmg CLI
 
-Calls the company gateway, not YouTube/X/Steam directly. Provider keys never belong in this client. CLI 0.2.0 and the gateway are now published. For installation, use the [public Agent setup guide](https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.2.0/AGENT-INSTALL.md) or [company quickstart](../docs/agent-services/quickstart.md). The commands below are development/API reference, not a setup workflow.
+Calls the company gateway, not YouTube/X/Twitch/Steam directly. Provider keys never belong in this client. CLI 0.2.1 and the gateway are published; Twitch support in this checkout is pending the 0.3.0 release. For installation, use the [public Agent setup guide](https://raw.githubusercontent.com/Cedar-Zhang-OUTPUT/FindMeGamer/cli/docs/agent-services/AGENT-INSTALL.md) or [company quickstart](../docs/agent-services/quickstart.md). The commands below are development/API reference, not a setup workflow.
 
 ## Build and test
 
@@ -42,6 +42,8 @@ fmg youtube describe search.list
 fmg youtube call search.list --params '{"part":"snippet","q":"indie games","maxResults":5}'
 fmg x describe getUsersByUsername
 fmg x call getUsersByUsername --params '{"username":"YouTube","user.fields":["description","public_metrics"]}'
+fmg twitch describe searchCategories
+fmg twitch call searchCategories --params '{"query":"Minecraft","first":5}'
 fmg steam call store.appdetails --params '{"appids":"570","l":"english","cc":"US"}'
 ```
 

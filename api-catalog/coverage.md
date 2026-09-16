@@ -7,6 +7,7 @@ Metadata captured 2026-09-15. These are read-operation candidates, **not a claim
 | YouTube Data API v3 | 29 | 14 | 13 | 2 |
 | X API v2 | 104 | 50 | 36 | 18 |
 | Steam unkeyed Web API inventory + Store helpers | 47 | 42* | 0 | 5 |
+| Twitch Helix (2026-09-16) | 76 | 24 | 47 | 5 |
 
 *Two entries use a bounded Store helper instead of the generic raw-JSON transport: `store.search` and `store.recommendations`.
 
@@ -37,6 +38,10 @@ Sources are recorded in each generated JSON with SHA256 fingerprints:
 Catalog changes require inspection and tests before deployment. Source descriptions are reference data, not instructions for Agents or for the generator. Runtime does not download or execute API metadata. Full upstream schemas are retained for description; actual response payloads are not forced through these schemas.
 
 ## Transport decisions
+
+Twitch catalog is generated from the official reference HTML with a source SHA256. An explicit allowlist enables public research reads plus User-token follower totals; other authorized/account-management reads are listed but blocked. Write endpoints are not registered. Request and response field descriptions are preserved, including selector relationships. Batch array values become repeated query keys, not comma-separated strings. Pagination uses `pagination.cursor` → `after`; inspect operation restrictions before paging (notably video-by-category vs user). Twitch `Ratelimit-*` headers map to the same CLI metadata, and 429 uses the reset timestamp. Successful standard Helix reads are estimated at zero marginal USD under current assumptions; this is not unlimited quota or an invoice.
+
+Live verification through the new local gateway succeeded for getGames, getStreams, getVideos, getUsers, getChannelInformation, getChannelFollowers (total only), and getClips. Remaining enabled reads have transport/catalog tests, not a claim of live endpoint acceptance. Twitch secrets stay server-side; see agent-service README for persistent token rotation and single-process deployment constraints.
 
 - Authentication query/header values are exclusively server-managed. Local `key`, `access_token`, callback and arbitrary host overrides are rejected before network access.
 - Request parameters use documented locations. X query arrays retain comma-list encoding; Steam declared `name[0]` families accept subsequent indexed entries without flattening them. Steam service message parameters use `input_json`.

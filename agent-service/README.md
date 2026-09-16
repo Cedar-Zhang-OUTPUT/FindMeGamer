@@ -1,6 +1,22 @@
 # FMG Agent Service
 
-Independent company API gateway. This package does not start or import the old desktop backend. It provides health, access-token authentication, migrations, catalog-driven platform reads, resumable email enrichment and confirmed template sending. It is not yet deployed as the public CLI service.
+Independent company API gateway. This package does not start or import the old desktop backend. It provides health, access-token authentication, migrations, catalog-driven platform reads, resumable email enrichment and confirmed template sending. Version 0.2.1 is deployed; the Twitch changes in this checkout are pending release.
+
+## Twitch configuration
+
+The 0.3.0 implementation adds a read-only Helix catalog. Company-side `FMG_AGENT_TWITCH_CLIENT_ID` and `FMG_AGENT_TWITCH_CLIENT_SECRET` enable public App-token reads. `FMG_AGENT_TWITCH_USER_TOKEN` and `FMG_AGENT_TWITCH_REFRESH_TOKEN` seed User OAuth for follower totals; no creator needs to individually authorize this total-only read. Detailed followers and other permission-gated operations are not enabled. CLI users supply only their normal FMG access token, never Twitch credentials.
+
+Set `FMG_AGENT_TWITCH_TOKEN_STORE=/srv/twitch-oauth/tokens.json` in the private service env. The Compose API service mounts a persistent named volume there; the image initializes directory ownership for uid 10001 and mode 0700. Rotated user tokens are written atomically with mode 0600, and take precedence over env seeds on restart. Keep the volume across deployments/rollbacks and back it up privately alongside service credentials; it is not part of the PostgreSQL dump. To deliberately replace company authorization, stop API in a maintenance window, securely replace both seeds and remove/replace only this token file, then restart. Never print token contents.
+
+This internal Demo supports one API process/container for Twitch token ownership, not multiple replicas sharing the token file. App token acquisition and User refresh are serialized and cached. Configured sessions are validated at startup and at most hourly while running, as well as before using an expired cached token. OAuth errors are sanitized; other providers remain available. Helix requests themselves are not automatically retried. Refresh flow is covered with simulated expiry/rotation/restart tests; live verification used existing User authorization without rotating it.
+
+Generate the catalog from an explicitly downloaded official snapshot (review output before release):
+
+```sh
+.venv/bin/python -m fmg_agent.providers.build_twitch_catalog /tmp/twitch-reference.html ../api-catalog/twitch.json
+```
+
+Returned fields remain untouched. `describe` includes official request and response field descriptions; restricted reads remain visible but fail before any upstream call. The registered public transport is not a promise that every endpoint was live-tested.
 
 ## Local setup
 

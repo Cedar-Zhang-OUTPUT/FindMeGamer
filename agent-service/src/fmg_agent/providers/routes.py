@@ -105,4 +105,5 @@ async def execute(provider, body, request, operation, path, params):
         provider,
         request.state.request_id,
         request.app.state.provider_transport,
+        twitch_auth=request.app.state.twitch_auth,
     )

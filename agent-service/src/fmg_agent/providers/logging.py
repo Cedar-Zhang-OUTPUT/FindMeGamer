@@ -8,13 +8,16 @@ class CredentialFilter(logging.Filter):
     def filter(self, record):
         message = record.getMessage()
         message = re.sub(
-            r"([?&](?:key|access_token|oauth_token|token)=)[^&\s\"\']+",
+            r"([?&](?:key|access_token|oauth_token|token|client_secret|refresh_token)=)[^&\s\"\']+",
             r"\1[REDACTED]",
             message,
             flags=re.IGNORECASE,
         )
         message = re.sub(
-            r"Bearer\s+[^\s\"\',)]+", "Bearer [REDACTED]", message, flags=re.IGNORECASE
+            r"(Bearer|OAuth)\s+[^\s\"\',)]+",
+            r"\1 [REDACTED]",
+            message,
+            flags=re.IGNORECASE,
         )
         record.msg = message
         record.args = ()
