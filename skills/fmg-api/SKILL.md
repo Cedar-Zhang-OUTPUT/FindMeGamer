@@ -9,6 +9,8 @@ Use the installed `fmg` binary; company provider credentials stay on the gateway
 
 Run `fmg --help` and `fmg version` when command availability is uncertain. Before metered work, read [Usage and errors](references/usage.md): capture the host's Codex usage snapshot when available, choose a stable run ID, and prefix metered commands with `fmg --run-id ID`. Capture a second host snapshot and read `fmg --run-id ID usage` at the end, including interrupted runs.
 
+Use `fmg pricing` for service pricing rules. Explicit insufficient-credit errors require pausing that provider and asking the user to recharge; generic unavailability is not proof of insufficient funds. Follow the recovery classification in the usage reference.
+
 When the user asks to update, use `fmg upgrade --latest --skills` (Python 3.10+), then verify `fmg version`, `fmg auth check`, and reload/read both installed Skills. Use `--skill-dir` for a nonstandard existing Skill location. Authentication is retained; replaced Skills are backed up, not deleted. Customized Skills need review before replacement. Version 0.1.0 lacks these flags: follow the public [Agent setup/update guide](https://raw.githubusercontent.com/Cedar-Zhang-OUTPUT/FindMeGamer/codex/native-profile-editing/docs/agent-services/AGENT-INSTALL.md) to bootstrap the new installer; do not guess a GitHub desktop release.
 
 Read only the reference relevant to the operation:

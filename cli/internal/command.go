@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-var Version = "0.2.0-dev"
+var Version = "0.2.1-dev"
 
 type runIDKey struct{}
 
@@ -25,6 +25,7 @@ fmg youtube|x|steam operations
 fmg youtube|x|steam describe OPERATION
 fmg youtube|x|steam call OPERATION --params JSON [--max-pages N] [--max-items N]
 fmg version
+fmg pricing
 fmg upgrade --latest --skills [--skill-dir DIRECTORY]
 fmg upgrade --tag fmg-vX.Y.Z [--skills]
 fmg --run-id RUN_ID usage
@@ -67,6 +68,15 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	}
 	if args[0] == "auth" {
 		return runAuth(ctx, args[1:], stdin, stdout, stderr)
+	}
+	if args[0] == "pricing" {
+		if len(args) != 1 {
+			return writeError(stderr, errors.New("pricing takes no arguments"))
+		}
+		if err := emit(stdout, pricingRules()); err != nil {
+			return writeError(stderr, err)
+		}
+		return 0
 	}
 	if args[0] == "email" {
 		return runEmail(ctx, args[1:], stdout, stderr)

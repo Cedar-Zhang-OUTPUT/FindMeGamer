@@ -74,6 +74,8 @@ def test_gemini_thinking_cache_and_search_are_costed_separately():
     assert missing["estimated_cost"] is not None
     assert missing["complete"] is False
     assert "grounding_usage_unavailable" in missing["unpriced_components"]
+    assert cost["basis"] == "list_price_before_discounts_and_free_allowances"
+    assert cost["actual_cost"] is None
 
 
 def test_response_and_ledger_preserve_pricing_snapshot(api):

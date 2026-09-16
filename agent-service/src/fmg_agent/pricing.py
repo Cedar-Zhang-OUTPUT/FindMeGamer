@@ -119,6 +119,7 @@ def estimate(
                     "0.010" if kind == "users" else "0.005",
                 )
     elif provider == "gemini":
+        result["basis"] = "list_price_before_discounts_and_free_allowances"
         result["source_url"] = GEMINI_SOURCE
         result["model"] = model
         usage = usage or {}

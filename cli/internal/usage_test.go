@@ -2,10 +2,30 @@ package fmg
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 )
+
+func TestPricingWithoutLogin(t *testing.T) {
+	t.Setenv("FMG_CONFIG", t.TempDir()+"/missing.json")
+	var out, diagnostics bytes.Buffer
+	if code := Run([]string{"pricing"}, strings.NewReader(""), &out, &diagnostics); code != 0 {
+		t.Fatalf("%d %s", code, diagnostics.String())
+	}
+	var rules struct {
+		Currency  string            `json:"currency"`
+		Providers map[string]any    `json:"providers"`
+		Recovery  map[string]string `json:"recovery"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &rules); err != nil {
+		t.Fatal(err)
+	}
+	if rules.Currency != "USD" || len(rules.Providers) != 5 || rules.Recovery["balance_exhausted"] == "" {
+		t.Fatalf("incomplete rules: %+v", rules)
+	}
+}
 
 func TestRunIDAndUsage(t *testing.T) {
 	setup(t, func(w http.ResponseWriter, r *http.Request) {
