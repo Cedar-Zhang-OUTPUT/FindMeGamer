@@ -8,7 +8,10 @@ from string import Template
 from ..errors import ApiError
 from .urls import public_url
 
-TEMPLATE_FILES = {"game-outreach": "game-outreach.json"}
+TEMPLATE_FILES = {
+    "game-outreach": "game-outreach.json",
+    "liminal-outreach": "liminal-outreach.json",
+}
 
 
 def get_template(template_id, version=None):
