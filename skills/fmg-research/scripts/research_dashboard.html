@@ -132,7 +132,17 @@
       }
       td { min-width: 150px; overflow-wrap: anywhere; white-space: pre-line; }
       td:first-child { min-width: 40px; }
-      td:nth-child(4) { min-width: 330px; }
+      td:nth-child(4) { min-width: 240px; width: 260px; max-width: 280px; }
+      .match-summary {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+        line-height: 1.5;
+        max-height: 4.5em;
+        margin: 0 0 10px;
+      }
+      #reasons { white-space: pre-wrap; overflow-wrap: anywhere; }
       #scroll { max-height: 70vh; }
       th { position: sticky; top: 0; }
       td:nth-child(3) {
@@ -332,7 +342,10 @@
         $("profile").replaceChildren(
           link(r.creator.profile_url, "Open creator profile ↗"),
         );
-        lines("reasons", list(r.match.reasons));
+        const labels = {evidence: "Evidence", gameplay_connection: "Gameplay connection", assessment: "Assessment", collaboration_angle: "Collaboration angle", limitations: "AI boundaries"};
+        lines("reasons", r.presentation?.why_match
+          ? Object.entries(labels).map(([key, label]) => label + ": " + (r.presentation.why_match[key] || "Not recorded"))
+          : list(r.match.reasons));
         lines(
           "limitations",
           list(r.match.limitations).length
@@ -414,16 +427,14 @@
             "Unresolved — " + (status || "lookup not recorded"));
           const why = cell("");
           why.replaceChildren();
-          const labels = {evidence: "Evidence", gameplay_connection: "Gameplay connection", assessment: "Assessment", collaboration_angle: "Collaboration angle", limitations: "AI boundaries"};
-          for (const [key, label] of Object.entries(labels)) {
-            const section = document.createElement("p");
-            const heading = document.createElement("strong");
-            heading.textContent = label + ": ";
-            section.append(heading, document.createTextNode(p.why_match?.[key] || "Not recorded"));
-            why.append(section);
-          }
+          const summary = document.createElement("p");
+          summary.className = "match-summary";
+          summary.textContent = p.why_match?.assessment || p.why_match?.gameplay_connection ||
+            readable(list(r.match.reasons)[0] || "No rationale recorded");
+          why.append(summary);
           const button = document.createElement("button");
-          button.textContent = "View evidence";
+          button.textContent = "More info";
+          button.setAttribute("aria-haspopup", "dialog");
           button.onclick = () => show(r);
           why.append(button);
           cell(p.content_direction);

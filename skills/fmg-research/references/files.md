@@ -116,6 +116,10 @@ The browser table and any Excel export must use these nine columns **in this ord
 
 Within **为什么 Match？**, use line breaks and explicit subheadings:
 
+In the browser table, show only a compact three-line assessment summary followed by
+**More info**. Its dialog shows all five sections in full; do not truncate stored
+briefs or Excel content to fit the table.
+
 - **具体证据**: relevant work/video/post names, dates if available, clickable or literal source URLs, and what the evidence actually supports.
 - **玩法联系**: relationship to the target game's mechanics, game loop, style, or supported similar-game experience.
 - **形势判断**: why this creator fits the current campaign, with relevant content recency, audience fit and uncertainties; separate facts from inference.
