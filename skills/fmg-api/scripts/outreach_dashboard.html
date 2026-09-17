@@ -279,6 +279,7 @@
         <span id="status" class="badge" aria-live="polite"></span>
       </div>
       <p id="error" role="alert"></p>
+      <p id="monitoring" class="muted" role="status"></p>
       <section id="stats" aria-label="Task summary"></section>
       <div class="toolbar">
         <div>
@@ -296,9 +297,10 @@
             placeholder="Search creator or email"
           /><select id="filter" aria-label="Filter recipients">
             <option value="all">All recipients</option>
-            <option value="yes">Accepted invitation</option>
-            <option value="no">Declined invitation</option>
-            <option value="pending">Awaiting response</option>
+            <option value="replied">Replied</option>
+            <option value="no_reply">No recorded reply</option>
+            <option value="automatic">Automatic reply</option>
+            <option value="bounced">Bounced</option>
             <option value="issues">Delivery issues</option>
           </select>
         </div>
@@ -309,7 +311,7 @@
             <tr>
               <th>Creator / recipient</th>
               <th>Sending</th>
-              <th>Invitation</th>
+              <th>Replies</th>
               <th>Draft</th>
             </tr>
           </thead>
@@ -323,9 +325,9 @@
       </nav>
       <p class="muted">
         <small
-          >Responses count confirmed Yes / No button choices, not inbox replies.
-          SMTP acceptance does not guarantee inbox delivery. Accepting an
-          invitation does not mean a collaboration is completed.</small
+          >Human replies exclude detected automatic replies and bounces. A reply
+          is not agreement to collaborate. SMTP acceptance does not guarantee
+          inbox delivery.</small
         >
       </p>
       <details>
@@ -335,34 +337,27 @@
           <code id="revision"></code>
         </p>
         <p>
-          Response rate: confirmed choices among SMTP-accepted emails divided by
-          SMTP-accepted emails. No email can be changed or sent from this page.
-          Discuss changes and approve sending in Codex.
+          Reply rate: recipients with a human reply among SMTP-accepted emails,
+          divided by SMTP-accepted emails. No email can be changed or sent from
+          this page. Discuss changes and approve sending in Codex.
         </p>
       </details>
       <dialog id="preview" aria-labelledby="subject">
         <div class="toolbar">
-          <strong>Saved email preview</strong>
+          <strong id="dialogLabel">Saved email preview</strong>
           <div class="controls">
-            <button id="toggle">Show plain text</button
-            ><button id="close">Close preview</button>
+            <button id="close">Close</button>
           </div>
         </div>
         <h2 id="subject"></h2>
         <p id="addresses" class="muted"></p>
         <p class="muted">
           <small
-            >Preview only. Links are disabled; no invitation response can be
-            submitted here.</small
+            >Read-only plain text. No email can be sent from this page.</small
           >
         </p>
-        <iframe
-          id="html"
-          sandbox=""
-          title="HTML email preview"
-          referrerpolicy="no-referrer"
-        ></iframe>
-        <pre id="body" hidden></pre>
+
+        <pre id="body"></pre>
       </dialog>
     </main>
     <script>
@@ -378,29 +373,14 @@
         return el;
       }
       function openPreview(r) {
+        text("dialogLabel", "Saved email preview");
         text("subject", r.message.subject);
         text(
           "addresses",
           `From: ${r.message.from || "Not configured"} · To: ${r.message.to}`,
         );
         text("body", r.message.text);
-        const doc = new DOMParser().parseFromString(
-          r.message.html || "<p>No HTML version available.</p>",
-          "text/html",
-        );
-        doc
-          .querySelectorAll("script,iframe,object,embed,form,meta,link,base")
-          .forEach((n) => n.remove());
-        doc.querySelectorAll("a").forEach((n) => n.removeAttribute("href"));
-        const policy = doc.createElement("meta");
-        policy.httpEquiv = "Content-Security-Policy";
-        policy.content =
-          "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'none'";
-        doc.head.prepend(policy);
-        $("html").srcdoc = doc.documentElement.outerHTML;
-        $("html").hidden = false;
-        $("body").hidden = true;
-        text("toggle", "Show plain text");
+
         $("preview").showModal();
       }
       function render() {
@@ -413,19 +393,30 @@
           "guidance",
           data.state === "awaiting_approval"
             ? "Review the drafts, then tell Codex when you’re ready to send."
-            : "Follow delivery and invitation responses here. Your drafts stay unchanged.",
+            : "Follow delivery and real mailbox replies here. Your drafts stay unchanged.",
+        );
+        const monitor = data.monitoring || { state: "not_configured" };
+        text(
+          "monitoring",
+          "Mailbox monitor: " +
+            label(monitor.state) +
+            (monitor.last_success
+              ? " · last synced " +
+                new Date(monitor.last_success).toLocaleString()
+              : "") +
+            (monitor.state !== "active"
+              ? " · reply counts may be incomplete."
+              : ""),
         );
         const s = data.stats;
         $("stats").replaceChildren();
         for (const [value, name] of [
           [data.recipients.length, "Recipients"],
           [s.sent, "SMTP accepted"],
-          [`${s.yes} / ${s.no}`, "Yes / No"],
+          [s.replied ?? 0, "Human replies"],
           [
-            s.response_rate === null
-              ? "—"
-              : (100 * s.response_rate).toFixed(1) + "%",
-            "Button response rate",
+            s.reply_rate == null ? "—" : (100 * s.reply_rate).toFixed(1) + "%",
+            "Human reply rate",
           ],
         ]) {
           const box = document.createElement("div"),
@@ -444,8 +435,7 @@
             (r) =>
               `${r.creator_id} ${r.message.to}`.toLowerCase().includes(q) &&
               (f === "all" ||
-                f === r.response ||
-                (f === "pending" && !r.response) ||
+                f === r.reply_state ||
                 (f === "issues" && ["failed", "unknown"].includes(r.state))),
           );
         const pages = Math.max(1, Math.ceil(rows.length / 20));
@@ -480,14 +470,30 @@
           const response = document.createElement("td");
           response.append(
             badge(
-              r.response === "yes"
-                ? "Accepted"
-                : r.response === "no"
-                  ? "Declined"
-                  : "No response",
-              r.response === "yes" ? "good" : r.response === "no" ? "warn" : "",
+              label(r.reply_state || "no_reply"),
+              r.reply_state === "replied" ? "good" : "",
             ),
           );
+          if (r.replies?.length) {
+            const replies = document.createElement("button");
+            replies.textContent = `View replies (${r.replies.length})`;
+            replies.onclick = () => {
+              text("dialogLabel", "Recorded mailbox replies");
+              text("subject", "Replies from " + r.creator_id);
+              text("addresses", r.message.to);
+              text(
+                "body",
+                r.replies
+                  .map(
+                    (m) =>
+                      `${label(m.kind)} · recorded ${new Date(m.received_at).toLocaleString()}\nFrom: ${m.sender}\nSubject: ${m.subject}\n\n${m.body}`,
+                  )
+                  .join("\n\n────────────────\n\n"),
+              );
+              $("preview").showModal();
+            };
+            response.append(replies);
+          }
           const action = document.createElement("td"),
             button = document.createElement("button");
           button.textContent = "Preview";
@@ -513,11 +519,7 @@
         render();
       };
       $("close").onclick = () => $("preview").close();
-      $("toggle").onclick = () => {
-        $("body").hidden = !$("body").hidden;
-        $("html").hidden = !$("body").hidden;
-        text("toggle", $("body").hidden ? "Show plain text" : "Show HTML");
-      };
+
       async function poll() {
         try {
           const response = await fetch("data", { cache: "no-store" });

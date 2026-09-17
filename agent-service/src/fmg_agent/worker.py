@@ -68,6 +68,7 @@ def create_worker(settings=None, *, enricher_factory=None):
     def outreach_send(recipient_id):
         from .outreach import process_recipient
         from .email.smtp import deliver
+
         engine, sessions = database(settings)
         try:
             process_recipient(sessions, recipient_id, settings, deliver)
@@ -92,10 +93,15 @@ def create_worker(settings=None, *, enricher_factory=None):
                     )
                 try:
                     from .outreach import pending
+
                     for recipient_id in pending(sessions):
-                        outreach_send.apply_async(args=[recipient_id], queue="fmg_agent", expires=60)
+                        outreach_send.apply_async(
+                            args=[recipient_id], queue="fmg_agent", expires=60
+                        )
                 except Exception:
-                    logging.getLogger(__name__).warning("Outreach dispatch unavailable; pending recipients are retained.")
+                    logging.getLogger(__name__).warning(
+                        "Outreach dispatch unavailable; pending recipients are retained."
+                    )
                 stop.wait(10)
         finally:
             engine.dispose()
@@ -104,6 +110,23 @@ def create_worker(settings=None, *, enricher_factory=None):
         if sender is not None and sender.app is worker:
             stop.clear()
             Thread(target=dispatch_loop, daemon=True, name="fmg-agent-dispatch").start()
+            Thread(target=inbox_loop, daemon=True, name="fmg-agent-inbox").start()
+
+    def inbox_loop():
+        from .email.inbox import sync_once
+
+        engine, sessions = database(settings)
+        try:
+            while not stop.is_set():
+                try:
+                    sync_once(sessions, settings)
+                except Exception:
+                    logging.getLogger(__name__).warning(
+                        "Inbox synchronization unavailable; cursor retained."
+                    )
+                stop.wait(settings.imap_poll_seconds)
+        finally:
+            engine.dispose()
 
     def shutdown(sender=None, **kwargs):
         if sender is not None and sender.app is worker:

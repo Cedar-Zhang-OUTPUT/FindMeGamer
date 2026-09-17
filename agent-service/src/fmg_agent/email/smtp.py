@@ -27,7 +27,6 @@ def deliver(config, message, message_id):
         mail["Date"] = formatdate(localtime=False)
         mail["Message-ID"] = f'<fmg-{message_id}@{sender.split("@",1)[1]}>'
         mail.set_content(message["text"])
-        mail.add_alternative(message["html"], subtype="html")
         if config.smtp_encryption == "tls":
             connection = smtplib.SMTP_SSL(
                 config.smtp_host,

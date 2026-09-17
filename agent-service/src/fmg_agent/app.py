@@ -13,6 +13,7 @@ from .db import database
 from .errors import ApiError, error_response
 from .email.routes import router as email_router
 from .outreach import router as outreach_router
+from .email import inbox  # Register mailbox models before test schema creation.
 from .providers.catalog import Catalog
 from .providers.twitch import TwitchAuth
 from .providers.routes import router as provider_router

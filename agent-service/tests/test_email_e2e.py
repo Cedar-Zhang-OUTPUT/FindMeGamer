@@ -54,7 +54,6 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
             smtp_encryption="none",
             smtp_allow_insecure_loopback=True,
             smtp_from="publisher@example.com",
-            outreach_public_url="https://callback.example.com",
         )
         app = create_app(settings)
         with app.state.sessions() as session:
@@ -166,7 +165,7 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
             json.dumps(
                 {
                     "template_id": "game-outreach",
-                    "template_version": "1",
+                    "template_version": "3",
                     "to": "creator@example.com",
                     "variables": variables(),
                 }
@@ -216,7 +215,7 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
         smtp_server.mode = "sent"
         batch_file = tmp_path / "batch.json"
         batch_file.write_text(json.dumps({"name": "Worker batch", "template_id": "game-outreach",
-            "template_version": "1", "recipients": [{"creator_id": name,
+            "template_version": "3", "recipients": [{"creator_id": name,
                 "to": name + "@example.com", "variables": variables()} for name in ("alice", "bob")]}))
         response = cli("outreach", "task", "create", "--input", str(batch_file), "--idempotency-key", "batch")
         assert response.returncode == 0, response.stderr

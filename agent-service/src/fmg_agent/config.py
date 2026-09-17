@@ -33,7 +33,13 @@ class Settings(BaseSettings):
     smtp_password: SecretStr = Field(default=SecretStr(""), repr=False)
     smtp_from: str = ""
     smtp_allowed_recipients: list[str] = Field(default_factory=list)
-    outreach_public_url: str = ""
+    imap_host: str = ""
+    imap_port: int = Field(default=993, ge=1, le=65535)
+    imap_username: str = Field(default="", repr=False)
+    imap_password: SecretStr = Field(default=SecretStr(""), repr=False)
+    imap_folder: str = "INBOX"
+    imap_poll_seconds: int = Field(default=60, ge=30, le=3600)
+    imap_lookback_days: int = Field(default=30, ge=1, le=90)
     smtp_allow_insecure_loopback: bool = False
     catalog_dir: Path = Path(__file__).resolve().parents[3] / "api-catalog"
 

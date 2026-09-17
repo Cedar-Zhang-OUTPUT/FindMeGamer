@@ -1,6 +1,5 @@
 """Versioned, server-owned templates. No user-supplied executable templates."""
 
-from html import escape
 from importlib.resources import files
 import json
 from string import Template
@@ -21,12 +20,6 @@ def get_template(template_id, version=None):
     definition = json.loads(
         files("fmg_agent.email").joinpath("template_data", filename).read_text()
     )
-    # Keep version 1 available for callers with an existing template contract.
-    if template_id == "game-outreach" and version != "1":
-        definition["version"] = "2"
-        definition["html"] = files("fmg_agent.email").joinpath(
-            "template_data", "game-outreach-v2.html"
-        ).read_text()
     if version is not None and version != definition["version"]:
         raise ApiError(
             409,
@@ -67,12 +60,8 @@ def render_template(definition, variables):
                 ) from None
         values[name] = value
     result = {
-        part: Template(definition[part]).substitute(
-            {key: escape(value, quote=True) for key, value in values.items()}
-            if part == "html"
-            else values
-        )
-        for part in ("subject", "text", "html")
+        part: Template(definition[part]).substitute(values)
+        for part in ("subject", "text")
     }
     if "\r" in result["subject"] or "\n" in result["subject"]:
         raise ApiError(
@@ -80,4 +69,5 @@ def render_template(definition, variables):
             "template_variables_invalid",
             "Subject variables must not contain line breaks.",
         )
+    result["format"] = "plain_text"
     return result

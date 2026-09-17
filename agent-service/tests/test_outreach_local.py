@@ -1,4 +1,5 @@
 """Local-only HTTP, SMTP, compiled CLI and dashboard integration; no real mail."""
+
 import json
 import os
 from pathlib import Path
@@ -25,7 +26,99 @@ def test_outreach_additive_migration(tmp_path):
     assert result.returncode == 0, result.stderr
     assert migrate(url).returncode == 0
     engine = create_engine(url)
-    assert {"outreach_tasks", "outreach_recipients", "email_sends"} <= set(inspect(engine).get_table_names())
+    assert {"outreach_tasks", "outreach_recipients", "email_sends"} <= set(
+        inspect(engine).get_table_names()
+    )
+    engine.dispose()
+
+
+def test_inbox_migration_preserves_sent_history(tmp_path):
+    from datetime import datetime, timezone
+    from sqlalchemy import MetaData, select
+
+    url = f"sqlite:///{tmp_path / 'legacy.sqlite'}"
+    assert migrate(url, revision="0006_outreach").returncode == 0
+    engine = create_engine(url)
+    metadata = MetaData()
+    metadata.reflect(engine)
+    tables = metadata.tables
+    now = datetime.now(timezone.utc)
+    with engine.begin() as conn:
+        conn.execute(
+            tables["access_tokens"].insert(),
+            dict(
+                id="owner",
+                digest="a" * 64,
+                label="test",
+                scopes=["email:send"],
+                created_at=now,
+            ),
+        )
+        conn.execute(
+            tables["email_previews"].insert(),
+            dict(
+                id="preview",
+                token_id="owner",
+                template_id="game-outreach",
+                template_version="2",
+                message={"text": "historical message", "html": "<p>historical</p>"},
+                created_at=now,
+            ),
+        )
+        conn.execute(
+            tables["email_sends"].insert(),
+            dict(
+                id="send",
+                token_id="owner",
+                preview_id="preview",
+                idempotency_key="original",
+                state="sent",
+                created_at=now,
+                updated_at=now,
+            ),
+        )
+        conn.execute(
+            tables["outreach_tasks"].insert(),
+            dict(
+                id="task",
+                token_id="owner",
+                idempotency_key="batch",
+                fingerprint="b" * 64,
+                revision="r",
+                state="sending",
+                name="historical",
+                run_id="run",
+                template={},
+            ),
+        )
+        conn.execute(
+            tables["outreach_recipients"].insert(),
+            dict(
+                id="recipient",
+                task_id="task",
+                creator_id="creator",
+                preview_id="preview",
+                response_digest="c" * 64,
+                response="yes",
+                responded_at=now.isoformat(),
+            ),
+        )
+    upgraded = migrate(url)
+    assert upgraded.returncode == 0, upgraded.stderr
+    fresh = MetaData()
+    fresh.reflect(engine)
+    with engine.connect() as conn:
+        assert conn.scalar(select(fresh.tables["email_sends"].c.state)) == "sent"
+        assert (
+            conn.scalar(select(fresh.tables["email_previews"].c.message))["text"]
+            == "historical message"
+        )
+        assert (
+            conn.scalar(select(fresh.tables["outreach_recipients"].c.creator_id))
+            == "creator"
+        )
+        assert "response_digest" not in fresh.tables["outreach_recipients"].c
+        assert "response" not in fresh.tables["outreach_recipients"].c
     engine.dispose()
 
 
@@ -38,8 +131,8 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
     from fmg_agent.db import Base
     from fmg_agent.email.smtp import deliver
     from fmg_agent.outreach import pending, process_recipient
+
     config = configuration(tmp_path, smtp_server)
-    config.outreach_public_url = "https://callback.example.com"
     app = create_app(config)
     Base.metadata.create_all(app.state.engine)
     with app.state.sessions() as session:
@@ -52,24 +145,73 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
     thread.start()
     dashboard = None
     env = dict(os.environ, FMG_CONFIG=str(tmp_path / "config.json"))
+
     def cli(*args, stdin=""):
-        result = subprocess.run([binary, *args], env=env, input=stdin, text=True, capture_output=True, timeout=20)
+        result = subprocess.run(
+            [binary, *args],
+            env=env,
+            input=stdin,
+            text=True,
+            capture_output=True,
+            timeout=20,
+        )
         assert result.returncode == 0, result.stderr
         assert token.token not in result.stdout + result.stderr
         return json.loads(result.stdout)
+
     try:
         for _ in range(100):
             if server.started:
                 break
-            time.sleep(.02)
+            time.sleep(0.02)
         assert server.started
-        cli("auth", "login", "--server", f"http://127.0.0.1:{port}", "--token-stdin", stdin=token.token)
+        cli(
+            "auth",
+            "login",
+            "--server",
+            f"http://127.0.0.1:{port}",
+            "--token-stdin",
+            stdin=token.token,
+        )
         source = tmp_path / "batch.json"
-        source.write_text(json.dumps({"name": "Local review", "template_id": "game-outreach", "template_version": "1",
-            "recipients": [{"creator_id": "creator-A", "to": "creator@example.com", "variables": variables()}]}))
-        task = cli("--run-id", "local-outreach", "outreach", "task", "create", "--input", str(source), "--idempotency-key", "one")["data"]
-        script = Path(__file__).resolve().parents[2] / "skills/fmg-api/scripts/outreach_dashboard.py"
-        dashboard = subprocess.Popen([sys.executable, str(script), "--task-id", task["id"], "--fmg", binary], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        source.write_text(
+            json.dumps(
+                {
+                    "name": "Local review",
+                    "template_id": "game-outreach",
+                    "template_version": "3",
+                    "recipients": [
+                        {
+                            "creator_id": "creator-A",
+                            "to": "creator@example.com",
+                            "variables": variables(),
+                        }
+                    ],
+                }
+            )
+        )
+        task = cli(
+            "--run-id",
+            "local-outreach",
+            "outreach",
+            "task",
+            "create",
+            "--input",
+            str(source),
+            "--idempotency-key",
+            "one",
+        )["data"]
+        script = (
+            Path(__file__).resolve().parents[2]
+            / "skills/fmg-api/scripts/outreach_dashboard.py"
+        )
+        dashboard = subprocess.Popen(
+            [sys.executable, str(script), "--task-id", task["id"], "--fmg", binary],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
         url = json.loads(dashboard.stdout.readline())["url"]
         with httpx.Client(trust_env=False) as client:
             page = client.get(url)
@@ -80,21 +222,24 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
             assert client.post(url + "data").status_code == 501
             assert client.get(url, headers={"Host": "evil.example"}).status_code == 403
             assert smtp_server.messages == []
-            cli("outreach", "task", "start", task["id"], "--revision", task["revision"], "--confirm")
+            cli(
+                "outreach",
+                "task",
+                "start",
+                task["id"],
+                "--revision",
+                task["revision"],
+                "--confirm",
+            )
             ids = pending(app.state.sessions)
             for rid in ids + ids:
                 process_recipient(app.state.sessions, rid, config, deliver)
             assert len(smtp_server.messages) == 1
             actual = cli("outreach", "task", "get", task["id"])["data"]
             assert actual["stats"]["sent"] == 1
-            from urllib.parse import urlsplit
-            callback = actual["recipients"][0]["message"]["text"].split("Yes: ")[1].splitlines()[0]
-            parsed = urlsplit(callback)
-            local = f"http://127.0.0.1:{port}" + parsed.path + "?" + parsed.query
-            assert client.get(local).status_code == 200
-            assert cli("outreach", "task", "get", task["id"])["data"]["stats"]["yes"] == 0
-            assert client.post(local).status_code == 200
-            assert cli("outreach", "task", "get", task["id"])["data"]["stats"]["yes"] == 1
+            assert actual["stats"]["replied"] == 0
+            assert actual["monitoring"]["state"] == "not_configured"
+            assert "html" not in actual["recipients"][0]["message"]
             ledger = cli("--run-id", "local-outreach", "usage")["data"]
             assert "smtp" in json.dumps(ledger)
     finally:

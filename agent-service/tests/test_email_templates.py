@@ -25,17 +25,17 @@ def variables():
     }
 
 
-def test_template_renders_selected_game_and_escapes_html():
+def test_template_renders_selected_game_as_literal_text():
     from fmg_agent.email.templates import get_template, render_template
 
     values = variables()
     values["creator_name"] = "<b>A</b>"
-    result = render_template(get_template("game-outreach", "1"), values)
+    result = render_template(get_template("game-outreach", "3"), values)
     assert "New Game" in result["subject"]
     assert "A puzzle adventure." in result["text"]
     assert "LIMINAL" not in result["text"]
-    assert "&lt;b&gt;A&lt;/b&gt;" in result["html"]
-    assert "<b>A</b>" not in result["html"]
+    assert "<b>A</b>" in result["text"]
+    assert "html" not in result
 
 
 @pytest.mark.parametrize("change", ["missing", "extra", "wrong_type", "unsafe_url"])
@@ -53,7 +53,7 @@ def test_bad_variables_rejected_without_values_in_error(change):
     else:
         values["game_url"] = "javascript:private-value"
     with pytest.raises(ApiError) as error:
-        render_template(get_template("game-outreach", "1"), values)
+        render_template(get_template("game-outreach", "3"), values)
     assert error.value.status == 422
     assert "private-value" not in error.value.message
 

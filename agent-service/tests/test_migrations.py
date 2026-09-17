@@ -95,10 +95,12 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 "usage_records",
                 "outreach_tasks",
                 "outreach_recipients",
+                "email_replies",
+                "inbox_cursors",
             }
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0006_outreach"
+                == "0007_inbox"
             )
             legacy = conn.execute(
                 text(
@@ -187,7 +189,7 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 email_token.id,
                 {
                     "template_id": "game-outreach",
-                    "template_version": "1",
+                    "template_version": "3",
                     "to": "creator@example.com",
                     "variables": variables(),
                 },

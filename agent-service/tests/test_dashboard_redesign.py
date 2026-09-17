@@ -11,35 +11,23 @@ from test_email_templates import variables
 from test_email_sending import sending, headers
 
 
-def test_v2_outreach_buttons_are_inside_document(sending):
-    app, client, owner, _, _ = sending
-    app.state.settings.outreach_public_url = "https://service.example.com"
-    response = client.post("/v1/outreach/tasks", headers=headers(owner, "designed"), json={
-        "name": "Design", "template_id": "game-outreach", "template_version": "2",
-        "recipients": [{"creator_id": "alice", "to": "alice@example.com", "variables": variables()}],
-    })
-    assert response.status_code == 201
-    task = response.json()["data"]
-    assert task["state"] == "awaiting_approval"
-    html = task["recipients"][0]["message"]["html"]
-    assert html.index("choice=yes") < html.index("</body>")
-    assert html.index("choice=no") < html.index("</body>")
-    assert "<!--FMG_RESPONSE_ACTIONS-->" not in html
+def test_plain_draft_dashboard_has_no_html_rendering():
+    page = (Path(__file__).resolve().parents[2] / "skills/fmg-api/scripts/outreach_dashboard.html").read_text()
+    assert 'id="body"' in page
+    assert 'srcdoc' not in page
+    assert 'View replies' in page
+    assert 'reply_rate' in page
+    assert 'Mailbox monitor:' in page
 
 
-def test_template_v2_preserves_v1_and_escapes_content():
-    from fmg_agent.email.templates import get_template, render_template
-    v1 = get_template("game-outreach", "1")
-    v2 = get_template("game-outreach")
-    assert v1["version"] == "1" and v2["version"] == "2"
-    values = variables()
-    values["personalization"] = '<script>alert("x")</script>'
-    result = render_template(v2, values)
-    assert '<script>' not in result["html"]
-    assert '&lt;script&gt;' in result["html"]
-    assert 'role="presentation"' in result["html"]
-    assert '<!--FMG_RESPONSE_ACTIONS-->' in result["html"]
-    assert result["text"] == render_template(v1, values)["text"]
+def test_retired_template_versions_require_review():
+    from fmg_agent.email.templates import get_template
+    from fmg_agent.errors import ApiError
+    for version in ("1", "2"):
+        with pytest.raises(ApiError) as error:
+            get_template("game-outreach", version)
+        assert error.value.code == "template_version_changed"
+    assert get_template("game-outreach")["format"] == "plain_text"
 
 
 def test_research_snapshot_preserves_briefs_and_reports_invalid(tmp_path):

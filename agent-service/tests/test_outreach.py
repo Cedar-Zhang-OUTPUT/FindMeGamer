@@ -3,9 +3,8 @@ from test_email_templates import variables
 
 
 def create(app, client, owner, key="batch"):
-    app.state.settings.outreach_public_url = "https://service.example.com"
     return client.post("/v1/outreach/tasks", headers=headers(owner, key), json={
-        "name": "Launch", "template_id": "game-outreach", "template_version": "1",
+        "name": "Launch", "template_id": "game-outreach", "template_version": "3",
         "recipients": [{"creator_id": name, "to": name + "@example.com", "variables": variables()}
                        for name in ("alice", "bob")],
     })
@@ -31,17 +30,10 @@ def test_approval_delivery_and_recipient_isolation(sending):
         process_recipient(app.state.sessions, rid, app.state.settings, transport)
     assert len(delivered) == 2
     task = client.get(path, headers=headers(owner)).json()["data"]
-    links = [row["message"]["text"].split("Yes: ")[1].splitlines()[0] for row in task["recipients"]]
-    assert links[0] != links[1]
-    assert client.get(links[0]).status_code == 200
-    assert client.get(path, headers=headers(owner)).json()["data"]["stats"]["yes"] == 0
-    assert client.post(links[0]).status_code == 200
-    assert client.post(links[0]).status_code == 200
-    assert client.post(links[1].replace("choice=yes", "choice=no")).status_code == 200
-    task = client.get(path, headers=headers(owner)).json()["data"]
-    assert [r["response"] for r in task["recipients"]] == ["yes", "no"]
-    assert task["stats"]["response_rate"] == 1
-    assert client.post(links[0].replace("choice=yes", "choice=no")).status_code == 409
+    assert task["stats"]["sent"] == 2
+    assert task["stats"]["reply_rate"] == 0
+    assert all(r["reply_state"] == "no_reply" for r in task["recipients"])
+    assert client.get("/v1/outreach/respond/retired?choice=yes").status_code == 404
 
 
 def test_unconfirmed_and_unknown_never_resend(sending):
@@ -94,7 +86,7 @@ def test_invalid_recipient_and_missing_configuration(sending):
     app.state.settings.smtp_host = ""
     assert client.post(path + "/start", headers=headers(owner), json={"confirm": True, "revision": task["revision"]}).status_code == 503
     assert client.get(path, headers=headers(owner)).json()["data"]["state"] == "awaiting_approval"
-    payload = {"name": "invalid", "template_id": "game-outreach", "template_version": "1",
+    payload = {"name": "invalid", "template_id": "game-outreach", "template_version": "3",
                "recipients": [{"creator_id": "x", "to": "not-an-address", "variables": variables()}]}
     assert client.post("/v1/outreach/tasks", headers=headers(owner, "invalid"), json=payload).status_code == 422
     payload["recipients"][0]["to"] = "x@example.com"

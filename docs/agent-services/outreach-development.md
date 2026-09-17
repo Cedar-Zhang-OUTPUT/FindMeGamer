@@ -1,5 +1,9 @@
 # Outreach task development checkpoint
 
+Historical checkpoint for the original button-response release. Current
+plain-text/IMAP replacement: [inbox-monitor.md](inbox-monitor.md). The Yes/No
+contract below is retired by migration 0007, not the current implementation.
+
 The backend is deployed for restricted SMTP acceptance testing (2026-09-17),
 not yet a published CLI release. Existing `fmg email`
 commands remain supported for individual/special-purpose sending.

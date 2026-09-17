@@ -112,10 +112,8 @@ def test_actual_smtp_delivery_and_ambiguous_accept(
             parsed.get_body(preferencelist=("plain",)).get_content().strip()
             == "Hello text"
         )
-        assert (
-            "<p>Hello HTML</p>"
-            in parsed.get_body(preferencelist=("html",)).get_content()
-        )
+        assert parsed.get_content_type() == "text/plain"
+        assert not parsed.is_multipart()
 
 
 def test_plaintext_smtp_is_rejected_without_explicit_loopback_mode(
