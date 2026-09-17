@@ -44,3 +44,28 @@ def test_liminal_outreach_plain_drafts_without_sending(sending):
         assert message["format"] == "signature_image"
         assert "Click here to tell us" not in message["text"]
         assert "choice=yes" not in message["text"]
+
+
+def test_signature_batch_can_start_and_delivers_only_once(sending):
+    from fmg_agent.outreach import pending, process_recipient
+    app, client, owner, _, _ = sending
+    task = client.post("/v1/outreach/tasks", headers=headers(owner, "signature-batch"), json={
+        "name": "Signature batch", "template_id": "liminal-outreach", "template_version": "4",
+        "recipients": [{"creator_id": "test", "to": "test@example.com", "variables": values()}],
+    }).json()["data"]
+    assert pending(app.state.sessions) == []
+    path = "/v1/outreach/tasks/" + task["id"]
+    response = client.post(path + "/start", headers=headers(owner), json={"confirm": True, "revision": task["revision"]})
+    assert response.status_code == 200
+    sent = []
+    def transport(config, message, message_id):
+        sent.append(message)
+        return {"state": "sent", "code": None}
+    ids = pending(app.state.sessions)
+    assert len(ids) == 1
+    for rid in ids + ids:
+        process_recipient(app.state.sessions, rid, app.state.settings, transport)
+    assert len(sent) == 1
+    assert sent[0]["format"] == "signature_image"
+    assert "cid:ontology-play-signature" in sent[0]["html"]
+    assert client.get(path, headers=headers(owner)).json()["data"]["stats"]["sent"] == 1

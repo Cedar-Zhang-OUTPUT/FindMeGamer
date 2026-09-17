@@ -325,11 +325,11 @@ def start_task(
                 .join(OutreachRecipient)
                 .where(OutreachRecipient.task_id == task_id)
             ):
-                if preview.message.get("format") != "plain_text":
+                if preview.message.get("format") not in {"plain_text", "signature_image"}:
                     raise ApiError(
                         409,
                         "preview_format_retired",
-                        "Create and review a new plain-text task.",
+                        "Create and review a task using a current supported template.",
                     )
                 if preview.message["from"] != settings.smtp_from:
                     raise ApiError(
