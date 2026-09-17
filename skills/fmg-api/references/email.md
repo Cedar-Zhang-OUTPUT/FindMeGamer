@@ -18,6 +18,8 @@ Inspect templates with `fmg email templates` and `fmg email template game-outrea
 
 Use these commands for individual or special-purpose sending with the available template capabilities. For batches with tracking, use [Outreach tasks](outreach.md), not a loop of individual sends. `fmg email preview --input message.json` creates an immutable snapshot; `fmg email preview --id ID` rereads it. Inspect the actual rendered subject, text, HTML, recipient and sender; obtain user approval before sending:
 
+For the browser copilot experience, render the returned preview into a read-only local page and proactively open it in Codex's built-in browser before requesting approval. Show the receipt/status in the same page during and after sending. Use returned data with safe text escaping; never embed the CLI credential, invent a public preview URL, or imply that individual Email sends support the Outreach Task dashboard or Yes/No tracking. If browser access is unavailable, say so and present the full preview in the conversation instead; explicit approval is still required.
+
 ```sh
 fmg --run-id demo-1 email send --preview-id PREVIEW_ID --confirm --idempotency-key demo-1-approved-recipient
 fmg email receipt SEND_ID

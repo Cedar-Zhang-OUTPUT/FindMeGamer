@@ -28,6 +28,8 @@ python3 PATH_TO_INSTALLED_FMG_API/scripts/outreach_dashboard.py --task-id TASK_I
 
 Resolve the installed Skill path; use `--fmg /absolute/path/to/fmg` if needed. Run it in a retained terminal session. The script prints a loopback URL; open that exact URL in Codex's built-in browser. It shows every recipient (20 per page), full text draft previews, sending state and responses, and polls every five seconds. It cannot approve/send/edit. The gateway credential remains in the CLI, never browser JavaScript. Closing this local process stops the dashboard, not an approved server task.
 
+Opening the browser is part of the workflow: **before sending**, open the draft dashboard for review; **after approved start**, reuse/show it for sending progress; **after completion**, reuse/show it for outcomes and response tracking. If the relevant tab is already visible, do not create another or steal focus on every poll. Verify the page actually loaded; a queued browser-open request is not a visible-page confirmation. If the built-in browser is unavailable, explain that and provide the actual printed URL plus reviewable content. Do not auto-approve because the page opened, and never test recipient response links by submitting a Yes/No yourself.
+
 Have the user review recipients and drafts, then explicitly approve the exact task revision. A request to create drafts alone is not permission to send. Save approval scope/message reference in local artifacts. Only then:
 
 ```sh

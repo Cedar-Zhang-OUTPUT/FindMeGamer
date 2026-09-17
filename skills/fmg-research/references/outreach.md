@@ -9,3 +9,15 @@ List/inspect service templates rather than creating arbitrary templates. Fill va
 Save approval scope in `outreach/<batch>/approval.json` with the relevant user message reference, approved task ID/revision (or single preview), recipients and time. Only after approval, start that exact task revision; the server sends it, not an Agent-side loop. Changed content requires a replacement unapproved task and fresh review/approval. Poll the existing task after a timeout rather than recreate it. Unknown delivery must be investigated, not automatically resent. Yes/No are per-invitation confirmed button responses, not direct mailbox replies or completed cooperation. Report response rate among SMTP-accepted recipients separately from sending failures and unknown delivery; keep the local task snapshot and usage summary.
 
 If SMTP is not configured, preserve previews/variables and report the missing company setup. Do not ask the user to paste SMTP secrets into research artifacts. Preparing mail can complete without sending it.
+
+## Browser copilot checkpoints
+
+Browser presentation is a default action at each meaningful mail stage, not just a final link in the summary:
+
+- **Before sending:** start the bundled read-only dashboard and open it in Codex's built-in browser as soon as drafts exist. Point out recipient list, full previews and the task revision. Invite changes and ask for explicit approval in the conversation. Opening/viewing the page is not approval.
+- **During sending:** after the approved start, show or reuse the same task dashboard so the user can follow progress. If it is already visible, keep it there rather than opening duplicates. Preserve the page/session while server work continues; do not navigate the user away on each poll.
+- **After sending:** show or update that same dashboard with SMTP acceptance, failures, uncertain deliveries and current Yes/No response statistics. Explain that responses may arrive later; when the user returns to check, query the same task and reopen its dashboard. Do not silently schedule ongoing Agent monitoring unless requested; the open dashboard's own polling can continue.
+
+For an individual `fmg email` send, show the immutable preview in a local read-only browser page before confirmation and the saved receipt/status there during/after the send. Use the actual preview/receipt data, never a guessed public preview endpoint or a fabricated outreach task ID. Do not claim individual Email sends have batch Yes/No tracking.
+
+Use the built-in browser first, keep authentication out of URLs/HTML/JavaScript, and expose local preview pages only on loopback. Browser pages remain read-only: feedback, edits and send approval happen in the Codex conversation. Never follow/submit a creator's invitation confirmation on their behalf. If the browser cannot be opened, report the concrete limitation and provide the full preview/actual local link in the conversation for explicit review; do not silently skip review or pretend a queued tab is visible.
