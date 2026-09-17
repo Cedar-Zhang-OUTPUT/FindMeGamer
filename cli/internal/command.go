@@ -38,6 +38,10 @@ fmg email template TEMPLATE_ID
 fmg email preview --input message.json | --id PREVIEW_ID
 fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key KEY
 fmg email receipt SEND_ID
+fmg outreach task create --input batch.json --idempotency-key KEY
+fmg outreach task list
+fmg outreach task get TASK_ID
+fmg outreach task start TASK_ID --revision REVISION --confirm
 
 Default: one upstream page, JSON stdout, diagnostics stderr.
 With --max-pages: NDJSON, one whole response envelope per page.
@@ -80,6 +84,9 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	}
 	if args[0] == "email" {
 		return runEmail(ctx, args[1:], stdout, stderr)
+	}
+	if args[0] == "outreach" {
+		return runOutreach(ctx, args[1:], stdout, stderr)
 	}
 	if args[0] == "upgrade" {
 		return runUpgrade(ctx, args[1:], stdout, stderr)

@@ -74,6 +74,15 @@ def configuration(tmp_path, smtp_server):
     )
 
 
+def test_test_recipient_allowlist_blocks_before_network(tmp_path, smtp_server):
+    from fmg_agent.email.smtp import deliver
+    config = configuration(tmp_path, smtp_server)
+    config.smtp_allowed_recipients = ["test@example.com"]
+    result = deliver(config, {"to": "outside@example.com"}, "blocked")
+    assert result == {"state": "failed", "code": "smtp_recipient_not_allowed"}
+    assert smtp_server.messages == []
+
+
 @pytest.mark.parametrize(
     "mode,state,count",
     [("sent", "sent", 1), ("reject", "failed", 0), ("unknown", "unknown", 1)],

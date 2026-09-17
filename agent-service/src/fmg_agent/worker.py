@@ -64,6 +64,16 @@ def create_worker(settings=None, *, enricher_factory=None):
 
     stop = Event()
 
+    @worker.task(name="fmg_agent.outreach.send", max_retries=0)
+    def outreach_send(recipient_id):
+        from .outreach import process_recipient
+        from .email.smtp import deliver
+        engine, sessions = database(settings)
+        try:
+            process_recipient(sessions, recipient_id, settings, deliver)
+        finally:
+            engine.dispose()
+
     def dispatch_loop():
         engine, sessions = database(settings)
         try:
@@ -80,6 +90,12 @@ def create_worker(settings=None, *, enricher_factory=None):
                     logging.getLogger(__name__).warning(
                         "Email dispatch unavailable; pending jobs are retained."
                     )
+                try:
+                    from .outreach import pending
+                    for recipient_id in pending(sessions):
+                        outreach_send.apply_async(args=[recipient_id], queue="fmg_agent", expires=60)
+                except Exception:
+                    logging.getLogger(__name__).warning("Outreach dispatch unavailable; pending recipients are retained.")
                 stop.wait(10)
         finally:
             engine.dispose()

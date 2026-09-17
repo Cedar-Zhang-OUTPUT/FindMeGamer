@@ -9,6 +9,10 @@ from .sending import email_address, smtp_ready
 
 
 def deliver(config, message, message_id):
+    if config.smtp_allowed_recipients and message["to"].casefold() not in {
+        address.casefold() for address in config.smtp_allowed_recipients
+    }:
+        return {"state": "failed", "code": "smtp_recipient_not_allowed"}
     if not smtp_ready(config):
         return {"state": "failed", "code": "configuration_missing"}
     connection = None

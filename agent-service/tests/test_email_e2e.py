@@ -54,6 +54,7 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
             smtp_encryption="none",
             smtp_allow_insecure_loopback=True,
             smtp_from="publisher@example.com",
+            outreach_public_url="https://callback.example.com",
         )
         app = create_app(settings)
         with app.state.sessions() as session:
@@ -116,6 +117,11 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
                 FMG_AGENT_DATABASE_URL=settings.database_url,
                 FMG_AGENT_BROKER_URL="redis://127.0.0.1:55440/13",
                 FMG_FIXTURE_PHASE=phase,
+                FMG_AGENT_SMTP_HOST="127.0.0.1",
+                FMG_AGENT_SMTP_PORT=str(smtp_server.server_address[1]),
+                FMG_AGENT_SMTP_ENCRYPTION="none",
+                FMG_AGENT_SMTP_ALLOW_INSECURE_LOOPBACK="true",
+                FMG_AGENT_SMTP_FROM="publisher@example.com",
             )
             output = (tmp_path / f"worker-{phase}.log").open("w")
             proc = subprocess.Popen(
@@ -205,6 +211,29 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
         send_id = json.loads(uncertain.stdout)["data"]["id"]
         assert cli("email", "receipt", send_id).returncode == 7
         assert len(smtp_server.messages) == 2
+        # Batch remains unapproved until explicit CLI start, then worker handles it
+        # without any client-side send loop, including repeated starts.
+        smtp_server.mode = "sent"
+        batch_file = tmp_path / "batch.json"
+        batch_file.write_text(json.dumps({"name": "Worker batch", "template_id": "game-outreach",
+            "template_version": "1", "recipients": [{"creator_id": name,
+                "to": name + "@example.com", "variables": variables()} for name in ("alice", "bob")]}))
+        response = cli("outreach", "task", "create", "--input", str(batch_file), "--idempotency-key", "batch")
+        assert response.returncode == 0, response.stderr
+        batch = json.loads(response.stdout)["data"]
+        assert len(smtp_server.messages) == 2
+        for _ in range(2):
+            started = cli("outreach", "task", "start", batch["id"], "--revision", batch["revision"], "--confirm")
+            assert started.returncode == 0, started.stderr
+        deadline = time.monotonic() + 35
+        while time.monotonic() < deadline:
+            current = json.loads(cli("outreach", "task", "get", batch["id"]).stdout)["data"]
+            if current["state"] == "completed":
+                break
+            time.sleep(.25)
+        assert current["state"] == "completed", current
+        assert current["stats"]["sent"] == 2
+        assert len(smtp_server.messages) == 4
     finally:
         if process is not None and process.poll() is None:
             process.terminate()

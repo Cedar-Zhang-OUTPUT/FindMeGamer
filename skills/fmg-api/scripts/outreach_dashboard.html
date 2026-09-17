@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FMG Outreach</title>
+<style>
+body{font:16px system-ui;color:#182a3e;background:#f5f7fa;margin:0}main{max-width:1100px;margin:40px auto;padding:0 24px}h1{margin-bottom:8px}p{line-height:1.5}.muted{color:#58677a}#error{color:#a52525}table{width:100%;border-collapse:collapse;background:white}td,th{text-align:left;padding:12px;border-bottom:1px solid #dde3ea}button{padding:8px 12px;cursor:pointer;border:1px solid #c8d2df;background:white;border-radius:6px;color:inherit}button:disabled{cursor:default;color:#87909d}#scroll{overflow:auto}nav{display:flex;gap:12px;align-items:center;margin:16px 0}dialog{width:min(800px,85vw);max-height:85vh;border:1px solid #ccd5df;border-radius:12px;padding:24px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:15px/1.6 system-ui}code{overflow-wrap:anywhere}#status{font-weight:600}#stats{padding:16px 0}tr:focus-within{background:#eef6ff}
+</style></head><body><main>
+<p class="muted">FindMeGamer · Read-only outreach dashboard</p><h1 id="name">Loading task…</h1><p id="status" aria-live="polite"></p>
+<p class="muted">Review each recipient and complete draft before asking Codex to start. This page cannot send or change emails.</p>
+<p id="error" role="alert"></p><div id="stats"></div><div id="scroll"><table><thead><tr><th>Creator</th><th>Email</th><th>Sending</th><th>Response</th><th>Draft</th></tr></thead><tbody id="rows"></tbody></table></div>
+<nav><button id="prev">Previous</button><span id="page"></span><button id="next">Next</button></nav>
+<p class="muted">Response rate = confirmed Yes/No among SMTP-accepted emails ÷ SMTP-accepted emails. Direct inbox replies are not tracked. SMTP acceptance is not guaranteed inbox delivery or completed cooperation.</p>
+<p class="muted">Task <code id="task"></code><br>Reviewed revision <code id="revision"></code></p>
+<dialog id="preview"><button id="close">Close preview</button><h2 id="subject"></h2><p id="addresses"></p><pre id="body"></pre></dialog>
+</main><script>
+let data=null,page=0;const $=id=>document.getElementById(id);const text=(id,value)=>$(id).textContent=value;
+function render(){if(!data)return;text('name',data.name);text('status',data.state.replaceAll('_',' '));text('task',data.id);text('revision',data.revision);
+const s=data.stats;text('stats',`${data.recipients.length} recipients · ${s.sent} accepted · ${s.failed} failed · ${s.unknown} uncertain · ${s.yes} Yes · ${s.no} No · response rate ${s.response_rate===null?'—':(100*s.response_rate).toFixed(1)+'%'}`);
+if($('preview').open||$('rows').contains(document.activeElement))return;
+const pages=Math.max(1,Math.ceil(data.recipients.length/20));page=Math.min(page,pages-1);$('rows').replaceChildren();
+for(const r of data.recipients.slice(page*20,(page+1)*20)){const row=document.createElement('tr');for(const value of [r.creator_id,r.message.to,r.state+(r.code?' · '+r.code:''),r.response||'No response']){const cell=document.createElement('td');cell.textContent=value;row.append(cell)}const cell=document.createElement('td'),button=document.createElement('button');button.textContent='Preview';button.onclick=()=>{text('subject',r.message.subject);text('addresses',`From: ${r.message.from||'(sender not configured)'} → To: ${r.message.to}`);text('body',r.message.text);$('preview').showModal()};cell.append(button);row.append(cell);$('rows').append(row)}
+text('page',`${page+1} / ${pages}`);$('prev').disabled=page===0;$('next').disabled=page===pages-1;}
+$('prev').onclick=()=>{page--;render()};$('next').onclick=()=>{page++;render()};$('close').onclick=()=>$('preview').close();
+async function poll(){try{const response=await fetch('data',{cache:'no-store'});if(!response.ok)throw Error();const incoming=(await response.json()).data;if(!incoming||!Array.isArray(incoming.recipients))throw Error();data=incoming;text('error','');render();}catch{text('error','Could not refresh. Previous data is retained; check the service connection.')}finally{setTimeout(poll,5000)}}poll();
+</script></body></html>

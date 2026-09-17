@@ -93,10 +93,12 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 "email_previews",
                 "email_sends",
                 "usage_records",
+                "outreach_tasks",
+                "outreach_recipients",
             }
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0005_cost"
+                == "0006_outreach"
             )
             legacy = conn.execute(
                 text(

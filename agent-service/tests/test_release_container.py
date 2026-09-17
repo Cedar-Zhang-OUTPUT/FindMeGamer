@@ -153,7 +153,7 @@ def test_local_release_image_and_restore(tmp_path):
             assert conn.scalar(text(f'SELECT count(*) FROM "{schema}".email_jobs')) == 1
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0005_cost"
+                == "0006_outreach"
             )
     finally:
         for name in (api, worker):

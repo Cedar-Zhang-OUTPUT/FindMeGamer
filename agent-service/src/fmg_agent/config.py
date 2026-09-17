@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     smtp_username: str = Field(default="", repr=False)
     smtp_password: SecretStr = Field(default=SecretStr(""), repr=False)
     smtp_from: str = ""
+    smtp_allowed_recipients: list[str] = Field(default_factory=list)
+    outreach_public_url: str = ""
     smtp_allow_insecure_loopback: bool = False
     catalog_dir: Path = Path(__file__).resolve().parents[3] / "api-catalog"
 

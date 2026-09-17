@@ -12,6 +12,7 @@ from .config import Settings
 from .db import database
 from .errors import ApiError, error_response
 from .email.routes import router as email_router
+from .outreach import router as outreach_router
 from .providers.catalog import Catalog
 from .providers.twitch import TwitchAuth
 from .providers.routes import router as provider_router
@@ -53,6 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.twitch_auth = TwitchAuth(settings)
     app.include_router(provider_router)
     app.include_router(email_router)
+    app.include_router(outreach_router)
     app.include_router(usage_router)
 
     @app.middleware("http")

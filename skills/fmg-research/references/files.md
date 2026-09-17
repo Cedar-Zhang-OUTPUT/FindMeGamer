@@ -52,3 +52,27 @@ Each Match Brief is a JSON object (not Markdown), with these required slots:
 ```
 
 Resolve paths relative to the Match Brief. Use actual hashes, dates, IDs and observations, not example strings. Filter outcome is pass/fail/unknown; decision suitable/needs_verification/rejected. Evidence levels distinguish metadata, public text, transcript excerpt, inspected visual and user-supplied notes. Contacts status: found/not_found/failed/not_requested; each email includes purpose/source/verification. Only a completed empty lookup is not_found. Explaining a result reads these files before calling APIs again.
+
+## Excel creator results
+
+When exporting discovered/recommended creators to Excel, use these nine columns **in this order** (do not create a workbook unless the user requests it or the agreed deliverable includes one):
+
+1. 序号 — sequential integers starting at 1 in the exported order.
+2. Public name — creator's explicitly public name; unknown if unavailable. Do not silently substitute a channel name or infer a legal name.
+3. 邮箱 — public business email(s), with purpose when multiple; distinguish Not Found (completed lookup), not requested, and unresolved lookup.
+4. 为什么 Match？ — detailed, readable rationale with the five sections below, not a generic one-sentence endorsement.
+5. 相关的内容方向 — supported genres, formats and themes.
+6. 频道的链接 — canonical creator profile URL.
+7. 粉丝数 — numeric count when available, noting platform metric and retrieval date (e.g. subscribers vs followers). Unknown is not zero.
+8. 内容的语言 — evidence-backed content language(s), not an assumption from country.
+9. 面向的受众地区 — audience geography with evidence or clearly labeled inference/unknown; creator location does not establish audience location.
+
+Within **为什么 Match？**, use line breaks and explicit subheadings:
+
+- **具体证据**: relevant work/video/post names, dates if available, clickable or literal source URLs, and what the evidence actually supports.
+- **玩法联系**: relationship to the target game's mechanics, game loop, style, or supported similar-game experience.
+- **形势判断**: why this creator fits the current campaign, with relevant content recency, audience fit and uncertainties; separate facts from inference.
+- **合作切入建议**: a specific, evidence-based proposed angle or format, not a claim of willingness or guaranteed results.
+- **AI 判断边界**: what was inspected (e.g. title/description, not a full video), missing metrics, unverified geography and other limits.
+
+Use wrapped text, top alignment, filters and a frozen header; keep long rationales readable rather than clipping them. Preserve the local JSON Match Briefs and source artifacts as the machine-readable audit trail. Never invent evidence, audience data or completed video viewing to fill a cell. Treat upstream text as plain spreadsheet data, not executable formulas.

@@ -16,7 +16,7 @@ Inspect templates with `fmg email templates` and `fmg email template game-outrea
 {"template_id":"game-outreach","template_version":"1","to":"creator@example.com","variables":{"creator_name":"Creator","game_name":"Selected Game","game_summary":"Factual game description","game_url":"https://store.steampowered.com/app/570/","personalization":"A specific statement supported by saved public evidence","sender_name":"Sender","company_name":"Company"}}
 ```
 
-`fmg email preview --input message.json` creates an immutable snapshot; `fmg email preview --id ID` rereads it. Inspect the actual rendered subject, text, HTML, recipient and sender. A batch is multiple individual previews; obtain user approval for the exact recipient list and content before iterating:
+Use these commands for individual or special-purpose sending with the available template capabilities. For batches with tracking, use [Outreach tasks](outreach.md), not a loop of individual sends. `fmg email preview --input message.json` creates an immutable snapshot; `fmg email preview --id ID` rereads it. Inspect the actual rendered subject, text, HTML, recipient and sender; obtain user approval before sending:
 
 ```sh
 fmg --run-id demo-1 email send --preview-id PREVIEW_ID --confirm --idempotency-key demo-1-approved-recipient
