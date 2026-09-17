@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Creator shortlist · FindMeGamer</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #fafbf7;
+        color: #173632;
+        font:
+          15px/1.55 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      header {
+        padding: 22px 32px;
+        border-bottom: 1px solid #dce4dc;
+        background: white;
+        display: flex;
+        justify-content: space-between;
+      }
+      main {
+        max-width: 1200px;
+        margin: auto;
+        padding: 48px 24px;
+      }
+      h1 {
+        font-size: clamp(30px, 4vw, 46px);
+        letter-spacing: -1.5px;
+        margin: 12px 0;
+      }
+      h2 {
+        font-size: 25px;
+        letter-spacing: -0.6px;
+      }
+      p {
+        max-width: 75ch;
+      }
+      .muted,
+      small {
+        color: #60736d;
+      }
+      .eyebrow {
+        font-size: 11px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+      }
+      .badge {
+        display: inline-block;
+        background: #e9efe9;
+        border-radius: 25px;
+        padding: 5px 10px;
+        font-size: 12px;
+      }
+      .suitable {
+        background: #dceee2;
+        color: #1c6146;
+      }
+      .rejected {
+        background: #fae5e1;
+        color: #973a30;
+      }
+      .needs_verification {
+        background: #fff0d9;
+        color: #87550c;
+      }
+      .toolbar {
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        align-items: center;
+        margin: 30px 0 18px;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+        background: white;
+        padding: 10px 14px;
+        border: 1px solid #cdd9cf;
+        border-radius: 8px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover {
+        background: #eef4eb;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      :focus-visible {
+        outline: 3px solid #6aa287;
+        outline-offset: 3px;
+      }
+      #scroll {
+        overflow: auto;
+        border: 1px solid #dce4dc;
+        background: white;
+        border-radius: 12px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 18px;
+        text-align: left;
+        border-bottom: 1px solid #edf0eb;
+        vertical-align: top;
+      }
+      th {
+        font-size: 11px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        background: #f1f5ee;
+        color: #60736d;
+      }
+      td:first-child {
+        min-width: 190px;
+      }
+      td:nth-child(3) {
+        min-width: 240px;
+        max-width: 400px;
+      }
+      td small {
+        display: block;
+      }
+      a {
+        color: #23664f;
+      }
+      nav {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        align-items: center;
+        margin: 20px 0;
+      }
+      #empty {
+        padding: 50px;
+        text-align: center;
+      }
+      #error:not(:empty) {
+        padding: 14px;
+        background: #fff0e9;
+        border: 1px solid #e4b4a6;
+        border-radius: 8px;
+        color: #8a392a;
+      }
+      dialog {
+        width: min(760px, 94vw);
+        max-height: 90vh;
+        padding: 28px;
+        border: 0;
+        border-radius: 16px;
+        color: #173632;
+        background: #fafbf7;
+        box-shadow: 0 30px 100px #08241a40;
+      }
+      dialog::backdrop {
+        background: #12292370;
+        backdrop-filter: blur(3px);
+      }
+      dialog section {
+        border-top: 1px solid #dce4dc;
+        margin-top: 24px;
+        padding-top: 12px;
+      }
+      li {
+        margin: 12px 0;
+        overflow-wrap: anywhere;
+      }
+      #detailbar {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+      }
+      #summary {
+        border-left: 3px solid #6aa287;
+        padding-left: 16px;
+      }
+      @media (max-width: 650px) {
+        main {
+          padding: 28px 16px;
+        }
+        .toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        header {
+          padding: 16px;
+        }
+        .controls > * {
+          max-width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>FindMeGamer <span class="muted">/ Discover</span></strong
+      ><span class="badge">Read-only research</span>
+    </header>
+    <main>
+      <span class="eyebrow">Evidence before outreach</span>
+      <h1>Your next creator collaboration.</h1>
+      <p class="muted">
+        Explore the people, the fit, and the evidence behind each
+        recommendation. Discuss changes with Codex — nothing here sends a
+        message.
+      </p>
+      <p id="summary" aria-live="polite">Waiting for saved research results…</p>
+      <p id="error" role="alert"></p>
+      <div class="toolbar">
+        <strong id="count">Creator shortlist</strong>
+        <div class="controls">
+          <input
+            id="search"
+            type="search"
+            placeholder="Search creators"
+            aria-label="Search creators"
+          /><select id="platform" aria-label="Platform">
+            <option value="">All platforms</option>
+            <option>YouTube</option>
+            <option>X</option>
+            <option>Twitch</option>
+            <option>Instagram</option></select
+          ><select id="decision" aria-label="Recommendation">
+            <option value="">All decisions</option>
+            <option value="suitable">Suitable</option>
+            <option value="needs_verification">Needs verification</option>
+            <option value="rejected">Not recommended</option>
+          </select>
+        </div>
+      </div>
+      <div id="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Creator</th>
+              <th>Fit</th>
+              <th>Why this creator</th>
+              <th>Contact</th>
+              <th>Review</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div id="empty" hidden>
+          No results yet. Saved Match Briefs will appear here as research
+          progresses.
+        </div>
+      </div>
+      <nav>
+        <button id="prev">Previous</button><span id="page"></span
+        ><button id="next">Next</button>
+      </nav>
+      <p class="muted">
+        <small
+          >This view reads local Match Briefs. It makes no paid API calls.
+          Unknown contact details are not a failed lookup; recommendations are
+          not guarantees.</small
+        >
+      </p>
+      <dialog id="detail" aria-labelledby="name">
+        <div id="detailbar">
+          <span class="eyebrow">Creator dossier</span
+          ><button id="close">Close</button>
+        </div>
+        <h2 id="name"></h2>
+        <div id="profile"></div>
+        <section>
+          <h3>Why they fit</h3>
+          <ul id="reasons"></ul>
+        </section>
+        <section>
+          <h3>Supporting evidence</h3>
+          <ul id="evidence"></ul>
+        </section>
+        <section>
+          <h3>What remains uncertain</h3>
+          <ul id="limitations"></ul>
+        </section>
+        <section>
+          <h3>Contact & filters</h3>
+          <ul id="facts"></ul>
+        </section>
+      </dialog>
+    </main>
+    <script>
+      const $ = (id) => document.getElementById(id),
+        text = (id, v) => ($(id).textContent = v);
+      let data = null,
+        page = 0;
+      const list = (v) => (Array.isArray(v) ? v : []);
+      const readable = (v) => (typeof v === "string" ? v : JSON.stringify(v));
+      function link(url, title) {
+        const a = document.createElement("a");
+        a.textContent = title;
+        try {
+          const u = new URL(url);
+          if (["https:", "http:"].includes(u.protocol)) {
+            a.href = u.href;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+          }
+        } catch {}
+        return a;
+      }
+      function lines(id, values) {
+        $(id).replaceChildren();
+        for (const value of values) {
+          const li = document.createElement("li");
+          li.textContent = readable(value);
+          $(id).append(li);
+        }
+      }
+      function show(r) {
+        text("name", r.creator.display_name || r.creator.account_id);
+        $("profile").replaceChildren(
+          link(r.creator.profile_url, "Open creator profile ↗"),
+        );
+        lines("reasons", list(r.match.reasons));
+        lines(
+          "limitations",
+          list(r.match.limitations).length
+            ? r.match.limitations
+            : [
+                "No additional limitations recorded. This is not a guarantee of completeness.",
+              ],
+        );
+        $("evidence").replaceChildren();
+        for (const e of list(r.evidence)) {
+          const li = document.createElement("li"),
+            p = document.createElement("p");
+          p.textContent = e.observation || "No observation recorded";
+          li.append(link(e.url, e.title || e.id || "View source"), p);
+          const note = document.createElement("small");
+          note.textContent = [e.level, e.retrieved_at]
+            .filter(Boolean)
+            .join(" · ");
+          li.append(note);
+          $("evidence").append(li);
+        }
+        if (!list(r.evidence).length)
+          lines("evidence", [
+            "No evidence recorded. Ask Codex to verify this recommendation.",
+          ]);
+        lines("facts", [
+          ...list(r.contacts?.emails).map(readable),
+          ...list(r.filters).map(
+            (f) => `${f.dimension}: ${readable(f.observed)} · ${f.outcome}`,
+          ),
+        ]);
+        $("detail").showModal();
+      }
+      function render() {
+        if (!data) return;
+        text(
+          "summary",
+          `${data.run_id} · ${data.phase} · ${data.matches.length} saved results`,
+        );
+        text("count", "Creator shortlist");
+        if ($("detail").open || $("rows").contains(document.activeElement))
+          return;
+        const q = $("search").value.toLowerCase(),
+          p = $("platform").value.toLowerCase(),
+          d = $("decision").value;
+        const rows = data.matches.filter(
+          (r) =>
+            `${r.creator.display_name} ${r.creator.account_id}`
+              .toLowerCase()
+              .includes(q) &&
+            (!p || r.creator.platform?.toLowerCase() === p) &&
+            (!d || r.match.decision === d),
+        );
+        const pages = Math.max(1, Math.ceil(rows.length / 20));
+        page = Math.min(page, pages - 1);
+        $("rows").replaceChildren();
+        $("empty").hidden = !!rows.length;
+        for (const r of rows.slice(page * 20, page * 20 + 20)) {
+          const tr = document.createElement("tr"),
+            identity = document.createElement("td"),
+            name = document.createElement("strong"),
+            platform = document.createElement("small");
+          name.textContent = r.creator.display_name || r.creator.account_id;
+          platform.textContent = r.creator.platform;
+          identity.append(name, platform);
+          const fit = document.createElement("td"),
+            badge = document.createElement("span");
+          badge.className =
+            "badge " +
+            (["suitable", "rejected", "needs_verification"].includes(
+              r.match.decision,
+            )
+              ? r.match.decision
+              : "");
+          badge.textContent = (r.match.decision || "Unknown").replaceAll(
+            "_",
+            " ",
+          );
+          fit.append(badge);
+          const why = document.createElement("td");
+          why.textContent = readable(
+            list(r.match.reasons)[0] || "No rationale recorded",
+          );
+          const contact = document.createElement("td");
+          contact.textContent = (
+            r.contacts?.status || "not_requested"
+          ).replaceAll("_", " ");
+          const action = document.createElement("td"),
+            button = document.createElement("button");
+          button.textContent = "View evidence";
+          button.onclick = () => show(r);
+          action.append(button);
+          tr.append(identity, fit, why, contact, action);
+          $("rows").append(tr);
+        }
+        text("page", `${page + 1} / ${pages} · ${rows.length} creators`);
+        $("prev").disabled = page === 0;
+        $("next").disabled = page === pages - 1;
+      }
+      $("search").oninput =
+        $("platform").onchange =
+        $("decision").onchange =
+          () => {
+            page = 0;
+            render();
+          };
+      $("prev").onclick = () => {
+        page--;
+        render();
+      };
+      $("next").onclick = () => {
+        page++;
+        render();
+      };
+      $("close").onclick = () => $("detail").close();
+      async function poll() {
+        try {
+          const response = await fetch("data", { cache: "no-store" });
+          if (!response.ok) throw Error();
+          data = await response.json();
+          if (!Array.isArray(data.matches)) throw Error();
+          text(
+            "error",
+            data.unreadable
+              ? `${data.unreadable} brief(s) could not be read. Ask Codex to check the saved files.`
+              : "",
+          );
+          render();
+        } catch {
+          text(
+            "error",
+            "Could not refresh local results. Previously loaded results are retained.",
+          );
+        } finally {
+          setTimeout(poll, 5000);
+        }
+      }
+      poll();
+    </script>
+  </body>
+</html>

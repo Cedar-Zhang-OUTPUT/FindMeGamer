@@ -18,6 +18,12 @@ def get_template(template_id, version=None):
     definition = json.loads(
         files("fmg_agent.email").joinpath("template_data", filename).read_text()
     )
+    # Keep version 1 available for callers with an existing template contract.
+    if template_id == "game-outreach" and version != "1":
+        definition["version"] = "2"
+        definition["html"] = files("fmg_agent.email").joinpath(
+            "template_data", "game-outreach-v2.html"
+        ).read_text()
     if version is not None and version != definition["version"]:
         raise ApiError(
             409,

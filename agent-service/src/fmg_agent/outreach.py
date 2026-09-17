@@ -165,8 +165,16 @@ def create_task(request: Request, body: TaskInput,
             message = render_template(definition, validated.variables)
             message.update({"to": validated.to, "from": settings.smtp_from or None})
             message["text"] += f"\n\nYes: {url}?choice=yes\nNo: {url}?choice=no\nConfirm your choice on the linked page."
-            message["html"] += ''.join(f'<p><a href="{escape(url)}?choice={choice}">{label}</a></p>'
-                                       for choice, label in (("yes", "Yes, I’m in"), ("no", "No, not interested")))
+            actions = ''.join(
+                f'<a href="{escape(url)}?choice={choice}" style="display:inline-block;padding:12px 18px;margin:4px 8px 4px 0;border:1px solid #27644f;border-radius:6px;background:{background};color:{color};font:14px Arial,sans-serif;text-decoration:none">{label}</a>'
+                for choice, label, background, color in (
+                    ("yes", "Yes, I’m in", "#27644f", "#ffffff"),
+                    ("no", "No, not interested", "#ffffff", "#27644f")))
+            actions += '<p style="font:12px Arial,sans-serif;color:#697870">Your choice is recorded only after confirmation on the next page.</p>'
+            if "<!--FMG_RESPONSE_ACTIONS-->" in message["html"]:
+                message["html"] = message["html"].replace("<!--FMG_RESPONSE_ACTIONS-->", actions)
+            else:
+                message["html"] += actions
             preview = EmailPreview(id=str(uuid4()), token_id=principal.id, template_id=body.template_id,
                                    template_version=body.template_version, message=message)
             session.add(preview)

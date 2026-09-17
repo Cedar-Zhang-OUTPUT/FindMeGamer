@@ -1,23 +1,548 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FMG Outreach</title>
-<style>
-body{font:16px system-ui;color:#182a3e;background:#f5f7fa;margin:0}main{max-width:1100px;margin:40px auto;padding:0 24px}h1{margin-bottom:8px}p{line-height:1.5}.muted{color:#58677a}#error{color:#a52525}table{width:100%;border-collapse:collapse;background:white}td,th{text-align:left;padding:12px;border-bottom:1px solid #dde3ea}button{padding:8px 12px;cursor:pointer;border:1px solid #c8d2df;background:white;border-radius:6px;color:inherit}button:disabled{cursor:default;color:#87909d}#scroll{overflow:auto}nav{display:flex;gap:12px;align-items:center;margin:16px 0}dialog{width:min(800px,85vw);max-height:85vh;border:1px solid #ccd5df;border-radius:12px;padding:24px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:15px/1.6 system-ui}code{overflow-wrap:anywhere}#status{font-weight:600}#stats{padding:16px 0}tr:focus-within{background:#eef6ff}
-</style></head><body><main>
-<p class="muted">FindMeGamer · Read-only outreach dashboard</p><h1 id="name">Loading task…</h1><p id="status" aria-live="polite"></p>
-<p class="muted">Review each recipient and complete draft before asking Codex to start. This page cannot send or change emails.</p>
-<p id="error" role="alert"></p><div id="stats"></div><div id="scroll"><table><thead><tr><th>Creator</th><th>Email</th><th>Sending</th><th>Response</th><th>Draft</th></tr></thead><tbody id="rows"></tbody></table></div>
-<nav><button id="prev">Previous</button><span id="page"></span><button id="next">Next</button></nav>
-<p class="muted">Response rate = confirmed Yes/No among SMTP-accepted emails ÷ SMTP-accepted emails. Direct inbox replies are not tracked. SMTP acceptance is not guaranteed inbox delivery or completed cooperation.</p>
-<p class="muted">Task <code id="task"></code><br>Reviewed revision <code id="revision"></code></p>
-<dialog id="preview"><button id="close">Close preview</button><h2 id="subject"></h2><p id="addresses"></p><pre id="body"></pre></dialog>
-</main><script>
-let data=null,page=0;const $=id=>document.getElementById(id);const text=(id,value)=>$(id).textContent=value;
-function render(){if(!data)return;text('name',data.name);text('status',data.state.replaceAll('_',' '));text('task',data.id);text('revision',data.revision);
-const s=data.stats;text('stats',`${data.recipients.length} recipients · ${s.sent} accepted · ${s.failed} failed · ${s.unknown} uncertain · ${s.yes} Yes · ${s.no} No · response rate ${s.response_rate===null?'—':(100*s.response_rate).toFixed(1)+'%'}`);
-if($('preview').open||$('rows').contains(document.activeElement))return;
-const pages=Math.max(1,Math.ceil(data.recipients.length/20));page=Math.min(page,pages-1);$('rows').replaceChildren();
-for(const r of data.recipients.slice(page*20,(page+1)*20)){const row=document.createElement('tr');for(const value of [r.creator_id,r.message.to,r.state+(r.code?' · '+r.code:''),r.response||'No response']){const cell=document.createElement('td');cell.textContent=value;row.append(cell)}const cell=document.createElement('td'),button=document.createElement('button');button.textContent='Preview';button.onclick=()=>{text('subject',r.message.subject);text('addresses',`From: ${r.message.from||'(sender not configured)'} → To: ${r.message.to}`);text('body',r.message.text);$('preview').showModal()};cell.append(button);row.append(cell);$('rows').append(row)}
-text('page',`${page+1} / ${pages}`);$('prev').disabled=page===0;$('next').disabled=page===pages-1;}
-$('prev').onclick=()=>{page--;render()};$('next').onclick=()=>{page++;render()};$('close').onclick=()=>$('preview').close();
-async function poll(){try{const response=await fetch('data',{cache:'no-store'});if(!response.ok)throw Error();const incoming=(await response.json()).data;if(!incoming||!Array.isArray(incoming.recipients))throw Error();data=incoming;text('error','');render();}catch{text('error','Could not refresh. Previous data is retained; check the service connection.')}finally{setTimeout(poll,5000)}}poll();
-</script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Outreach · FindMeGamer</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #173632;
+        --muted: #60736d;
+        --line: #dce4dc;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #fafbf7;
+        color: var(--ink);
+        font:
+          15px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+      }
+      header {
+        border-bottom: 1px solid var(--line);
+        padding: 20px max(24px, calc((100vw - 1200px) / 2));
+        display: flex;
+        justify-content: space-between;
+        background: #fff;
+      }
+      main {
+        max-width: 1248px;
+        margin: auto;
+        padding: 48px 24px;
+      }
+      h1 {
+        font-size: clamp(28px, 4vw, 44px);
+        letter-spacing: -1.5px;
+        line-height: 1.15;
+        margin: 12px 0 18px;
+      }
+      .eyebrow {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        color: var(--muted);
+      }
+      .muted,
+      small {
+        color: var(--muted);
+      }
+      .hero,
+      .toolbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 24px;
+      }
+      .badge {
+        display: inline-block;
+        background: #e9efe9;
+        padding: 5px 10px;
+        border-radius: 30px;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .good {
+        background: #dceee2;
+        color: #1c6146;
+      }
+      .warn {
+        background: #fff0d9;
+        color: #87550c;
+      }
+      .bad {
+        background: #fae5e1;
+        color: #973a30;
+      }
+      #stats {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1px;
+        background: var(--line);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        overflow: hidden;
+        margin: 28px 0 36px;
+      }
+      #stats div {
+        background: #fff;
+        padding: 22px;
+      }
+      #stats strong {
+        display: block;
+        font-size: 30px;
+        letter-spacing: -1px;
+      }
+      #stats span {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .toolbar {
+        margin-bottom: 16px;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        color: inherit;
+        border: 1px solid #cdd9cf;
+        background: white;
+        border-radius: 8px;
+        padding: 10px 14px;
+      }
+      input {
+        min-width: 240px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover {
+        background: #eef4eb;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      :focus-visible {
+        outline: 3px solid #6aa287;
+        outline-offset: 3px;
+      }
+      #scroll {
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: white;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        white-space: nowrap;
+      }
+      td,
+      th {
+        text-align: left;
+        padding: 17px 20px;
+        border-bottom: 1px solid #edf0eb;
+      }
+      th {
+        font-size: 11px;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: var(--muted);
+        background: #f1f5ee;
+      }
+      td small {
+        display: block;
+      }
+      tr:last-child td {
+        border: 0;
+      }
+      tr:hover {
+        background: #fafcf7;
+      }
+      nav {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: flex-end;
+        margin: 18px 0;
+      }
+      #error:not(:empty) {
+        border: 1px solid #e4b4a6;
+        background: #fff0e9;
+        padding: 14px;
+        border-radius: 8px;
+        color: #8a392a;
+      }
+      details {
+        margin-top: 32px;
+        border-top: 1px solid var(--line);
+        padding-top: 18px;
+        color: var(--muted);
+      }
+      summary {
+        cursor: pointer;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+      dialog {
+        width: min(860px, 94vw);
+        max-height: 92vh;
+        border: 0;
+        border-radius: 16px;
+        padding: 24px;
+        background: #fafbf7;
+        color: var(--ink);
+        box-shadow: 0 30px 100px #08241a40;
+      }
+      dialog::backdrop {
+        background: #12292370;
+        backdrop-filter: blur(3px);
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font: 15px/1.7 system-ui;
+        background: white;
+        padding: 24px;
+        border: 1px solid var(--line);
+      }
+      iframe {
+        width: 100%;
+        height: 60vh;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: white;
+      }
+      #addresses {
+        overflow-wrap: anywhere;
+        font-size: 13px;
+      }
+      #empty {
+        padding: 40px;
+        text-align: center;
+      }
+      #updated {
+        font-size: 12px;
+      }
+      @media (max-width: 650px) {
+        main {
+          padding: 28px 16px;
+        }
+        .hero,
+        .toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+        #stats {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        header {
+          padding: 16px;
+        }
+        input {
+          min-width: 0;
+          width: 100%;
+        }
+        td,
+        th {
+          padding: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>FindMeGamer <span class="muted">/ Outreach</span></strong
+      ><span class="badge">Read-only workspace</span>
+    </header>
+    <main>
+      <div class="hero">
+        <div>
+          <span class="eyebrow">Creator relationships</span>
+          <h1 id="name">Opening your outreach…</h1>
+          <p id="guidance" class="muted">
+            Loading recipients and saved drafts.
+          </p>
+        </div>
+        <span id="status" class="badge" aria-live="polite"></span>
+      </div>
+      <p id="error" role="alert"></p>
+      <section id="stats" aria-label="Task summary"></section>
+      <div class="toolbar">
+        <div>
+          <strong>Recipients & drafts</strong><br /><span
+            id="updated"
+            class="muted"
+            >Waiting for first update</span
+          >
+        </div>
+        <div class="controls">
+          <input
+            id="search"
+            type="search"
+            aria-label="Search recipients"
+            placeholder="Search creator or email"
+          /><select id="filter" aria-label="Filter recipients">
+            <option value="all">All recipients</option>
+            <option value="yes">Accepted invitation</option>
+            <option value="no">Declined invitation</option>
+            <option value="pending">Awaiting response</option>
+            <option value="issues">Delivery issues</option>
+          </select>
+        </div>
+      </div>
+      <div id="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Creator / recipient</th>
+              <th>Sending</th>
+              <th>Invitation</th>
+              <th>Draft</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div id="empty" hidden>No recipients match this view.</div>
+      </div>
+      <nav>
+        <button id="prev">Previous</button><span id="page"></span
+        ><button id="next">Next</button>
+      </nav>
+      <p class="muted">
+        <small
+          >Responses count confirmed Yes / No button choices, not inbox replies.
+          SMTP acceptance does not guarantee inbox delivery. Accepting an
+          invitation does not mean a collaboration is completed.</small
+        >
+      </p>
+      <details>
+        <summary>Task details & measurement</summary>
+        <p>
+          Task <code id="task"></code><br />Review revision
+          <code id="revision"></code>
+        </p>
+        <p>
+          Response rate: confirmed choices among SMTP-accepted emails divided by
+          SMTP-accepted emails. No email can be changed or sent from this page.
+          Discuss changes and approve sending in Codex.
+        </p>
+      </details>
+      <dialog id="preview" aria-labelledby="subject">
+        <div class="toolbar">
+          <strong>Saved email preview</strong>
+          <div class="controls">
+            <button id="toggle">Show plain text</button
+            ><button id="close">Close preview</button>
+          </div>
+        </div>
+        <h2 id="subject"></h2>
+        <p id="addresses" class="muted"></p>
+        <p class="muted">
+          <small
+            >Preview only. Links are disabled; no invitation response can be
+            submitted here.</small
+          >
+        </p>
+        <iframe
+          id="html"
+          sandbox=""
+          title="HTML email preview"
+          referrerpolicy="no-referrer"
+        ></iframe>
+        <pre id="body" hidden></pre>
+      </dialog>
+    </main>
+    <script>
+      let data = null,
+        page = 0;
+      const $ = (id) => document.getElementById(id),
+        text = (id, v) => ($(id).textContent = v),
+        label = (v) => String(v || "").replaceAll("_", " ");
+      function badge(value, kind) {
+        const el = document.createElement("span");
+        el.className = "badge " + kind;
+        el.textContent = value;
+        return el;
+      }
+      function openPreview(r) {
+        text("subject", r.message.subject);
+        text(
+          "addresses",
+          `From: ${r.message.from || "Not configured"} · To: ${r.message.to}`,
+        );
+        text("body", r.message.text);
+        const doc = new DOMParser().parseFromString(
+          r.message.html || "<p>No HTML version available.</p>",
+          "text/html",
+        );
+        doc
+          .querySelectorAll("script,iframe,object,embed,form,meta,link,base")
+          .forEach((n) => n.remove());
+        doc.querySelectorAll("a").forEach((n) => n.removeAttribute("href"));
+        const policy = doc.createElement("meta");
+        policy.httpEquiv = "Content-Security-Policy";
+        policy.content =
+          "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'none'";
+        doc.head.prepend(policy);
+        $("html").srcdoc = doc.documentElement.outerHTML;
+        $("html").hidden = false;
+        $("body").hidden = true;
+        text("toggle", "Show plain text");
+        $("preview").showModal();
+      }
+      function render() {
+        if (!data) return;
+        text("name", data.name);
+        text("status", label(data.state));
+        text("task", data.id);
+        text("revision", data.revision);
+        text(
+          "guidance",
+          data.state === "awaiting_approval"
+            ? "Review the drafts, then tell Codex when you’re ready to send."
+            : "Follow delivery and invitation responses here. Your drafts stay unchanged.",
+        );
+        const s = data.stats;
+        $("stats").replaceChildren();
+        for (const [value, name] of [
+          [data.recipients.length, "Recipients"],
+          [s.sent, "SMTP accepted"],
+          [`${s.yes} / ${s.no}`, "Yes / No"],
+          [
+            s.response_rate === null
+              ? "—"
+              : (100 * s.response_rate).toFixed(1) + "%",
+            "Button response rate",
+          ],
+        ]) {
+          const box = document.createElement("div"),
+            v = document.createElement("strong"),
+            caption = document.createElement("span");
+          v.textContent = value;
+          caption.textContent = name;
+          box.append(v, caption);
+          $("stats").append(box);
+        }
+        if ($("preview").open || $("rows").contains(document.activeElement))
+          return;
+        const q = $("search").value.toLowerCase(),
+          f = $("filter").value,
+          rows = data.recipients.filter(
+            (r) =>
+              `${r.creator_id} ${r.message.to}`.toLowerCase().includes(q) &&
+              (f === "all" ||
+                f === r.response ||
+                (f === "pending" && !r.response) ||
+                (f === "issues" && ["failed", "unknown"].includes(r.state))),
+          );
+        const pages = Math.max(1, Math.ceil(rows.length / 20));
+        page = Math.min(page, pages - 1);
+        $("rows").replaceChildren();
+        $("empty").hidden = rows.length > 0;
+        for (const r of rows.slice(page * 20, (page + 1) * 20)) {
+          const tr = document.createElement("tr"),
+            identity = document.createElement("td"),
+            name = document.createElement("strong"),
+            email = document.createElement("small");
+          name.textContent = r.creator_id;
+          email.textContent = r.message.to;
+          identity.append(name, email);
+          tr.append(identity);
+          const sending = document.createElement("td");
+          sending.append(
+            badge(
+              label(r.state),
+              r.state === "sent"
+                ? "good"
+                : ["failed", "unknown"].includes(r.state)
+                  ? "bad"
+                  : "",
+            ),
+          );
+          if (r.code) {
+            const note = document.createElement("small");
+            note.textContent = r.code;
+            sending.append(note);
+          }
+          const response = document.createElement("td");
+          response.append(
+            badge(
+              r.response === "yes"
+                ? "Accepted"
+                : r.response === "no"
+                  ? "Declined"
+                  : "No response",
+              r.response === "yes" ? "good" : r.response === "no" ? "warn" : "",
+            ),
+          );
+          const action = document.createElement("td"),
+            button = document.createElement("button");
+          button.textContent = "Preview";
+          button.onclick = () => openPreview(r);
+          action.append(button);
+          tr.append(sending, response, action);
+          $("rows").append(tr);
+        }
+        text("page", `${page + 1} / ${pages} · ${rows.length} recipients`);
+        $("prev").disabled = page === 0;
+        $("next").disabled = page === pages - 1;
+      }
+      $("search").oninput = $("filter").onchange = () => {
+        page = 0;
+        render();
+      };
+      $("prev").onclick = () => {
+        page--;
+        render();
+      };
+      $("next").onclick = () => {
+        page++;
+        render();
+      };
+      $("close").onclick = () => $("preview").close();
+      $("toggle").onclick = () => {
+        $("body").hidden = !$("body").hidden;
+        $("html").hidden = !$("body").hidden;
+        text("toggle", $("body").hidden ? "Show plain text" : "Show HTML");
+      };
+      async function poll() {
+        try {
+          const response = await fetch("data", { cache: "no-store" });
+          if (!response.ok) throw Error();
+          const incoming = (await response.json()).data;
+          if (!incoming || !Array.isArray(incoming.recipients)) throw Error();
+          data = incoming;
+          text("error", "");
+          text(
+            "updated",
+            "Updated " +
+              new Date().toLocaleTimeString() +
+              " · refreshes every 5s",
+          );
+          render();
+        } catch {
+          text(
+            "error",
+            "Could not refresh. Your last loaded results are retained. Ask Codex to check the connection.",
+          );
+        } finally {
+          setTimeout(poll, 5000);
+        }
+      }
+      poll();
+    </script>
+  </body>
+</html>

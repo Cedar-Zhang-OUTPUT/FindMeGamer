@@ -33,8 +33,14 @@ For Twitch, resolve the game or related games to Twitch category IDs using `getG
 
 ## Show creator results
 
-As soon as the first evidence-backed creator result is ready (not merely a raw search hit), proactively open that creator's saved canonical profile in Codex's built-in browser so the user can inspect the actual account while research continues. Do not wait until every match or contact lookup finishes, or until the user asks to see it. State briefly which creator is shown and the supported reason for considering them. A later rejection/correction must remain visible in saved results, not silently disappear.
+As soon as the first evidence-backed creator result is saved (not merely a raw search hit), launch the bundled results dashboard in a retained terminal session:
 
-For subsequent results, preserve the user's current view rather than opening dozens of tabs or navigating away while they read. Keep a visible results overview when available, with canonical profile/evidence links, and open the particular creator the user selects or asks about. Keep JSON Match Briefs and requested Excel deliverables in parallel; browser display is not a replacement for saved evidence. Do not fabricate an overview URL or assume the outreach dashboard displays research results.
+```sh
+python3 PATH_TO_INSTALLED_FMG_RESEARCH/scripts/research_dashboard.py --root WORKSPACE --run-id RUN_ID
+```
+
+Open its exact printed loopback URL in Codex's built-in browser. It reads saved Match Briefs every five seconds without provider calls, shows 20 creators per page, and supports search, platform/decision filters and evidence details. Continue writing valid briefs atomically while the user reviews. Do not wait until all contact lookups finish. The dashboard links to canonical profiles and evidence; open the specific creator's profile when requested. A later rejection/correction must remain visible in saved results, not silently disappear.
+
+For subsequent results, preserve the user's current view rather than opening dozens of tabs or navigating away while they read. Reuse the results dashboard, keeping JSON Match Briefs and requested Excel deliverables in parallel; browser display is not a replacement for saved evidence. This local viewer is separate from the server-backed outreach dashboard. It never approves research, edits saved data or sends email.
 
 Use the host's actual built-in browser capability and verify the returned page/state before saying it is open. An operation queued to a hidden panel is not proof the user sees it; provide its link as a fallback. Do not make another provider API call just to open an already known link, do not bypass login/security barriers, and do not infer watching a full video from opening its page. User feedback may revise the search direction under the game-review gate. Opening a page alone does not impose an extra approval stop on otherwise approved research.
