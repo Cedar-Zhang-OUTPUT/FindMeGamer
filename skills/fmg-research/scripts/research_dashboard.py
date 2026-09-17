@@ -8,6 +8,51 @@ import secrets
 from workspace import safe_id
 
 
+def completeness(item):
+    """Missing fields remain visible; never invent facts to make a row valid."""
+    errors = []
+    presentation = item.get("presentation") or {}
+    if not isinstance(presentation, dict):
+        presentation = {}
+    for key in ("public_name", "content_direction", "followers", "content_language", "audience_region"):
+        if not isinstance(presentation.get(key), str) or not presentation[key].strip():
+            errors.append("presentation." + key)
+    why = presentation.get("why_match") or {}
+    if not isinstance(why, dict):
+        why = {}
+    for key in ("evidence", "gameplay_connection", "assessment", "collaboration_angle", "limitations"):
+        if not isinstance(why.get(key), str) or not why[key].strip():
+            errors.append("presentation.why_match." + key)
+    if not str(item.get("creator", {}).get("profile_url", "")).startswith(("https://", "http://")):
+        errors.append("creator.profile_url")
+    contacts = item.get("contacts") or {}
+    if not isinstance(contacts, dict):
+        contacts = {}
+    emails = contacts.get("emails")
+    status = contacts.get("status")
+    if not isinstance(emails, list):
+        errors.append("contacts.emails")
+        emails = []
+    if status == "found":
+        if not emails:
+            errors.append("contacts.found_without_email")
+        for email in emails:
+            if not isinstance(email, dict) or any(
+                not isinstance(email.get(k), str) or not email[k].strip()
+                for k in ("address", "purpose", "source", "verification")
+            ):
+                errors.append("contacts.email_details")
+    elif status == "not_found":
+        if not contacts.get("lookup_completed") or emails:
+            errors.append("contacts.not_found_without_completed_empty_lookup")
+    elif status == "not_requested":
+        if not contacts.get("reason"):
+            errors.append("contacts.opt_out_reason")
+    else:
+        errors.append("contacts.unfinished")
+    return errors
+
+
 def snapshot(root, run_id):
     run = (root / "runs" / safe_id(run_id)).resolve()
     if not run.is_relative_to(root.resolve()):
@@ -29,7 +74,9 @@ def snapshot(root, run_id):
         if not path.resolve().is_relative_to(run):
             raise ValueError("Progress outside workspace")
         progress = json.loads(path.read_text())
-    return {"run_id": run_id, "matches": matches, "phase": progress.get("phase", "Research in progress"), "unreadable": unreadable}
+    issues = [{"account_id": m["creator"].get("account_id"), "missing": completeness(m)} for m in matches]
+    return {"run_id": run_id, "matches": matches, "phase": progress.get("phase", "Research in progress"), "unreadable": unreadable,
+            "incomplete": [issue for issue in issues if issue["missing"]]}
 
 
 def serve(root, run_id, port=0):
@@ -85,5 +132,11 @@ if __name__ == "__main__":
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--port", type=int, default=0)
+    parser.add_argument("--validate", action="store_true")
     args = parser.parse_args()
-    serve(args.root, args.run_id, args.port)
+    if args.validate:
+        result = snapshot(args.root, args.run_id)
+        print(json.dumps({"incomplete": result["incomplete"], "unreadable": result["unreadable"]}))
+        raise SystemExit(2 if result["incomplete"] or result["unreadable"] else 0)
+    else:
+        serve(args.root, args.run_id, args.port)

@@ -70,15 +70,39 @@ Each Match Brief is a JSON object (not Markdown), with these required slots:
   "filters": [{"dimension":"content_language","expected":"English","observed":"English","outcome":"pass","evidence_ids":["work-1"]}],
   "evidence": [{"id":"work-1","url":"https://www.youtube.com/watch?v=EXAMPLE","retrieved_at":"ISO_TIME","level":"title_description","observation":"What the source actually supports","raw_file":"../evidence/work-1.json"}],
   "match": {"decision":"suitable","reasons":["Evidence-backed relevance"],"limitations":["Unverified audience geography"]},
-  "contacts": {"status":"not_requested","emails":[]}
+  "contacts": {"status":"pending","emails":[]},
+  "presentation": {
+    "public_name": "Unknown",
+    "content_direction": "Narrative adventure commentary (supported by work-1)",
+    "followers": "Unknown — not returned by provider",
+    "content_language": "English — work-1",
+    "audience_region": "Unknown — creator location is not audience geography",
+    "why_match": {
+      "evidence": "Work title, date, URL and what it supports",
+      "gameplay_connection": "Connection to mechanics, loop, style or related games",
+      "assessment": "Campaign fit, facts vs inference",
+      "collaboration_angle": "Suggested format, not a willingness claim",
+      "limitations": "Inspected source type and missing evidence"
+    }
+  }
 }
 ```
 
-Resolve paths relative to the Match Brief. Use actual hashes, dates, IDs and observations, not example strings. Filter outcome is pass/fail/unknown; decision suitable/needs_verification/rejected. Evidence levels distinguish metadata, public text, transcript excerpt, inspected visual and user-supplied notes. Contacts status: found/not_found/failed/not_requested; each email includes purpose/source/verification. Only a completed empty lookup is not_found. Explaining a result reads these files before calling APIs again.
+Resolve paths relative to the Match Brief. Use actual hashes, dates, IDs and observations, not example strings. Filter outcome is pass/fail/unknown; decision suitable/needs_verification/rejected. Evidence levels distinguish metadata, public text, transcript excerpt, inspected visual and user-supplied notes. Contacts status: pending/found/not_found/failed/not_requested; each email includes address/purpose/source/verification. `not_requested` requires an explicit user opt-out recorded as `contacts.reason`; unresolved work keeps its job ID and reason. Only a completed empty lookup is not_found. Explaining a result reads these files before calling APIs again.
+
+## Result completeness
+
+Every Match Brief must include the `presentation` object above, a canonical `creator.profile_url`, and `contacts`. These are shared by browser and Excel. Store readable non-empty strings with supporting facts or explicit Unknown + reason; do not fabricate missing facts. Followers include metric/date, audience inference must be labeled. `why_match` requires all five sections. Before final delivery run:
+
+```sh
+python3 PATH_TO_SKILL/scripts/research_dashboard.py --root WORKSPACE --run-id RUN_ID --validate
+```
+
+Exit 2 reports missing fields or unfinished contacts: repair the files or explicitly report a partial/blocked result, not a completed deliverable. The live viewer still shows partial/legacy records with missing-data warnings. `found` requires at least one address; `not_found` requires `contacts.lookup_completed: true` and no addresses. A provider error is not a completed empty lookup. The validator checks structure/status, not truth; Agent must check sources.
 
 ## Excel creator results
 
-When exporting discovered/recommended creators to Excel, use these nine columns **in this order** (do not create a workbook unless the user requests it or the agreed deliverable includes one):
+The browser table and any Excel export must use these nine columns **in this order** (do not create a workbook unless the user requests it or the agreed deliverable includes one):
 
 1. 序号 — sequential integers starting at 1 in the exported order.
 2. Public name — creator's explicitly public name; unknown if unavailable. Do not silently substitute a channel name or infer a legal name.

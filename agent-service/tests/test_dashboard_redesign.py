@@ -50,6 +50,26 @@ def test_research_snapshot_preserves_briefs_and_reports_invalid(tmp_path):
     result = module.snapshot(tmp_path, "test")
     assert result["matches"] == [brief]
     assert result["unreadable"] == 2
+    assert result["incomplete"][0]["missing"]
+    complete = {
+        **brief, "creator": {"profile_url": "https://youtube.com/channel/example"},
+        "presentation": {k: "Unknown — no evidence" for k in
+                         ("public_name", "content_direction", "followers", "content_language", "audience_region")},
+        "contacts": {"status": "not_found", "emails": [], "lookup_completed": True},
+    }
+    complete["presentation"]["why_match"] = {k: "Evidence-backed note" for k in
+        ("evidence", "gameplay_connection", "assessment", "collaboration_angle", "limitations")}
+    assert module.completeness(complete) == []
+    complete["contacts"] = {"status": "found", "emails": []}
+    assert "contacts.found_without_email" in module.completeness(complete)
+    complete["contacts"] = {"status": "pending", "emails": []}
+    assert "contacts.unfinished" in module.completeness(complete)
+    complete["contacts"] = {"status": "not_found", "emails": []}
+    assert module.completeness(complete)
+    complete["contacts"] = {"status": "found", "emails": [{
+        "address": "business@example.com", "purpose": "Business", "source": "Profile bio",
+        "verification": "Publicly listed, delivery unverified"}]}
+    assert module.completeness(complete) == []
     assert (directory / "partial.json").read_text() == '{'
 
 

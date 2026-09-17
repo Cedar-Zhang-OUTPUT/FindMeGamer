@@ -130,9 +130,11 @@
         background: #f1f5ee;
         color: #60736d;
       }
-      td:first-child {
-        min-width: 190px;
-      }
+      td { min-width: 150px; overflow-wrap: anywhere; white-space: pre-line; }
+      td:first-child { min-width: 40px; }
+      td:nth-child(4) { min-width: 330px; }
+      #scroll { max-height: 70vh; }
+      th { position: sticky; top: 0; }
       td:nth-child(3) {
         min-width: 240px;
         max-width: 400px;
@@ -251,11 +253,7 @@
         <table>
           <thead>
             <tr>
-              <th>Creator</th>
-              <th>Fit</th>
-              <th>Why this creator</th>
-              <th>Contact</th>
-              <th>Review</th>
+              <th>No.</th><th>Public name</th><th>Email</th><th>Why Match?</th><th>Content direction</th><th>Channel link</th><th>Followers</th><th>Content language</th><th>Audience region</th>
             </tr>
           </thead>
           <tbody id="rows"></tbody>
@@ -372,7 +370,7 @@
         if (!data) return;
         text(
           "summary",
-          `${data.run_id} · ${data.phase} · ${data.matches.length} saved results`,
+          `${data.run_id} · ${data.phase} · ${data.matches.length} saved results · ${data.incomplete?.length || 0} incomplete records`,
         );
         text("count", "Creator shortlist");
         if ($("detail").open || $("rows").contains(document.activeElement))
@@ -392,42 +390,48 @@
         page = Math.min(page, pages - 1);
         $("rows").replaceChildren();
         $("empty").hidden = !!rows.length;
-        for (const r of rows.slice(page * 20, page * 20 + 20)) {
-          const tr = document.createElement("tr"),
-            identity = document.createElement("td"),
-            name = document.createElement("strong"),
-            platform = document.createElement("small");
-          name.textContent = r.creator.display_name || r.creator.account_id;
-          platform.textContent = r.creator.platform;
-          identity.append(name, platform);
-          const fit = document.createElement("td"),
-            badge = document.createElement("span");
-          badge.className =
-            "badge " +
-            (["suitable", "rejected", "needs_verification"].includes(
-              r.match.decision,
-            )
-              ? r.match.decision
-              : "");
-          badge.textContent = (r.match.decision || "Unknown").replaceAll(
-            "_",
-            " ",
-          );
-          fit.append(badge);
-          const why = document.createElement("td");
-          why.textContent = readable(
-            list(r.match.reasons)[0] || "No rationale recorded",
-          );
-          const contact = document.createElement("td");
-          contact.textContent = (
-            r.contacts?.status || "not_requested"
-          ).replaceAll("_", " ");
-          const action = document.createElement("td"),
-            button = document.createElement("button");
+        for (const [offset, r] of rows.slice(page * 20, page * 20 + 20).entries()) {
+          const tr = document.createElement("tr");
+          const cell = (value) => {
+            const td = document.createElement("td");
+            td.textContent = value || "Unknown — not recorded";
+            tr.append(td);
+            return td;
+          };
+          const p = r.presentation || {};
+          cell(String(page * 20 + offset + 1));
+          const identity = cell(p.public_name);
+          const note = document.createElement("small");
+          note.textContent = [r.creator.display_name, r.creator.platform, r.match.decision].filter(Boolean).join(" · ");
+          identity.append(note);
+          const addresses = list(r.contacts?.emails).map(e =>
+            typeof e === "string" ? e : [e.address || e.email, e.purpose].filter(Boolean).join(" — ")
+          ).filter(Boolean);
+          const status = r.contacts?.status;
+          cell(addresses.length ? addresses.join("\n") :
+            status === "not_found" && r.contacts?.lookup_completed ? "Not Found" :
+            status === "not_requested" ? "Not requested — " + (r.contacts.reason || "opt-out not recorded") :
+            "Unresolved — " + (status || "lookup not recorded"));
+          const why = cell("");
+          why.replaceChildren();
+          const labels = {evidence: "Evidence", gameplay_connection: "Gameplay connection", assessment: "Assessment", collaboration_angle: "Collaboration angle", limitations: "AI boundaries"};
+          for (const [key, label] of Object.entries(labels)) {
+            const section = document.createElement("p");
+            const heading = document.createElement("strong");
+            heading.textContent = label + ": ";
+            section.append(heading, document.createTextNode(p.why_match?.[key] || "Not recorded"));
+            why.append(section);
+          }
+          const button = document.createElement("button");
           button.textContent = "View evidence";
           button.onclick = () => show(r);
-          action.append(button);
-          tr.append(identity, fit, why, contact, action);
+          why.append(button);
+          cell(p.content_direction);
+          const urlCell = cell("");
+          urlCell.replaceChildren(link(r.creator.profile_url, r.creator.profile_url || "Unknown"));
+          cell(p.followers);
+          cell(p.content_language);
+          cell(p.audience_region);
           $("rows").append(tr);
         }
         text("page", `${page + 1} / ${pages} · ${rows.length} creators`);
