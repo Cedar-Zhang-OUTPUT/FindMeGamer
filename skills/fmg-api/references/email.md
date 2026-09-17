@@ -12,6 +12,8 @@ Reusing a submission key returns the original job; changed input conflicts. Poll
 
 Inspect templates with `fmg email templates` and `fmg email template game-outreach`. Use exactly the returned version and variables. `message.json` is:
 
+For `Liminal Outreach`, fetch `fmg email template liminal-outreach`. Its server-owned subject currently starts `Internal Test`; the CLI does not accept a custom subject override. Preserve all fixed template prose and substitute only declared variables. Never infer the version from an old example. A template/version change requires a fresh preview/task and review, not editing an old snapshot. If `smtp_recipient_not_allowed` is returned, ask the administrator to authorize the intended address; do not bypass the allowlist with another workflow.
+
 ```json
 {"template_id":"game-outreach","template_version":"3","to":"creator@example.com","variables":{"creator_name":"Creator","game_name":"Selected Game","game_summary":"Factual game description","game_url":"https://store.steampowered.com/app/570/","personalization":"A specific statement supported by saved public evidence","sender_name":"Sender","company_name":"Company"}}
 ```
