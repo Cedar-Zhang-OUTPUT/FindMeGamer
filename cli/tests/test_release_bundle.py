@@ -41,4 +41,8 @@ def test_actual_bundle_installs_skills_and_reports_release_version(tmp_path):
     )
     assert version.returncode == 0
     assert "0.1.0-dev" not in version.stdout
-    assert "0.2.0" in version.stdout
+    expected = os.environ.get("FMG_RELEASE_VERSION")
+    assert expected, "Set FMG_RELEASE_VERSION to the version being accepted"
+    assert expected in version.stdout
+    assert (tmp_path / "skills/fmg-api/scripts/outreach_dashboard.html").is_file()
+    assert (tmp_path / "skills/fmg-research/scripts/research_dashboard.py").is_file()
