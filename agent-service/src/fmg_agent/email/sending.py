@@ -141,7 +141,7 @@ class SendStore:
             existing = self._existing(session, token_id, preview_id, key)
             if existing is not None:
                 return existing
-            if preview["message"].get("format") != "plain_text":
+            if preview["message"].get("format") not in {"plain_text", "signature_image"}:
                 raise ApiError(409, "preview_format_retired", "Create and approve a new plain-text draft; this older draft is no longer sendable.")
             if not smtp_ready(config):
                 raise ApiError(

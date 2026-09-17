@@ -1,6 +1,7 @@
 """Server-configured SMTP, TLS by default; post-DATA uncertainty is not retried."""
 
 from email.message import EmailMessage
+from base64 import b64decode
 from email.utils import formatdate
 import smtplib
 import ssl
@@ -27,6 +28,14 @@ def deliver(config, message, message_id):
         mail["Date"] = formatdate(localtime=False)
         mail["Message-ID"] = f'<fmg-{message_id}@{sender.split("@",1)[1]}>'
         mail.set_content(message["text"])
+        if message.get("format") == "signature_image":
+            mail.add_alternative(message["html"], subtype="html")
+            mail.get_payload()[-1].add_related(
+                b64decode(message["signature_png_base64"], validate=True),
+                maintype="image", subtype="png",
+                cid="<ontology-play-signature>", disposition="inline",
+                filename="ontology-play.png",
+            )
         if config.smtp_encryption == "tls":
             connection = smtplib.SMTP_SSL(
                 config.smtp_host,

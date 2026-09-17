@@ -25,7 +25,7 @@ dev = ["pytest>=8.3,<9", "black==25.1.0"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-"fmg_agent.email" = ["template_data/*.json"]
+"fmg_agent.email" = ["template_data/*.json", "template_data/*.png"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

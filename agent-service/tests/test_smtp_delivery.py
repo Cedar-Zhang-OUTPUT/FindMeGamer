@@ -125,3 +125,22 @@ def test_plaintext_smtp_is_rejected_without_explicit_loopback_mode(
     config.smtp_allow_insecure_loopback = False
     assert deliver(config, {}, "test")["state"] == "failed"
     assert smtp_server.messages == []
+
+
+def test_liminal_signature_embedded_without_remote_images(tmp_path, smtp_server):
+    from fmg_agent.email.smtp import deliver
+    from fmg_agent.email.templates import get_template, render_template
+    from test_liminal_template import values
+    message = render_template(get_template("liminal-outreach"), values())
+    message.update({"from": "publisher@example.com", "to": "creator@example.com"})
+    assert deliver(configuration(tmp_path, smtp_server), message, "signature-test")["state"] == "sent"
+    parsed = BytesParser(policy=policy.default).parsebytes(smtp_server.messages[0])
+    assert parsed.get_content_type() == "multipart/alternative"
+    assert "Kind regards," in parsed.get_body(preferencelist=("plain",)).get_content()
+    html = parsed.get_body(preferencelist=("html",)).get_content()
+    assert 'src="cid:ontology-play-signature"' in html
+    pictures = [p for p in parsed.walk() if p.get_content_type() == "image/png"]
+    assert len(pictures) == 1
+    assert pictures[0]["Content-ID"] == "<ontology-play-signature>"
+    assert pictures[0].get_content_disposition() == "inline"
+    assert pictures[0].get_payload(decode=True).startswith(b"\x89PNG")

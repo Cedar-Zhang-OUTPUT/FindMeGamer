@@ -1,6 +1,8 @@
 """Versioned, server-owned templates. No user-supplied executable templates."""
 
 from importlib.resources import files
+from base64 import b64encode
+from html import escape
 import json
 from string import Template
 
@@ -70,4 +72,16 @@ def render_template(definition, variables):
             "Subject variables must not contain line breaks.",
         )
     result["format"] = "plain_text"
+    if definition.get("format") == "signature_image":
+        # Server-owned asset is snapshotted with the draft, never remotely fetched.
+        result["format"] = "signature_image"
+        result["html"] = (
+            '<!doctype html><html><body><div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">'
+            + escape(result["text"]).replace("\n", "<br>\n")
+            + '</div><br><img src="cid:ontology-play-signature" alt="Ontology Play" width="335" '
+            'style="width:335px;max-width:100%;height:auto"></body></html>'
+        )
+        result["signature_png_base64"] = b64encode(
+            files("fmg_agent.email").joinpath("template_data", "ontology-play.png").read_bytes()
+        ).decode("ascii")
     return result
