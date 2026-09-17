@@ -27,3 +27,20 @@
   was published as part of this service deployment; existing CLI task commands
   work with the updated API. Restart/update old dashboard Skills before using the
   new reply fields.
+
+## Internal-recipient follow-up
+
+- Deployed source `56040b3`, image `fmg-agent:internal-56040b3`, checkout
+  `/opt/fmg-agent-internal-56040b3`.
+- Liminal Outreach is now version 3; subject starts `Internal Test —`.
+  Existing immutable previews are unchanged; callers must fetch the current
+  template and create fresh drafts to use the new subject.
+- Added exactly the user's 18 specified recipients, retaining the original test
+  address (19 total). Other addresses remain blocked. Previous private env backed
+  up under `/var/backups/find-me-gamer-agent/internal-recipients-56040b3/`.
+- No active SMTP sends or pending approved recipients at preflight. API/Worker
+  recreated together; no database migration needed. Mocked SMTP checks on the
+  deployed configuration verified all 18 additions and rejection of an unlisted
+  address. No actual emails sent for this change.
+- CLI template query verifies the new version and subject. Published Skills are
+  still the previous release and require a separate updated release/reload.
