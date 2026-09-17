@@ -1,6 +1,7 @@
 # Outreach task development checkpoint
 
-This change is local development, not a deployed release. Existing `fmg email`
+The backend is deployed for restricted SMTP acceptance testing (2026-09-17),
+not yet a published CLI release. Existing `fmg email`
 commands remain supported for individual/special-purpose sending.
 
 ## Implemented contract
@@ -55,3 +56,24 @@ Redis/Celery batch execution. No upstream models or real email recipients used.
 
 Not included: mailbox reply ingestion, in-place task editing, automatic retries
 of uncertain deliveries, attachments, CC/BCC, or arbitrary template creation.
+
+## Restricted deployment — 2026-09-17
+
+- Source revision `61c001b`; image `fmg-agent:outreach-61c001b`.
+- Checkout `/opt/fmg-agent-outreach-61c001b`; API healthy, Worker running;
+  `0006_outreach` applied successfully.
+- Before migration, database and previous service environment saved under
+  `/var/backups/find-me-gamer-agent/outreach-61c001b-20260917T043133Z/`.
+  Database dump also uploaded to the dedicated S3 backups/agent prefix.
+- SMTP now enabled with a server-side allowlist containing only the explicitly
+  approved internal test recipient. Do not remove this restriction without user
+  authorization. The credential is not in this repository.
+- Public callback origin is `https://44.233.174.193`.
+- Local regression: 132 passed, one opt-in container test skipped; includes real
+  PostgreSQL/Redis/Worker and local SMTP capture. Go tests/vet passed.
+- Created Yes task `0320ee9a-fde6-4ef2-86f3-39d2c7c35979` and No task
+  `31d83405-3e06-4a33-a77f-da89a2078c34`; both await explicit draft approval,
+  each contains one test recipient. No task emails sent yet.
+- Both local read-only dashboards successfully read the cloud drafts.
+- Next: user reviews drafts, confirms start, then the recipient confirms each
+  Yes/No link; verify independent recorded responses and dashboard statistics.
