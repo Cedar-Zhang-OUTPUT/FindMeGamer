@@ -5,6 +5,8 @@ description: Use when calling the company fmg CLI for YouTube, X, Twitch, Steam,
 
 # FMG API
 
+**Fixed outreach copy:** personalize only the selected server template's declared variables. Its non-variable wording is user-approved, fixed PR copy, not Agent-authored analysis. For LIMINAL outreach use `liminal-outreach`; never silently substitute `game-outreach`, rewrite fixed claims, add disclaimers/Internal Test text, or change the subject/signature. Read the current server template. Keep evidence checks on variable values; missing variable evidence requires clarification or an incomplete draft, not a different template. Sending still requires approval.
+
 Use the installed `fmg` binary; company provider credentials stay on the gateway. Authenticate with the administrator's HTTPS address and personal revocable token via `fmg auth login --server ADDRESS --token-stdin`; never expose the token in arguments, logs or artifacts. If not installed/configured, explain what is missing rather than guessing a server.
 
 Run `fmg --help` and `fmg version` when command availability is uncertain. Before metered work, read [Usage and errors](references/usage.md): capture the host's Codex usage snapshot when available, choose a stable run ID, and prefix metered commands with `fmg --run-id ID`. Capture a second host snapshot and read `fmg --run-id ID usage` at the end, including interrupted runs.

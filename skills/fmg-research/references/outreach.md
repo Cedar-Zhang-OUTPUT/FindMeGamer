@@ -2,7 +2,25 @@
 
 Use existing explicitly public business contacts when supported by source. For each suitable research result, contact lookup is required by default unless the user explicitly opts out. When no public business email is present in profile/bio or saved evidence, use `fmg email enrich`; save job/key and poll. Complete empty => not_found; failed/quota/timeout => failed/unresolved. Do not infer personal addresses or convert Gemini suggestions into verified delivery. Multiple contacts retain purposes/sources; select the business-appropriate recipient, asking if ambiguous.
 
-Ask only for missing batch decisions: which creators/how many, recipient selection, sender/company signature and intended message. Use Codex's asynchronous question UI if available, otherwise normal conversation. You may continue unrelated authorized preparation while waiting; sending waits for approval.
+Ask only for missing batch decisions: which creators/how many and recipient selection. Do not re-ask or rewrite a selected template's approved sender/signature or fixed message. Use Codex's asynchronous question UI if available, otherwise normal conversation. You may continue unrelated authorized preparation while waiting; sending waits for approval.
+
+## Fixed copy versus personalization
+
+For LIMINAL use `fmg email template liminal-outreach` and the returned version.
+Only fill `creator_name`, `channel_name`, `reference_work`,
+`specific_observation`, and `game_download_url`. Everything outside these
+placeholders is fixed, user-approved PR wording, including following/enjoying
+videos, the demo availability statement, game description, title and signature.
+Do not recast these fixed phrases as Agent-written research conclusions, require
+a new per-recipient verification of the fixed prose, append caveats, or choose
+the generic template to avoid that wording. Only an explicit user request can
+authorize a template/copy change. The subject already contains Internal Test;
+do not insert another marker into either title or body.
+
+Evidence requirements apply to the five variable values: use actual names,
+works, observations and links. Missing evidence means ask for the missing value
+or retain an incomplete draft; never invent it or switch templates. A concrete
+known contradiction can be flagged to the user, not silently rewritten.
 
 List/inspect service templates rather than creating arbitrary templates. Fill variables from the selected game and saved creator evidence. A channel name can be the greeting when a public personal name is unavailable. Say what was observed without inventing a viewing experience. For an individual/special email, retain the `fmg email preview/send` workflow. For batches, use `fmg outreach task create` and the installed fmg-api `references/outreach.md`: store all personalized drafts on the server and launch its bundled read-only local dashboard in Codex's browser for recipient-by-recipient review. Do not build a replacement website or send from it.
 

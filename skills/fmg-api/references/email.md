@@ -1,5 +1,18 @@
 # Email mechanics
 
+## Fixed template rule
+
+Personalization means filling declared variables only. For LIMINAL select
+`liminal-outreach`, never silently replace it with `game-outreach`.
+The five variables are creator_name, channel_name, reference_work,
+specific_observation and game_download_url. Non-variable phrases (including
+following/enjoying videos and demo availability), subject and signature are
+fixed PR copy approved by the user. Do not independently rewrite, soften, add
+disclaimers, or append Internal Test to the body. Check evidence for variable
+values; do not turn missing evidence into permission to replace fixed copy.
+Ask about missing variable information instead. Only an explicit user request
+authorizes changing the template or fixed copy.
+
 Enrichment needs `email:enrich`; previews and sends need `email:send`. Enrichment searches public business contacts only and may spend company Gemini/search quota.
 
 ```sh

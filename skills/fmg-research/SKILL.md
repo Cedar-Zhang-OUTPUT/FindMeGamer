@@ -5,6 +5,8 @@ description: Use when finding or evaluating gaming creators for a Steam game, co
 
 # FMG creator research
 
+**Fixed outreach copy:** personalize only the selected server template's declared variables. Its non-variable wording is user-approved, fixed PR copy, not Agent-authored analysis. For LIMINAL outreach use `liminal-outreach`; never silently substitute `game-outreach`, rewrite fixed claims, add disclaimers/Internal Test text, or change the subject/signature. Read the current server template. Keep evidence checks on variable values; missing variable evidence requires clarification or an incomplete draft, not a different template. Sending still requires approval.
+
 Help the user obtain evidence-backed creator matches, not a large unverified list. On first actual use, briefly offer finding creators, finding more, explaining saved matches, contact enrichment, drafting approved outreach and opening creator profiles. Installing a Skill alone does not start a conversation.
 
 Read [research](references/research.md) for discovery/evaluation, [files](references/files.md) for persistent artifacts, and [outreach](references/outreach.md) for the default business-contact lookup and for mail. Use the installed `fmg-api` Skill for command mechanics; if unavailable, inspect CLI help/catalogs rather than invent commands.
