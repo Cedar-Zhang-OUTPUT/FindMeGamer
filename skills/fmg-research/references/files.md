@@ -23,6 +23,7 @@ game-profile.md
 creator-index.json
 runs/<run-id>/
   search-intent.json
+  game-confirmation.json    # pending/approved/rejected understanding + search scope
   progress.json
   evidence/                 # raw API pages plus concise source notes
   matches/<local-key>.json
@@ -34,6 +35,28 @@ outreach/<batch-id>/        # variable inputs, previews, approval record, receip
 ```
 
 Use safe local filenames, not arbitrary URL strings. `progress.json` records completed actions, pending actions, cursors, job IDs, original idempotency keys and budget counters. Write updates atomically and keep existing files on failure. Different runs do not overwrite prior Match Briefs. `usage.json` stores the unmodified service envelope; `summary.md` distinguishes measured counts, estimates and unknown money.
+
+## Game review record
+
+Before creator discovery, save `runs/<run-id>/game-confirmation.json` with status
+`awaiting_confirmation`, then change to `approved` or `rejected` only according
+to the user's actual response. Include:
+
+- Steam App ID, reviewed game Profile path and content hash.
+- A preserved snapshot of the game understanding and proposed Search Intent,
+  including search angles, exclusions, platforms, constraints, targets and budgets.
+- Search Intent path/hash, facts-versus-inferences limitations shown to the user,
+  user corrections (with their source clearly attributed), and review timestamp.
+- On approval: the approving user message reference (or faithful short quote if
+  the host provides no message ID), approval timestamp and exact approved scope.
+  Never fabricate a reference or mark silence as approval.
+
+Set `progress.json` phase to `awaiting_game_confirmation` while waiting. Preserve
+review snapshots when revising or starting another run; a changed live Profile
+must not erase what the user originally reviewed. A prior approval can support
+resume of the same unchanged work, but not a materially changed search plan.
+This is an Agent workflow record, not a server-enforced CLI permission: direct
+API commands remain available for other authorized tasks.
 
 Each Match Brief is a JSON object (not Markdown), with these required slots:
 
