@@ -1,6 +1,6 @@
 {
   "id": "liminal-outreach",
-  "version": "2",
+  "version": "3",
   "name": "Liminal Outreach",
   "source": {
     "url": "https://k1mai98sti.feishu.cn/wiki/VmYtwDvDGiKbhIkLg8tcX2h0nUb",
@@ -34,7 +34,7 @@
       "description": "Verified LIMINAL: Within Steam demo/game link."
     }
   },
-  "subject": "Thought you might enjoy LIMINAL: Within — interactive film meets pixel RPG",
+  "subject": "Internal Test — Thought you might enjoy LIMINAL: Within — interactive film meets pixel RPG",
   "text": "Hi ${creator_name},\n\nI’m Toki, the game producer at Ontology Play, an independent studio from Hong Kong. I’ve been following ${channel_name}, and I especially enjoyed your video on ${reference_work}. I liked how you ${specific_observation}.\n\nI’m reaching out because I’d love to invite you to try our game, LIMINAL: Within. The demo is now available on Steam, and you can download it here:\n\nDemo: ${game_download_url}\n\nLIMINAL: Within is a mix of interactive film and retro pixel-art RPG adventure, which is a pretty unusual combination. In terms of format, it is closest to Dispatch, while its story and subject matter are closer to PARANORMASIGHT: The Seven Mysteries of Honjo. The story follows an investigation into a series of murders, unfolding through multiple characters and interconnected storylines as the player is gradually led toward the truth.\n\nThe gameplay combines cinematic storytelling with branching choices and QTEs, as well as a substantial pixel-art RPG adventure that lets you step into and explore another part of the story.\n\nIf you enjoy the game and think it would be a good fit for your audience, we’d love to see you share it on your channel in whatever format feels natural to you—whether that’s a video, a livestream, or even a short mention. There is absolutely no obligation to cover it, though; we’d simply be happy for you to try it, and any feedback would already mean a lot to us. If you have any trouble accessing the demo, just let me know.\n\nThanks for your time, and for the work you put into your channel.\n\nBest,\nToki\nGame Producer, Ontology Play\nHong Kong",
   "format": "plain_text"
 }

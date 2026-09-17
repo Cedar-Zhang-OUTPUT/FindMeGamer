@@ -13,10 +13,10 @@ def test_catalog_and_source_template_content():
     catalog = {t["id"]: t for t in list_templates()}
     assert catalog["liminal-outreach"]["name"] == "Liminal Outreach"
     assert catalog["game-outreach"]["version"] == "3"
-    template = get_template("liminal-outreach", "2")
+    template = get_template("liminal-outreach", "3")
     assert template["source"]["revision_id"] == 88
     rendered = render_template(template, values())
-    assert rendered["subject"] == "Thought you might enjoy LIMINAL: Within — interactive film meets pixel RPG"
+    assert rendered["subject"] == "Internal Test — Thought you might enjoy LIMINAL: Within — interactive film meets pixel RPG"
     for content in ("I’m Toki", "Hong Kong", "PARANORMASIGHT: The Seven Mysteries of Honjo", "branching choices and QTEs", "no obligation to cover it"):
         assert content in rendered["text"]
     v = values(); v["specific_observation"] = "<script>unsafe</script>"
@@ -30,7 +30,7 @@ def test_catalog_and_source_template_content():
 def test_liminal_outreach_plain_drafts_without_sending(sending):
     app, client, owner, _, _ = sending
     result = client.post("/v1/outreach/tasks", headers=headers(owner, "liminal-template"), json={
-        "name": "Liminal preview", "template_id": "liminal-outreach", "template_version": "2",
+        "name": "Liminal preview", "template_id": "liminal-outreach", "template_version": "3",
         "recipients": [{"creator_id": name, "to": name+"@example.com", "variables": values()} for name in ("alice", "bob")],
     })
     assert result.status_code == 201
