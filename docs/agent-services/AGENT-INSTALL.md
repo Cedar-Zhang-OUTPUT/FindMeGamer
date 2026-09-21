@@ -8,8 +8,8 @@ This is the public, agent-readable setup guide for **FMG CLI 0.5.0**. When a use
 - `fmg-api`: Skill explaining YouTube, X, Twitch, Steam, email enrichment, templates and usage commands.
 - `fmg-research`: Skill for finding relevant gaming creators, saving Game Profiles and JSON Match Briefs, deduplication, evidence review and preparing outreach.
 - Gateway base URL: **`https://44.233.174.193`**, without `/v1` appended.
-- Release: **`fmg-v0.5.0`**. Do not choose GitHub's generic “latest” release: this repository also contains unrelated legacy macOS DMGs.
-- Official release: https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/fmg-v0.5.0
+- Release: **`fmg-v0.6.0`**. Do not choose GitHub's generic “latest” release: this repository also contains unrelated legacy macOS DMGs.
+- Official release: https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/fmg-v0.6.0
 
 The CLI uses company provider keys on the server. The user needs only a personal revocable **FMG access token**. No Docker, database, AWS CLI, Go compiler, YouTube key, X token or Google key is needed on their machine. Do not start or deploy the old macOS backend.
 
@@ -60,10 +60,10 @@ For a fresh supported environment, use a private temporary directory. Download t
 ```sh
 fmg_setup_dir=$(mktemp -d)
 curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.5.0/install.py \
+  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.6.0/install.py \
   -o "$fmg_setup_dir/install.py"
 curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.5.0/SHA256SUMS \
+  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.6.0/SHA256SUMS \
   -o "$fmg_setup_dir/SHA256SUMS"
 python3 - "$fmg_setup_dir" <<'PY'
 import hashlib
@@ -84,7 +84,7 @@ Read the downloaded `install.py` using your file-reading tool before execution. 
 Then run:
 
 ```sh
-python3 "$fmg_setup_dir/install.py" --tag fmg-v0.5.0 --skills
+python3 "$fmg_setup_dir/install.py" --tag fmg-v0.6.0 --skills
 "$HOME/.local/bin/fmg" version
 "$HOME/.local/bin/fmg" --help
 ```

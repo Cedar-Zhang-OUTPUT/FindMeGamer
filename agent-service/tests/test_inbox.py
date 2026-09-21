@@ -14,7 +14,7 @@ def sent_task(sending):
         json={
             "name": "Inbox test",
             "template_id": "game-outreach",
-            "template_version": "3",
+            "template_version": "4",
             "recipients": [
                 {"creator_id": n, "to": n + "@example.com", "variables": variables()}
                 for n in ("alice", "bob")
@@ -38,16 +38,17 @@ def sent_task(sending):
     return task
 
 
-def test_plain_text_only_and_no_response_endpoint(sending, tmp_path, smtp_server):
+def test_plain_text_fallback_and_no_response_endpoint(sending, tmp_path, smtp_server):
     from fmg_agent.email.templates import get_template, render_template
     from fmg_agent.email.smtp import deliver
 
     m = render_template(get_template("game-outreach"), variables())
-    assert not m.get("html") and "choice=yes" not in m["text"]
+    assert m["format"] == "signature_image" and "choice=yes" not in m["text"]
     m.update({"from": "publisher@example.com", "to": "alice@example.com"})
     assert deliver(configuration(tmp_path, smtp_server), m, "test")["state"] == "sent"
     parsed = BytesParser(policy=policy.default).parsebytes(smtp_server.messages[0])
-    assert parsed.get_content_type() == "text/plain" and not parsed.is_multipart()
+    assert parsed.is_multipart()
+    assert m["text"] in parsed.get_body(preferencelist=("plain",)).get_content().replace("\r\n", "\n")
     app, client, owner, _, _ = sending
     task = sent_task(sending)
     assert "Yes:" not in task["recipients"][0]["message"]["text"]

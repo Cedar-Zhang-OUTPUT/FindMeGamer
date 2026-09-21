@@ -4,7 +4,7 @@ from test_email_templates import variables
 
 def create(app, client, owner, key="batch"):
     return client.post("/v1/outreach/tasks", headers=headers(owner, key), json={
-        "name": "Launch", "template_id": "game-outreach", "template_version": "3",
+        "name": "Launch", "template_id": "game-outreach", "template_version": "4",
         "recipients": [{"creator_id": name, "to": name + "@example.com", "variables": variables()}
                        for name in ("alice", "bob")],
     })
@@ -86,7 +86,7 @@ def test_invalid_recipient_and_missing_configuration(sending):
     app.state.settings.smtp_host = ""
     assert client.post(path + "/start", headers=headers(owner), json={"confirm": True, "revision": task["revision"]}).status_code == 503
     assert client.get(path, headers=headers(owner)).json()["data"]["state"] == "awaiting_approval"
-    payload = {"name": "invalid", "template_id": "game-outreach", "template_version": "3",
+    payload = {"name": "invalid", "template_id": "game-outreach", "template_version": "4",
                "recipients": [{"creator_id": "x", "to": "not-an-address", "variables": variables()}]}
     assert client.post("/v1/outreach/tasks", headers=headers(owner, "invalid"), json=payload).status_code == 422
     payload["recipients"][0]["to"] = "x@example.com"

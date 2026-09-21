@@ -6,25 +6,11 @@ Ask only for missing batch decisions: which creators/how many and recipient sele
 
 ## Fixed copy versus personalization
 
-For LIMINAL use `fmg email template liminal-outreach` and the returned version.
-Only fill `creator_name`, `channel_name`, `reference_work`,
-`specific_observation`, and `game_download_url`. Everything outside these
-placeholders is fixed, user-approved PR wording, including following/enjoying
-videos, the demo availability statement, game description, title and signature.
-Do not recast these fixed phrases as Agent-written research conclusions, require
-a new per-recipient verification of the fixed prose, append caveats, or choose
-the generic template to avoid that wording. Only an explicit user request can
-authorize a template/copy change. The subject already contains Internal Test;
-do not insert another marker into either title or body.
-
-Evidence requirements apply to the five variable values: use actual names,
-works, observations and links. Missing evidence means ask for the missing value
-or retain an incomplete draft; never invent it or switch templates. A concrete
-known contradiction can be flagged to the user, not silently rewritten.
+Use `fmg email template game-outreach` for every target game. Read [the full template, variable positions and writing guidance](email-template.md) before drafting. Game facts come from this task's confirmed Game Profile, not a hardcoded title. The referenced creator work may be a different game. Missing details require clarification or an incomplete draft; never invent facts, substitute another template or rewrite fixed PR language.
 
 List/inspect service templates rather than creating arbitrary templates. Fill variables from the selected game and saved creator evidence. A channel name can be the greeting when a public personal name is unavailable. Say what was observed without inventing a viewing experience. For an individual/special email, retain the `fmg email preview/send` workflow. For batches, use `fmg outreach task create` and the installed fmg-api `references/outreach.md`: store all personalized drafts on the server and launch its bundled read-only local dashboard in Codex's browser for recipient-by-recipient review. Do not build a replacement website or send from it.
 
-Save approval scope in `outreach/<batch>/approval.json` with the relevant user message reference, approved task ID/revision (or single preview), recipients and time. Only after approval, start that exact task revision; the server sends it, not an Agent-side loop. Changed content requires a replacement unapproved task and fresh review/approval. Poll the existing task after a timeout rather than recreate it. Unknown delivery must be investigated, not automatically resent. Use server-rendered email content, with no Yes/No buttons. Liminal Outreach v4 adds only a server-owned inline signature logo via minimal HTML plus a text fallback; do not invent extra formatting. The server records actual IMAP replies; a reply is not acceptance or completed cooperation. Automatic replies and bounces are tracked separately; inspect monitoring health before interpreting a zero reply count. Report response rate among SMTP-accepted recipients separately from sending failures and unknown delivery; keep the local task snapshot and usage summary.
+Save approval scope in `outreach/<batch>/approval.json` with the relevant user message reference, approved task ID/revision (or single preview), recipients and time. Only after approval, start that exact task revision; the server sends it, not an Agent-side loop. Changed content requires a replacement unapproved task and fresh review/approval. Poll the existing task after a timeout rather than recreate it. Unknown delivery must be investigated, not automatically resent. Use server-rendered email content, with no Yes/No buttons. The unified template adds only a server-owned inline signature logo via minimal HTML plus a text fallback; do not invent extra formatting. The server records actual IMAP replies; a reply is not acceptance or completed cooperation. Automatic replies and bounces are tracked separately; inspect monitoring health before interpreting a zero reply count. Report response rate among SMTP-accepted recipients separately from sending failures and unknown delivery; keep the local task snapshot and usage summary.
 
 If SMTP is not configured, preserve previews/variables and report the missing company setup. Do not ask the user to paste SMTP secrets into research artifacts. Preparing mail can complete without sending it.
 

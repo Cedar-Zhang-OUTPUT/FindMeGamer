@@ -165,7 +165,7 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
             json.dumps(
                 {
                     "template_id": "game-outreach",
-                    "template_version": "3",
+                    "template_version": "4",
                     "to": "creator@example.com",
                     "variables": variables(),
                 }
@@ -215,7 +215,7 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
         smtp_server.mode = "sent"
         batch_file = tmp_path / "batch.json"
         batch_file.write_text(json.dumps({"name": "Worker batch", "template_id": "game-outreach",
-            "template_version": "3", "recipients": [{"creator_id": name,
+            "template_version": "4", "recipients": [{"creator_id": name,
                 "to": name + "@example.com", "variables": variables()} for name in ("alice", "bob")]}))
         response = cli("outreach", "task", "create", "--input", str(batch_file), "--idempotency-key", "batch")
         assert response.returncode == 0, response.stderr

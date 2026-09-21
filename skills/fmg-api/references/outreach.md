@@ -2,20 +2,7 @@
 
 Requires `email:send`. `fmg email` remains available for individual/special sending; use tasks when a batch needs server execution and real mailbox reply monitoring. Never use individual sending to bypass a blocked batch.
 
-Inspect the selected template for its current version and required variables.
-For LIMINAL use `fmg email template liminal-outreach`, not the generic example
-below. Fill only its five variables: creator_name, channel_name, reference_work,
-specific_observation, game_download_url. All non-variable copy is user-approved
-fixed PR wording, including following/enjoying videos and demo availability.
-Do not rewrite it or substitute another template on your own. Missing evidence
-for variable values calls for clarification, not a template change. Preserve
-the returned title (including Internal Test), signature and inline logo.
-The following JSON is an example for other games using `game-outreach`, not a
-default override for a user-selected template:
-
-```json
-{"name":"Game launch","template_id":"game-outreach","template_version":"3","recipients":[{"creator_id":"youtube:CHANNEL_ID","to":"creator@example.com","variables":{"creator_name":"Creator","game_name":"Selected Game","game_summary":"Factual introduction","game_url":"https://store.steampowered.com/app/570/","personalization":"Specific evidence-backed observation","sender_name":"Sender","company_name":"Company"}}]}
-```
+Use `fmg email template game-outreach` for all target games. Read the [full template and variable contract](email-template.md) before writing drafts. Batch JSON contains `name`, `template_id: "game-outreach"`, current `template_version`, and `recipients`: each item supplies `creator_id`, `to`, and all declared `variables`. Keep target-game facts consistent across the batch and personalize the creator fields. Preserve fixed copy; no per-game template is required.
 
 Up to 1,000 recipients per task, one address each; duplicate addresses within a task are rejected. Choose among multiple contacts before creation. Creator ID is the saved platform-qualified identity, not an invented personal name.
 
@@ -50,7 +37,7 @@ The worker sends independently of Codex. Repeating start is safe for the same re
 ## Actual email replies
 
 Yes/No links and callback endpoints are retired. Replace only declared variables;
-preserve server-rendered content including the approved Liminal signature image.
+preserve server-rendered content including the approved signature image.
 Do not add custom HTML, Markdown formatting or response buttons.
 
 The server polls the configured corporate IMAP mailbox read-only. It correlates In-Reply-To/References to each sent Message-ID and checks the sender, so one recipient's reply cannot update another. No subject-only guessing. A new unrelated message or reply from a different address may not auto-link; report this limitation rather than asserting no reply exists.

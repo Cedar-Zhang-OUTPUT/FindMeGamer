@@ -14,15 +14,11 @@ def test_template_catalog_requires_auth_and_exposes_variables(gateway):
 
 
 def variables():
-    return {
-        "creator_name": "Creator",
-        "game_name": "New Game",
-        "game_summary": "A puzzle adventure.",
-        "game_url": "https://store.steampowered.com/app/570/",
-        "personalization": "Your public puzzle coverage is relevant.",
-        "sender_name": "Publisher",
-        "company_name": "Example Company",
-    }
+    from test_unified_template import unified_values
+    result = unified_values("New Game")
+    result["game_summary"] = "A puzzle adventure."
+    result["creator_name"] = "Creator"
+    return result
 
 
 def test_template_renders_selected_game_as_literal_text():
@@ -30,12 +26,13 @@ def test_template_renders_selected_game_as_literal_text():
 
     values = variables()
     values["creator_name"] = "<b>A</b>"
-    result = render_template(get_template("game-outreach", "3"), values)
+    result = render_template(get_template("game-outreach", "4"), values)
     assert "New Game" in result["subject"]
     assert "A puzzle adventure." in result["text"]
     assert "LIMINAL" not in result["text"]
     assert "<b>A</b>" in result["text"]
-    assert "html" not in result
+    assert "<b>A</b>" not in result["html"]
+    assert result["format"] == "signature_image"
 
 
 @pytest.mark.parametrize("change", ["missing", "extra", "wrong_type", "unsafe_url"])
@@ -53,7 +50,7 @@ def test_bad_variables_rejected_without_values_in_error(change):
     else:
         values["game_url"] = "javascript:private-value"
     with pytest.raises(ApiError) as error:
-        render_template(get_template("game-outreach", "3"), values)
+        render_template(get_template("game-outreach", "4"), values)
     assert error.value.status == 422
     assert "private-value" not in error.value.message
 

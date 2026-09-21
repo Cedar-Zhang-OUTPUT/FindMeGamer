@@ -131,7 +131,7 @@ def test_liminal_signature_embedded_without_remote_images(tmp_path, smtp_server)
     from fmg_agent.email.smtp import deliver
     from fmg_agent.email.templates import get_template, render_template
     from test_liminal_template import values
-    message = render_template(get_template("liminal-outreach"), values())
+    message = render_template(get_template("game-outreach"), values())
     message.update({"from": "publisher@example.com", "to": "creator@example.com"})
     assert deliver(configuration(tmp_path, smtp_server), message, "signature-test")["state"] == "sent"
     parsed = BytesParser(policy=policy.default).parsebytes(smtp_server.messages[0])

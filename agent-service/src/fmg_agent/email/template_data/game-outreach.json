@@ -1,40 +1,60 @@
 {
   "id": "game-outreach",
-  "version": "3",
-  "name": "Game creator outreach",
+  "version": "4",
+  "name": "Creator Outreach",
   "variables": {
     "creator_name": {
       "type": "string",
       "required": true,
-      "description": "Public name or channel name; do not invent a personal name."
+      "description": "Verified public first name, or user-approved channel greeting; never invent a personal name."
+    },
+    "channel_name": {
+      "type": "string",
+      "required": true,
+      "description": "Actual channel name; preserve the approved fixed PR wording outside variables."
+    },
+    "reference_work": {
+      "type": "string",
+      "required": true,
+      "description": "Actual referenced game or work supported by saved creator evidence; do not invent coverage."
+    },
+    "specific_observation": {
+      "type": "string",
+      "required": true,
+      "description": "One or two complete, naturally phrased sentences, including punctuation, connecting the referenced game/work to the confirmed target game through evidenced gameplay, style, themes or audience fit. No fixed 'I liked how you' opening; distinguish inference from facts and do not invent viewing claims."
     },
     "game_name": {
       "type": "string",
-      "required": true
+      "required": true,
+      "description": "Confirmed target game title, not the creator's reference game."
+    },
+    "game_tagline": {
+      "type": "string",
+      "required": true,
+      "description": "Short factual phrase for the subject; no final punctuation or line breaks."
     },
     "game_summary": {
       "type": "string",
-      "required": true
+      "required": true,
+      "description": "Complete concise paragraph with punctuation: confirmed genre, style, premise. Do not copy facts from another game."
+    },
+    "gameplay_summary": {
+      "type": "string",
+      "required": true,
+      "description": "Complete concise paragraph with punctuation: actual gameplay and game loop; avoid repeating game_summary."
+    },
+    "availability_statement": {
+      "type": "string",
+      "required": true,
+      "description": "Complete factual sentence with punctuation explaining current availability or where to learn more; never invent demo, release or access."
     },
     "game_url": {
       "type": "url",
-      "required": true
-    },
-    "personalization": {
-      "type": "string",
       "required": true,
-      "description": "Grounded relevance statement; do not claim viewing unless supported."
-    },
-    "sender_name": {
-      "type": "string",
-      "required": true
-    },
-    "company_name": {
-      "type": "string",
-      "required": true
+      "description": "Verified public link for this target game or its available demo."
     }
   },
-  "subject": "Creator collaboration: ${game_name}",
-  "text": "Hi ${creator_name},\n\n${personalization}\n\nWe would like to introduce ${game_name}. ${game_summary}\n\nGame details: ${game_url}\n\nWould you be interested in discussing coverage or a collaboration? Please reply if you would like more information. If this is not relevant, let us know and we will not follow up.\n\nBest,\n${sender_name}\n${company_name}",
-  "format": "plain_text"
+  "subject": "Internal Test — Thought you might enjoy ${game_name} — ${game_tagline}",
+  "text": "Hi ${creator_name},\n\nI’m Toki, the game producer at Ontology Play, an independent studio from Hong Kong. I’ve been following ${channel_name}, and I especially enjoyed your content on ${reference_work}. ${specific_observation}\n\nI’m reaching out because I’d love to invite you to try our game, ${game_name}. ${availability_statement}\n\nGame: ${game_url}\n\n${game_summary}\n\n${gameplay_summary}\n\nIf you enjoy the game and think it would be a good fit for your audience, we’d love to see you share it on your channel in whatever format feels natural to you—whether that’s a video, a livestream, or even a short mention. There is absolutely no obligation to cover it, though; we’d simply be happy for you to try it, and any feedback would already mean a lot to us. If you have any trouble accessing the game, just let me know.\n\nThanks for your time, and for the work you put into your channel.\n\nKind regards,\n\nToki Yuan\nGame Producer, Ontology Play\nEmail: OntologyPlay@hotmail.com",
+  "format": "signature_image"
 }

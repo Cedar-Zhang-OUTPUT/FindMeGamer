@@ -179,7 +179,7 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
                 {
                     "name": "Local review",
                     "template_id": "game-outreach",
-                    "template_version": "3",
+                    "template_version": "4",
                     "recipients": [
                         {
                             "creator_id": "creator-A",
@@ -239,7 +239,8 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
             assert actual["stats"]["sent"] == 1
             assert actual["stats"]["replied"] == 0
             assert actual["monitoring"]["state"] == "not_configured"
-            assert "html" not in actual["recipients"][0]["message"]
+            assert actual["recipients"][0]["message"]["format"] == "signature_image"
+            assert "cid:ontology-play-signature" in actual["recipients"][0]["message"]["html"]
             ledger = cli("--run-id", "local-outreach", "usage")["data"]
             assert "smtp" in json.dumps(ledger)
     finally:

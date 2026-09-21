@@ -189,7 +189,7 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 email_token.id,
                 {
                     "template_id": "game-outreach",
-                    "template_version": "3",
+                    "template_version": "4",
                     "to": "creator@example.com",
                     "variables": variables(),
                 },

@@ -5,7 +5,7 @@ description: Use when calling the company fmg CLI for YouTube, X, Twitch, Steam,
 
 # FMG API
 
-**Fixed outreach copy:** personalize only the selected server template's declared variables. Its non-variable wording is user-approved, fixed PR copy, not Agent-authored analysis. For LIMINAL outreach use `liminal-outreach`; never silently substitute `game-outreach`, rewrite fixed claims, add disclaimers/Internal Test text, or change the subject/signature. Read the current server template. Keep evidence checks on variable values; missing variable evidence requires clarification or an incomplete draft, not a different template. Sending still requires approval.
+**Unified outreach template:** use `game-outreach` for every target game, never a game-specific template. Before drafting, read [the complete template and variable contract](references/email-template.md) and fetch its current server version. Fill game facts from the user-confirmed Game Profile and creator facts from evidence. Only declared variables are editable; fixed PR wording, subject structure and signature remain unchanged. Read the full rendered email for natural transitions; missing facts require clarification, not invented details. Sending requires explicit approval.
 
 Use the installed `fmg` binary; company provider credentials stay on the gateway. Authenticate with the administrator's HTTPS address and personal revocable token via `fmg auth login --server ADDRESS --token-stdin`; never expose the token in arguments, logs or artifacts. If not installed/configured, explain what is missing rather than guessing a server.
 

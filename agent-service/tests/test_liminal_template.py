@@ -5,19 +5,18 @@ from test_email_sending import sending, headers
 
 
 def values():
-    return dict(creator_name="Alex", channel_name="Example Channel", reference_work="Dispatch",
-                specific_observation="explained the branching narrative", game_download_url="https://store.steampowered.com/app/4952700/")
+    from test_unified_template import unified_values
+    return unified_values()
 
 
 def test_catalog_and_source_template_content():
     catalog = {t["id"]: t for t in list_templates()}
-    assert catalog["liminal-outreach"]["name"] == "Liminal Outreach"
-    assert catalog["game-outreach"]["version"] == "3"
-    template = get_template("liminal-outreach", "4")
-    assert template["source"]["revision_id"] == 88
+    assert catalog["game-outreach"]["name"] == "Creator Outreach"
+    assert catalog["game-outreach"]["version"] == "4"
+    template = get_template("game-outreach", "4")
     rendered = render_template(template, values())
-    assert rendered["subject"] == "Internal Test — Thought you might enjoy LIMINAL: Within — interactive film meets pixel RPG"
-    for content in ("I’m Toki", "Hong Kong", "PARANORMASIGHT: The Seven Mysteries of Honjo", "branching choices and QTEs", "no obligation to cover it"):
+    assert rendered["subject"] == "Internal Test — Thought you might enjoy It Takes Two — a cooperative adventure"
+    for content in ("I’m Toki", "Hong Kong", "Players coordinate complementary abilities", "no obligation to cover it"):
         assert content in rendered["text"]
     v = values(); v["specific_observation"] = "<script>unsafe</script>"
     assert "<script>unsafe</script>" in render_template(template, v)["text"]
@@ -33,7 +32,7 @@ def test_catalog_and_source_template_content():
 def test_liminal_outreach_plain_drafts_without_sending(sending):
     app, client, owner, _, _ = sending
     result = client.post("/v1/outreach/tasks", headers=headers(owner, "liminal-template"), json={
-        "name": "Liminal preview", "template_id": "liminal-outreach", "template_version": "4",
+        "name": "Liminal preview", "template_id": "game-outreach", "template_version": "4",
         "recipients": [{"creator_id": name, "to": name+"@example.com", "variables": values()} for name in ("alice", "bob")],
     })
     assert result.status_code == 201
@@ -50,7 +49,7 @@ def test_signature_batch_can_start_and_delivers_only_once(sending):
     from fmg_agent.outreach import pending, process_recipient
     app, client, owner, _, _ = sending
     task = client.post("/v1/outreach/tasks", headers=headers(owner, "signature-batch"), json={
-        "name": "Signature batch", "template_id": "liminal-outreach", "template_version": "4",
+        "name": "Signature batch", "template_id": "game-outreach", "template_version": "4",
         "recipients": [{"creator_id": "test", "to": "test@example.com", "variables": values()}],
     }).json()["data"]
     assert pending(app.state.sessions) == []
@@ -69,3 +68,19 @@ def test_signature_batch_can_start_and_delivers_only_once(sending):
     assert sent[0]["format"] == "signature_image"
     assert "cid:ontology-play-signature" in sent[0]["html"]
     assert client.get(path, headers=headers(owner)).json()["data"]["stats"]["sent"] == 1
+
+
+def test_v5_connection_is_complete_text_and_logo_is_compact():
+    from base64 import b64decode
+    import struct
+
+    template = get_template("game-outreach", "4")
+    result = render_template(template, values())
+    assert "enjoyed your content on A Way Out. " + values()["specific_observation"] + "\n\n" in result["text"]
+    assert "I liked how you" not in result["text"]
+    png = b64decode(result["signature_png_base64"])
+    assert len(png) < 16000
+    assert struct.unpack(">II", png[16:24]) == (800, 210)
+    with pytest.raises(ApiError) as error:
+        get_template("game-outreach", "3")
+    assert error.value.code == "template_version_changed"

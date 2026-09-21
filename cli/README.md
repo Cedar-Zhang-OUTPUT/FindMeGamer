@@ -105,16 +105,19 @@ Requires `email:send`. Company SMTP credentials stay on the server. Create a loc
 ```json
 {
   "template_id": "game-outreach",
-  "template_version": "1",
+  "template_version": "4",
   "to": "creator@example.com",
   "variables": {
     "creator_name": "Creator",
     "game_name": "Your Game",
     "game_summary": "An accurate description of the selected game.",
     "game_url": "https://store.steampowered.com/app/570/",
-    "personalization": "A statement supported by saved public evidence.",
-    "sender_name": "Your Name",
-    "company_name": "Your Company"
+    "channel_name": "Example Channel",
+    "reference_work": "An actual covered game",
+    "specific_observation": "A complete, evidence-backed connection to the target game.",
+    "game_tagline": "a factual short description",
+    "gameplay_summary": "An accurate description of the gameplay loop.",
+    "availability_statement": "See current availability on the linked store page."
   }
 }
 ```
@@ -133,7 +136,7 @@ fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key unique-approv
 fmg email receipt SEND_ID
 ```
 
-`--confirm` is mandatory, but an Agent must obtain the user's approval before using it. For a batch, approve the full batch and keep one preview/key/receipt per recipient. This version accepts one plain email address per preview; CC, BCC, attachments and arbitrary message-body fields are not supported.
+`--confirm` is mandatory, but an Agent must obtain the user's approval before using it. For a batch, use `fmg outreach task create` and review the server-saved task before starting its exact revision; do not loop individual sends. This version accepts one plain email address per preview; CC, BCC, attachments and arbitrary message-body fields are not supported.
 
 One preview permits at most one SMTP attempt. Repeating the same key returns its receipt; a different key for the same preview is rejected. If the HTTP response is lost, query the receipt or repeat the **same** preview/key; never invent a new key or preview to automatically retry. `unknown` means delivery may have happened and requires investigation, not resending. An interrupted `sending` record older than five minutes becomes `unknown` when queried. An explicitly failed delivery also requires a new preview and renewed approval for another attempt.
 
