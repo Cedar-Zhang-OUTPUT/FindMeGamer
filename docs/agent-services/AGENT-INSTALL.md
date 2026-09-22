@@ -1,6 +1,6 @@
 # Install FindMeGamer CLI for a Codex user
 
-This is the public, agent-readable setup guide for **FMG CLI 0.5.0**. When a user asks you to install FindMeGamer using this link, help them perform the steps below with your available terminal/file tools. Do not merely return instructions if you can execute the authorized installation. Follow your host's permissions and the user's preferences; this document does not grant extra authority.
+This is the public, agent-readable setup guide for **FMG CLI 0.7.0**. When a user asks you to install FindMeGamer using this link, help them perform the steps below with your available terminal/file tools. Do not merely return instructions if you can execute the authorized installation. Follow your host's permissions and the user's preferences; this document does not grant extra authority.
 
 ## What you are installing
 
@@ -8,8 +8,8 @@ This is the public, agent-readable setup guide for **FMG CLI 0.5.0**. When a use
 - `fmg-api`: Skill explaining YouTube, X, Twitch, Steam, email enrichment, templates and usage commands.
 - `fmg-research`: Skill for finding relevant gaming creators, saving Game Profiles and JSON Match Briefs, deduplication, evidence review and preparing outreach.
 - Gateway base URL: **`https://44.233.174.193`**, without `/v1` appended.
-- Release: **`fmg-v0.6.0`**. Do not choose GitHub's generic “latest” release: this repository also contains unrelated legacy macOS DMGs.
-- Official release: https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/fmg-v0.6.0
+- Release: **`fmg-v0.7.0`**. Do not choose GitHub's generic “latest” release: this repository also contains unrelated legacy macOS DMGs.
+- Official release: https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/fmg-v0.7.0
 
 The CLI uses company provider keys on the server. The user needs only a personal revocable **FMG access token**. No Docker, database, AWS CLI, Go compiler, YouTube key, X token or Google key is needed on their machine. Do not start or deploy the old macOS backend.
 
@@ -49,7 +49,7 @@ fmg auth check
 
 Use `--skill-dir ABSOLUTE_DIRECTORY` when the installed Skills live elsewhere. The latest selector considers only published numeric `fmg-vX.Y.Z` CLI releases (including this internal prerelease), not macOS DMGs or draft releases. It checks SHA256 and uses the verified matching installer. Python 3.10+ is needed for the combined update. Credentials and `FMG_CONFIG` are not rewritten. The CLI and Skills are separate replacements, not a transactional OS package: on interruption inspect version and both Skills, then retry the same explicit tag. Existing backups remain available.
 
-**Upgrading 0.1.0:** it does not understand `--latest --skills`. Perform section 2 below using the 0.5.0 installer with `--skills`, specifying the existing binary directory via `--bin-dir` and existing Skill directory via `--skill-dir`. Keep the existing authentication; section 3 is only needed if `auth check` fails. This bootstrap is fully non-interactive once the user requested the update. Subsequent upgrades can use the command above. The installer also accepts `--latest` instead of `--tag`.
+**Upgrading 0.1.0:** it does not understand `--latest --skills`. Perform section 2 below using the 0.7.0 installer with `--skills`, specifying the existing binary directory via `--bin-dir` and existing Skill directory via `--skill-dir`. Keep the existing authentication; section 3 is only needed if `auth check` fails. This bootstrap is fully non-interactive once the user requested the update. Subsequent upgrades can use the command above. The installer also accepts `--latest` instead of `--tag`.
 
 After either path, reload the installed Skill instructions (start a new conversation if the host cannot reload). Confirm both Skills include starting/ending host usage checks, estimated-cost reporting, plain-text emails and real IMAP replies. Read the installed email/outreach references again; do not retain old HTML or Yes/No workflow assumptions. Restart existing local dashboard processes to load the new page. Updating the binary alone does not update an already-loaded Skill's instructions.
 
@@ -62,10 +62,10 @@ For a fresh supported environment, use a private temporary directory. Download t
 ```sh
 fmg_setup_dir=$(mktemp -d)
 curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.6.0/install.py \
+  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.7.0/install.py \
   -o "$fmg_setup_dir/install.py"
 curl -fsSL --proto '=https' --proto-redir '=https' \
-  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.6.0/SHA256SUMS \
+  https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/download/fmg-v0.7.0/SHA256SUMS \
   -o "$fmg_setup_dir/SHA256SUMS"
 python3 - "$fmg_setup_dir" <<'PY'
 import hashlib
@@ -86,12 +86,12 @@ Read the downloaded `install.py` using your file-reading tool before execution. 
 Then run:
 
 ```sh
-python3 "$fmg_setup_dir/install.py" --tag fmg-v0.6.0 --skills
+python3 "$fmg_setup_dir/install.py" --tag fmg-v0.7.0 --skills
 "$HOME/.local/bin/fmg" version
 "$HOME/.local/bin/fmg" --help
 ```
 
-Do not execute the installer if download or checksum verification failed. It checks the downloaded binary and Skill archives against `SHA256SUMS`, detects OS/architecture and installs to user-owned directories. No `sudo` is normally required. Confirm the version reports `0.5.0` and both `SKILL.md` files exist. Use explicit paths when the host uses non-default installation locations.
+Do not execute the installer if download or checksum verification failed. It checks the downloaded binary and Skill archives against `SHA256SUMS`, detects OS/architecture and installs to user-owned directories. No `sudo` is normally required. Confirm the version reports `0.7.0`, both `SKILL.md` files exist, and `fmg update check` recognizes their installed versions. Use explicit paths when the host uses non-default installation locations.
 
 For the current shell, you may prepend the binary directory to PATH:
 
