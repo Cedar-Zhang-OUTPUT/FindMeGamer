@@ -85,7 +85,7 @@ def binary(data, destination):
             os.unlink(name)
 
 
-def skills(data, destination):
+def skills(data, destination, tag=None):
     destination.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
         prefix=".fmg-skills-", dir=destination
@@ -115,6 +115,11 @@ def skills(data, destination):
         for name in ("fmg-api", "fmg-research"):
             if not (root / name / "SKILL.md").is_file():
                 raise ValueError("Incomplete Skill bundle")
+            marker = root / name / '.fmg-release.json'
+            if tag and re.fullmatch(r'fmg-v[0-9]+\.[0-9]+\.[0-9]+', tag):
+                marker.write_text(json.dumps({'version': tag.removeprefix('fmg-v')}))
+            elif marker.exists():
+                marker.unlink()  # Unknown offline version must not inherit a stale stamp.
         for name in ("fmg-api", "fmg-research"):
             current = destination / name
             backup = destination / (name + ".previous")
@@ -142,8 +147,9 @@ def main():
     p.add_argument(
         "--skill-dir",
         type=Path,
-        default=Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
-        / "skills",
+        default=Path(os.environ.get("FMG_SKILL_DIR", str(
+            Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))) / "skills"
+        ))),
     )
     args = p.parse_args()
     try:
@@ -194,7 +200,7 @@ def main():
         data = verified(read, f"fmg_{system}_{arch}.tar.gz", sums)
         skilldata = verified(read, "fmg-skills.tar.gz", sums) if args.skills else None
         if skilldata is not None:
-            skills(skilldata, args.skill_dir)
+            skills(skilldata, args.skill_dir, args.tag)
         binary(data, args.bin_dir)
         print(
             json.dumps(

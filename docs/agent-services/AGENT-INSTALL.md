@@ -53,6 +53,8 @@ Use `--skill-dir ABSOLUTE_DIRECTORY` when the installed Skills live elsewhere. T
 
 After either path, reload the installed Skill instructions (start a new conversation if the host cannot reload). Confirm both Skills include starting/ending host usage checks, estimated-cost reporting, plain-text emails and real IMAP replies. Read the installed email/outreach references again; do not retain old HTML or Yes/No workflow assumptions. Restart existing local dashboard processes to load the new page. Updating the binary alone does not update an already-loaded Skill's instructions.
 
+**Update-aware clients:** when `fmg update check` is available, run it at the start of an FMG task. Normal authenticated remote commands also emit `fmg_update_notice` on stderr without changing business JSON/NDJSON. Checks use a six-hour release cache (failures fifteen minutes), never company API credits; `--refresh` checks immediately. `skill_version_unknown` is not proof that Skills are current. For custom locations, use `FMG_SKILL_DIR` or `--skill-dir` consistently when checking/upgrading. If the command is absent, the old client needs one bootstrap upgrade before it can discover later updates automatically. Notifications do not authorize software replacement: follow user approval or an existing auto-update preference, finish active operations, upgrade, then read the newly installed instructions from disk. An offline check must not interrupt or repeat business operations.
+
 ## 2. Download, inspect and install the explicit release
 
 For a fresh supported environment, use a private temporary directory. Download the installer and checksum list over verified HTTPS, then check the installer before running it:

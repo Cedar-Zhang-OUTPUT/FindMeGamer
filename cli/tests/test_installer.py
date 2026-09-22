@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tarfile
 import importlib.util
+import json
 
 
 def installer():
@@ -44,10 +45,12 @@ def test_repeated_skill_upgrade_preserves_all_backups(tmp_path):
 
     module.skills(bundle(b"one"), dest)
     module.skills(bundle(b"two"), dest)
-    module.skills(bundle(b"three"), dest)
+    module.skills(bundle(b"three"), dest, "fmg-v0.7.0")
     assert (dest / "fmg-api/SKILL.md").read_bytes() == b"three"
     assert (dest / "fmg-api.previous/SKILL.md").read_bytes() == b"one"
     assert (dest / "fmg-api.previous-1/SKILL.md").read_bytes() == b"two"
+    assert json.loads((dest / 'fmg-api/.fmg-release.json').read_text())['version'] == '0.7.0'
+    assert json.loads((dest / 'fmg-research/.fmg-release.json').read_text())['version'] == '0.7.0'
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts/install.py"

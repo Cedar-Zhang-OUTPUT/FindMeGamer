@@ -28,6 +28,7 @@ fmg version
 fmg pricing
 fmg upgrade --latest --skills [--skill-dir DIRECTORY]
 fmg upgrade --tag fmg-vX.Y.Z [--skills]
+fmg update check [--refresh] [--skill-dir DIRECTORY]
 fmg --run-id RUN_ID usage
 Prefix other commands with --run-id RUN_ID to attribute requests.
 fmg email enrich --url URL --idempotency-key KEY [--name NAME] [--platform PLATFORM]
@@ -72,6 +73,12 @@ func RunContext(ctx context.Context, args []string, stdin io.Reader, stdout, std
 	}
 	if args[0] == "auth" {
 		return runAuth(ctx, args[1:], stdin, stdout, stderr)
+	}
+	if args[0] == "update" {
+		return runUpdateCheck(ctx, args[1:], stdout, stderr)
+	}
+	if args[0] != "upgrade" {
+		automaticUpdateNotice(ctx, stderr)
 	}
 	if args[0] == "pricing" {
 		if len(args) != 1 {
