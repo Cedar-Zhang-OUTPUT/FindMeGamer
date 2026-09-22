@@ -42,6 +42,8 @@ Before creator discovery, save `runs/<run-id>/game-confirmation.json` with statu
 `awaiting_confirmation`, then change to `approved` or `rejected` only according
 to the user's actual response. Include:
 
+For the default browser workflow, use [game-review.md](game-review.md) instead of hand-writing approval. Its script stores the actual browser-save timestamp, profile/intent snapshots and revision, filters and corrections. An absent record means awaiting confirmation. It does not invent a conversation message ID. The following message-reference fields apply to the conversation fallback.
+
 - Steam App ID, reviewed game Profile path and content hash.
 - A preserved snapshot of the game understanding and proposed Search Intent,
   including search angles, exclusions, platforms, constraints, targets and budgets.
@@ -92,25 +94,25 @@ Resolve paths relative to the Match Brief. Use actual hashes, dates, IDs and obs
 
 ## Result completeness
 
-Every Match Brief must include the `presentation` object above, a canonical `creator.profile_url`, and `contacts`. These are shared by browser and Excel. Store readable non-empty strings with supporting facts or explicit Unknown + reason; do not fabricate missing facts. Followers include metric/date, audience inference must be labeled. `why_match` requires all five sections. Before final delivery run:
+Every Match Brief must include the `presentation` object above, a canonical `creator.profile_url`, `contacts`, and structured checkpoints in [completion](completion.md). These are shared by browser and Excel. Store readable non-empty strings with supporting facts or genuine Unknown + reason; do not fabricate missing facts. A placeholder alone is not proof of a completed lookup. Followers include metric/date, audience inference must be labeled. `why_match` requires all five sections. Before final delivery run:
 
 ```sh
 python3 PATH_TO_SKILL/scripts/research_dashboard.py --root WORKSPACE --run-id RUN_ID --validate
 ```
 
-Exit 2 reports missing fields or unfinished contacts: repair the files or explicitly report a partial/blocked result, not a completed deliverable. The live viewer still shows partial/legacy records with missing-data warnings. `found` requires at least one address; `not_found` requires `contacts.lookup_completed: true` and no addresses. A provider error is not a completed empty lookup. The validator checks structure/status, not truth; Agent must check sources.
+Exit 2 reports missing fields or unfinished lookups: repair the files or explicitly report a partial/blocked result, not a completed deliverable. The live viewer still shows partial/legacy records with warnings. `found` requires a source-backed address selected as `primary_email`; `not_found` requires `lookup_completed: true`, no addresses, and completed `basic_lookup` plus `enrichment` (source and actual job ID). See [completion](completion.md) for mandatory counts. A provider error is not a completed empty lookup. The validator checks structure/status, not truth; Agent must check sources.
 
 ## Excel creator results
 
 The browser table and any Excel export must use these nine columns **in this order** (do not create a workbook unless the user requests it or the agreed deliverable includes one):
 
 1. 序号 — sequential integers starting at 1 in the exported order.
-2. Public name — creator's explicitly public name; unknown if unavailable. Do not silently substitute a channel name or infer a legal name.
-3. 邮箱 — public business email(s), with purpose when multiple; distinguish Not Found (completed lookup), not requested, and unresolved lookup.
+2. Public name — published preferred/display name, otherwise the actual username/channel name. Store `public_name_kind` and `public_name_source` internally. Never infer a legal name or use an Unknown diagnostic as an email greeting.
+3. 邮箱 — only one selected `contacts.primary_email`, without purpose suffix. Keep alternate addresses/evidence internally. Distinguish Not Found (completed basic lookup and enrichment), explicit opt-out, and unresolved lookup.
 4. 为什么 Match？ — detailed, readable rationale with the five sections below, not a generic one-sentence endorsement.
 5. 相关的内容方向 — supported genres, formats and themes.
 6. 频道的链接 — canonical creator profile URL.
-7. 粉丝数 — numeric count when available, noting platform metric and retrieval date (e.g. subscribers vs followers). Unknown is not zero.
+7. 粉丝数 — mandatory lookup, numeric count when available, noting platform metric and retrieval date (e.g. subscribers vs followers). Unknown is not zero. Store `metrics.followers` per [completion](completion.md); an unqueried or blocked count does not pass completion validation.
 8. 内容的语言 — evidence-backed content language(s), not an assumption from country.
 9. 面向的受众地区 — audience geography with evidence or clearly labeled inference/unknown; creator location does not establish audience location.
 

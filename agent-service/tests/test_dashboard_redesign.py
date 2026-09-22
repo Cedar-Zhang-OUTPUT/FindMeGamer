@@ -52,13 +52,20 @@ def test_research_snapshot_preserves_briefs_and_reports_invalid(tmp_path):
     assert result["unreadable"] == 2
     assert result["incomplete"][0]["missing"]
     complete = {
-        **brief, "creator": {"profile_url": "https://youtube.com/channel/example"},
+        **brief, "creator": {"platform": "youtube", "profile_url": "https://youtube.com/channel/example"},
+        "metrics": {"followers": {"status": "unavailable", "value": None,
+            "metric": "subscribers", "source": "evidence/channel.json", "reason": "hidden_by_platform",
+            "checked_at": "2026-09-22T01:00:00Z"}},
         "presentation": {k: "Unknown — no evidence" for k in
                          ("public_name", "content_direction", "followers", "content_language", "audience_region")},
-        "contacts": {"status": "not_found", "emails": [], "lookup_completed": True},
+        "contacts": {"status": "not_found", "emails": [], "lookup_completed": True,
+            "basic_lookup": {"status": "completed", "source": "bio"},
+            "enrichment": {"status": "completed", "source": "result.json", "job_id": "test-job"}},
     }
     complete["presentation"]["why_match"] = {k: "Evidence-backed note" for k in
         ("evidence", "gameplay_connection", "assessment", "collaboration_angle", "limitations")}
+    assert 'presentation.public_name_needs_greeting' in module.completeness(complete)
+    complete['presentation']['public_name'] = 'Channel'
     assert module.completeness(complete) == []
     complete["contacts"] = {"status": "found", "emails": []}
     assert "contacts.found_without_email" in module.completeness(complete)
@@ -66,10 +73,14 @@ def test_research_snapshot_preserves_briefs_and_reports_invalid(tmp_path):
     assert "contacts.unfinished" in module.completeness(complete)
     complete["contacts"] = {"status": "not_found", "emails": []}
     assert module.completeness(complete)
-    complete["contacts"] = {"status": "found", "emails": [{
+    complete["contacts"] = {"status": "found", "primary_email": "business@example.com", "emails": [{
         "address": "business@example.com", "purpose": "Business", "source": "Profile bio",
         "verification": "Publicly listed, delivery unverified"}]}
     assert module.completeness(complete) == []
+    del complete['contacts']['primary_email']
+    assert 'contacts.primary_email' in module.completeness(complete)
+    complete['contacts'] = {'status': 'not_found', 'emails': [], 'lookup_completed': True}
+    assert 'contacts.enrichment_unfinished' in module.completeness(complete)
     assert (directory / "partial.json").read_text() == '{'
 
 

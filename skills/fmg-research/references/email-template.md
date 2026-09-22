@@ -38,7 +38,7 @@ The server appends the approved Ontology Play signature logo as an inline image,
 
 ## Variable contract and tone
 
-- `creator_name`: Verified public first name, or user-approved channel greeting; never invent a personal name.
+- `creator_name`: Published preferred/display name, falling back to the creator's actual username/channel name. A legal or personal name is not required. Never invent a name or insert an Unknown diagnostic; retain the name's source/type in the Match Brief.
 - `channel_name`: Actual channel name; preserve the approved fixed PR wording outside variables.
 - `reference_work`: Actual referenced game or work supported by saved creator evidence; do not invent coverage.
 - `specific_observation`: One or two complete, naturally phrased sentences, including punctuation, connecting the referenced game/work to the confirmed target game through evidenced gameplay, style, themes or audience fit. No fixed 'I liked how you' opening; distinguish inference from facts and do not invent viewing claims.

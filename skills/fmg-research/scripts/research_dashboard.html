@@ -372,7 +372,8 @@
             "No evidence recorded. Ask Codex to verify this recommendation.",
           ]);
         lines("facts", [
-          ...list(r.contacts?.emails).map(readable),
+          r.contacts?.primary_email || (list(r.contacts?.emails).length === 1
+            ? (r.contacts.emails[0].address || r.contacts.emails[0]) : "Email selection pending"),
           ...list(r.filters).map(
             (f) => `${f.dimension}: ${readable(f.observed)} · ${f.outcome}`,
           ),
@@ -413,18 +414,22 @@
           };
           const p = r.presentation || {};
           cell(String(page * 20 + offset + 1));
-          const identity = cell(p.public_name);
+          const publicName = p.public_name && !/^unknown\b/i.test(p.public_name.trim())
+            ? p.public_name : (r.creator.display_name || r.creator.username);
+          const identity = cell(publicName);
           const note = document.createElement("small");
           note.textContent = [r.creator.display_name, r.creator.platform, r.match.decision].filter(Boolean).join(" · ");
           identity.append(note);
           const addresses = list(r.contacts?.emails).map(e =>
-            typeof e === "string" ? e : [e.address || e.email, e.purpose].filter(Boolean).join(" — ")
+            typeof e === "string" ? e : (e.address || e.email)
           ).filter(Boolean);
           const status = r.contacts?.status;
-          cell(addresses.length ? addresses.join("\n") :
-            status === "not_found" && r.contacts?.lookup_completed ? "Not Found" :
+          const primary = addresses.includes(r.contacts?.primary_email) ? r.contacts.primary_email :
+            addresses.length === 1 ? addresses[0] : null;
+          cell(primary || (addresses.length > 1 ? "Email selection needed" :
+            status === "not_found" && r.contacts?.enrichment?.status === "completed" ? "Not Found" :
             status === "not_requested" ? "Not requested — " + (r.contacts.reason || "opt-out not recorded") :
-            "Unresolved — " + (status || "lookup not recorded"));
+            "Unresolved — " + (status || "lookup not recorded")));
           const why = cell("");
           why.replaceChildren();
           const summary = document.createElement("p");
@@ -440,7 +445,11 @@
           cell(p.content_direction);
           const urlCell = cell("");
           urlCell.replaceChildren(link(r.creator.profile_url, r.creator.profile_url || "Unknown"));
-          cell(p.followers);
+          const metric = r.metrics?.followers;
+          cell(metric?.status === "found" && Number.isSafeInteger(metric.value) && metric.value >= 0
+            ? `${metric.value.toLocaleString()} ${metric.metric} · ${metric.checked_at || "date not recorded"}`
+            : metric?.status === "unavailable" ? `Unknown — ${metric.reason || "reason not recorded"}`
+            : `Unresolved — ${metric?.status || "count not queried"}`);
           cell(p.content_language);
           cell(p.audience_region);
           $("rows").append(tr);

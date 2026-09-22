@@ -6,17 +6,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import secrets
 from workspace import safe_id
+from completion import followers_errors
 
 
 def completeness(item):
     """Missing fields remain visible; never invent facts to make a row valid."""
-    errors = []
+    errors = followers_errors(item)
     presentation = item.get("presentation") or {}
     if not isinstance(presentation, dict):
         presentation = {}
     for key in ("public_name", "content_direction", "followers", "content_language", "audience_region"):
         if not isinstance(presentation.get(key), str) or not presentation[key].strip():
             errors.append("presentation." + key)
+    if str(presentation.get('public_name', '')).strip().lower().startswith('unknown'):
+        errors.append('presentation.public_name_needs_greeting')
     why = presentation.get("why_match") or {}
     if not isinstance(why, dict):
         why = {}
@@ -36,6 +39,10 @@ def completeness(item):
     if status == "found":
         if not emails:
             errors.append("contacts.found_without_email")
+        if not contacts.get('primary_email') or contacts['primary_email'] not in [
+            e.get('address') for e in emails if isinstance(e, dict)
+        ]:
+            errors.append('contacts.primary_email')
         for email in emails:
             if not isinstance(email, dict) or any(
                 not isinstance(email.get(k), str) or not email[k].strip()
@@ -45,6 +52,11 @@ def completeness(item):
     elif status == "not_found":
         if not contacts.get("lookup_completed") or emails:
             errors.append("contacts.not_found_without_completed_empty_lookup")
+        for key in ('basic_lookup', 'enrichment'):
+            check = contacts.get(key)
+            if (not isinstance(check, dict) or check.get('status') != 'completed'
+                    or not check.get('source') or key == 'enrichment' and not check.get('job_id')):
+                errors.append('contacts.' + key + '_unfinished')
     elif status == "not_requested":
         if not contacts.get("reason"):
             errors.append("contacts.opt_out_reason")
