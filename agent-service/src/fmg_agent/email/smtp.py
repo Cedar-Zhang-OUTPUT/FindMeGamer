@@ -1,13 +1,11 @@
 """Server-configured SMTP, TLS by default; post-DATA uncertainty is not retried."""
 
-from email.message import EmailMessage
-from base64 import b64decode
-from email.utils import formatdate
 import smtplib
 import ssl
 
 from .sending import email_address, smtp_ready
-from .microsoft import MailOAuthError, access_token, xoauth2
+from .microsoft import MailOAuthError, access_token, authenticate_smtp
+from .mime import build_message
 
 
 def deliver(config, message, message_id):
@@ -17,28 +15,16 @@ def deliver(config, message, message_id):
         return {"state": "failed", "code": "smtp_recipient_not_allowed"}
     if not smtp_ready(config):
         return {"state": "failed", "code": "configuration_missing"}
+    if config.email_transport == "microsoft_graph":
+        from .graph import deliver as graph_deliver
+
+        return graph_deliver(config, message, message_id)
     connection = None
     attempting_data = False
     try:
         sender = email_address(message["from"])
         recipient = email_address(message["to"])
-        mail = EmailMessage()
-        mail["From"] = sender
-        mail["To"] = recipient
-        mail["Subject"] = message["subject"]
-        mail["Date"] = formatdate(localtime=False)
-        mail["Message-ID"] = f'<fmg-{message_id}@{sender.split("@",1)[1]}>'
-        mail.set_content(message["text"])
-        if message.get("format") == "signature_image":
-            mail.add_alternative(message["html"], subtype="html")
-            mail.get_payload()[-1].add_related(
-                b64decode(message["signature_png_base64"], validate=True),
-                maintype="image",
-                subtype="png",
-                cid="<ontology-play-signature>",
-                disposition="inline",
-                filename="ontology-play.png",
-            )
+        mail = build_message(message, message_id)
         if config.smtp_encryption == "tls":
             connection = smtplib.SMTP_SSL(
                 config.smtp_host,
@@ -53,11 +39,7 @@ def deliver(config, message, message_id):
         if config.smtp_encryption != "none":
             if config.smtp_auth == "microsoft_oauth":
                 token = access_token(config, config.smtp_username)
-                sasl = xoauth2(config.smtp_username, token)
-                # Reply with an empty response on an OAuth error challenge.
-                connection.auth(
-                    "XOAUTH2", lambda challenge=None: sasl if challenge is None else ""
-                )
+                authenticate_smtp(connection, config.smtp_username, token)
             else:
                 connection.login(
                     config.smtp_username, config.smtp_password.get_secret_value()

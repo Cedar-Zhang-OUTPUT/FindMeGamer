@@ -17,12 +17,16 @@ import httpx
 from .microsoft import (
     AUTHORITY,
     SCOPES,
+    GRAPH_SCOPES,
     MailOAuthError,
     access_token,
+    authenticate_smtp,
     client_id,
     persist,
     store_lock,
     token_data,
+    token_path,
+    verify_graph_identity,
     xoauth2,
 )
 from .sending import email_address
@@ -36,9 +40,7 @@ def probe(mailbox, token):
     try:
         with smtplib.SMTP("smtp-mail.outlook.com", 587, timeout=20) as smtp:
             smtp.starttls(context=ssl.create_default_context())
-            smtp.auth(
-                "XOAUTH2", lambda challenge=None: sasl if challenge is None else ""
-            )
+            authenticate_smtp(smtp, mailbox, token)
     except (OSError, smtplib.SMTPException):
         raise MailOAuthError("microsoft_smtp_probe_failed") from None
     imap = None
@@ -67,11 +69,12 @@ def probe(mailbox, token):
 def authorize(args, client):
     app_id = client_id(args.client_id)
     mailbox = email_address(args.mailbox).casefold()
+    profile = getattr(args, "profile", "outlook")
     response = client.post(
         AUTHORITY + "/devicecode",
         data={
             "client_id": app_id,
-            "scope": SCOPES,
+            "scope": GRAPH_SCOPES if profile == "graph" else SCOPES,
         },
     )
     if response.status_code != 200:
@@ -97,6 +100,7 @@ def authorize(args, client):
             "expires_at": time.time() + result["expires_in"],
             "interval": int(data.get("interval", 5)),
             "next_poll_at": 0,
+            "profile": profile,
         }
     except (ValueError, KeyError, TypeError):
         raise MailOAuthError("mail_oauth_invalid_response") from None
@@ -113,6 +117,8 @@ def complete(args, client):
             if pending_path.stat().st_mode & 0o077:
                 raise ValueError()
             pending = json.loads(pending_path.read_text())
+            if pending.get("profile", "outlook") != getattr(args, "profile", "outlook"):
+                raise ValueError()
             if pending["expires_at"] <= time.time():
                 raise ValueError()
             if pending["next_poll_at"] > time.time():
@@ -147,11 +153,31 @@ def complete(args, client):
                 return 3
         if response.status_code != 200:
             raise MailOAuthError("mail_oauth_authorization_required")
-        data = token_data(response, pending["client_id"], pending["mailbox"])
+        profile = pending.get("profile", "outlook")
+        data = token_data(
+            response, pending["client_id"], pending["mailbox"], profile=profile
+        )
+        if profile == "graph":
+            data["account_id"] = verify_graph_identity(
+                client, data["access_token"], data["mailbox"]
+            )
         # Save refreshed authorization even if a protocol probe needs repair.
         # A successful probe is required separately before production activation.
         persist(args.store, data)
         pending_path.unlink()
+    if profile == "graph":
+        print(
+            json.dumps(
+                {
+                    "state": "authorized",
+                    "mailbox": data["mailbox"],
+                    "identity_verified": True,
+                    "send_verified": False,
+                    "sent": 0,
+                }
+            )
+        )
+        return 0
     probe(data["mailbox"], data["access_token"])
     print(
         json.dumps(
@@ -173,6 +199,7 @@ def main():
     for command in ("authorize", "complete", "probe"):
         sub = commands.add_parser(command)
         sub.add_argument("--store", required=True, type=Path)
+        sub.add_argument("--profile", choices=("outlook", "graph"), default="outlook")
         if command == "authorize":
             sub.add_argument("--client-id", required=True)
             sub.add_argument("--mailbox", required=True)
@@ -186,11 +213,22 @@ def main():
                 return authorize(args, client)
             if args.command == "complete":
                 return complete(args, client)
-        # Load service settings only for an existing server-side enrollment.
-        settings = Settings()
-        if args.store != settings.microsoft_token_store:
-            raise MailOAuthError("mail_oauth_configuration_missing")
-        probe(settings.smtp_username, access_token(settings, settings.smtp_username))
+            # Load service settings only for an existing server-side enrollment.
+            settings = Settings()
+            if args.store != token_path(settings, args.profile):
+                raise MailOAuthError("mail_oauth_configuration_missing")
+            if args.profile == "graph":
+                token = access_token(settings, settings.smtp_from, profile="graph")
+                verify_graph_identity(client, token, settings.smtp_from)
+                print(
+                    json.dumps(
+                        {"identity_verified": True, "send_verified": False, "sent": 0}
+                    )
+                )
+                return 0
+            probe(
+                settings.smtp_username, access_token(settings, settings.smtp_username)
+            )
         print(json.dumps({"smtp": "ok", "imap": "ok", "sent": 0}))
         return 0
     except MailOAuthError as exc:

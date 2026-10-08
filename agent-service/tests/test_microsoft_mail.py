@@ -153,11 +153,21 @@ def test_smtp_oauth_authenticates_before_sending_and_failure_sends_nothing(
         def starttls(self, **kwargs):
             calls.append("tls")
 
+        def ehlo(self):
+            calls.append("ehlo")
+            return 250, b"ready"
+
         def auth(self, mechanism, callback):
             assert mechanism == "XOAUTH2"
             assert callback() == oauth.xoauth2(MAILBOX, "old-access")
             assert callback(b"error") == ""
             calls.append("oauth")
+            # Model Microsoft's post-TLS greeting requirement.
+            return (
+                (235, b"authenticated")
+                if calls[-2:] == ["ehlo", "oauth"]
+                else (503, b"Send hello first")
+            )
 
         def send_message(self, *args, **kwargs):
             calls.append("send")
@@ -177,7 +187,7 @@ def test_smtp_oauth_authenticates_before_sending_and_failure_sends_nothing(
         "text": "test",
     }
     assert smtp.deliver(settings, message, "test")["state"] == "sent"
-    assert calls == ["tls", "oauth", "send"]
+    assert calls == ["tls", "ehlo", "oauth", "send"]
     calls.clear()
     monkeypatch.setattr(
         smtp,
@@ -191,6 +201,69 @@ def test_smtp_oauth_authenticates_before_sending_and_failure_sends_nothing(
         "code": "mail_oauth_authorization_required",
     }
     assert calls == ["tls"]
+
+
+@pytest.mark.parametrize(
+    "reply,expected",
+    [
+        ((503, b"5.5.2 Send hello first"), "smtp_authentication_rejected"),
+        (
+            (535, b"5.7.139 SmtpClientAuthentication is disabled for the Mailbox"),
+            "smtp_mailbox_auth_disabled",
+        ),
+    ],
+)
+def test_smtp_and_admin_probe_reject_false_auth_success(
+    tmp_path, monkeypatch, reply, expected
+):
+    from fmg_agent.email import smtp, microsoft_admin as admin
+
+    settings = config(tmp_path)
+    seed(settings, time.time() + 3600)
+    sent = []
+
+    class Connection:
+        def __init__(self, *a, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            pass
+
+        def starttls(self, **kw):
+            pass
+
+        def ehlo(self):
+            return 250, b"ready"
+
+        def auth(self, *a):
+            if reply[0] == 535:
+                import smtplib
+
+                raise smtplib.SMTPAuthenticationError(*reply)
+            return reply
+
+        def send_message(self, *a, **kw):
+            sent.append(True)
+
+        def quit(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(smtp.smtplib, "SMTP", Connection)
+    result = smtp.deliver(
+        settings,
+        {"from": MAILBOX, "to": "test@example.com", "subject": "Test", "text": "Test"},
+        "test",
+    )
+    assert result == {"state": "failed", "code": expected}
+    assert sent == []
+    with pytest.raises(oauth.MailOAuthError, match=expected):
+        admin.probe(MAILBOX, "old-access")
 
 
 def test_imap_oauth_uses_read_only_and_preserves_polling(sending, tmp_path):

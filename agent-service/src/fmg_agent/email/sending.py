@@ -1,4 +1,4 @@
-"""Immutable previews and one SMTP attempt per preview; never promise exactly-once SMTP."""
+"""Immutable previews and one transport attempt per preview; no automatic resend."""
 
 from datetime import timedelta, timezone
 
@@ -28,6 +28,10 @@ def smtp_ready(config):
         email_address(config.smtp_from)
     except ValueError:
         return False
+    if config.email_transport == "microsoft_graph":
+        from .microsoft import ready
+
+        return ready(config, profile="graph")
     if not config.smtp_host:
         return False
     if config.smtp_encryption == "none":
@@ -161,7 +165,7 @@ class SendStore:
                 )
             if not smtp_ready(config):
                 raise ApiError(
-                    503, "configuration_missing", "SMTP is not configured for sending."
+                    503, "configuration_missing", "Email transport is not configured for sending."
                 )
             if preview["message"]["from"] != config.smtp_from:
                 raise ApiError(

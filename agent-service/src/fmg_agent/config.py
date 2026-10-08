@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         default=SecretStr("redis://127.0.0.1:6379/0"), repr=False
     )
     email_retention_days: int = Field(default=30, ge=1, le=30)
+    email_transport: Literal["smtp", "microsoft_graph"] = "smtp"
     smtp_host: str = ""
     smtp_port: int = Field(default=465, ge=1, le=65535)
     smtp_encryption: Literal["tls", "starttls", "none"] = "tls"
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     imap_auth: Literal["password", "microsoft_oauth"] = "password"
     microsoft_client_id: str = ""
     microsoft_token_store: Path | None = None
+    microsoft_graph_token_store: Path | None = None
     imap_folder: str = "INBOX"
     imap_poll_seconds: int = Field(default=60, ge=30, le=3600)
     imap_lookback_days: int = Field(default=30, ge=1, le=90)
