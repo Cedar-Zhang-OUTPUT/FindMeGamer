@@ -11,7 +11,7 @@ x-agent: &agent
 services:
   api:
     <<: *agent
-    volumes: ["twitch-oauth:/srv/twitch-oauth"]
+    volumes: ["twitch-oauth:/srv/twitch-oauth", "microsoft-oauth:/srv/microsoft-oauth"]
     ports: ["127.0.0.1:${FMG_AGENT_PORT:-8017}:8000"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=5)"]
@@ -20,6 +20,7 @@ services:
       retries: 6
   worker:
     <<: *agent
+    volumes: ["microsoft-oauth:/srv/microsoft-oauth"]
     command: ["python", "-m", "fmg_agent.worker"]
     stop_grace_period: 620s
   migrate:
@@ -39,3 +40,4 @@ networks:
     name: ${FMG_AGENT_NETWORK:?Set existing Postgres/Redis Docker network}
 volumes:
   twitch-oauth:
+  microsoft-oauth:

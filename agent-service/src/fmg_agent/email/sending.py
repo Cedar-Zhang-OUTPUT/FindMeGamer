@@ -31,10 +31,19 @@ def smtp_ready(config):
     if not config.smtp_host:
         return False
     if config.smtp_encryption == "none":
-        return config.smtp_allow_insecure_loopback and config.smtp_host in {
-            "127.0.0.1",
-            "::1",
-        }
+        return (
+            config.smtp_auth == "password"
+            and config.smtp_allow_insecure_loopback
+            and config.smtp_host
+            in {
+                "127.0.0.1",
+                "::1",
+            }
+        )
+    if config.smtp_auth == "microsoft_oauth":
+        from .microsoft import ready
+
+        return bool(config.smtp_username and ready(config))
     return bool(config.smtp_username and config.smtp_password.get_secret_value())
 
 
@@ -141,8 +150,15 @@ class SendStore:
             existing = self._existing(session, token_id, preview_id, key)
             if existing is not None:
                 return existing
-            if preview["message"].get("format") not in {"plain_text", "signature_image"}:
-                raise ApiError(409, "preview_format_retired", "Create and approve a new plain-text draft; this older draft is no longer sendable.")
+            if preview["message"].get("format") not in {
+                "plain_text",
+                "signature_image",
+            }:
+                raise ApiError(
+                    409,
+                    "preview_format_retired",
+                    "Create and approve a new plain-text draft; this older draft is no longer sendable.",
+                )
             if not smtp_ready(config):
                 raise ApiError(
                     503, "configuration_missing", "SMTP is not configured for sending."

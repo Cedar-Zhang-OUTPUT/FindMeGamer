@@ -7,6 +7,7 @@ import smtplib
 import ssl
 
 from .sending import email_address, smtp_ready
+from .microsoft import MailOAuthError, access_token, xoauth2
 
 
 def deliver(config, message, message_id):
@@ -32,8 +33,10 @@ def deliver(config, message, message_id):
             mail.add_alternative(message["html"], subtype="html")
             mail.get_payload()[-1].add_related(
                 b64decode(message["signature_png_base64"], validate=True),
-                maintype="image", subtype="png",
-                cid="<ontology-play-signature>", disposition="inline",
+                maintype="image",
+                subtype="png",
+                cid="<ontology-play-signature>",
+                disposition="inline",
                 filename="ontology-play.png",
             )
         if config.smtp_encryption == "tls":
@@ -48,14 +51,24 @@ def deliver(config, message, message_id):
             if config.smtp_encryption == "starttls":
                 connection.starttls(context=ssl.create_default_context())
         if config.smtp_encryption != "none":
-            connection.login(
-                config.smtp_username, config.smtp_password.get_secret_value()
-            )
+            if config.smtp_auth == "microsoft_oauth":
+                token = access_token(config, config.smtp_username)
+                sasl = xoauth2(config.smtp_username, token)
+                # Reply with an empty response on an OAuth error challenge.
+                connection.auth(
+                    "XOAUTH2", lambda challenge=None: sasl if challenge is None else ""
+                )
+            else:
+                connection.login(
+                    config.smtp_username, config.smtp_password.get_secret_value()
+                )
         attempting_data = True
         refusals = connection.send_message(mail, from_addr=sender, to_addrs=[recipient])
         if refusals:
             return {"state": "failed", "code": "smtp_recipient_rejected"}
         return {"state": "sent", "code": None}
+    except MailOAuthError as exc:
+        return {"state": "failed", "code": exc.code}
     except smtplib.SMTPAuthenticationError:
         return {"state": "failed", "code": "smtp_authentication_rejected"}
     except smtplib.SMTPRecipientsRefused:

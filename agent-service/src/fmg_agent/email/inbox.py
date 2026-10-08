@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 from .models import EmailSend, EmailPreview
+from .microsoft import MailOAuthError, access_token, ready, xoauth2
 
 
 class EmailReply(Base):
@@ -52,7 +53,11 @@ def configured(settings):
     return bool(
         settings.imap_host
         and settings.imap_username
-        and settings.imap_password.get_secret_value()
+        and (
+            ready(settings)
+            if settings.imap_auth == "microsoft_oauth"
+            else settings.imap_password.get_secret_value()
+        )
     )
 
 
@@ -271,7 +276,16 @@ def sync_once(sessions, settings, connect=None):
             ssl_context=ssl.create_default_context(),
             timeout=20,
         )
-        client.login(settings.imap_username, settings.imap_password.get_secret_value())
+        if settings.imap_auth == "microsoft_oauth":
+            token = access_token(settings, settings.imap_username)
+            sasl = xoauth2(settings.imap_username, token).encode("utf-8")
+            client.authenticate(
+                "XOAUTH2", lambda challenge: sasl if not challenge else b""
+            )
+        else:
+            client.login(
+                settings.imap_username, settings.imap_password.get_secret_value()
+            )
         if client.select(settings.imap_folder, readonly=True)[0] != "OK":
             raise RuntimeError("folder")
         validity = client.response("UIDVALIDITY")[1][0].decode()
@@ -313,12 +327,16 @@ def sync_once(sessions, settings, connect=None):
         return {"state": "active", "processed": len(uids)}
     except Exception as exc:
         code = (
-            "imap_auth_or_protocol_error"
-            if isinstance(exc, imaplib.IMAP4.error)
+            exc.code
+            if isinstance(exc, MailOAuthError)
             else (
-                "imap_message_too_large"
-                if str(exc) == "message_too_large"
-                else "imap_sync_failed"
+                "imap_auth_or_protocol_error"
+                if isinstance(exc, imaplib.IMAP4.error)
+                else (
+                    "imap_message_too_large"
+                    if str(exc) == "message_too_large"
+                    else "imap_sync_failed"
+                )
             )
         )
         with sessions() as session:
