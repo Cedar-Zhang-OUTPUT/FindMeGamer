@@ -246,7 +246,16 @@ def test_oauth_is_not_ready_until_authorized_and_requires_tls(tmp_path):
     assert not smtp_ready(settings)
 
 
-def test_admin_enrollment_never_prints_tokens(tmp_path, capsys, monkeypatch):
+@pytest.mark.parametrize(
+    "verification_uri",
+    [
+        "https://microsoft.com/devicelogin",
+        "https://www.microsoft.com/link",
+    ],
+)
+def test_admin_enrollment_never_prints_tokens(
+    tmp_path, capsys, monkeypatch, verification_uri
+):
     from argparse import Namespace
     from fmg_agent.email import microsoft_admin as admin
 
@@ -259,7 +268,7 @@ def test_admin_enrollment_never_prints_tokens(tmp_path, capsys, monkeypatch):
                 json={
                     "device_code": "secret-device-code",
                     "user_code": "TEST-CODE",
-                    "verification_uri": "https://microsoft.com/devicelogin",
+                    "verification_uri": verification_uri,
                     "expires_in": 900,
                 },
             )
@@ -284,6 +293,41 @@ def test_admin_enrollment_never_prints_tokens(tmp_path, capsys, monkeypatch):
         for secret in ("secret-device-code", "secret-access", "secret-refresh")
     )
     assert probes == [MAILBOX]
+
+
+@pytest.mark.parametrize(
+    "verification_uri",
+    [
+        "http://www.microsoft.com/link",
+        "https://www.microsoft.com.attacker.example/link",
+        "https://www.microsoft.com/link?redirect=attacker",
+        "https://www.microsoft.com/other",
+    ],
+)
+def test_admin_rejects_untrusted_authorization_urls(tmp_path, capsys, verification_uri):
+    from argparse import Namespace
+    from fmg_agent.email import microsoft_admin as admin
+
+    args = Namespace(client_id=APP_ID, mailbox=MAILBOX, store=tmp_path / "enroll.json")
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "device_code": "secret-device-code",
+                    "user_code": "TEST-CODE",
+                    "verification_uri": verification_uri,
+                    "expires_in": 900,
+                    "interval": 5,
+                    "message": "Untrusted message",
+                },
+            )
+        )
+    ) as client:
+        with pytest.raises(oauth.MailOAuthError, match="mail_oauth_invalid_response"):
+            admin.authorize(args, client)
+    assert not Path(str(args.store) + ".pending").exists()
+    assert capsys.readouterr().out == ""
 
 
 # Reuse the isolated service/API fixture; no local Docker services are started.

@@ -47,6 +47,9 @@ The command prints only Microsoft's verification URL, user code, mailbox, and
 expiry. Have the mailbox owner visit the URL, enter that code, verify the
 `FindMeGamer Mail` application and approve SMTP, IMAP and persistent access.
 Consent is an explicit user action; browser login alone is not authorization.
+Personal-account device enrollment may return `https://www.microsoft.com/link`
+instead of `https://microsoft.com/devicelogin`. Both exact HTTPS URLs are
+accepted; other hosts, paths and query-string variants remain rejected.
 
 After consent:
 

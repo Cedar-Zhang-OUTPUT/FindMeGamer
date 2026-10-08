@@ -85,7 +85,10 @@ def authorize(args, client):
             "mailbox": mailbox,
             "expires_in": int(data["expires_in"]),
         }
-        if result["verification_uri"] != "https://microsoft.com/devicelogin":
+        if result["verification_uri"] not in {
+            "https://microsoft.com/devicelogin",
+            "https://www.microsoft.com/link",
+        }:
             raise ValueError()
         pending = {
             "client_id": app_id,
