@@ -14,7 +14,7 @@ def sent_task(sending):
         json={
             "name": "Inbox test",
             "template_id": "game-outreach",
-            "template_version": "4",
+            "template_version": "5",
             "recipients": [
                 {"creator_id": n, "to": n + "@example.com", "variables": variables()}
                 for n in ("alice", "bob")

@@ -4,15 +4,15 @@ Select by the user-confirmed **outreach target game**, not the creator's referen
 
 | Target | Server ID | Current bundled version | Editable variables |
 | --- | --- | --- | --- |
-| LIMINAL: Within | `liminal-outreach` | `5` | `creator_name`, `channel_name`, `reference_work`, `specific_observation` only |
-| Other games | `game-outreach` | `4` | Four creator variables plus six target-game variables below |
+| LIMINAL: Within | `liminal-outreach` | `6` | `creator_name`, `channel_name`, `reference_work`, `specific_observation` only |
+| Other games | `game-outreach` | `5` | Four creator variables plus six target-game variables below |
 
-Fetch `fmg email template SELECTED_ID` before drafting. The server is authoritative; if this bundled copy differs, read the current schema and full text, and do not submit stale inputs. Legacy liminal-outreach versions 1–4 and game-outreach v3 remain retired for new drafts. Existing frozen previews/tasks are not rewritten or automatically resent. A replacement needs a new preview/task and fresh approval.
+Fetch `fmg email template SELECTED_ID` before drafting. The server is authoritative; if this bundled copy differs, read the current schema and full text, and do not submit stale inputs. Legacy liminal-outreach versions 1–5 and game-outreach versions 3–4 remain retired for new drafts. Existing frozen previews/tasks are not rewritten or automatically resent. A replacement needs a new preview/task and fresh approval.
 
 ## LIMINAL: Within — full subject
 
 ```text
-Internal Test — Thought you might enjoy LIMINAL: Within — interactive film meets pixel RPG
+Thought you might enjoy LIMINAL: Within — interactive film meets pixel RPG
 ```
 
 ## LIMINAL: Within — full body
@@ -46,7 +46,7 @@ For this template, the entire section from “I’m reaching out” through the 
 ## Other games — full subject
 
 ```text
-Internal Test — Thought you might enjoy ${game_name} — ${game_tagline}
+Thought you might enjoy ${game_name} — ${game_tagline}
 ```
 
 ## Other games — full body
@@ -98,4 +98,6 @@ Use the current user-confirmed Game Profile and task context for the target game
 
 For specific_observation, naturally connect the referenced work to the target game using one meaningful, evidenced link: gameplay/game loop, narrative structure, style, themes or audience fit. Use one or two complete sentences with no fixed opening. Do not mechanically begin “I liked how you”, pad with generic praise or assert likely interest as fact. Distinguish supported facts from inferences; do not invent full viewing, gameplay experiences or reactions. Keep source evidence in local artifacts. If insufficient, ask or leave the draft incomplete.
 
-Read the entire rendered subject/body before review: resolve unclear references, repeated descriptions, conflicting game names, awkward transitions or doubled punctuation by editing variables only. All non-variable copy is approved fixed PR wording, not research output. Preserve it and the Internal Test prefix/signature; missing evidence does not permit another template or rewritten boilerplate. Explicitly flag concrete contradictions. New/replaced drafts require preview and user send approval; no automatic transfer of approval from old drafts.
+Read the entire rendered subject/body before review: resolve unclear references, repeated descriptions, conflicting game names, awkward transitions or doubled punctuation by editing variables only. All non-variable copy is approved fixed PR wording, not research output. Preserve it, the server-rendered subject and signature; missing evidence does not permit another template or rewritten boilerplate. Explicitly flag concrete contradictions. New/replaced drafts require preview and user send approval; no automatic transfer of approval from old drafts.
+
+Formal subjects apply only to new previews/tasks. Never strip Internal Test from a frozen preview locally or reuse its approval for a replacement; generate a fresh preview/task and obtain fresh send approval.

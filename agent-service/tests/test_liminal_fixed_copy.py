@@ -39,13 +39,13 @@ def personalization(name="Alex"):
 @pytest.mark.parametrize("name", ["Alex", "StoryChannel"])
 def test_liminal_personalization_cannot_change_approved_game_block(name):
     message = render_template(
-        get_template("liminal-outreach", "5"), personalization(name)
+        get_template("liminal-outreach", "6"), personalization(name)
     )
     assert message["text"].startswith(f"Hi {name},\n\nI’m Toki")
     assert message["text"].split("\n\n", 2)[2] == FIXED_BLOCK
     assert (
         message["subject"]
-        == "Internal Test — Thought you might enjoy LIMINAL: Within — interactive film meets pixel RPG"
+        == "Thought you might enjoy LIMINAL: Within — interactive film meets pixel RPG"
     )
     assert message["format"] == "signature_image"
     assert "cid:ontology-play-signature" in message["html"]
@@ -58,7 +58,7 @@ def test_liminal_personalization_cannot_change_approved_game_block(name):
 def test_liminal_rejects_game_fact_overrides(field):
     with pytest.raises(ApiError) as error:
         render_template(
-            get_template("liminal-outreach", "5"),
+            get_template("liminal-outreach", "6"),
             {**personalization(), field: "replacement"},
         )
     assert error.value.code == "template_variables_invalid"
@@ -79,7 +79,7 @@ def test_liminal_task_preview_does_not_send_or_rewrite_generic_draft(sending):
         headers=headers(owner),
         json={
             "template_id": "game-outreach",
-            "template_version": "4",
+            "template_version": "5",
             "to": "alex@example.com",
             "variables": unified_values(),
         },
@@ -92,7 +92,7 @@ def test_liminal_task_preview_does_not_send_or_rewrite_generic_draft(sending):
         json={
             "name": "LIMINAL draft review",
             "template_id": "liminal-outreach",
-            "template_version": "5",
+            "template_version": "6",
             "recipients": [
                 {
                     "creator_id": "youtube:alex",

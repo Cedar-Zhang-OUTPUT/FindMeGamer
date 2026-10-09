@@ -12,10 +12,10 @@ def values():
 def test_catalog_and_source_template_content():
     catalog = {t["id"]: t for t in list_templates()}
     assert catalog["game-outreach"]["name"] == "Creator Outreach"
-    assert catalog["game-outreach"]["version"] == "4"
-    template = get_template("game-outreach", "4")
+    assert catalog["game-outreach"]["version"] == "5"
+    template = get_template("game-outreach", "5")
     rendered = render_template(template, values())
-    assert rendered["subject"] == "Internal Test — Thought you might enjoy It Takes Two — a cooperative adventure"
+    assert rendered["subject"] == "Thought you might enjoy It Takes Two — a cooperative adventure"
     for content in ("I’m Toki", "Hong Kong", "Players coordinate complementary abilities", "no obligation to cover it"):
         assert content in rendered["text"]
     v = values(); v["specific_observation"] = "<script>unsafe</script>"
@@ -32,7 +32,7 @@ def test_catalog_and_source_template_content():
 def test_liminal_outreach_plain_drafts_without_sending(sending):
     app, client, owner, _, _ = sending
     result = client.post("/v1/outreach/tasks", headers=headers(owner, "liminal-template"), json={
-        "name": "Liminal preview", "template_id": "game-outreach", "template_version": "4",
+        "name": "Liminal preview", "template_id": "game-outreach", "template_version": "5",
         "recipients": [{"creator_id": name, "to": name+"@example.com", "variables": values()} for name in ("alice", "bob")],
     })
     assert result.status_code == 201
@@ -49,7 +49,7 @@ def test_signature_batch_can_start_and_delivers_only_once(sending):
     from fmg_agent.outreach import pending, process_recipient
     app, client, owner, _, _ = sending
     task = client.post("/v1/outreach/tasks", headers=headers(owner, "signature-batch"), json={
-        "name": "Signature batch", "template_id": "game-outreach", "template_version": "4",
+        "name": "Signature batch", "template_id": "game-outreach", "template_version": "5",
         "recipients": [{"creator_id": "test", "to": "test@example.com", "variables": values()}],
     }).json()["data"]
     assert pending(app.state.sessions) == []
@@ -74,7 +74,7 @@ def test_v5_connection_is_complete_text_and_logo_is_compact():
     from base64 import b64decode
     import struct
 
-    template = get_template("game-outreach", "4")
+    template = get_template("game-outreach", "5")
     result = render_template(template, values())
     assert "enjoyed your content on A Way Out. " + values()["specific_observation"] + "\n\n" in result["text"]
     assert "I liked how you" not in result["text"]

@@ -16,14 +16,14 @@ def unified_values(game="It Takes Two"):
 
 def test_catalog_keeps_generic_and_adds_liminal_template():
     catalog = {item["id"]: item for item in list_templates()}
-    assert catalog["game-outreach"]["version"] == "4"
-    assert catalog["liminal-outreach"]["version"] == "5"
+    assert catalog["game-outreach"]["version"] == "5"
+    assert catalog["liminal-outreach"]["version"] == "6"
 
 
 @pytest.mark.parametrize("game", ["It Takes Two", "GTA VI"])
 def test_unified_copy_uses_only_current_game_facts(game):
-    rendered = render_template(get_template("game-outreach", "4"), unified_values(game))
-    assert rendered["subject"].startswith("Internal Test — Thought you might enjoy " + game)
+    rendered = render_template(get_template("game-outreach", "5"), unified_values(game))
+    assert rendered["subject"].startswith("Thought you might enjoy " + game)
     assert game in rendered["text"]
     for stale in ("LIMINAL", "Dispatch", "PARANORMASIGHT", "Demo:", "demo is now available", "I liked how you"):
         assert stale not in rendered["text"]

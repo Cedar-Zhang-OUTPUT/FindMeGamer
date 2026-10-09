@@ -26,7 +26,7 @@ def test_template_renders_selected_game_as_literal_text():
 
     values = variables()
     values["creator_name"] = "<b>A</b>"
-    result = render_template(get_template("game-outreach", "4"), values)
+    result = render_template(get_template("game-outreach", "5"), values)
     assert "New Game" in result["subject"]
     assert "A puzzle adventure." in result["text"]
     assert "LIMINAL" not in result["text"]
@@ -50,7 +50,7 @@ def test_bad_variables_rejected_without_values_in_error(change):
     else:
         values["game_url"] = "javascript:private-value"
     with pytest.raises(ApiError) as error:
-        render_template(get_template("game-outreach", "4"), values)
+        render_template(get_template("game-outreach", "5"), values)
     assert error.value.status == 422
     assert "private-value" not in error.value.message
 

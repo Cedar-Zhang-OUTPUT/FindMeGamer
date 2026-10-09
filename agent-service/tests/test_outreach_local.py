@@ -179,7 +179,7 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
                 {
                     "name": "Local review",
                     "template_id": "game-outreach",
-                    "template_version": "4",
+                    "template_version": "5",
                     "recipients": [
                         {
                             "creator_id": "creator-A",

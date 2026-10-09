@@ -44,7 +44,7 @@ def preview(client, token):
         headers=headers(token),
         json={
             "template_id": "game-outreach",
-            "template_version": "4",
+            "template_version": "5",
             "variables": variables(),
             "to": "creator@example.com",
         },

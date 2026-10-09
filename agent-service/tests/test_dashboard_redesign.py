@@ -23,7 +23,7 @@ def test_plain_draft_dashboard_has_no_html_rendering():
 def test_retired_template_versions_require_review():
     from fmg_agent.email.templates import get_template
     from fmg_agent.errors import ApiError
-    for version in ("1", "2", "3"):
+    for version in ("1", "2", "3", "4"):
         with pytest.raises(ApiError) as error:
             get_template("game-outreach", version)
         assert error.value.code == "template_version_changed"

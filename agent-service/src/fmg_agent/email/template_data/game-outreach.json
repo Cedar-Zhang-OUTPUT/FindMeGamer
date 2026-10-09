@@ -1,6 +1,6 @@
 {
   "id": "game-outreach",
-  "version": "4",
+  "version": "5",
   "name": "Creator Outreach",
   "variables": {
     "creator_name": {
@@ -54,7 +54,7 @@
       "description": "Verified public link for this target game or its available demo."
     }
   },
-  "subject": "Internal Test — Thought you might enjoy ${game_name} — ${game_tagline}",
+  "subject": "Thought you might enjoy ${game_name} — ${game_tagline}",
   "text": "Hi ${creator_name},\n\nI’m Toki, the game producer at Ontology Play, an independent studio from Hong Kong. I’ve been following ${channel_name}, and I especially enjoyed your content on ${reference_work}. ${specific_observation}\n\nI’m reaching out because I’d love to invite you to try our game, ${game_name}. ${availability_statement}\n\nGame: ${game_url}\n\n${game_summary}\n\n${gameplay_summary}\n\nIf you enjoy the game and think it would be a good fit for your audience, we’d love to see you share it on your channel in whatever format feels natural to you—whether that’s a video, a livestream, or even a short mention. There is absolutely no obligation to cover it, though; we’d simply be happy for you to try it, and any feedback would already mean a lot to us. If you have any trouble accessing the game, just let me know.\n\nThanks for your time, and for the work you put into your channel.\n\nKind regards,\n\nToki Yuan\nGame Producer, Ontology Play\nEmail: OntologyPlay@hotmail.com",
   "format": "signature_image"
 }

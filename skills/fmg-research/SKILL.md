@@ -5,6 +5,8 @@ description: Use when finding or evaluating gaming creators for a Steam game, co
 
 # FMG creator research
 
+New outreach subjects no longer include `Internal Test`. Existing frozen previews/tasks keep their saved subjects and approval scope; changing one requires a new preview/task and fresh send approval, never a local subject edit.
+
 **Outreach template selection:** when the user-confirmed target is LIMINAL: Within, use `liminal-outreach`; for other games use `game-outreach`. Select by the outreach target, not a creator's reference work. Before drafting, read [the complete templates and variable contracts](references/email-template.md) and fetch the selected template's current server version. The LIMINAL template permits only four creator-personalization variables; its game description, Demo URL and closing block are fixed. Only declared variables are editable; fixed PR wording, subject structure and signature remain unchanged. Read the full rendered email for natural transitions; missing facts require clarification, not invented details. Sending requires explicit approval.
 
 Help the user obtain evidence-backed creator matches, not a large unverified list. On first actual use, briefly offer finding creators, finding more, explaining saved matches, contact enrichment, drafting approved outreach and opening creator profiles. Installing a Skill alone does not start a conversation.
