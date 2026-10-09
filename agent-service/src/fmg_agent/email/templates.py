@@ -11,6 +11,7 @@ from .urls import public_url
 
 TEMPLATE_FILES = {
     "game-outreach": "game-outreach.json",
+    "liminal-outreach": "liminal-outreach.json",
 }
 
 

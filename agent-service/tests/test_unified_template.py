@@ -14,8 +14,10 @@ def unified_values(game="It Takes Two"):
                 game_url="https://store.steampowered.com/app/1426210/")
 
 
-def test_catalog_has_one_cross_game_template():
-    assert [t["id"] for t in list_templates()] == ["game-outreach"]
+def test_catalog_keeps_generic_and_adds_liminal_template():
+    catalog = {item["id"]: item for item in list_templates()}
+    assert catalog["game-outreach"]["version"] == "4"
+    assert catalog["liminal-outreach"]["version"] == "5"
 
 
 @pytest.mark.parametrize("game", ["It Takes Two", "GTA VI"])
@@ -36,9 +38,10 @@ def test_legacy_template_cannot_silently_generate_different_copy():
         get_template("game-outreach", "3")
 
 
-def test_skill_full_copy_matches_server_template():
+@pytest.mark.parametrize("template_id", ["game-outreach", "liminal-outreach"])
+def test_skill_full_copy_matches_server_template(template_id):
     root = Path(__file__).resolve().parents[2]
-    template = get_template("game-outreach")
+    template = get_template(template_id)
     for skill in ("fmg-api", "fmg-research"):
         document = (root / "skills" / skill / "references" / "email-template.md").read_text()
         assert template["subject"] in document

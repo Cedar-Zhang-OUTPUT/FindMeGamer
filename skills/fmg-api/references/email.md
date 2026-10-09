@@ -2,7 +2,7 @@
 
 ## Fixed template rule
 
-Use the single `game-outreach` template for every game. Before drafting, read [full template and variable guidance](email-template.md), then fetch `fmg email template game-outreach`. Its version, schema and fixed copy are authoritative. Never submit a legacy Liminal template or infer a version from examples.
+Use `liminal-outreach` for the confirmed target LIMINAL: Within, and `game-outreach` for other targets. Before drafting, read [full templates and variable guidance](email-template.md), then fetch `fmg email template SELECTED_ID`. Its version, schema and fixed copy are authoritative. LIMINAL v5 exposes only four creator variables; its game/URL/closing block is fixed verbatim. New draft requests must not submit legacy LIMINAL versions 1–4 or infer a version from examples. Keep existing frozen drafts unchanged; inspect their saved content, delivery state and current send readiness before acting on an existing approval. A replacement never inherits approval.
 
 Enrichment needs `email:enrich`; previews and sends need `email:send`. Enrichment searches public business contacts only and may spend company Gemini/search quota.
 
@@ -14,7 +14,7 @@ fmg email retry JOB_ID
 
 Reusing a submission key returns the original job; changed input conflicts. Polling does not repeat work. `--wait` emits NDJSON and stopping the CLI does not cancel server work. Retry explicitly resumes failed stages, reusing completed checkpoints and the original run attribution. A completed empty result is Not Found; timeout/rate-limit/failed is unresolved, not Not Found. Multiple emails include purpose/source/method/verification. None guarantee inbox delivery. Copy needed results before terminal enrichment jobs expire (default 30 days).
 
-Inspect with `fmg email templates` and `fmg email template game-outreach`. `message.json` contains `template_id`, current `template_version`, `to`, and all declared `variables` from the [full template](email-template.md). The subject starts Internal Test and derives its game name/tagline from variables; no custom subject override. Changed templates/content require new preview and approval. If `smtp_recipient_not_allowed` is returned, ask the administrator; never bypass the allowlist.
+Inspect with `fmg email templates` and `fmg email template SELECTED_ID`. `message.json` contains the selected `template_id`, current `template_version`, `to`, and all declared `variables` from the [full template](email-template.md). Both subjects start Internal Test; LIMINAL's subject is fixed, while the generic subject uses game name/tagline variables. No custom subject override. Changed templates/content require new preview and approval. If `smtp_recipient_not_allowed` is returned, ask the administrator; never bypass the allowlist.
 
 Use these commands for individual or special-purpose sending with the available template capabilities. For batches with tracking, use [Outreach tasks](outreach.md), not a loop of individual sends. `fmg email preview --input message.json` creates an immutable snapshot; `fmg email preview --id ID` rereads it. Inspect the actual rendered subject, plain text, recipient and sender; obtain user approval before sending:
 
