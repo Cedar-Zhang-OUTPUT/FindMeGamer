@@ -6,4 +6,11 @@
 - CLI commands are unchanged. Upgrade the CLI and both Skills using `fmg upgrade --latest --skills`, then verify `fmg version` and re-read both installed Skills and current-stage references.
 - No changes to database schema, sender, Graph/IMAP authorization, recipient allowlist, concurrency or send frequency. Deploying this version does not send emails or retry tasks.
 
-Publication acceptance is recorded after full local tests, cloud health/template checks and verification of downloaded release assets.
+## Publication acceptance — 2026-10-09
+
+- Source `c4b0e1de5a10137b30240ec09c455f8e1d61b14a` pushed to `cli`; `fmg-v0.7.2` published with four architecture binaries, both Skills, installer, checksums and Agent guide.
+- Service/installer suite: 218 passed, five environment-dependent tests skipped. Actual release-bundle acceptance: four passed, both before publication and using freshly downloaded public assets. Go tests/vet and both Skill validators passed. The existing Starlette/anyio deprecation warning remains.
+- Production API/Worker use `fmg-agent:formal-c4b0e1d` (image `31cd88251639`), source `/opt/fmg-agent-formal-c4b0e1d`. Backup: `/var/backups/find-me-gamer-agent/formal-c4b0e1d-20261009`. Previous image `fmg-agent:liminal-0c3bc06` and its Compose checkout remain available for rollback.
+- Public HTTPS health and authenticated template reads passed: LIMINAL v6 and generic v5 expose the formal subjects. Both bodies and schemas matched local verified definitions; LIMINAL's fixed block matched the approved full text exactly. API healthy, Worker running, IMAP monitoring active without error.
+- Send counts before/after remained 34 sent / 2 failed. No active enrichment or approved pending sends at activation. No mail sends or task retries were issued; sender, authorization, allowlist and frequency configuration were retained.
+- Downloaded public assets passed all SHA256 checks. Isolated installation succeeded; public update discovery recognizes CLI and both Skills as version 0.7.2.
