@@ -79,9 +79,18 @@ def render_template(definition, variables):
             '<!doctype html><html><body><div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">'
             + escape(result["text"]).replace("\n", "<br>\n")
             + '</div><br><img src="cid:ontology-play-signature" alt="Ontology Play" width="335" '
-            'style="width:335px;max-width:100%;height:auto"></body></html>'
+            'style="width:335px;max-width:100%;height:auto">'
         )
         result["signature_png_base64"] = b64encode(
             files("fmg_agent.email").joinpath("template_data", "ontology-play.png").read_bytes()
         ).decode("ascii")
+        if definition.get("footer_image") == "liminal-within.png":
+            result["html"] += (
+                '<br><img src="cid:liminal-game-banner" alt="LIMINAL: Within" width="600" '
+                'style="display:block;width:600px;max-width:100%;height:auto;margin-top:16px">'
+            )
+            result["footer_png_base64"] = b64encode(
+                files("fmg_agent.email").joinpath("template_data", "liminal-within.png").read_bytes()
+            ).decode("ascii")
+        result["html"] += "</body></html>"
     return result

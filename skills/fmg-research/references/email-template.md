@@ -4,10 +4,10 @@ Select by the user-confirmed **outreach target game**, not the creator's referen
 
 | Target | Server ID | Current bundled version | Editable variables |
 | --- | --- | --- | --- |
-| LIMINAL: Within | `liminal-outreach` | `6` | `creator_name`, `channel_name`, `reference_work`, `specific_observation` only |
+| LIMINAL: Within | `liminal-outreach` | `7` | `creator_name`, `channel_name`, `reference_work`, `specific_observation` only |
 | Other games | `game-outreach` | `5` | Four creator variables plus six target-game variables below |
 
-Fetch `fmg email template SELECTED_ID` before drafting. The server is authoritative; if this bundled copy differs, read the current schema and full text, and do not submit stale inputs. Legacy liminal-outreach versions 1–5 and game-outreach versions 3–4 remain retired for new drafts. Existing frozen previews/tasks are not rewritten or automatically resent. A replacement needs a new preview/task and fresh approval.
+Fetch `fmg email template SELECTED_ID` before drafting. The server is authoritative; if this bundled copy differs, read the current schema and full text, and do not submit stale inputs. Legacy liminal-outreach versions 1–6 and game-outreach versions 3–4 remain retired for new drafts. Existing frozen previews/tasks are not rewritten or automatically resent. A replacement needs a new preview/task and fresh approval.
 
 ## LIMINAL: Within — full subject
 
@@ -75,7 +75,7 @@ Game Producer, Ontology Play
 Email: OntologyPlay@hotmail.com
 ```
 
-The server appends the approved Ontology Play signature logo as an inline image, with a plain-text fallback. Do not add HTML/Markdown or Yes/No buttons.
+The server appends the approved Ontology Play signature logo to both templates. LIMINAL v7 additionally embeds the approved LIMINAL: Within banner below that logo, at a maximum display width of 600px with its original aspect ratio. The generic template has only the logo. Images are server-owned and frozen with each draft; Agents do not supply image variables or remote image links. Plain-text fallback is unchanged. Do not add HTML/Markdown or Yes/No buttons.
 
 ## Variable contract and tone
 

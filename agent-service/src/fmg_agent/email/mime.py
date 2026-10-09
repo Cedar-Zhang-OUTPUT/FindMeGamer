@@ -27,4 +27,14 @@ def build_message(message, message_id):
             disposition="inline",
             filename="ontology-play.png",
         )
+        # Optional snapshotted footer; old drafts with only a signature stay unchanged.
+        if message.get("footer_png_base64"):
+            mail.get_payload()[-1].add_related(
+                b64decode(message["footer_png_base64"], validate=True),
+                maintype="image",
+                subtype="png",
+                cid="<liminal-game-banner>",
+                disposition="inline",
+                filename="liminal-within.png",
+            )
     return mail

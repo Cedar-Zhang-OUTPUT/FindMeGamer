@@ -17,7 +17,7 @@ def unified_values(game="It Takes Two"):
 def test_catalog_keeps_generic_and_adds_liminal_template():
     catalog = {item["id"]: item for item in list_templates()}
     assert catalog["game-outreach"]["version"] == "5"
-    assert catalog["liminal-outreach"]["version"] == "6"
+    assert catalog["liminal-outreach"]["version"] == "7"
 
 
 @pytest.mark.parametrize("game", ["It Takes Two", "GTA VI"])

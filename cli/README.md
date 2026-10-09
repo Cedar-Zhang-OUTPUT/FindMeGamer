@@ -82,7 +82,7 @@ fmg email template game-outreach
 fmg email template liminal-outreach
 ```
 
-Template descriptions include a version, required variables, and text/HTML/subject bodies. For the confirmed target LIMINAL: Within, use `liminal-outreach` v6: only four creator-personalization variables are editable; the game description, Demo link and closing block are fixed. For other games, `game-outreach` v5 supplies game facts through variables. Fetch the selected current schema before drafting. Existing frozen previews and retired versions are not silently rewritten. See confirmed sending below for immutable previews.
+Template descriptions include a version, required variables, and text/HTML/subject bodies. For the confirmed target LIMINAL: Within, use `liminal-outreach` v7: only four creator-personalization variables are editable; the game description, Demo link and closing block are fixed. For other games, `game-outreach` v5 supplies game facts through variables. Fetch the selected current schema before drafting. Existing frozen previews and retired versions are not silently rewritten. See confirmed sending below for immutable previews.
 
 Requires an `email:enrich` token scope. These commands can consume company model/search quota:
 
