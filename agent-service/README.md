@@ -100,6 +100,38 @@ Server-only configuration: `FMG_AGENT_SMTP_HOST`, `FMG_AGENT_SMTP_PORT` (default
 
 Each immutable preview fixes the recipient, rendered subject/text/HTML, template version and sender. A DB reservation is committed before synchronous SMTP delivery; the small Demo does not add a separate send queue. Unique token/key and preview constraints prevent a second attempt, including concurrent requests. An uncertain HTTP result can be recovered with the same key. A send interrupted for more than five minutes is classified `unknown` on subsequent queries and never automatically resent. SMTP acceptance is not proof of inbox delivery. A failed send requires a new approved preview for another attempt; an unknown result requires investigation first.
 
+### Shared sender pacing
+
+Apply migration `0008_send_pacing` before starting the API/worker with this code.
+`FMG_AGENT_EMAIL_SEND_INTERVAL_SECONDS` defaults to **5**. The normalized sender
+address owns one database gate shared by all API processes, access tokens and
+outreach tasks, for both SMTP and Microsoft Graph. Only one transport call can run
+at a time; the next one waits until at least five seconds **after the previous call
+finishes**, so the maximum is 12 attempts/minute and actual throughput is lower.
+The existing outreach dispatcher checks pending work every 10 seconds; this is
+spacing protection, not a promise to achieve 12/minute. Zero disables pacing and
+is reserved for offline test fixtures; keep production at five seconds or more.
+
+A single-send request arriving while the sender is busy/cooling down receives
+HTTP 429 `email_send_throttled` with `retryable=true` and `retry_after_seconds`.
+It creates no send receipt and performs no provider call. After waiting, reuse
+the **same confirmed preview and idempotency key**. Already-created receipts are
+returned without reacquiring or extending the gate. Batch recipients remain
+pending and approved until the dispatcher can acquire the shared gate; they are
+not marked failed or blocked solely for pacing.
+
+Reservation and send receipt creation commit together. A killed sender leaves
+a conservative 630-second gate lease (longer than the worker's 600-second hard
+timeout); recovery of an expired interrupted lease starts a fresh five-second
+cooldown before another unsent recipient can proceed. A separate
+PostgreSQL transaction-level advisory lock remains held through the live transport
+and outcome commit, so a still-running API request cannot overlap another send
+even if its recovery lease expires. PostgreSQL's clock measures both reservation
+and cooldown; API/worker clock differences cannot shorten the interval. An old
+failed/unknown receipt is never automatically retried. Provider 429 responses
+still remain explicit failed receipts: this change does not implement provider
+`Retry-After` backoff, remove Microsoft's daily limit, or guarantee delivery.
+
 Previews without a configured sender remain inspectable but require replacement once the sender is configured. Sender changes and previews older than 30 days block delivery. No CC/BCC/attachments or user-supplied SMTP server are accepted. Send receipts are retained independently of the enrichment-job cleanup.
 
 Local acceptance includes compiled CLI → real HTTP → PostgreSQL → local SMTP capture, refused recipients, confirmation loss, idempotent repeats and concurrent PostgreSQL reservations. No external recipient was contacted; company SMTP acceptance remains pending configuration and an approved test recipient.

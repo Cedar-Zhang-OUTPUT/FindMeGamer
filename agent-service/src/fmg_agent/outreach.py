@@ -325,7 +325,10 @@ def start_task(
                 .join(OutreachRecipient)
                 .where(OutreachRecipient.task_id == task_id)
             ):
-                if preview.message.get("format") not in {"plain_text", "signature_image"}:
+                if preview.message.get("format") not in {
+                    "plain_text",
+                    "signature_image",
+                }:
                     raise ApiError(
                         409,
                         "preview_format_retired",
@@ -396,7 +399,11 @@ def process_recipient(sessions, recipient_id, settings, transport):
                 settings,
                 tracked,
             )
-        except ApiError:
+        except ApiError as exc:
+            if exc.code == "email_send_throttled":
+                # No send reservation or provider call occurred. Keep this approved
+                # recipient pending for a later dispatcher tick, not failed/blocked.
+                return
             # Configuration/preflight failures must not spin endlessly in the dispatcher.
             session.execute(
                 update(OutreachTask)

@@ -97,10 +97,11 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 "outreach_recipients",
                 "email_replies",
                 "inbox_cursors",
+                "email_send_gates",
             }
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0007_inbox"
+                == "0008_send_pacing"
             )
             legacy = conn.execute(
                 text(
@@ -180,6 +181,7 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                     "smtp_host": "smtp.example.com",
                     "smtp_from": "publisher@example.com",
                     "smtp_username": "user",
+                    "email_send_interval_seconds": 0,  # Isolate idempotency here.
                 }
             )
             from pydantic import SecretStr
@@ -189,7 +191,7 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 email_token.id,
                 {
                     "template_id": "game-outreach",
-                    "template_version": "4",
+                    "template_version": "5",
                     "to": "creator@example.com",
                     "variables": variables(),
                 },

@@ -85,3 +85,12 @@ class EmailSend(Base):
         default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class EmailSendGate(Base):
+    __tablename__ = "email_send_gates"
+    sender: Mapped[str] = mapped_column(String(254), primary_key=True)
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    lease_id: Mapped[str | None] = mapped_column(String(36), nullable=True)

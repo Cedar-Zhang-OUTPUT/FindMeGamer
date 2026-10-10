@@ -1,6 +1,7 @@
 """Immutable previews and one transport attempt per preview; no automatic resend."""
 
 from datetime import timedelta, timezone
+from uuid import uuid4
 
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
@@ -10,6 +11,7 @@ from .enrichment import EMAIL
 from .jobs import utcnow
 from .models import EmailPreview, EmailSend
 from .templates import get_template, render_template
+from . import pacing
 
 
 def email_address(value):
@@ -148,6 +150,31 @@ class SendStore:
         return None
 
     def send(self, token_id, preview_id, key, config, transport):
+        # Receipt replays remain available while another mail occupies the gate.
+        self.get_preview(preview_id, token_id, config)
+        self.recover_interrupted()
+        with self.sessions() as session:
+            existing = self._existing(session, token_id, preview_id, key)
+            if existing is not None:
+                return existing
+        with pacing.live_lock(
+            self.sessions, config.smtp_from, config.email_send_interval_seconds
+        ) as acquired:
+            if not acquired:
+                with self.sessions() as session:
+                    existing = self._existing(session, token_id, preview_id, key)
+                    if existing is not None:
+                        return existing
+                raise ApiError(
+                    429,
+                    "email_send_throttled",
+                    "The sender is busy. No send attempt was created; retry this same confirmed preview and key after the delay.",
+                    retryable=True,
+                    retry_after_seconds=config.email_send_interval_seconds,
+                )
+            return self._send(token_id, preview_id, key, config, transport)
+
+    def _send(self, token_id, preview_id, key, config, transport):
         preview = self.get_preview(preview_id, token_id, config)
         self.recover_interrupted()
         with self.sessions() as session:
@@ -165,7 +192,9 @@ class SendStore:
                 )
             if not smtp_ready(config):
                 raise ApiError(
-                    503, "configuration_missing", "Email transport is not configured for sending."
+                    503,
+                    "configuration_missing",
+                    "Email transport is not configured for sending.",
                 )
             if preview["message"]["from"] != config.smtp_from:
                 raise ApiError(
@@ -178,7 +207,31 @@ class SendStore:
                 raise ApiError(
                     409, "preview_expired", "Create and confirm a fresh preview."
                 )
+            send_id = str(uuid4())
+            retry_after = pacing.reserve(
+                session,
+                config.smtp_from,
+                send_id,
+                utcnow(),
+                config.email_send_interval_seconds,
+            )
+            if retry_after is not None:
+                # Persist a possible stale-owner recovery cooldown. No EmailSend
+                # has been added yet; busy requests never consume their preview.
+                session.commit()
+                # A duplicate can have committed while this request waited on the gate.
+                existing = self._existing(session, token_id, preview_id, key)
+                if existing is not None:
+                    return existing
+                raise ApiError(
+                    429,
+                    "email_send_throttled",
+                    "The sender is busy or cooling down. No send attempt was created; retry this same confirmed preview and key after the delay.",
+                    retryable=True,
+                    retry_after_seconds=retry_after,
+                )
             row = EmailSend(
+                id=send_id,
                 token_id=token_id,
                 preview_id=preview_id,
                 idempotency_key=key,
@@ -193,7 +246,6 @@ class SendStore:
                 if existing is None:
                     raise
                 return existing
-            send_id = row.id
         # Durable reservation precedes the external side effect. No auto retry.
         try:
             outcome = transport(config, preview["message"], send_id)
@@ -210,6 +262,13 @@ class SendStore:
                     code=outcome.get("code"),
                     updated_at=utcnow(),
                 )
+            )
+            pacing.finish(
+                session,
+                config.smtp_from,
+                send_id,
+                utcnow(),
+                config.email_send_interval_seconds,
             )
             session.commit()
         return self.get_receipt(send_id, token_id)

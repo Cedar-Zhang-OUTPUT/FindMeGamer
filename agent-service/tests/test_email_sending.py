@@ -23,6 +23,7 @@ def sending(tmp_path):
             smtp_username="user",
             smtp_password="secret-password",
             smtp_from="publisher@example.com",
+            email_send_interval_seconds=0,  # Pacing is exercised in test_send_pacing.py.
         )
     )
     Base.metadata.create_all(app.state.engine)
