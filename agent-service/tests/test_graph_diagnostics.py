@@ -152,6 +152,16 @@ def test_http_date_retry_after_is_recorded_without_wait_or_retry(tmp_path):
     assert result["diagnostics"]["retry_after_seconds"] == 60
 
 
+def test_invalid_unicode_error_code_does_not_change_429_classification(tmp_path):
+    result, _ = attempt(
+        tmp_path, httpx.Response(429, content=b'{"error":{"code":"\\ud800"}}')
+    )
+    assert result["state"] == "failed"
+    assert result["code"] == "graph_rate_limited"
+    assert result["diagnostics"]["provider_error_code"] is None
+    assert result["diagnostics"]["provider_error_code_sha256"] is None
+
+
 @pytest.mark.parametrize(
     "prose",
     [

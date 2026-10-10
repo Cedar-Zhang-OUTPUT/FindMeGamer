@@ -75,7 +75,11 @@ def error_code(value):
 
 def code_fingerprint(value):
     if isinstance(value, str) and len(value) <= 100 and error_code(value) is None:
-        return sha256(value.encode()).hexdigest()
+        try:
+            return sha256(value.encode()).hexdigest()
+        except UnicodeEncodeError:
+            # Malformed provider Unicode must not change the delivery outcome.
+            return None
     return None
 
 
