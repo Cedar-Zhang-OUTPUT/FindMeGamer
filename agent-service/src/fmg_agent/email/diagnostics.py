@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from hashlib import sha256
 import json
 import logging
 import math
@@ -9,6 +10,50 @@ import re
 from uuid import UUID
 
 logger = logging.getLogger(__name__)
+
+# Fail closed: even fields named "code" can contain echoed request data.
+# Extend reviewed identifiers as needed; unknowns remain correlatable by hash/ID.
+SAFE_CODES = frozenset(
+    {
+        "TooManyRequests",
+        "ErrorThrottled",
+        "MailSubmissionThrottled",
+        "ErrorQuotaExceeded",
+        "ErrorLimitExceeded",
+        "ErrorExceededMessageLimit",
+        "ErrorMessageSubmissionBlocked",
+        "ErrorAccessDenied",
+        "ErrorSendAsDenied",
+        "ErrorInvalidRecipients",
+        "ErrorInvalidRequest",
+        "ErrorInternalServerError",
+        "ErrorServerBusy",
+        "ErrorMailboxStoreUnavailable",
+        "MailboxNotEnabledForRESTAPI",
+        "InvalidAuthenticationToken",
+        "InvalidRequest",
+        "BadRequest",
+        "AccessDenied",
+        "Authorization_RequestDenied",
+        "AuthenticationError",
+        "ServiceUnavailable",
+        "GeneralException",
+        "ResourceNotFound",
+        "ErrorItemNotFound",
+    }
+)
+SAFE_MESSAGES = frozenset(
+    {
+        "Mailbox send limit exceeded.",
+        "Please retry again later.",
+        "Please retry after",
+        "Too many requests.",
+        "Too Many Requests",
+        "Too many requests. Please retry later.",
+        "Mailbox is busy.",
+        "Access is denied. Check credentials and try again.",
+    }
+)
 
 
 def identifier(value):
@@ -21,8 +66,16 @@ def identifier(value):
 
 
 def error_code(value):
-    if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_.-]{1,100}", value):
+    if isinstance(value, str) and (
+        value in SAFE_CODES or re.fullmatch(r"[1-5][0-9]{2}", value)
+    ):
         return value
+    return None
+
+
+def code_fingerprint(value):
+    if isinstance(value, str) and len(value) <= 100 and error_code(value) is None:
+        return sha256(value.encode()).hexdigest()
     return None
 
 
@@ -38,32 +91,15 @@ def http_date(value):
     return None
 
 
-def safe_message(value, message, token):
+def safe_message(value):
     if not isinstance(value, str):
         return None, False
-    # Error prose can echo request data. Drop the entire prose when sensitive
-    # material is detected, rather than risking incomplete substring redaction.
-    sensitive = [
-        token,
-        *(message.get(k) for k in ("from", "to", "subject", "text", "html")),
-    ]
-    unsafe = any(
-        isinstance(s, str) and s and s.casefold() in value.casefold() for s in sensitive
-    )
-    unsafe = unsafe or bool(
-        re.search(
-            r"@|https?://|bearer\s|(?:token|secret|password|authorization)|[A-Za-z0-9_+/=-]{49,}",
-            value,
-            re.IGNORECASE,
-        )
-    )
-    if unsafe:
-        return "[redacted provider message]", True
-    normalized = " ".join(value.split())
-    return normalized[:512], len(normalized) > 512
+    if value in SAFE_MESSAGES:
+        return value, False
+    return "[withheld provider message]", True
 
 
-def graph_response(response, client_request_id, message, token):
+def graph_response(response, client_request_id):
     error = {}
     # Do not JSON-decode unbounded/HTML bodies. Only selected Graph fields escape.
     if len(response.content) <= 65536:
@@ -86,12 +122,14 @@ def graph_response(response, client_request_id, message, token):
         retry_seconds = max(
             0, math.ceil((retry_date - (date or observed)).total_seconds())
         )
-    prose, redacted = safe_message(error.get("message"), message, token)
+    prose, redacted = safe_message(error.get("message"))
     details = {
         "provider": "microsoft_graph",
         "http_status": response.status_code,
         "provider_error_code": error_code(error.get("code")),
         "inner_error_code": error_code(inner.get("code")),
+        "provider_error_code_sha256": code_fingerprint(error.get("code")),
+        "inner_error_code_sha256": code_fingerprint(inner.get("code")),
         "provider_message": prose,
         "message_redacted": redacted,
         "retry_after_seconds": retry_seconds,

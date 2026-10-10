@@ -152,6 +152,60 @@ def test_http_date_retry_after_is_recorded_without_wait_or_retry(tmp_path):
     assert result["diagnostics"]["retry_after_seconds"] == 60
 
 
+@pytest.mark.parametrize(
+    "prose",
+    [
+        "Invalid content: confidential budget is 45000 USD.",
+        "Private message body with extra detail",
+        "Unexpected undocumented provider prose",
+    ],
+)
+def test_unknown_prose_is_withheld_even_when_it_only_echoes_an_excerpt(tmp_path, prose):
+    result, _ = attempt(
+        tmp_path,
+        httpx.Response(
+            429,
+            json={
+                "error": {
+                    "code": "ErrorThrottled",
+                    "message": prose,
+                }
+            },
+        ),
+    )
+    details = result["diagnostics"]
+    assert details["provider_message"] == "[withheld provider message]"
+    assert details["message_redacted"] is True
+    assert prose not in json.dumps(details)
+
+
+@pytest.mark.parametrize(
+    "code",
+    ["graph-access", "Private-subject", "confidential-budget", "UnrecognizedCode"],
+)
+def test_unknown_error_codes_are_fingerprinted_not_stored_or_logged(
+    tmp_path, code, caplog
+):
+    with caplog.at_level("WARNING"):
+        result, _ = attempt(
+            tmp_path,
+            httpx.Response(
+                429,
+                json={
+                    "error": {
+                        "code": code,
+                        "innerError": {"code": code},
+                    }
+                },
+            ),
+        )
+    details = result["diagnostics"]
+    assert details["provider_error_code"] is None
+    assert details["inner_error_code"] is None
+    assert len(details["provider_error_code_sha256"]) == 64
+    assert code not in json.dumps(details) + caplog.text
+
+
 def test_receipt_persists_diagnostics_and_replay_never_resends(sending):
     from test_email_sending import preview, send, headers
 

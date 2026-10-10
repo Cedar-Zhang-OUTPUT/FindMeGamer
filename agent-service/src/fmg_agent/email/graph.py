@@ -39,7 +39,7 @@ def deliver(config, message, message_id, *, transport=None):
         if response.status_code == 202:
             # Accepted for processing, not proof of delivery to the inbox.
             return {"state": "sent", "code": None}
-        diagnostics = graph_response(response, client_request_id, message, token)
+        diagnostics = graph_response(response, client_request_id)
         if response.status_code >= 500 or response.status_code == 408:
             return {
                 "state": "unknown",

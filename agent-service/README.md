@@ -144,11 +144,14 @@ help for required flags). Historical/SMTP receipts and unattempted recipients
 have null diagnostics; discarded historical provider responses cannot be recovered.
 
 Fields include HTTP status, Graph `provider_error_code` / `inner_error_code`,
-bounded sanitized `provider_message`, `message_redacted`, normalized
+allowlisted `provider_message`, `message_redacted`, normalized
 `retry_after_seconds`, Microsoft `request_id`, our per-attempt
 `client_request_id`, UTC `response_date` and `observed_at`. Absent or malformed
-fields are null. Error prose containing request content, addresses, URLs or
-credential indicators is withheld. No raw body, authorization headers, or mail
+fields are null. Only reviewed error codes and a small set of safe generic
+error sentences are retained verbatim; all other prose is withheld, including
+potential mail excerpts. Unknown bounded error codes have SHA256 fingerprints
+(`provider_error_code_sha256` / `inner_error_code_sha256`) rather than raw values;
+use Microsoft's request ID for further support investigation. No raw body, authorization headers, or mail
 content is stored in diagnostics. Structured `graph_mail_response` logs include
 only diagnostic metadata, not error prose. A request ID can be provided to
 Microsoft support; a generic 429 alone does not identify a daily sending quota.
