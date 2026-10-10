@@ -160,7 +160,10 @@ def test_old_liminal_snapshot_keeps_single_image_new_task_has_banner(
     )
     assert task.status_code == 201
     assert task.json()["data"]["state"] == "awaiting_approval"
-    message = task.json()["data"]["recipients"][0]["message"]
+    recipient = task.json()["data"]["recipients"][0]
+    message = client.get(
+        "/v1/email/previews/" + recipient["preview_id"], headers=headers(owner)
+    ).json()["data"]["message"]
     assert (
         hashlib.sha256(base64.b64decode(message["footer_png_base64"])).hexdigest()
         == BANNER_SHA256

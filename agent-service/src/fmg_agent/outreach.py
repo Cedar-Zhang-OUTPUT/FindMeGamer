@@ -144,7 +144,15 @@ def view(sessions, task_id, token_id):
                 {
                     "id": r.id,
                     "creator_id": r.creator_id,
-                    "message": p.message,
+                    "preview_id": p.id,
+                    # Polling must not repeat binary assets for every recipient.
+                    # Copy, never mutate the frozen payload used by the sender.
+                    # The owned /v1/email/previews/{preview_id} retains all assets.
+                    "message": {
+                        key: value
+                        for key, value in p.message.items()
+                        if key not in {"signature_png_base64", "footer_png_base64"}
+                    },
                     "state": s.state if s else "pending",
                     "code": s.code if s else None,
                     "diagnostics": s.diagnostics if s else None,
