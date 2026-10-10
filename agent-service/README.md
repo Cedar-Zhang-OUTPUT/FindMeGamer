@@ -134,4 +134,28 @@ still remain explicit failed receipts: this change does not implement provider
 
 Previews without a configured sender remain inspectable but require replacement once the sender is configured. Sender changes and previews older than 30 days block delivery. No CC/BCC/attachments or user-supplied SMTP server are accepted. Send receipts are retained independently of the enrichment-job cleanup.
 
+### Microsoft Graph failure diagnostics
+
+Apply `0009_mail_diagnostics` before starting this release. Non-202 Graph
+responses now attach `diagnostics` to the existing owner-scoped send receipt and
+its outreach recipient. The existing CLI JSON output passes these fields through:
+`fmg email receipt <send-id>` and `fmg outreach task get <task-id>` (see command
+help for required flags). Historical/SMTP receipts and unattempted recipients
+have null diagnostics; discarded historical provider responses cannot be recovered.
+
+Fields include HTTP status, Graph `provider_error_code` / `inner_error_code`,
+bounded sanitized `provider_message`, `message_redacted`, normalized
+`retry_after_seconds`, Microsoft `request_id`, our per-attempt
+`client_request_id`, UTC `response_date` and `observed_at`. Absent or malformed
+fields are null. Error prose containing request content, addresses, URLs or
+credential indicators is withheld. No raw body, authorization headers, or mail
+content is stored in diagnostics. Structured `graph_mail_response` logs include
+only diagnostic metadata, not error prose. A request ID can be provided to
+Microsoft support; a generic 429 alone does not identify a daily sending quota.
+
+This is observability only: no automatic retry, sleep, task resume, mailbox-wide
+pause or provider-limit bypass is added. `Retry-After` is recorded, not acted on.
+Transport timeouts still produce the existing uncertain outcome without a
+provider response; they must not be retried blindly.
+
 Local acceptance includes compiled CLI → real HTTP → PostgreSQL → local SMTP capture, refused recipients, confirmation loss, idempotent repeats and concurrent PostgreSQL reservations. No external recipient was contacted; company SMTP acceptance remains pending configuration and an approved test recipient.

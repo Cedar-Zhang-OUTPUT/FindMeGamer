@@ -161,9 +161,12 @@ def test_graph_mime_keeps_template_signature_and_message_id_without_retry(
             json={"error": {"message": "secret-provider-detail"}},
         )
 
-    assert deliver(
+    result = deliver(
         settings, message, "test-send", transport=httpx.MockTransport(respond)
-    ) == {"state": state, "code": code}
+    )
+    assert {k: result[k] for k in ("state", "code")} == {"state": state, "code": code}
+    if status != 202:
+        assert result["diagnostics"]["http_status"] == status
     assert len(requests) == 1
     req = requests[0]
     assert (

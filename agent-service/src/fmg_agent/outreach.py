@@ -146,6 +146,7 @@ def view(sessions, task_id, token_id):
                     "message": p.message,
                     "state": s.state if s else "pending",
                     "code": s.code if s else None,
+                    "diagnostics": s.diagnostics if s else None,
                     "reply_state": reply_state,
                     "replies": messages,
                 }

@@ -72,6 +72,24 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 VALUES ('old-request', 'migration-survivor', 'old-run', 'x', 'searchPostsRecent', 'succeeded', '{{}}', '{{}}', CURRENT_TIMESTAMP)"""
                 )
             )
+        before_diagnostics = migrate(url, schema, revision="0008_send_pacing")
+        assert before_diagnostics.returncode == 0, before_diagnostics.stderr
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    f"""INSERT INTO "{schema}".email_previews
+                (id, token_id, template_id, template_version, message, created_at)
+                VALUES ('legacy-preview', 'migration-survivor', 'game-outreach', '5', '{{}}', CURRENT_TIMESTAMP)"""
+                )
+            )
+            conn.execute(
+                text(
+                    f"""INSERT INTO "{schema}".email_sends
+                (id, token_id, preview_id, idempotency_key, state, code, created_at, updated_at)
+                VALUES ('legacy-send', 'migration-survivor', 'legacy-preview', 'legacy-key',
+                'failed', 'graph_rate_limited', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"""
+                )
+            )
         first = migrate(url, schema)
         assert first.returncode == 0, first.stderr
         second = migrate(url, schema)
@@ -101,7 +119,7 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
             }
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0008_send_pacing"
+                == "0009_mail_diagnostics"
             )
             legacy = conn.execute(
                 text(
@@ -110,6 +128,19 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 {"id": "old-request"},
             ).one()
             assert legacy == ("succeeded", None)
+            assert (
+                conn.execute(
+                    text(
+                        f"""SELECT state, code, diagnostics
+                FROM "{schema}".email_sends WHERE id = 'legacy-send'"""
+                    )
+                ).one()
+                == (
+                    "failed",
+                    "graph_rate_limited",
+                    None,
+                )
+            )
         # Use the same migrated schema through the actual application factory.
         settings = Settings(
             database_url=str(

@@ -56,7 +56,15 @@ def smtp_ready(config):
 def receipt(row):
     return {
         key: getattr(row, key)
-        for key in ("id", "preview_id", "state", "code", "created_at", "updated_at")
+        for key in (
+            "id",
+            "preview_id",
+            "state",
+            "code",
+            "diagnostics",
+            "created_at",
+            "updated_at",
+        )
     }
 
 
@@ -260,6 +268,7 @@ class SendStore:
                 .values(
                     state=outcome["state"],
                     code=outcome.get("code"),
+                    diagnostics=outcome.get("diagnostics"),
                     updated_at=utcnow(),
                 )
             )

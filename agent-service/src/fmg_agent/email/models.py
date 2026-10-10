@@ -75,6 +75,7 @@ class EmailSend(Base):
     idempotency_key: Mapped[str] = mapped_column(String(200), nullable=False)
     state: Mapped[str] = mapped_column(String(20), nullable=False)
     code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    diagnostics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

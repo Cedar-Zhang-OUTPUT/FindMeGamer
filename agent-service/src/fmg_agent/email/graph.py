@@ -2,11 +2,13 @@
 
 from base64 import b64encode
 from email import policy
+from uuid import uuid4
 
 import httpx
 
 from .microsoft import MailOAuthError, access_token
 from .mime import build_message
+from .diagnostics import graph_response
 from ..providers.logging import protect_http_logs
 
 
@@ -19,6 +21,7 @@ def deliver(config, message, message_id, *, transport=None):
         token = access_token(config, config.smtp_from, profile="graph")
         body = b64encode(mime.as_bytes(policy=policy.SMTP))
         protect_http_logs()
+        client_request_id = str(uuid4())
         with httpx.Client(
             timeout=30, transport=transport, trust_env=False, follow_redirects=False
         ) as client:
@@ -28,20 +31,27 @@ def deliver(config, message, message_id, *, transport=None):
                 headers={
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "text/plain",
+                    "client-request-id": client_request_id,
+                    "return-client-request-id": "true",
                 },
                 content=body,
             )
         if response.status_code == 202:
             # Accepted for processing, not proof of delivery to the inbox.
             return {"state": "sent", "code": None}
+        diagnostics = graph_response(response, client_request_id, message, token)
         if response.status_code >= 500 or response.status_code == 408:
-            return {"state": "unknown", "code": "graph_confirmation_lost"}
+            return {
+                "state": "unknown",
+                "code": "graph_confirmation_lost",
+                "diagnostics": diagnostics,
+            }
         code = {
             401: "mail_oauth_authorization_required",
             403: "graph_send_access_denied",
             429: "graph_rate_limited",
         }.get(response.status_code, "graph_request_rejected")
-        return {"state": "failed", "code": code}
+        return {"state": "failed", "code": code, "diagnostics": diagnostics}
     except MailOAuthError as exc:
         return {"state": "failed", "code": exc.code}
     except Exception:
