@@ -11,7 +11,7 @@ import re
 import ssl
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey, Integer, String, Text, UniqueConstraint, select
+from sqlalchemy import JSON, ForeignKey, Integer, String, Text, UniqueConstraint, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
@@ -32,6 +32,7 @@ class EmailReply(Base):
     subject: Mapped[str] = mapped_column(Text)
     body: Mapped[str] = mapped_column(Text)
     received_at: Mapped[str] = mapped_column(String(40))
+    diagnostics: Mapped[dict | None] = mapped_column(JSON)
 
 
 class InboxCursor(Base):
@@ -43,9 +44,9 @@ class InboxCursor(Base):
     error: Mapped[str | None] = mapped_column(String(60))
 
 
-def mailbox_key(settings):
+def mailbox_key(settings, folder=None):
     return sha256(
-        f"{settings.imap_host}:{settings.imap_port}:{settings.imap_username}:{settings.imap_folder}".encode()
+        f"{settings.imap_host}:{settings.imap_port}:{settings.imap_username}:{folder or settings.imap_folder}".encode()
     ).hexdigest()
 
 
@@ -99,15 +100,56 @@ class PlainHTML(HTMLParser):
             self.parts.append(data)
 
 
+def delivery_status_parts(message):
+    # Only the actual report envelope is a DSN. Attached/forwarded old reports
+    # in an ordinary human reply must never trip the sender circuit breaker.
+    if message.get_content_type() != "multipart/report":
+        return []
+    return [
+        part
+        for part in message.iter_parts()
+        if part.get_content_type() == "message/delivery-status"
+    ]
+
+
+def delivery_diagnostics(message):
+    """Read machine-readable DSNs only, not quoted prose in ordinary replies."""
+    for part in delivery_status_parts(message):
+        for block in part.get_payload() if isinstance(part.get_payload(), list) else []:
+            action = str(block.get("Action", "")).lower()
+            if not action:
+                continue
+            status = str(block.get("Status", ""))
+            diagnostic = str(block.get("Diagnostic-Code", ""))
+            category = "delivery_failure"
+            if action != "failed":
+                category = "delivery_notice"
+            elif status.startswith("5.7.") and re.search(
+                r"\bspam\b|AS\(4810\)", diagnostic, re.I
+            ):
+                category = "spam_blocked"
+            elif status == "5.1.1" or re.search(
+                r"\bno mailbox\b|\b5\.1\.1\b", diagnostic, re.I
+            ):
+                category = "invalid_recipient"
+            elif status == "5.2.2":
+                category = "mailbox_full"
+            return {
+                "action": action[:30],
+                "status": status[:20],
+                "category": category,
+                "diagnostic": diagnostic[:1000],
+            }
+    return None
+
+
 def matching_send(session, message):
     sender = parseaddr(str(message.get("From", "")))[1].casefold()
     refs = re.findall(r"<[^<>\s]+>", str(message.get("In-Reply-To", "")))
     refs += list(
         reversed(re.findall(r"<[^<>\s]+>", str(message.get("References", ""))))
     )
-    bounce = any(
-        p.get_content_type() == "message/delivery-status" for p in message.walk()
-    )
+    bounce = bool(delivery_status_parts(message))
     # Delivery reports often embed the original message headers rather than References.
     if bounce:
         for part in message.walk():
@@ -120,14 +162,20 @@ def matching_send(session, message):
                     refs += re.findall(
                         r"<[^<>\s]+>", str(original.get("Message-ID", ""))
                     )
+    diagnostic = delivery_diagnostics(message)
     kind = (
-        "bounce"
-        if bounce
+        "automatic"
+        if bounce and diagnostic and diagnostic["action"] != "failed"
         else (
-            "automatic"
-            if str(message.get("Auto-Submitted", "no")).lower() != "no"
-            or str(message.get("Precedence", "")).lower() in {"bulk", "list", "junk"}
-            else "human"
+            "bounce"
+            if bounce
+            else (
+                "automatic"
+                if str(message.get("Auto-Submitted", "no")).lower() != "no"
+                or str(message.get("Precedence", "")).lower()
+                in {"bulk", "list", "junk"}
+                else "human"
+            )
         )
     )
     for ref in refs:
@@ -141,7 +189,7 @@ def matching_send(session, message):
         expected = f'<fmg-{row.id}@{preview.message["from"].split("@", 1)[1]}>'
         if ref.casefold() != expected.casefold():
             continue
-        if kind != "bounce" and sender != preview.message["to"].casefold():
+        if not bounce and sender != preview.message["to"].casefold():
             continue
         return row, kind, sender
     return None, kind, sender
@@ -176,6 +224,8 @@ def ingest(sessions, mailbox, validity, uid, raw):
                 parser = PlainHTML()
                 parser.feed(content)
                 content = "".join(parser.parts)
+        now = datetime.now(timezone.utc)
+        diagnostic = delivery_diagnostics(message)
         session.add(
             EmailReply(
                 send_id=send.id,
@@ -184,10 +234,21 @@ def ingest(sessions, mailbox, validity, uid, raw):
                 sender=sender[:254],
                 subject=str(message.get("Subject", ""))[:2000],
                 body=content[:50000],
-                received_at=datetime.now(timezone.utc).isoformat(),
+                received_at=now.isoformat(),
+                diagnostics=diagnostic,
             )
         )
         try:
+            session.flush()
+            if (
+                kind == "bounce"
+                and diagnostic
+                and diagnostic["category"] == "spam_blocked"
+            ):
+                from .safety import observe_bounce
+
+                preview = session.get(EmailPreview, send.preview_id)
+                observe_bounce(session, preview.message["from"], now)
             session.commit()
         except IntegrityError:
             session.rollback()
@@ -256,6 +317,82 @@ def read_reply(client, uid, header):
     return message.as_bytes() if message else header
 
 
+def monitored_folders(client, settings):
+    status, rows = client.list()
+    if status != "OK":
+        raise RuntimeError("folder_discovery")
+    folders = [settings.imap_folder, *settings.imap_extra_folders]
+    for row in rows or []:
+        if not isinstance(row, bytes):
+            continue
+        match = re.fullmatch(rb'\(([^)]*)\)\s+(?:"(?:[^"\\]|\\.)*"|NIL)\s+(.*)', row)
+        if not match or b"\\noselect" in match[1].lower():
+            continue
+        name = match[2].decode("ascii")
+        if name.startswith('"') and name.endswith('"'):
+            name = re.sub(r"\\(.)", r"\1", name[1:-1])
+        if b"\\junk" in match[1].lower() or name.casefold() in {
+            "junk",
+            "spam",
+            "junk e-mail",
+            "[gmail]/spam",
+        }:
+            folders.append(name)
+    return list(dict.fromkeys(folders))
+
+
+def scan_folder(sessions, settings, client, folder):
+    key = mailbox_key(settings, folder)
+    with sessions() as session:
+        if session.get(InboxCursor, key) is None:
+            session.add(InboxCursor(id=key))
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+    # Quoting protects folder names containing spaces or escaped quotes.
+    quoted = '"' + folder.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    if client.select(quoted, readonly=True)[0] != "OK":
+        raise RuntimeError("folder")
+    validity = client.response("UIDVALIDITY")[1][0].decode()
+    with sessions() as session:
+        cursor = session.get(InboxCursor, key)
+        last = cursor.last_uid if cursor.uidvalidity == validity else 0
+        if cursor.uidvalidity != validity:
+            cursor.uidvalidity = validity
+            cursor.last_uid = 0
+            session.commit()
+    since = (
+        datetime.now(timezone.utc) - timedelta(days=settings.imap_lookback_days)
+    ).strftime("%d-%b-%Y")
+    criteria = f"(UID {last+1}:*)" if last else f"(SINCE {since})"
+    status, result = client.uid("search", None, criteria)
+    if status != "OK":
+        raise RuntimeError("search")
+    uids = sorted(int(x) for x in result[0].split() if int(x) > last)[:100]
+    for uid in uids:
+        header = fetch_part(client, uid, "HEADER", 16384)
+        if header is None:
+            raise RuntimeError("fetch")
+        message = BytesParser(policy=policy.default).parsebytes(header)
+        with sessions() as session:
+            match, _, _ = matching_send(session, message)
+        if match is not None or message.get_content_type() == "multipart/report":
+            ingest(sessions, key, validity, uid, read_reply(client, uid, header))
+        with sessions() as session:
+            cursor = session.get(InboxCursor, key)
+            cursor.uidvalidity = validity
+            cursor.last_uid = uid
+            session.commit()
+    with sessions() as session:
+        cursor = session.get(InboxCursor, key)
+        cursor.uidvalidity = validity
+        cursor.last_success = datetime.now(timezone.utc).isoformat()
+        cursor.error = None
+        session.commit()
+    return len(uids)
+
+
 def sync_once(sessions, settings, connect=None):
     if not configured(settings):
         return {"state": "not_configured"}
@@ -286,45 +423,16 @@ def sync_once(sessions, settings, connect=None):
             client.login(
                 settings.imap_username, settings.imap_password.get_secret_value()
             )
-        if client.select(settings.imap_folder, readonly=True)[0] != "OK":
-            raise RuntimeError("folder")
-        validity = client.response("UIDVALIDITY")[1][0].decode()
+        folders = monitored_folders(client, settings)
+        processed = sum(
+            scan_folder(sessions, settings, client, folder) for folder in folders
+        )
         with sessions() as session:
             cursor = session.get(InboxCursor, key)
-            last = cursor.last_uid if cursor.uidvalidity == validity else 0
-            if cursor.uidvalidity != validity:
-                cursor.uidvalidity = validity
-                cursor.last_uid = 0
-                session.commit()
-        since = (
-            datetime.now(timezone.utc) - timedelta(days=settings.imap_lookback_days)
-        ).strftime("%d-%b-%Y")
-        criteria = f"(UID {last+1}:*)" if last else f"(SINCE {since})"
-        status, result = client.uid("search", None, criteria)
-        if status != "OK":
-            raise RuntimeError("search")
-        uids = sorted(int(x) for x in result[0].split() if int(x) > last)[:100]
-        for uid in uids:
-            header = fetch_part(client, uid, "HEADER", 16384)
-            if header is None:
-                raise RuntimeError("fetch")
-            message = BytesParser(policy=policy.default).parsebytes(header)
-            with sessions() as session:
-                match, _, _ = matching_send(session, message)
-            if match is not None or message.get_content_type() == "multipart/report":
-                ingest(sessions, key, validity, uid, read_reply(client, uid, header))
-            with sessions() as session:
-                cursor = session.get(InboxCursor, key)
-                cursor.uidvalidity = validity
-                cursor.last_uid = uid
-                session.commit()
-        with sessions() as session:
-            cursor = session.get(InboxCursor, key)
-            cursor.uidvalidity = validity
             cursor.last_success = datetime.now(timezone.utc).isoformat()
             cursor.error = None
             session.commit()
-        return {"state": "active", "processed": len(uids)}
+        return {"state": "active", "processed": processed, "folders": folders}
     except Exception as exc:
         code = (
             exc.code

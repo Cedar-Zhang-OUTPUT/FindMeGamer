@@ -286,8 +286,11 @@ def test_imap_oauth_uses_read_only_and_preserves_polling(sending, tmp_path):
             calls.append("oauth")
 
         def select(self, folder, readonly):
-            assert readonly is True and folder == "INBOX"
+            assert readonly is True and folder == '"INBOX"'
             return "OK", [b"0"]
+
+        def list(self):
+            return "OK", [b'(\\HasNoChildren) "/" "INBOX"']
 
         def response(self, key):
             return key, [b"1"]
@@ -302,6 +305,7 @@ def test_imap_oauth_uses_read_only_and_preserves_polling(sending, tmp_path):
     assert sync_once(app.state.sessions, settings, connect=Mailbox) == {
         "state": "active",
         "processed": 0,
+        "folders": ["INBOX"],
     }
     assert calls == ["oauth"]
 

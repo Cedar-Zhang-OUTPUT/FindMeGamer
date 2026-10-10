@@ -48,7 +48,9 @@ def test_plain_text_fallback_and_no_response_endpoint(sending, tmp_path, smtp_se
     assert deliver(configuration(tmp_path, smtp_server), m, "test")["state"] == "sent"
     parsed = BytesParser(policy=policy.default).parsebytes(smtp_server.messages[0])
     assert parsed.is_multipart()
-    assert m["text"] in parsed.get_body(preferencelist=("plain",)).get_content().replace("\r\n", "\n")
+    assert m["text"] in parsed.get_body(
+        preferencelist=("plain",)
+    ).get_content().replace("\r\n", "\n")
     app, client, owner, _, _ = sending
     task = sent_task(sending)
     assert "Yes:" not in task["recipients"][0]["message"]["text"]
@@ -161,6 +163,9 @@ def test_sync_cursor_read_only_and_recovery(sending):
         def login(self, *args):
             if self.fail:
                 raise imaplib.IMAP4.error("private-secret")
+
+        def list(self):
+            return "OK", [b'(\\HasNoChildren) "/" "INBOX"']
 
         def select(self, folder, readonly):
             assert readonly is True

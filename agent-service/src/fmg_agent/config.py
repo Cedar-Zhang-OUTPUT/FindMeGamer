@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     microsoft_token_store: Path | None = None
     microsoft_graph_token_store: Path | None = None
     imap_folder: str = "INBOX"
+    imap_extra_folders: list[str] = Field(default_factory=list)
     imap_poll_seconds: int = Field(default=60, ge=30, le=3600)
     imap_lookback_days: int = Field(default=30, ge=1, le=90)
     smtp_allow_insecure_loopback: bool = False

@@ -12,6 +12,7 @@ from .jobs import utcnow
 from .models import EmailPreview, EmailSend
 from .templates import get_template, render_template
 from . import pacing
+from . import safety
 
 
 def email_address(value):
@@ -189,6 +190,22 @@ class SendStore:
             existing = self._existing(session, token_id, preview_id, key)
             if existing is not None:
                 return existing
+            safety.check(session, config.smtp_from)
+            # Recheck queued batch state at the durable reservation boundary.
+            from ..outreach import OutreachTask, OutreachRecipient
+
+            task = session.scalar(
+                select(OutreachTask)
+                .join(OutreachRecipient)
+                .where(OutreachRecipient.preview_id == preview_id)
+                .with_for_update()
+            )
+            if task and task.state != "sending":
+                raise ApiError(
+                    409,
+                    "outreach_task_paused",
+                    "This batch is not sending. No attempt was created.",
+                )
             if preview["message"].get("format") not in {
                 "plain_text",
                 "signature_image",
@@ -279,5 +296,7 @@ class SendStore:
                 utcnow(),
                 config.email_send_interval_seconds,
             )
+            if outcome.get("code") == "graph_rate_limited":
+                safety.trip(session, config.smtp_from, "provider_rate_limited")
             session.commit()
         return self.get_receipt(send_id, token_id)

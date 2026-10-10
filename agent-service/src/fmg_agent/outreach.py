@@ -123,6 +123,7 @@ def view(sessions, task_id, token_id):
                         "subject",
                         "body",
                         "received_at",
+                        "diagnostics",
                     )
                 }
             )
@@ -173,9 +174,12 @@ def view(sessions, task_id, token_id):
         if state == "sending" and not stats["pending"] and not stats["sending"]:
             state = (
                 "finished_with_issues"
-                if stats["failed"] + stats["unknown"]
+                if stats["failed"] + stats["unknown"] + stats["bounced"]
                 else "completed"
             )
+        from .email.safety import status as sender_status
+
+        sender = rows[0][1].message.get("from") if rows else None
         return {
             "id": task.id,
             "name": task.name,
@@ -184,6 +188,7 @@ def view(sessions, task_id, token_id):
             "template": task.template,
             "stats": stats,
             "recipients": recipients,
+            "sender_safety": sender_status(session, sender) if sender else None,
         }
 
 
@@ -317,6 +322,9 @@ def start_task(
                 409, "revision_mismatch", "Review and confirm this exact task revision."
             )
         if task.state in {"awaiting_approval", "blocked"}:
+            from .email.safety import check
+
+            check(session, settings.smtp_from)
             if not smtp_ready(settings):
                 raise ApiError(
                     503, "smtp_not_configured", "Configure SMTP before starting."
