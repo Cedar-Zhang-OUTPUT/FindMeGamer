@@ -23,6 +23,10 @@ display `bounced` and `stats.bounced`. A completed task with bounces is
 
 Safety defaults (server side, no CLI upgrade required):
 
+- Explicit spam classification includes Outlook's `550 5.7.520` / `AS(4810)`
+  reports and `533 5.4.0` reports explicitly saying the message "triggered our
+  junk email filters". The latter requires both the SMTP signature and the
+  filter diagnosis; unrelated `5.4.0` routing failures remain non-retryable.
 - A first explicit spam-blocking DSN queues **one** automatic resend, no earlier
   than 30 seconds after ingestion. The 10-second dispatcher and the mailbox-wide
   send gate can delay it further; the timer starts when the monitor discovers the

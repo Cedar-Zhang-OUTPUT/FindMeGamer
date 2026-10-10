@@ -124,8 +124,16 @@ def delivery_diagnostics(message):
             category = "delivery_failure"
             if action != "failed":
                 category = "delivery_notice"
-            elif status.startswith("5.7.") and re.search(
-                r"\bspam\b|AS\(4810\)", diagnostic, re.I
+            elif (
+                status.startswith("5.7.")
+                and re.search(r"\bspam\b|AS\(4810\)", diagnostic, re.I)
+            ) or (
+                # Outlook also reports junk-filter rejection with a routing code.
+                # Require both its SMTP signature and explicit filter diagnosis;
+                # ordinary 5.4.0 routing failures must never authorize resends.
+                status == "5.4.0"
+                and re.search(r"\b533\s+5\.4\.0\b", diagnostic)
+                and re.search(r"\btriggered our junk email filters\b", diagnostic, re.I)
             ):
                 category = "spam_blocked"
             elif status == "5.1.1" or re.search(

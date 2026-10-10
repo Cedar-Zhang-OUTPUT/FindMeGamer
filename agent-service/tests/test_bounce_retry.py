@@ -51,8 +51,21 @@ def advance(monkeypatch, when):
     monkeypatch.setattr("fmg_agent.email.retries.utcnow", lambda: when)
 
 
+@pytest.mark.parametrize(
+    "dsn_status,diagnostic",
+    [
+        (
+            "5.7.520",
+            "550 5.7.520 Message blocked because it contains content identified as spam. AS(4810)",
+        ),
+        (
+            "5.4.0",
+            "533 5.4.0 Your message seems to have triggered our junk email filters. Could you edit your message and try again?",
+        ),
+    ],
+)
 def test_first_bounce_waits_30_seconds_and_resends_exact_snapshot_once(
-    sending, monkeypatch
+    sending, monkeypatch, dsn_status, diagnostic
 ):
     # Catches early dispatch, altered payloads, and duplicate dispatcher delivery.
     from fmg_agent.email.inbox import ingest
@@ -63,8 +76,14 @@ def test_first_bounce_waits_30_seconds_and_resends_exact_snapshot_once(
     app, client, owner, _, _ = sending
     sid = accepted(app, client, owner, "first")
     before = datetime.now(timezone.utc)
-    assert ingest(app.state.sessions, "junk", "1", 1, dsn(sid, "one")) == "bounce"
+    assert (
+        ingest(
+            app.state.sessions, "junk", "1", 1, dsn(sid, "one", dsn_status, diagnostic)
+        )
+        == "bounce"
+    )
     row = retry_row(app, sid)
+    assert row is not None, "confirmed spam DSN must schedule one retry"
     due = row.due_at.replace(tzinfo=timezone.utc)
     assert (
         before + timedelta(seconds=30)
@@ -105,6 +124,45 @@ def test_first_bounce_waits_30_seconds_and_resends_exact_snapshot_once(
     ingest(app.state.sessions, "junk", "1", 3, dsn(sid, "another-original-notice"))
     assert retry_row(app, sid).due_at == row.due_at
     assert pending_retries(app.state.sessions) == []
+
+
+@pytest.mark.parametrize(
+    "status,diagnostic,action,expected",
+    [
+        ("5.4.0", "554 5.4.0 routing loop detected", "failed", "delivery_failure"),
+        ("5.4.0", "533 5.4.0 routing loop detected", "failed", "delivery_failure"),
+        (
+            "5.1.1",
+            "550 5.1.1 no mailbox; junk email filters",
+            "failed",
+            "invalid_recipient",
+        ),
+        ("5.2.2", "552 5.2.2 mailbox full", "failed", "mailbox_full"),
+        (
+            "5.4.0",
+            "533 5.4.0 Your message seems to have triggered our junk email filters.",
+            "delayed",
+            "delivery_notice",
+        ),
+    ],
+)
+def test_unrelated_failures_and_delays_are_not_reclassified_as_spam(
+    status, diagnostic, action, expected
+):
+    from email import policy
+    from email.parser import BytesParser
+    from fmg_agent.email.inbox import delivery_diagnostics
+
+    message = BytesParser(policy=policy.default).parsebytes(
+        dsn(
+            "00000000-0000-0000-0000-000000000001",
+            "classification",
+            status,
+            diagnostic,
+            action,
+        )
+    )
+    assert delivery_diagnostics(message)["category"] == expected
 
 
 def test_only_three_distinct_retry_failures_pause_and_never_retry_the_retry(
