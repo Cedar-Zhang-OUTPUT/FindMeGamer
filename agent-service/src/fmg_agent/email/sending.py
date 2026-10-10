@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from ..errors import ApiError
 from .enrichment import EMAIL
 from .jobs import utcnow
-from .models import EmailPreview, EmailSend
+from .models import EmailPreview, EmailSend, EmailBounceRetry
 from .templates import get_template, render_template
 from . import pacing
 from . import safety
@@ -120,6 +120,16 @@ class SendStore:
                     updated_at=utcnow(),
                 )
             )
+            session.execute(
+                update(EmailBounceRetry)
+                .where(
+                    EmailBounceRetry.state == "sending",
+                    EmailBounceRetry.preview_id.in_(
+                        select(EmailSend.preview_id).where(EmailSend.state == "unknown")
+                    ),
+                )
+                .values(state="unknown")
+            )
             session.commit()
 
     def get_receipt(self, send_id, token_id):
@@ -128,7 +138,19 @@ class SendStore:
             row = session.get(EmailSend, send_id)
             if row is None or row.token_id != token_id:
                 raise ApiError(404, "send_not_found", "Send receipt was not found.")
-            return receipt(row)
+            data = receipt(row)
+            from .retries import details
+
+            retry = session.get(EmailBounceRetry, row.id)
+            attempt = (
+                session.scalar(
+                    select(EmailSend).where(EmailSend.preview_id == retry.preview_id)
+                )
+                if retry
+                else None
+            )
+            data["bounce_retry"] = details(retry, attempt)
+            return data
 
     def _existing(self, session, token_id, preview_id, key):
         row = session.scalar(
@@ -191,13 +213,22 @@ class SendStore:
             if existing is not None:
                 return existing
             safety.check(session, config.smtp_from)
+            # Another request may have reserved this preview while we waited
+            # for the sender lock. Do not wait on its unique key while holding
+            # the lock needed by its final receipt transaction.
+            existing = self._existing(session, token_id, preview_id, key)
+            if existing is not None:
+                return existing
+            from .retries import preflight
+
+            retry, task_preview_id = preflight(session, preview_id, key)
             # Recheck queued batch state at the durable reservation boundary.
             from ..outreach import OutreachTask, OutreachRecipient
 
             task = session.scalar(
                 select(OutreachTask)
                 .join(OutreachRecipient)
-                .where(OutreachRecipient.preview_id == preview_id)
+                .where(OutreachRecipient.preview_id == task_preview_id)
                 .with_for_update()
             )
             if task and task.state != "sending":
@@ -263,6 +294,8 @@ class SendStore:
                 state="sending",
             )
             session.add(row)
+            if retry is not None:
+                retry.state = "sending"
             try:
                 session.commit()
             except IntegrityError:
@@ -279,6 +312,9 @@ class SendStore:
         except Exception:
             outcome = {"state": "unknown", "code": "smtp_execution_uncertain"}
         with self.sessions() as session:
+            # Match reservation/inbox lock order: sender, then send/retry rows.
+            # Taking this after UPDATE EmailSend can deadlock a concurrent replay.
+            safety.locked(session, config.smtp_from)
             session.execute(
                 update(EmailSend)
                 .where(EmailSend.id == send_id, EmailSend.state == "sending")
@@ -298,5 +334,8 @@ class SendStore:
             )
             if outcome.get("code") == "graph_rate_limited":
                 safety.trip(session, config.smtp_from, "provider_rate_limited")
+            from .retries import finish
+
+            finish(session, preview_id, outcome, utcnow())
             session.commit()
         return self.get_receipt(send_id, token_id)

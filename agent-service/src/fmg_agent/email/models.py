@@ -95,3 +95,19 @@ class EmailSendGate(Base):
         DateTime(timezone=True), nullable=False
     )
     lease_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+
+
+class EmailBounceRetry(Base):
+    """One child preview per original send, never a chain of resends."""
+
+    __tablename__ = "email_bounce_retries"
+    original_send_id: Mapped[str] = mapped_column(
+        ForeignKey("email_sends.id"), primary_key=True
+    )
+    preview_id: Mapped[str] = mapped_column(
+        ForeignKey("email_previews.id"), unique=True, nullable=False
+    )
+    due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    state: Mapped[str] = mapped_column(String(20), nullable=False, default="queued")
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_reason: Mapped[str | None] = mapped_column(String(100))

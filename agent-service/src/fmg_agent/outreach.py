@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from .auth import Principal, require_scope
 from .db import Base
-from .email.models import EmailPreview, EmailSend
+from .email.models import EmailPreview, EmailSend, EmailBounceRetry
 from .email.routes import PreviewRequest, result
 from .email.sending import SendStore, smtp_ready, email_address
 from .email.templates import get_template, render_template
@@ -100,8 +100,24 @@ def view(sessions, task_id, token_id):
             .order_by(EmailPreview.created_at, OutreachRecipient.id)
         ).all()
         from .email.inbox import EmailReply
+        from .email.retries import details
 
         send_ids = [s.id for _, _, s in rows if s]
+        retry_rows = (
+            session.execute(
+                select(EmailBounceRetry, EmailSend)
+                .outerjoin(
+                    EmailSend, EmailSend.preview_id == EmailBounceRetry.preview_id
+                )
+                .where(EmailBounceRetry.original_send_id.in_(send_ids))
+            ).all()
+            if send_ids
+            else []
+        )
+        retries = {
+            retry.original_send_id: (retry, attempt) for retry, attempt in retry_rows
+        }
+        send_ids += [attempt.id for _, attempt in retry_rows if attempt]
         replies = (
             session.scalars(
                 select(EmailReply)
@@ -118,6 +134,7 @@ def view(sessions, task_id, token_id):
                     key: getattr(reply, key)
                     for key in (
                         "id",
+                        "send_id",
                         "kind",
                         "sender",
                         "subject",
@@ -129,8 +146,15 @@ def view(sessions, task_id, token_id):
             )
         recipients = []
         for r, p, s in rows:
+            retry, attempt = retries.get(s.id, (None, None)) if s else (None, None)
             messages = grouped.get(s.id, []) if s else []
-            kinds = {m["kind"] for m in messages}
+            latest_messages = grouped.get(attempt.id, []) if attempt else messages
+            messages = messages + grouped.get(attempt.id, []) if attempt else messages
+            kinds = {m["kind"] for m in latest_messages}
+            if any(m["kind"] == "human" for m in messages):
+                kinds.add("human")
+            retry_data = details(retry, attempt)
+            current = attempt or s
             reply_state = (
                 "replied"
                 if "human" in kinds
@@ -153,9 +177,10 @@ def view(sessions, task_id, token_id):
                         for key, value in p.message.items()
                         if key not in {"signature_png_base64", "footer_png_base64"}
                     },
-                    "state": s.state if s else "pending",
-                    "code": s.code if s else None,
-                    "diagnostics": s.diagnostics if s else None,
+                    "state": current.state if current else "pending",
+                    "code": current.code if current else None,
+                    "diagnostics": current.diagnostics if current else None,
+                    "bounce_retry": retry_data,
                     "reply_state": reply_state,
                     "replies": messages,
                 }
@@ -174,12 +199,32 @@ def view(sessions, task_id, token_id):
                 )
             }
         )
+        stats.update(
+            {
+                "retry_"
+                + state: sum(
+                    r["bounce_retry"] is not None
+                    and r["bounce_retry"]["state"] == state
+                    for r in recipients
+                )
+                for state in (
+                    "queued",
+                    "sending",
+                    "sent",
+                    "failed",
+                    "unknown",
+                    "cancelled",
+                )
+            }
+        )
         replied_sent = sum(
             r["state"] == "sent" and r["reply_state"] == "replied" for r in recipients
         )
         stats["reply_rate"] = replied_sent / stats["sent"] if stats["sent"] else None
         state = task.state
-        if state == "sending" and not stats["pending"] and not stats["sending"]:
+        if state == "sending" and not any(
+            stats[k] for k in ("pending", "sending", "retry_queued", "retry_sending")
+        ):
             state = (
                 "finished_with_issues"
                 if stats["failed"] + stats["unknown"] + stats["bounced"]

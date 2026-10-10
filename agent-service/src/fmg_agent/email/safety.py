@@ -14,6 +14,11 @@ class SenderSafety(Base):
     sender: Mapped[str] = mapped_column(String(254), primary_key=True)
     reason: Mapped[str | None] = mapped_column(String(60))
     paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    retry_enabled_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
 
 
 def locked(session, sender):
@@ -50,7 +55,7 @@ def status(session, sender):
 
 def trip(session, sender, reason, now=None):
     from ..outreach import OutreachTask, OutreachRecipient
-    from .models import EmailPreview, EmailSend
+    from .models import EmailPreview, EmailSend, EmailBounceRetry
 
     row = locked(session, sender)
     if not row.reason:
@@ -63,7 +68,13 @@ def trip(session, sender, reason, now=None):
         .outerjoin(EmailSend, EmailSend.preview_id == EmailPreview.id)
         .where(
             func.lower(EmailPreview.message["from"].as_string()) == sender.casefold(),
-            (EmailSend.id.is_(None)) | (EmailSend.state == "sending"),
+            (EmailSend.id.is_(None))
+            | (EmailSend.state == "sending")
+            | EmailSend.id.in_(
+                select(EmailBounceRetry.original_send_id).where(
+                    EmailBounceRetry.state.in_(["queued", "sending"])
+                )
+            ),
         )
     )
     session.execute(
@@ -73,9 +84,8 @@ def trip(session, sender, reason, now=None):
     )
 
 
-def observe_bounce(session, sender, now):
-    from .inbox import EmailReply
-    from .models import EmailPreview, EmailSend
+def observe_retry_failure(session, sender, now):
+    from .models import EmailPreview, EmailSend, EmailBounceRetry
 
     # Serialize counting and the final send reservation on the same sender row.
     locked(session, sender)
@@ -85,14 +95,12 @@ def observe_bounce(session, sender, now):
                 func.distinct(func.lower(EmailPreview.message["to"].as_string()))
             )
         )
-        .select_from(EmailReply)
-        .join(EmailSend, EmailSend.id == EmailReply.send_id)
+        .select_from(EmailBounceRetry)
+        .join(EmailSend, EmailSend.id == EmailBounceRetry.original_send_id)
         .join(EmailPreview, EmailPreview.id == EmailSend.preview_id)
         .where(
             func.lower(EmailPreview.message["from"].as_string()) == sender.casefold(),
-            EmailReply.kind == "bounce",
-            EmailReply.diagnostics["category"].as_string() == "spam_blocked",
-            EmailReply.received_at >= (now - timedelta(minutes=15)).isoformat(),
+            EmailBounceRetry.failed_at >= now - timedelta(minutes=15),
         )
     )
     if count >= 3:

@@ -64,6 +64,17 @@ def create_worker(settings=None, *, enricher_factory=None):
 
     stop = Event()
 
+    @worker.task(name="fmg_agent.email.bounce_retry", max_retries=0)
+    def bounce_retry(original_send_id):
+        from .email.retries import process_retry
+        from .email.smtp import deliver
+
+        engine, sessions = database(settings)
+        try:
+            process_retry(sessions, original_send_id, settings, deliver)
+        finally:
+            engine.dispose()
+
     @worker.task(name="fmg_agent.outreach.send", max_retries=0)
     def outreach_send(recipient_id):
         from .outreach import process_recipient
@@ -93,6 +104,12 @@ def create_worker(settings=None, *, enricher_factory=None):
                     )
                 try:
                     from .outreach import pending
+                    from .email.retries import pending_retries
+
+                    for original_send_id in pending_retries(sessions):
+                        bounce_retry.apply_async(
+                            args=[original_send_id], queue="fmg_agent", expires=60
+                        )
 
                     for recipient_id in pending(sessions):
                         outreach_send.apply_async(

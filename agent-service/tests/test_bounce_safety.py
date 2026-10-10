@@ -51,10 +51,14 @@ def accepted(app, client, owner, key, to=None):
     return send(client, owner, pid, key=key).json()["data"]["id"]
 
 
-def test_three_distinct_spam_bounces_pause_sender_and_keep_receipts(sending):
+def test_three_distinct_retry_bounces_pause_sender_and_keep_receipts(
+    sending, monkeypatch
+):
     from fmg_agent.email.inbox import ingest
     from fmg_agent.outreach import pending, process_recipient
     from fmg_agent.email.models import EmailSend
+    from fmg_agent.email.retries import process_retry
+    from test_bounce_retry import retry_row, advance
 
     app, client, owner, other, _ = sending
     task = create(app, client, owner).json()["data"]
@@ -69,6 +73,19 @@ def test_three_distinct_spam_bounces_pause_sender_and_keep_receipts(sending):
     ingest(app.state.sessions, "junk", "1", 8, dsn(ids[0], "another-notice"))
     assert len(pending(app.state.sessions)) == 4
     ingest(app.state.sessions, "junk", "1", 9, dsn(ids[2], "third"))
+    assert len(pending(app.state.sessions)) == 4
+    retry_ids = []
+    for i, sid in enumerate(ids):
+        advance(monkeypatch, retry_row(app, sid).due_at)
+        process_retry(
+            app.state.sessions,
+            sid,
+            app.state.settings,
+            lambda cfg, msg, rid: retry_ids.append(rid) or {"state": "sent"},
+        )
+        ingest(
+            app.state.sessions, "junk", "1", i + 10, dsn(retry_ids[-1], f"retry-{i}")
+        )
     assert pending(app.state.sessions) == []
     for item, token in ((task, owner), (other_task, other)):
         result = client.get(
@@ -94,7 +111,7 @@ def test_three_distinct_spam_bounces_pause_sender_and_keep_receipts(sending):
         == "email_sender_paused"
     )
     with app.state.sessions() as session:
-        assert len(session.scalars(select(EmailSend)).all()) == 3
+        assert len(session.scalars(select(EmailSend)).all()) == 6
     assert (
         client.get("/v1/email/sends/" + ids[0], headers=headers(owner)).json()["data"][
             "state"
@@ -239,28 +256,52 @@ def test_graph_message_limit_pauses_sender_without_retrying(sending):
     assert result["stats"]["failed"] == 1 and result["stats"]["pending"] == 1
 
 
-def test_old_reports_do_not_trip_and_other_sender_remains_available(sending):
+def test_old_retry_failures_do_not_trip_and_other_sender_remains_available(
+    sending, monkeypatch
+):
     from datetime import datetime, timedelta, timezone
-    from fmg_agent.email.inbox import ingest, EmailReply
+    from fmg_agent.email.inbox import ingest
+    from fmg_agent.email.models import EmailBounceRetry
+    from fmg_agent.email.retries import process_retry
     from fmg_agent.email.safety import status
+    from test_bounce_retry import retry_row, advance
 
     app, client, owner, _, _ = sending
     first = accepted(app, client, owner, "old")
     ingest(app.state.sessions, "junk", "1", 1, dsn(first, "old"))
+    advance(monkeypatch, retry_row(app, first).due_at)
+    process_retry(
+        app.state.sessions,
+        first,
+        app.state.settings,
+        lambda *args: {"state": "failed", "code": "smtp_request_rejected"},
+    )
     with app.state.sessions() as session:
-        row = session.scalars(select(EmailReply)).one()
-        row.received_at = (
-            datetime.now(timezone.utc) - timedelta(minutes=16)
-        ).isoformat()
+        row = session.get(EmailBounceRetry, first)
+        row.failed_at = datetime.now(timezone.utc) - timedelta(minutes=16)
         session.commit()
     for i in range(2):
         sid = accepted(app, client, owner, f"recent-{i}")
         ingest(app.state.sessions, "junk", "1", i + 2, dsn(sid, f"recent-{i}"))
+        advance(monkeypatch, retry_row(app, sid).due_at)
+        process_retry(
+            app.state.sessions,
+            sid,
+            app.state.settings,
+            lambda *args: {"state": "failed", "code": "smtp_request_rejected"},
+        )
     with app.state.sessions() as session:
         assert status(session, "publisher@example.com")["state"] == "ready"
     # Only an additional third recent recipient crosses the threshold.
     sid = accepted(app, client, owner, "third")
     ingest(app.state.sessions, "junk", "1", 4, dsn(sid, "third"))
+    advance(monkeypatch, retry_row(app, sid).due_at)
+    process_retry(
+        app.state.sessions,
+        sid,
+        app.state.settings,
+        lambda *args: {"state": "failed", "code": "smtp_request_rejected"},
+    )
     app.state.settings.smtp_from = "different@example.com"
     assert accepted(app, client, owner, "other-sender")
     with app.state.sessions() as session:

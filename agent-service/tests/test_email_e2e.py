@@ -214,25 +214,99 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
         # without any client-side send loop, including repeated starts.
         smtp_server.mode = "sent"
         batch_file = tmp_path / "batch.json"
-        batch_file.write_text(json.dumps({"name": "Worker batch", "template_id": "game-outreach",
-            "template_version": "5", "recipients": [{"creator_id": name,
-                "to": name + "@example.com", "variables": variables()} for name in ("alice", "bob")]}))
-        response = cli("outreach", "task", "create", "--input", str(batch_file), "--idempotency-key", "batch")
+        batch_file.write_text(
+            json.dumps(
+                {
+                    "name": "Worker batch",
+                    "template_id": "game-outreach",
+                    "template_version": "5",
+                    "recipients": [
+                        {
+                            "creator_id": name,
+                            "to": name + "@example.com",
+                            "variables": variables(),
+                        }
+                        for name in ("alice", "bob")
+                    ],
+                }
+            )
+        )
+        response = cli(
+            "outreach",
+            "task",
+            "create",
+            "--input",
+            str(batch_file),
+            "--idempotency-key",
+            "batch",
+        )
         assert response.returncode == 0, response.stderr
         batch = json.loads(response.stdout)["data"]
         assert len(smtp_server.messages) == 2
         for _ in range(2):
-            started = cli("outreach", "task", "start", batch["id"], "--revision", batch["revision"], "--confirm")
+            started = cli(
+                "outreach",
+                "task",
+                "start",
+                batch["id"],
+                "--revision",
+                batch["revision"],
+                "--confirm",
+            )
             assert started.returncode == 0, started.stderr
         deadline = time.monotonic() + 35
         while time.monotonic() < deadline:
-            current = json.loads(cli("outreach", "task", "get", batch["id"]).stdout)["data"]
+            current = json.loads(cli("outreach", "task", "get", batch["id"]).stdout)[
+                "data"
+            ]
             if current["state"] == "completed":
                 break
-            time.sleep(.25)
+            time.sleep(0.25)
         assert current["state"] == "completed", current
         assert current["stats"]["sent"] == 2
         assert len(smtp_server.messages) == 4
+        # The real restarted worker must discover a durable bounce retry, wait
+        # at least 30 seconds, and send the frozen snapshot only once.
+        from fmg_agent.email.inbox import ingest
+        from test_bounce_safety import dsn as delivery_report
+
+        original_preview = current["recipients"][0]["preview_id"]
+        with app.state.engine.connect() as conn:
+            original_send = conn.scalar(
+                text("SELECT id FROM email_sends WHERE preview_id=:id"),
+                {"id": original_preview},
+            )
+        detected = time.monotonic()
+        assert (
+            ingest(
+                app.state.sessions,
+                "junk",
+                "1",
+                1,
+                delivery_report(original_send, "worker-retry"),
+            )
+            == "bounce"
+        )
+        process.terminate()
+        process.wait(timeout=15)
+        worker_output.close()
+        process, worker_output = start_worker("resume")
+        deadline = time.monotonic() + 50
+        while time.monotonic() < deadline:
+            current = json.loads(cli("outreach", "task", "get", batch["id"]).stdout)[
+                "data"
+            ]
+            if current["stats"]["retry_sent"] == 1:
+                break
+            if time.monotonic() - detected < 30:
+                assert len(smtp_server.messages) == 4
+            time.sleep(0.25)
+        assert current["stats"]["retry_sent"] == 1, current
+        assert time.monotonic() - detected >= 30
+        assert current["state"] == "completed"
+        assert len(smtp_server.messages) == 5
+        receipt = cli("email", "receipt", original_send)
+        assert json.loads(receipt.stdout)["data"]["bounce_retry"]["state"] == "sent"
     finally:
         if process is not None and process.poll() is None:
             process.terminate()

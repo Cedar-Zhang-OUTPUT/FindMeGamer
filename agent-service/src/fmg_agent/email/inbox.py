@@ -240,15 +240,10 @@ def ingest(sessions, mailbox, validity, uid, raw):
         )
         try:
             session.flush()
-            if (
-                kind == "bounce"
-                and diagnostic
-                and diagnostic["category"] == "spam_blocked"
-            ):
-                from .safety import observe_bounce
+            if kind == "bounce" and diagnostic:
+                from .retries import observe
 
-                preview = session.get(EmailPreview, send.preview_id)
-                observe_bounce(session, preview.message["from"], now)
+                observe(session, send, diagnostic, now)
             session.commit()
         except IntegrityError:
             session.rollback()
