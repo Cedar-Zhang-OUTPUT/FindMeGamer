@@ -4,6 +4,7 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from starlette.middleware.gzip import GZipMiddleware
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -47,6 +48,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url=None,
     )
+    # Old CLIs still fetch full tasks: repeated drafts/replies compress well.
+    app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
     app.state.engine = engine
     app.state.sessions = sessions
     app.state.settings = settings

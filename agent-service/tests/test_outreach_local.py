@@ -201,6 +201,11 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
             "--idempotency-key",
             "one",
         )["data"]
+        summary = cli("outreach", "task", "get", task["id"], "--summary")["data"]
+        assert summary["state"] == "awaiting_approval"
+        assert summary["stats"]["pending"] == 1
+        assert "recipients" not in summary and "template" not in summary
+        assert smtp_server.messages == []
         script = (
             Path(__file__).resolve().parents[2]
             / "skills/fmg-api/scripts/outreach_dashboard.py"
@@ -236,11 +241,17 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
                 process_recipient(app.state.sessions, rid, config, deliver)
             assert len(smtp_server.messages) == 1
             actual = cli("outreach", "task", "get", task["id"])["data"]
+            summary = cli("outreach", "task", "get", task["id"], "--summary")["data"]
+            assert summary["state"] == "completed"
+            assert summary["stats"] == actual["stats"]
             assert actual["stats"]["sent"] == 1
             assert actual["stats"]["replied"] == 0
             assert actual["monitoring"]["state"] == "not_configured"
             assert actual["recipients"][0]["message"]["format"] == "signature_image"
-            assert "cid:ontology-play-signature" in actual["recipients"][0]["message"]["html"]
+            assert (
+                "cid:ontology-play-signature"
+                in actual["recipients"][0]["message"]["html"]
+            )
             ledger = cli("--run-id", "local-outreach", "usage")["data"]
             assert "smtp" in json.dumps(ledger)
     finally:

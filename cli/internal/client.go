@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -33,6 +34,15 @@ type Client struct {
 
 func newClient(config Config) *Client {
 	return &Client{config: config, http: &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}}
+}
+
+func isRequestTimeout(err error) bool {
+	var networkError net.Error
+	return errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &networkError) && networkError.Timeout())
+}
+
+func timeoutError() *APIError {
+	return &APIError{Code: "request_timeout", Message: "Service request timed out. Query the existing task/receipt before retrying a write; do not resend uncertain mail.", Retryable: true, Exit: 5}
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body any) (Response, error) {
@@ -69,15 +79,24 @@ func (c *Client) requestWithKey(ctx context.Context, method, path string, body a
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return result, &APIError{Code: "cancelled", Message: "Cancelled; previously emitted pages are retained.", Exit: 130}
 		}
+		if isRequestTimeout(err) {
+			return result, timeoutError()
+		}
 		return result, &APIError{Code: "connection_failed", Message: "Could not reach the service; check address, connection and proxy.", Retryable: true, Exit: 5}
 	}
 	defer response.Body.Close()
 	data, err = io.ReadAll(io.LimitReader(response.Body, 32*1024*1024+1))
-	if err != nil || len(data) > 32*1024*1024 {
+	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return result, &APIError{Code: "cancelled", Message: "Cancelled; previously emitted pages are retained.", Exit: 130}
 		}
-		return result, &APIError{Code: "invalid_response", Message: "Service response was incomplete or too large.", Exit: 5}
+		if isRequestTimeout(err) {
+			return result, timeoutError()
+		}
+		return result, &APIError{Code: "response_incomplete", Message: "Service response was interrupted. Query the existing task/receipt before retrying a write; do not resend uncertain mail.", Retryable: true, Exit: 5}
+	}
+	if len(data) > 32*1024*1024 {
+		return result, &APIError{Code: "response_too_large", Message: "Service response exceeds 32 MiB. Use a summary or bounded query.", Exit: 5}
 	}
 	if response.StatusCode >= 300 {
 		var envelope struct {

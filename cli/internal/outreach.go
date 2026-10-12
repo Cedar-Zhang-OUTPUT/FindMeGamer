@@ -25,10 +25,19 @@ func runOutreach(ctx context.Context, args []string, out, diagnostics io.Writer)
 			return writeError(diagnostics, errors.New("list takes no arguments"))
 		}
 	case "get":
-		if len(args) != 3 || args[2] == "" || strings.ContainsAny(args[2], "/?#") {
+		if len(args) < 3 || args[2] == "" || strings.ContainsAny(args[2], "/?#") {
 			return writeError(diagnostics, errors.New("get requires a task ID"))
 		}
+		flags := flag.NewFlagSet("get", flag.ContinueOnError)
+		flags.SetOutput(io.Discard)
+		summary := flags.Bool("summary", false, "lightweight progress and safety only; omit drafts and replies")
+		if flags.Parse(args[3:]) != nil || flags.NArg() != 0 {
+			return writeError(diagnostics, errors.New("get requires TASK_ID [--summary]"))
+		}
 		path += "/" + url.PathEscape(args[2])
+		if *summary {
+			path += "?summary=true"
+		}
 	case "create":
 		flags := flag.NewFlagSet("create", flag.ContinueOnError)
 		flags.SetOutput(io.Discard)

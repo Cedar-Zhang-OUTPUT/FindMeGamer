@@ -14,6 +14,8 @@ Save approval scope in `outreach/<batch>/approval.json` with the relevant user m
 
 If SMTP is not configured, preserve previews/variables and report the missing company setup. Do not ask the user to paste SMTP secrets into research artifacts. Preparing mail can complete without sending it.
 
+For progress and checks before advancing to another batch, use `fmg outreach task get TASK_ID --summary` (CLI 0.7.4+); it includes safety, mailbox-monitor health and retry counts without downloading drafts/replies. Read full `get` or the dashboard for recipient/draft/reply review. A summary is not draft review or send approval. After a timeout, query the existing ID rather than recreating or resending mail; if the necessary status check remains unavailable, preserve the current batch and stop advancement. Ask the user only if continuation requires new authorization.
+
 ## Browser copilot checkpoints
 
 Browser presentation is a default action at each meaningful mail stage, not just a final link in the summary:

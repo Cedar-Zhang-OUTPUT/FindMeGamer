@@ -41,7 +41,7 @@ fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key KEY
 fmg email receipt SEND_ID
 fmg outreach task create --input batch.json --idempotency-key KEY
 fmg outreach task list
-fmg outreach task get TASK_ID
+fmg outreach task get TASK_ID [--summary]
 fmg outreach task start TASK_ID --revision REVISION --confirm
 
 Default: one upstream page, JSON stdout, diagnostics stderr.

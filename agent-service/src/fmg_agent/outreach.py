@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import JSON, ForeignKey, String, UniqueConstraint, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, defer, load_only
 
 from .auth import Principal, require_scope
 from .db import Base
@@ -88,21 +88,30 @@ def owned(session, task_id, token_id):
     return task
 
 
-def view(sessions, task_id, token_id):
+def view(sessions, task_id, token_id, *, summary=False):
     SendStore(sessions).recover_interrupted()
     with sessions() as session:
         task = owned(session, task_id, token_id)
-        rows = session.execute(
-            select(OutreachRecipient, EmailPreview, EmailSend)
+        query = (
+            select(
+                OutreachRecipient,
+                EmailPreview,
+                EmailSend,
+                EmailPreview.message["from"].as_string(),
+            )
             .join(EmailPreview, OutreachRecipient.preview_id == EmailPreview.id)
             .outerjoin(EmailSend, EmailSend.preview_id == EmailPreview.id)
             .where(OutreachRecipient.task_id == task_id)
             .order_by(EmailPreview.created_at, OutreachRecipient.id)
-        ).all()
+        )
+        if summary:
+            # Do not load megabytes of frozen images just to count send states.
+            query = query.options(defer(EmailPreview.message, raiseload=True))
+        rows = session.execute(query).all()
         from .email.inbox import EmailReply
         from .email.retries import details
 
-        send_ids = [s.id for _, _, s in rows if s]
+        send_ids = [s.id for _, _, s, _ in rows if s]
         retry_rows = (
             session.execute(
                 select(EmailBounceRetry, EmailSend)
@@ -118,34 +127,39 @@ def view(sessions, task_id, token_id):
             retry.original_send_id: (retry, attempt) for retry, attempt in retry_rows
         }
         send_ids += [attempt.id for _, attempt in retry_rows if attempt]
-        replies = (
-            session.scalars(
-                select(EmailReply)
-                .where(EmailReply.send_id.in_(send_ids))
-                .order_by(EmailReply.received_at)
-            ).all()
-            if send_ids
-            else []
+        reply_query = (
+            select(EmailReply)
+            .where(EmailReply.send_id.in_(send_ids))
+            .order_by(EmailReply.received_at)
         )
+        if summary:
+            reply_query = reply_query.options(
+                load_only(EmailReply.send_id, EmailReply.kind, raiseload=True)
+            )
+        replies = session.scalars(reply_query).all() if send_ids else []
         grouped = {}
         for reply in replies:
             grouped.setdefault(reply.send_id, []).append(
                 {
                     key: getattr(reply, key)
                     for key in (
-                        "id",
-                        "send_id",
-                        "kind",
-                        "sender",
-                        "subject",
-                        "body",
-                        "received_at",
-                        "diagnostics",
+                        ("kind",)
+                        if summary
+                        else (
+                            "id",
+                            "send_id",
+                            "kind",
+                            "sender",
+                            "subject",
+                            "body",
+                            "received_at",
+                            "diagnostics",
+                        )
                     )
                 }
             )
         recipients = []
-        for r, p, s in rows:
+        for r, p, s, _ in rows:
             retry, attempt = retries.get(s.id, (None, None)) if s else (None, None)
             messages = grouped.get(s.id, []) if s else []
             latest_messages = grouped.get(attempt.id, []) if attempt else messages
@@ -172,11 +186,15 @@ def view(sessions, task_id, token_id):
                     # Polling must not repeat binary assets for every recipient.
                     # Copy, never mutate the frozen payload used by the sender.
                     # The owned /v1/email/previews/{preview_id} retains all assets.
-                    "message": {
-                        key: value
-                        for key, value in p.message.items()
-                        if key not in {"signature_png_base64", "footer_png_base64"}
-                    },
+                    "message": (
+                        {}
+                        if summary
+                        else {
+                            key: value
+                            for key, value in p.message.items()
+                            if key not in {"signature_png_base64", "footer_png_base64"}
+                        }
+                    ),
                     "state": current.state if current else "pending",
                     "code": current.code if current else None,
                     "diagnostics": current.diagnostics if current else None,
@@ -232,16 +250,17 @@ def view(sessions, task_id, token_id):
             )
         from .email.safety import status as sender_status
 
-        sender = rows[0][1].message.get("from") if rows else None
+        sender = rows[0][3] if rows else None
         return {
             "id": task.id,
             "name": task.name,
             "revision": task.revision,
             "state": state,
-            "template": task.template,
             "stats": stats,
-            "recipients": recipients,
             "sender_safety": sender_status(session, sender) if sender else None,
+            **(
+                {} if summary else {"template": task.template, "recipients": recipients}
+            ),
         }
 
 
@@ -350,8 +369,13 @@ def list_tasks(request: Request, principal: Principal = Depends(owner)):
 
 
 @router.get("/v1/outreach/tasks/{task_id}")
-def get_task(request: Request, task_id: str, principal: Principal = Depends(owner)):
-    data = view(request.app.state.sessions, task_id, principal.id)
+def get_task(
+    request: Request,
+    task_id: str,
+    principal: Principal = Depends(owner),
+    summary: bool = False,
+):
+    data = view(request.app.state.sessions, task_id, principal.id, summary=summary)
     from .email.inbox import monitoring_status
 
     data["monitoring"] = monitoring_status(

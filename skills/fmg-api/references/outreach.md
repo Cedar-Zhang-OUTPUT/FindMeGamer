@@ -9,8 +9,11 @@ Up to 1,000 recipients per task, one address each; duplicate addresses within a 
 ```sh
 fmg --run-id RUN_ID outreach task create --input batch.json --idempotency-key STABLE_KEY
 fmg outreach task list
-fmg outreach task get TASK_ID
+fmg outreach task get TASK_ID --summary
+fmg outreach task get TASK_ID  # full drafts and recorded replies, for review
 ```
+
+Use `get TASK_ID --summary` (CLI 0.7.4+) for progress polling and pre-send/between-batch checks. It returns task identity/revision, derived state, all delivery/retry/reply counts, sender safety and mailbox-monitor health, without recipient drafts, images or reply bodies. Use full `get` for recipient/draft/reply review; a summary does not substitute for that review or authorize sending. If a necessary summary check fails, retain task IDs and pause advancement; never recreate tasks or bypass sender holds with individual mail. `request_timeout` and `response_incomplete` mean the read was interrupted, not that sending failed or the body exceeded the limit; retry a read, not an uncertain send. `response_too_large` specifically means the decoded response exceeded 32 MiB. Legacy full reads remain compatible and are compressed over HTTP when supported.
 
 Create stores frozen template, rendered drafts, recipient addresses and revision, but **does not send**. A repeated key with the same payload returns the same task; changed payload conflicts. Save the task ID/revision locally. For modifications, edit the local input and create a new task/key, leaving the old one unapproved; review and approve only the replacement. No in-place edits or automatic approval transfer.
 
@@ -32,7 +35,7 @@ Have the user review recipients and drafts, then explicitly approve the exact ta
 fmg outreach task start TASK_ID --revision REVIEWED_REVISION --confirm
 ```
 
-The worker sends independently of Codex. Repeating start is safe for the same revision; do not recreate a batch after a timeout. Query its ID. `sent` means SMTP accepted, `failed` means explicit failure, `unknown` means delivery may have occurred: never automatically resend unknown rows. A separately approved replacement for known failed rows must exclude successful/uncertain ones. Unconfigured SMTP blocks start, and a sender change requires newly generated/reviewed drafts.
+The worker sends independently of Codex. Repeating start is safe for the same revision; do not recreate a batch after a timeout. Query its ID with `--summary`. `sent` means the mail provider accepted the request (SMTP or Microsoft Graph), not confirmed delivery; `failed` means explicit failure, `unknown` means delivery may have occurred: never automatically resend unknown rows. A separately approved replacement for known failed rows must exclude successful/uncertain ones. Unconfigured mail transport blocks start, and a sender change requires newly generated/reviewed drafts.
 
 ## Actual email replies
 

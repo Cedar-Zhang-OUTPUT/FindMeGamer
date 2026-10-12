@@ -4,6 +4,217 @@ from sqlalchemy import select
 
 from test_email_sending import headers, sending
 from test_liminal_fixed_copy import personalization
+from test_send_pacing_postgres import pg_sending
+import pytest
+
+
+@pytest.mark.postgres
+def test_postgres_summary_extracts_only_sender_and_keeps_counts(pg_sending):
+    app, client, owner = pg_sending
+    task = client.post(
+        "/v1/outreach/tasks",
+        headers=headers(owner, "pg-summary"),
+        json={
+            "name": "Postgres summary",
+            "template_id": "liminal-outreach",
+            "template_version": "7",
+            "recipients": [
+                {
+                    "creator_id": "one",
+                    "to": "one@example.com",
+                    "variables": personalization(),
+                }
+            ],
+        },
+    ).json()["data"]
+    response = client.get(
+        "/v1/outreach/tasks/" + task["id"] + "?summary=true", headers=headers(owner)
+    )
+    assert response.status_code == 200 and len(response.content) < 4096
+    data = response.json()["data"]
+    assert data["stats"]["pending"] == 1 and data["stats"]["sent"] == 0
+    assert data["sender_safety"]["state"] == "ready"
+    assert "recipients" not in data and "template" not in data
+
+
+def test_summary_excludes_drafts_and_reply_bodies_and_enforces_ownership(sending):
+    """A send prerequisite must not download frozen images/drafts or long replies."""
+    from sqlalchemy import event, func
+    from fmg_agent.email.models import EmailSend
+
+    app, client, owner, other, read = sending
+    task = client.post(
+        "/v1/outreach/tasks",
+        headers=headers(owner, "summary-only"),
+        json={
+            "name": "Summary",
+            "template_id": "liminal-outreach",
+            "template_version": "7",
+            "recipients": [
+                {
+                    "creator_id": "one",
+                    "to": "one@example.com",
+                    "variables": personalization(),
+                },
+                {
+                    "creator_id": "two",
+                    "to": "two@example.com",
+                    "variables": personalization(),
+                },
+            ],
+        },
+    ).json()["data"]
+    path = "/v1/outreach/tasks/" + task["id"] + "?summary=true"
+    queries = []
+
+    def record(conn, cursor, statement, params, context, many):
+        queries.append(statement)
+
+    event.listen(app.state.engine, "before_cursor_execute", record)
+    try:
+        response = client.get(path, headers=headers(owner))
+    finally:
+        event.remove(app.state.engine, "before_cursor_execute", record)
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert "recipients" not in data and "template" not in data
+    assert len(response.content) < 4096
+    assert data["revision"] == task["revision"]
+    assert data["state"] == "awaiting_approval"
+    assert data["stats"]["pending"] == 2 and data["stats"]["sent"] == 0
+    assert data["sender_safety"]["state"] == "ready"
+    assert "monitoring" in data
+    import re
+
+    assert not any(
+        re.search(r"(?:SELECT\s+|,\s*)email_previews\.message(?:,|\s+AS)", q)
+        for q in queries
+    )
+    assert client.get(path, headers=headers(other)).status_code == 404
+    assert client.get(path, headers=headers(read)).status_code == 403
+    with app.state.sessions() as session:
+        assert session.scalar(select(func.count()).select_from(EmailSend)) == 0
+
+
+def test_summary_tracks_retry_unknown_reply_and_sender_hold(sending, monkeypatch):
+    from datetime import datetime, timezone
+    from fmg_agent.email.inbox import ingest, EmailReply
+    from fmg_agent.email.retries import process_retry
+    from fmg_agent.email.models import EmailBounceRetry, EmailSend
+    from fmg_agent.email.safety import trip
+    from fmg_agent.outreach import pending, process_recipient
+    from test_bounce_safety import dsn
+
+    app, client, owner, _, _ = sending
+    task = client.post(
+        "/v1/outreach/tasks",
+        headers=headers(owner, "summary-retry"),
+        json={
+            "name": "Retry summary",
+            "template_id": "liminal-outreach",
+            "template_version": "7",
+            "recipients": [
+                {
+                    "creator_id": "one",
+                    "to": "creator@example.com",
+                    "variables": personalization(),
+                }
+            ],
+        },
+    ).json()["data"]
+    path = "/v1/outreach/tasks/" + task["id"]
+    client.post(
+        path + "/start",
+        headers=headers(owner),
+        json={"confirm": True, "revision": task["revision"]},
+    )
+    process_recipient(
+        app.state.sessions,
+        pending(app.state.sessions)[0],
+        app.state.settings,
+        lambda *args: {"state": "sent"},
+    )
+    with app.state.sessions() as session:
+        sid = session.scalar(select(EmailSend.id))
+    ingest(app.state.sessions, "junk", "1", 1, dsn(sid, "summary-dsn"))
+    queued = client.get(path + "?summary=true", headers=headers(owner)).json()["data"]
+    assert "recipients" not in queued
+    assert queued["state"] == "sending"
+    assert queued["stats"]["retry_queued"] == 1 and queued["stats"]["bounced"] == 1
+    with app.state.sessions() as session:
+        due = session.get(EmailBounceRetry, sid).due_at.replace(tzinfo=timezone.utc)
+    monkeypatch.setattr("fmg_agent.email.retries.utcnow", lambda: due)
+    process_retry(
+        app.state.sessions,
+        sid,
+        app.state.settings,
+        lambda *args: {"state": "unknown", "code": "graph_confirmation_lost"},
+    )
+    with app.state.sessions() as session:
+        session.add(
+            EmailReply(
+                id="human-summary",
+                send_id=sid,
+                message_key="summary-reply",
+                kind="human",
+                sender="creator@example.com",
+                subject="Reply",
+                body="private reply " * 10000,
+                received_at=datetime.now(timezone.utc).isoformat(),
+                diagnostics={},
+            )
+        )
+        trip(session, "publisher@example.com", "provider_rate_limited")
+        session.commit()
+    queries = []
+    from sqlalchemy import event
+
+    def record(conn, cursor, statement, params, context, many):
+        queries.append(statement)
+
+    event.listen(app.state.engine, "before_cursor_execute", record)
+    try:
+        response = client.get(path + "?summary=true", headers=headers(owner))
+    finally:
+        event.remove(app.state.engine, "before_cursor_execute", record)
+    data = response.json()["data"]
+    assert len(response.content) < 4096 and "private reply" not in response.text
+    assert data["stats"]["unknown"] == 1 and data["stats"]["retry_unknown"] == 1
+    assert data["stats"]["replied"] == 1 and data["stats"]["bounced"] == 0
+    assert data["state"] == "finished_with_issues"
+    assert data["sender_safety"]["reason"] == "provider_rate_limited"
+    assert not any("email_replies.body" in q for q in queries)
+    full = client.get(path, headers=headers(owner)).json()["data"]
+    assert data["stats"] == full["stats"] and data["state"] == full["state"]
+    assert any(
+        m["body"].startswith("private reply") for m in full["recipients"][0]["replies"]
+    )
+
+
+def test_legacy_task_reads_are_compressed_without_changing_drafts(sending):
+    app, client, owner, _, _ = sending
+    task = client.post(
+        "/v1/outreach/tasks",
+        headers=headers(owner, "gzip-legacy"),
+        json={
+            "name": "Legacy compressed",
+            "template_id": "liminal-outreach",
+            "template_version": "7",
+            "recipients": [
+                {
+                    "creator_id": "one",
+                    "to": "one@example.com",
+                    "variables": personalization(),
+                }
+            ],
+        },
+    ).json()["data"]
+    path = "/v1/outreach/tasks/" + task["id"]
+    plain = client.get(path, headers={**headers(owner), "Accept-Encoding": "identity"})
+    compressed = client.get(path, headers={**headers(owner), "Accept-Encoding": "gzip"})
+    assert compressed.headers.get("Content-Encoding") == "gzip"
+    assert int(compressed.headers["Content-Length"]) < len(plain.content) * 0.7
+    assert compressed.json()["data"] == plain.json()["data"]
 
 
 def test_fifty_recipient_task_responses_stay_small_and_full_previews_are_owned(sending):
@@ -35,6 +246,10 @@ def test_fifty_recipient_task_responses_stay_small_and_full_previews_are_owned(s
         "/v1/outreach/tasks", headers=headers(owner, "compact-fifty"), json=payload
     )
     queried = client.get(path, headers=headers(owner))
+    summary = client.get(path + "?summary=true", headers=headers(owner))
+    assert summary.status_code == 200 and len(summary.content) < 4096
+    assert summary.json()["data"]["stats"]["pending"] == 50
+    assert "recipients" not in summary.json()["data"]
     started = client.post(
         path + "/start",
         headers=headers(owner),

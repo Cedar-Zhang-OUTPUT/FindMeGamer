@@ -41,3 +41,37 @@ func TestOutreachCreateThenExplicitApproval(t *testing.T) {
 		t.Fatal(code, diagnostics.String())
 	}
 }
+
+func TestOutreachSummaryIsExplicitReadOnlyQuery(t *testing.T) {
+	calls := 0
+	setup(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.Method != "GET" || r.URL.Path != "/v1/outreach/tasks/task1" || r.URL.Query().Get("summary") != "true" {
+			t.Errorf("not a summary GET: %s %s", r.Method, r.URL)
+		}
+		w.Write([]byte(`{"data":{"id":"task1","state":"completed","stats":{"pending":0}},"meta":{}}`))
+	})
+	var out, diagnostics bytes.Buffer
+	if code := Run([]string{"outreach", "task", "get", "task1", "--summary"}, strings.NewReader(""), &out, &diagnostics); code != 0 {
+		t.Fatal(code, diagnostics.String())
+	}
+	if calls != 1 || !strings.Contains(out.String(), `"pending":0`) {
+		t.Fatal("summary was not returned", calls, out.String())
+	}
+}
+
+func TestOutreachLegacyGetStillRequestsFullDetails(t *testing.T) {
+	setup(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "" {
+			t.Errorf("legacy query changed: %s", r.URL)
+		}
+		w.Write([]byte(`{"data":{"recipients":[{"creator_id":"one"}]},"meta":{}}`))
+	})
+	var out, diagnostics bytes.Buffer
+	if code := Run([]string{"outreach", "task", "get", "task1"}, strings.NewReader(""), &out, &diagnostics); code != 0 {
+		t.Fatal(code, diagnostics.String())
+	}
+	if !strings.Contains(out.String(), `"recipients"`) {
+		t.Fatal(out.String())
+	}
+}
