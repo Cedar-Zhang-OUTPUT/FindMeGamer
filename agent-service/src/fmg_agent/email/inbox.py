@@ -136,7 +136,7 @@ def delivery_diagnostics(message):
                 and re.search(r"\btriggered our junk email filters\b", diagnostic, re.I)
             ):
                 category = "spam_blocked"
-            elif status == "5.1.1" or re.search(
+            elif status in {"5.1.1", "5.1.3"} or re.search(
                 r"\bno mailbox\b|\b5\.1\.1\b", diagnostic, re.I
             ):
                 category = "invalid_recipient"

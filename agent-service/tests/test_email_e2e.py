@@ -54,6 +54,9 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
             smtp_encryption="none",
             smtp_allow_insecure_loopback=True,
             smtp_from="publisher@example.com",
+            # This test checks CLI/worker recovery and delivery uncertainty.
+            # Real cooldown timing has dedicated PostgreSQL pacing tests.
+            email_send_interval_seconds=0,
         )
         app = create_app(settings)
         with app.state.sessions() as session:
@@ -121,6 +124,7 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
                 FMG_AGENT_SMTP_ENCRYPTION="none",
                 FMG_AGENT_SMTP_ALLOW_INSECURE_LOOPBACK="true",
                 FMG_AGENT_SMTP_FROM="publisher@example.com",
+                FMG_AGENT_EMAIL_SEND_INTERVAL_SECONDS="0",
             )
             output = (tmp_path / f"worker-{phase}.log").open("w")
             proc = subprocess.Popen(

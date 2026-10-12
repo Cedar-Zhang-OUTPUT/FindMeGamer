@@ -264,6 +264,24 @@ class SendStore:
                     409, "preview_expired", "Create and confirm a fresh preview."
                 )
             send_id = str(uuid4())
+            if safety.recipient_invalid(
+                session, config.smtp_from, preview["message"]["to"]
+            ):
+                # Durable, idempotent exclusion receipt; no gate reservation,
+                # transport request or usage charge is created for this address.
+                session.add(
+                    EmailSend(
+                        id=send_id,
+                        token_id=token_id,
+                        preview_id=preview_id,
+                        idempotency_key=key,
+                        state="failed",
+                        code="email_recipient_invalid",
+                        diagnostics={"provider": "local", "transport_attempted": False},
+                    )
+                )
+                session.commit()
+                return self.get_receipt(send_id, token_id)
             retry_after = pacing.reserve(
                 session,
                 config.smtp_from,

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import DateTime, String, func, select, update
+from sqlalchemy import DateTime, String, func, select, update, and_, or_
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..db import Base
@@ -84,6 +84,50 @@ def trip(session, sender, reason, now=None):
     )
 
 
+def invalid_addresses(sender):
+    """Confirmed hard bounces only; include legacy misclassified 5.1.3 DSNs."""
+    from .models import EmailPreview, EmailSend
+    from .inbox import EmailReply
+
+    return (
+        select(func.lower(EmailPreview.message["to"].as_string()))
+        .select_from(EmailReply)
+        .join(EmailSend, EmailSend.id == EmailReply.send_id)
+        .join(EmailPreview, EmailPreview.id == EmailSend.preview_id)
+        .where(
+            EmailReply.kind == "bounce",
+            func.lower(EmailPreview.message["from"].as_string()) == sender.casefold(),
+            EmailPreview.message["to"].as_string().is_not(None),
+            and_(
+                EmailReply.diagnostics["action"].as_string() == "failed",
+                or_(
+                    EmailReply.diagnostics["category"].as_string()
+                    == "invalid_recipient",
+                    EmailReply.diagnostics["status"]
+                    .as_string()
+                    .in_(["5.1.1", "5.1.3"]),
+                ),
+            ),
+        )
+        .correlate(None)
+    )
+
+
+def recipient_invalid(session, sender, recipient):
+    from .models import EmailPreview
+
+    return session.scalar(
+        select(
+            invalid_addresses(sender)
+            .where(
+                func.lower(EmailPreview.message["to"].as_string())
+                == recipient.casefold()
+            )
+            .exists()
+        )
+    )
+
+
 def observe_retry_failure(session, sender, now):
     from .models import EmailPreview, EmailSend, EmailBounceRetry
 
@@ -101,6 +145,9 @@ def observe_retry_failure(session, sender, now):
         .where(
             func.lower(EmailPreview.message["from"].as_string()) == sender.casefold(),
             EmailBounceRetry.failed_at >= now - timedelta(minutes=15),
+            func.lower(EmailPreview.message["to"].as_string()).not_in(
+                invalid_addresses(sender)
+            ),
         )
     )
     if count >= 3:

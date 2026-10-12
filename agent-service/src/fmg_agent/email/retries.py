@@ -49,6 +49,14 @@ def observe(session, send, diagnostic, now):
         # An explicit failed DSN resolves even an uncertain retry as failed.
         fail(session, retry, now)
         return
+    if safety.recipient_invalid(
+        session, preview.message["from"], preview.message["to"]
+    ):
+        queued = session.get(EmailBounceRetry, send.id)
+        if queued and queued.state == "queued":
+            queued.state = "cancelled"
+            queued.cancel_reason = "email_recipient_invalid"
+        return
     if diagnostic["category"] != "spam_blocked":
         return
     if aware(send.created_at) < aware(guard.retry_enabled_at):
@@ -97,6 +105,15 @@ def preflight(session, preview_id, key):
     if retry.state != "queued" or aware(retry.due_at) > utcnow():
         raise ApiError(409, "bounce_retry_not_due", "This resend is not ready.")
     original = session.get(EmailSend, retry.original_send_id)
+    original_preview = session.get(EmailPreview, original.preview_id)
+    if safety.recipient_invalid(
+        session, original_preview.message["from"], original_preview.message["to"]
+    ):
+        raise ApiError(
+            409,
+            "email_recipient_invalid",
+            "A confirmed nonexistent recipient is excluded from resends.",
+        )
     token = session.get(AccessToken, original.token_id)
     if not token or token.revoked_at or "email:send" not in token.scopes:
         raise ApiError(
