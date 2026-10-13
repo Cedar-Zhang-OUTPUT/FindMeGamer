@@ -567,3 +567,35 @@ def test_malformed_embedded_link_does_not_discard_known_email():
         }
     )
     assert result["emails"][0]["email"] == "team@example.com"
+
+
+def test_failed_legacy_refresh_is_not_empty_completion_on_ordinary_site(gateway):
+    from fmg_agent.email.enrichment import Enricher, run_job
+    from fmg_agent.email.jobs import JobStore
+
+    app, client, token, _, _ = gateway
+    job_id = submit(client, token).json()["data"]["id"]
+    store = JobStore(app.state.sessions)
+    lease = store.claim(job_id)
+    store.checkpoint(
+        job_id,
+        lease,
+        "public_pages",
+        {"emails": [], "source_url": "https://example.com/creator"},
+    )
+    store.checkpoint(
+        job_id,
+        lease,
+        "enrichment",
+        {
+            "emails": [],
+            "checkpoint_version": 2,
+            "legacy_refresh_attempt": "failed",
+            "attempt_error": "model_output_invalid",
+            "coverage": {"search_completed": False},
+        },
+    )
+    store.fail(job_id, lease, "model_output_invalid", retryable=True)
+    store.retry(job_id, token.id)
+    run_job(store, job_id, Enricher(None, None))
+    assert store.load(job_id)["state"] == "failed"

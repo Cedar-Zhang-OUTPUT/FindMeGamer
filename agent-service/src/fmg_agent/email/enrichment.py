@@ -261,6 +261,11 @@ def run_job(store, job_id, enricher):
                 if not store.checkpoint(job_id, lease, "enrichment", enriched):
                     return
             emails = enriched["emails"]
+            if not emails and enriched.get("legacy_refresh_attempt") in {
+                "started",
+                "failed",
+            }:
+                raise EnrichmentError("enrichment_search_incomplete")
             if not emails and public.get("page_error"):
                 raise EnrichmentError("public_pages_incomplete", retryable=True)
             if not emails:

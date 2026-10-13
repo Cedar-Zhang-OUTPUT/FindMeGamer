@@ -22,7 +22,7 @@
 
 - Evidence contract, platform fetch avoidance, grounding coverage and legacy
   checkpoint regressions were observed failing, then passing.
-- Full backend suite after review fixes with isolated native PostgreSQL/Redis: 331 passed, one
+- Full backend suite after review fixes with isolated native PostgreSQL/Redis: 332 passed, one
   Docker opt-in check skipped (local Docker stays stopped), one existing
   Starlette/AnyIO deprecation warning. First native DB run failed because the
   temporary DB used SQL_ASCII; recreating only that isolated empty test DB as UTF8
@@ -36,7 +36,8 @@
   contact. Four new regressions reproduced these before fixes. Redirect handling
   now skips platform transport after URL/DNS admission; legacy refresh is marked
   durably before calling the provider; malformed links do not discard contacts.
-  Focused tests and the complete 331-test suite passed after the single fix pass.
+  Focused tests and the complete 332-test suite passed after the single fix pass,
+  including the failed-refresh marker on an ordinary (non-platform) website.
 
 ## Upgrade
 
