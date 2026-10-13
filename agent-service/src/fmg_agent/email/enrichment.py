@@ -1,9 +1,13 @@
 """Resumable public business contact extraction; never claim deliverability."""
 
 import re
-from html import unescape
+from html import unescape, escape
 from html.parser import HTMLParser
 from urllib.parse import urljoin
+from .evidence import platform_url
+from .urls import public_url
+
+CHECKPOINT_VERSION = 2
 
 EMAIL = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}", re.I)
 BUSINESS = re.compile(
@@ -82,6 +86,54 @@ class Enricher:
         self.gemini = gemini
 
     def public_contacts(self, target):
+        from .public_pages import PublicPage
+
+        emails, links = [], []
+        evidence = target.get("evidence") or []
+        for record in evidence:
+            extra, _ = extract(
+                PublicPage(record["source_url"], escape(record["text"]), "text/plain")
+            )
+            for email in extra:
+                email["discovery_method"] = "provided_evidence"
+            emails.extend(extra)
+            for match in re.finditer(r"https?://[^\s<>\"\)]+", record["text"]):
+                link = match.group().rstrip(".,;]")
+                if BUSINESS.search(link) and not platform_url(link):
+                    links.append(link)
+        skipped = platform_url(target["url"])
+        base = {
+            "checkpoint_version": CHECKPOINT_VERSION,
+            "evidence_records_inspected": len(evidence),
+            "platform_page_skipped": skipped,
+            "source_url": target["url"],
+            "page_error": None,
+            "fetches": [],
+        }
+        if emails:
+            return {**base, "emails": list({e["email"]: e for e in emails}.values())}
+        if skipped:
+            failures = []
+            for link in list(dict.fromkeys(links))[:2]:
+                try:
+                    checked = public_url(link)
+                    linked = self.pages.fetch_page(checked)
+                    extra, _ = extract(linked)
+                    emails.extend(extra)
+                    base["fetches"].append({"url": checked, "status": "completed"})
+                except (EnrichmentError, ValueError) as error:
+                    code = getattr(error, "code", "public_page_url_invalid")
+                    failures.append(code)
+                    base["fetches"].append(
+                        {"url": link, "status": "failed", "code": code}
+                    )
+                if emails:
+                    break
+            return {
+                **base,
+                "emails": list({e["email"]: e for e in emails}.values()),
+                "page_error": failures[0] if failures and not emails else None,
+            }
         try:
             page = self.pages.fetch_page(target["url"])
         except EnrichmentError as error:
@@ -92,11 +144,13 @@ class Enricher:
             }:
                 raise
             # Unreadable public page may use search fallback; preserve diagnostic.
-            return {"emails": [], "page_error": error.code}
+            return {**base, "emails": [], "page_error": error.code}
         emails, links = extract(page)
         failures = []
         for link in list(dict.fromkeys(links))[:2] if not emails else []:
             try:
+                if platform_url(urljoin(page.url, link)):
+                    continue
                 linked = self.pages.fetch_page(urljoin(page.url, link))
                 extra, _ = extract(linked)
                 emails.extend(extra)
@@ -106,6 +160,7 @@ class Enricher:
             if emails:
                 break
         return {
+            **base,
             "emails": list({e["email"]: e for e in emails}.values()),
             "source_url": page.url,
             "page_error": failures[0] if failures and not emails else None,

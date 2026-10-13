@@ -119,6 +119,111 @@ def test_direct_business_contact_skips_gemini(gateway):
     ]
 
 
+def test_saved_api_evidence_skips_platform_page_and_model(gateway):
+    from fmg_agent.email.enrichment import Enricher, run_job
+    from fmg_agent.email.jobs import JobStore
+    from test_email_jobs import headers
+
+    app, client, token, _, _ = gateway
+    response = client.post(
+        "/v1/email/enrich",
+        headers=headers(token),
+        json={
+            "url": "https://www.youtube.com/@creator",
+            "evidence": [
+                {
+                    "source_url": "https://www.youtube.com/@creator",
+                    "text": "Business contact: press@example.com",
+                    "kind": "channel_description",
+                }
+            ],
+        },
+    )
+
+    class Forbidden:
+        def fetch_page(self, url):
+            pytest.fail("API evidence must avoid platform HTML")
+
+        def find(self, target):
+            pytest.fail("API evidence must avoid model cost")
+
+    store = JobStore(app.state.sessions)
+    job_id = response.json()["data"]["id"]
+    run_job(store, job_id, Enricher(Forbidden(), Forbidden()))
+    result = store.load(job_id)
+    assert result["state"] == "completed"
+    assert result["emails"][0]["email"] == "press@example.com"
+    assert result["emails"][0]["discovery_method"] == "provided_evidence"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.youtube.com/@a",
+        "https://m.youtube.com/@a",
+        "https://youtu.be/abc",
+        "https://x.com/a",
+        "https://twitter.com/a",
+        "https://www.twitch.tv/a",
+    ],
+)
+def test_platform_hosts_skip_generic_html(url):
+    from fmg_agent.email.enrichment import Enricher
+
+    class Pages:
+        def fetch_page(self, url):
+            pytest.fail("platform HTML must not be fetched")
+
+    result = Enricher(Pages(), None).public_contacts({"url": url, "platform": "other"})
+    assert result["emails"] == []
+    assert result["page_error"] is None
+    assert result["platform_page_skipped"] is True
+
+
+def test_evidence_contact_links_are_bounded_attributed_and_not_platform_pages():
+    from fmg_agent.email.enrichment import Enricher
+    from fmg_agent.email.public_pages import PublicPage
+
+    calls = []
+
+    class Pages:
+        def fetch_page(self, url):
+            calls.append(url)
+            return PublicPage(url, "No listed contact.", "text/plain")
+
+    result = Enricher(Pages(), None).public_contacts(
+        {
+            "url": "https://youtube.com/@a",
+            "evidence": [
+                {
+                    "source_url": "https://youtube.com/@a",
+                    "text": "Contact https://example.com/contact https://example.com/contact https://example.org/business https://example.net/press https://x.com/contact",
+                }
+            ],
+        }
+    )
+    assert calls == ["https://example.com/contact", "https://example.org/business"]
+    assert result["platform_page_skipped"] is True
+
+
+def test_platform_label_cannot_hide_ordinary_hostname():
+    from fmg_agent.email.enrichment import Enricher
+    from fmg_agent.email.public_pages import PublicPage
+
+    calls = []
+
+    class Pages:
+        def fetch_page(self, url):
+            calls.append(url)
+            return PublicPage(url, "Business: press@example.com", "text/plain")
+
+    result = Enricher(Pages(), None).public_contacts(
+        {"url": "https://youtube.com.example.org/contact", "platform": "youtube"}
+    )
+    assert calls == ["https://youtube.com.example.org/contact"]
+    assert result["emails"][0]["email"] == "press@example.com"
+
+
 def test_failed_gemini_retry_reuses_pages_and_returns_multiple_contacts(gateway):
     from fmg_agent.email.public_pages import PublicPage
     from fmg_agent.email.enrichment import Enricher, run_job, EnrichmentError
