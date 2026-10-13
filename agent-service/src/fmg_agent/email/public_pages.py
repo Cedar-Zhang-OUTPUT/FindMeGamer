@@ -15,6 +15,7 @@ from urllib.parse import quote, urljoin, urlsplit
 
 from .enrichment import PermanentIntegrationError, TransientIntegrationError
 from .urls import public_url
+from .evidence import platform_url
 
 
 DEFAULT_MAX_REDIRECTS = 3
@@ -283,6 +284,8 @@ class PublicPageGateway:
             parsed, hostname = _validated_url(current)
             port = parsed.port or (443 if parsed.scheme == "https" else 80)
             addresses = self._resolve_global_addresses(hostname, port, deadline)
+            if platform_url(current):
+                raise PermanentIntegrationError("public_page_platform_skipped")
             connect_ip = addresses[0]
             host_header = hostname
             if parsed.port is not None:

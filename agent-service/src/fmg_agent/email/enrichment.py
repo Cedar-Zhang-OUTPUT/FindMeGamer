@@ -123,6 +123,11 @@ class Enricher:
                     base["fetches"].append({"url": checked, "status": "completed"})
                 except (EnrichmentError, ValueError) as error:
                     code = getattr(error, "code", "public_page_url_invalid")
+                    if code == "public_page_platform_skipped":
+                        base["fetches"].append(
+                            {"url": link, "status": "platform_skipped"}
+                        )
+                        continue
                     failures.append(code)
                     base["fetches"].append(
                         {"url": link, "status": "failed", "code": code}
@@ -137,6 +142,8 @@ class Enricher:
         try:
             page = self.pages.fetch_page(target["url"])
         except EnrichmentError as error:
+            if error.code == "public_page_platform_skipped":
+                return {**base, "emails": [], "platform_page_skipped": True}
             if error.code in {
                 "public_page_url_invalid",
                 "public_page_address_rejected",
@@ -155,6 +162,9 @@ class Enricher:
                 extra, _ = extract(linked)
                 emails.extend(extra)
             except (EnrichmentError, ValueError) as error:
+                if getattr(error, "code", None) == "public_page_platform_skipped":
+                    base["platform_page_skipped"] = True
+                    continue
                 failures.append(getattr(error, "code", "public_page_url_invalid"))
                 continue
             if emails:
@@ -197,6 +207,14 @@ def run_job(store, job_id, enricher):
             if legacy_empty:
                 if not store.checkpoint(job_id, lease, "legacy_enrichment", enriched):
                     return
+                refresh_marker = {
+                    "checkpoint_version": CHECKPOINT_VERSION,
+                    "emails": [],
+                    "coverage": {"search_completed": False},
+                    "legacy_refresh_attempt": "started",
+                }
+                if not store.checkpoint(job_id, lease, "enrichment", refresh_marker):
+                    return
             if enriched is None or legacy_empty:
                 from ..usage import Ledger
 
@@ -218,6 +236,19 @@ def run_job(store, job_id, enricher):
                         usage=getattr(error, "usage", None),
                         model=getattr(enricher.gemini, "model", None),
                     )
+                    if legacy_empty:
+                        store.checkpoint(
+                            job_id,
+                            lease,
+                            "enrichment",
+                            {
+                                **refresh_marker,
+                                "legacy_refresh_attempt": "failed",
+                                "attempt_error": getattr(
+                                    error, "code", "execution_unknown"
+                                ),
+                            },
+                        )
                     raise
                 enriched["cost"] = ledger.finish(
                     usage_id,

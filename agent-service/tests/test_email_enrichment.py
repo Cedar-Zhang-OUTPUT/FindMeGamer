@@ -482,3 +482,88 @@ def test_legacy_empty_checkpoint_gets_one_fresh_search_and_keeps_historical_usag
     usage = ledger.summary(token.id, "unassigned")["providers"]["gemini"]
     assert usage["request_count"] == 2
     assert usage["usage"]["totalTokenCount"] == 125
+
+
+def test_contact_redirect_to_platform_is_skipped_before_platform_transport():
+    from fmg_agent.email.enrichment import Enricher
+    from fmg_agent.email.public_pages import PublicPageGateway, RawPageResponse
+
+    calls = []
+
+    class Transport:
+        def request(self, **kwargs):
+            calls.append(kwargs["server_hostname"])
+            if len(calls) == 1:
+                return RawPageResponse(
+                    302, "text/html", None, "https://youtube.com/@creator", ()
+                )
+            return RawPageResponse(200, "text/html", 300000, None, ())
+
+    pages = PublicPageGateway(resolver=Resolver(), transport=Transport())
+    result = Enricher(pages, None).public_contacts(
+        {"url": "https://example.org/contact"}
+    )
+    assert calls == ["example.org"]
+    assert result["page_error"] is None
+    assert result["platform_page_skipped"] is True
+
+
+@pytest.mark.parametrize("code", ["model_output_invalid", "execution_interrupted"])
+def test_legacy_refresh_failure_cannot_repeat_model_spending(gateway, code):
+    from fmg_agent.email.enrichment import Enricher, EnrichmentError, run_job
+    from fmg_agent.email.jobs import JobStore
+    from fmg_agent.usage import Ledger
+
+    app, client, token, _, _ = gateway
+    job_id = submit(client, token, url="https://youtube.com/@creator").json()["data"][
+        "id"
+    ]
+    store = JobStore(app.state.sessions)
+    lease = store.claim(job_id)
+    store.checkpoint(
+        job_id,
+        lease,
+        "public_pages",
+        {"emails": [], "page_error": "public_page_too_large"},
+    )
+    store.checkpoint(job_id, lease, "enrichment", {"emails": []})
+    store.fail(job_id, lease, "public_pages_incomplete", retryable=True)
+    calls = []
+
+    class Pages:
+        def fetch_page(self, url):
+            pytest.fail("platform page not required")
+
+    class Gemini:
+        def find(self, target):
+            calls.append(target)
+            raise EnrichmentError(code, retryable=True)
+
+    for _ in range(2):
+        store.retry(job_id, token.id)
+        run_job(store, job_id, Enricher(Pages(), Gemini()))
+        assert store.load(job_id)["state"] == "failed"
+    assert len(calls) == 1
+    assert (
+        Ledger(app.state.sessions).summary(token.id, "unassigned")["providers"][
+            "gemini"
+        ]["request_count"]
+        == 1
+    )
+
+
+def test_malformed_embedded_link_does_not_discard_known_email():
+    from fmg_agent.email.enrichment import Enricher
+
+    result = Enricher(None, None).public_contacts(
+        {
+            "url": "https://youtube.com/@creator",
+            "evidence": [
+                {
+                    "source_url": "https://youtube.com/@creator",
+                    "text": "Business email team@example.com; contact https://[broken/contact",
+                }
+            ],
+        }
+    )
+    assert result["emails"][0]["email"] == "team@example.com"
