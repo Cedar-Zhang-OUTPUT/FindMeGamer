@@ -64,3 +64,33 @@ will be appended after actual verification, not inferred from local tests.
   bulk requeue; exact diagnostics are retained in the private operator record.
   This release does not claim those failed jobs recovered. Provider availability
   must be restored and recovery revalidated before continuing.
+
+## Public bundle acceptance
+
+- Published `fmg-v0.7.6` from `ca3c46dfe418a817a408bf03a77e13e33c0d924e`;
+  source pushed to `origin/cli`. All seven public assets were downloaded again,
+  SHA256 verification passed, and all four installer/bundle tests passed on those
+  downloaded assets. Independent anonymous server-side downloads also verified
+  every binary archive, the Skill archive and installer.
+- An isolated real 0.7.5 installation ran `fmg upgrade --latest --skills` against
+  the public release. CLI and both Skill markers now report 0.7.6; existing
+  authentication remains valid; a refreshed update check reports `current`.
+- Post-deployment snapshots show unchanged send counts, frozen task/draft digests,
+  sender safety, migration and pacing; mailbox monitoring is active with a fresh
+  success timestamp. No email was sent or approved by release/recovery actions.
+- Native temporary PostgreSQL/Redis test services were stopped. Local Docker was
+  never started. The private recovery ledger remains available because upstream
+  availability still blocks the requested bulk recovery; do not blindly rerun
+  the canary or mark those failures as Not Found.
+
+## Recorded execution decisions
+
+- Skill behavior was tested by independent consuming agents rather than source
+  wording assertions; tradeoff: no automated wording-change detector, covered by
+  executable CLI/backend tests and before/after realistic scenarios.
+- Live provider behavior was verified separately from local tests; tradeoff:
+  passing local tests does not establish production recovery yield, so recovery
+  stays incomplete when the canary fails.
+- The worker was gracefully drained for the bounded canary before restarting the
+  new image; tradeoff: a short mailbox-monitor maintenance window, avoiding a
+  dispatcher/manual-claim race. Monitoring was checked again after restart.
