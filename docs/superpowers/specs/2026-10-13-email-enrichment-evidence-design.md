@@ -1,6 +1,6 @@
 # API-evidence-first email enrichment
 
-Status: proposed written design; awaiting review before implementation planning.
+Status: approved by the user on 2026-10-13; implementation plan pending review.
 
 ## Intent and approved scope
 
