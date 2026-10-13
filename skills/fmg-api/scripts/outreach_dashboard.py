@@ -11,6 +11,35 @@ from threading import Lock
 import time
 
 
+def delivery_view(envelope):
+    """Project read-only browser data; server replies and safety remain untouched."""
+    data = envelope["data"]
+    recipients = []
+    for recipient in data["recipients"]:
+        recipients.append(
+            {
+                **{
+                    key: value
+                    for key, value in recipient.items()
+                    if key not in {"reply_state", "replies"}
+                },
+                "delivery_bounced": recipient.get("reply_state") == "bounced",
+            }
+        )
+    return {
+        **envelope,
+        "data": {
+            **data,
+            "recipients": recipients,
+            "stats": {
+                key: value
+                for key, value in data["stats"].items()
+                if key not in {"replied", "automatic", "reply_rate"}
+            },
+        },
+    }
+
+
 def serve(task_id, executable, port=0):
     secret = secrets.token_urlsafe(24)
     page = Path(__file__).with_name("outreach_dashboard.html").read_bytes()
@@ -22,7 +51,14 @@ def serve(task_id, executable, port=0):
             pass
 
         def do_GET(self):
-            if self.headers.get("Host") != f"127.0.0.1:{self.server.server_port}" or self.headers.get("Origin") not in (None, f"http://127.0.0.1:{self.server.server_port}"):
+            if self.headers.get(
+                "Host"
+            ) != f"127.0.0.1:{self.server.server_port}" or self.headers.get(
+                "Origin"
+            ) not in (
+                None,
+                f"http://127.0.0.1:{self.server.server_port}",
+            ):
                 self.send_error(403)
                 return
             if self.path == f"/{secret}/":
@@ -31,14 +67,32 @@ def serve(task_id, executable, port=0):
                 with lock:
                     if time.monotonic() - cache["at"] >= 5:
                         try:
-                            command = subprocess.run([executable, "outreach", "task", "get", task_id],
-                                                     capture_output=True, timeout=25, check=True)
-                            data = json.loads(command.stdout)
+                            command = subprocess.run(
+                                [executable, "outreach", "task", "get", task_id],
+                                capture_output=True,
+                                timeout=25,
+                                check=True,
+                            )
+                            data = delivery_view(json.loads(command.stdout))
                             cache.update(body=json.dumps(data).encode(), status=200)
-                        except (subprocess.SubprocessError, ValueError, OSError):
-                            cache.update(body=b'{"error":"Refresh failed. Existing display is retained; check fmg auth and service connectivity."}', status=503)
+                        except (
+                            subprocess.SubprocessError,
+                            ValueError,
+                            OSError,
+                            KeyError,
+                            TypeError,
+                            AttributeError,
+                        ):
+                            cache.update(
+                                body=b'{"error":"Refresh failed. Existing display is retained; check fmg auth and service connectivity."}',
+                                status=503,
+                            )
                         cache["at"] = time.monotonic()
-                    body, status, content_type = cache["body"], cache["status"], "application/json"
+                    body, status, content_type = (
+                        cache["body"],
+                        cache["status"],
+                        "application/json",
+                    )
             else:
                 self.send_error(404)
                 return
@@ -47,12 +101,24 @@ def serve(task_id, executable, port=0):
             self.send_header("Cache-Control", "no-store")
             self.send_header("Referrer-Policy", "no-referrer")
             self.send_header("X-Content-Type-Options", "nosniff")
-            self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; form-action 'none'")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; form-action 'none'",
+            )
             self.end_headers()
             self.wfile.write(body)
 
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(json.dumps({"url": f"http://127.0.0.1:{server.server_port}/{secret}/", "task_id": task_id, "read_only": True}), flush=True)
+    print(
+        json.dumps(
+            {
+                "url": f"http://127.0.0.1:{server.server_port}/{secret}/",
+                "task_id": task_id,
+                "read_only": True,
+            }
+        ),
+        flush=True,
+    )
     try:
         server.serve_forever()
     except KeyboardInterrupt:

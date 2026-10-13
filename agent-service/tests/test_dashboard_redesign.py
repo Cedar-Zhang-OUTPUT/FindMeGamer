@@ -15,8 +15,6 @@ def test_plain_draft_dashboard_has_no_html_rendering():
     page = (Path(__file__).resolve().parents[2] / "skills/fmg-api/scripts/outreach_dashboard.html").read_text()
     assert 'id="body"' in page
     assert 'srcdoc' not in page
-    assert 'View replies' in page
-    assert 'reply_rate' in page
     assert 'Mailbox monitor:' in page
 
 

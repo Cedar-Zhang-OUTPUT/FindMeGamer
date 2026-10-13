@@ -139,6 +139,8 @@ fmg email receipt SEND_ID
 
 `--confirm` is mandatory, but an Agent must obtain the user's approval before using it. For a batch, use `fmg outreach task create` and review the server-saved task before starting its exact revision; do not loop individual sends. This version accepts one plain email address per preview; CC, BCC, attachments and arbitrary message-body fields are not supported.
 
+The bundled outreach dashboard is delivery-only: draft previews, sending, bounces, retries, uncertain delivery and monitoring/sender safety. Reply columns, filters, counts/rates and reply bodies are not shown. Server-side reply monitoring/records and automatic bounce pauses remain enabled; full task JSON retains reply fields for compatibility and requested investigations. After upgrading CLI and Skills, restart only the local dashboard with its existing task ID to load the new UI.
+
 One preview permits at most one SMTP attempt. Repeating the same key returns its receipt; a different key for the same preview is rejected. If the HTTP response is lost, query the receipt or repeat the **same** preview/key; never invent a new key or preview to automatically retry. `unknown` means delivery may have happened and requires investigation, not resending. An interrupted `sending` record older than five minutes becomes `unknown` when queried. An explicitly failed delivery also requires a new preview and renewed approval for another attempt.
 
 `sent` means the SMTP server accepted the message, not that it reached the inbox or was read. Missing SMTP configuration permits previews but blocks sending. Previews expire for sending after 30 days; changing the configured sender requires a new preview. Send receipts are not removed by enrichment-job cleanup.

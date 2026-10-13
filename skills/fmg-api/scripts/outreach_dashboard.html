@@ -81,7 +81,7 @@
       }
       #stats {
         display: grid;
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(3, 1fr);
         gap: 1px;
         background: var(--line);
         border: 1px solid var(--line);
@@ -280,6 +280,7 @@
       </div>
       <p id="error" role="alert"></p>
       <p id="monitoring" class="muted" role="status"></p>
+      <p id="safety" class="muted" role="status"></p>
       <section id="stats" aria-label="Task summary"></section>
       <div class="toolbar">
         <div>
@@ -297,10 +298,8 @@
             placeholder="Search creator or email"
           /><select id="filter" aria-label="Filter recipients">
             <option value="all">All recipients</option>
-            <option value="replied">Replied</option>
-            <option value="no_reply">No recorded reply</option>
-            <option value="automatic">Automatic reply</option>
             <option value="bounced">Bounced</option>
+            <option value="retrying">Retries waiting / sending</option>
             <option value="issues">Delivery issues</option>
           </select>
         </div>
@@ -311,7 +310,6 @@
             <tr>
               <th>Creator / recipient</th>
               <th>Sending</th>
-              <th>Replies</th>
               <th>Draft</th>
             </tr>
           </thead>
@@ -325,9 +323,8 @@
       </nav>
       <p class="muted">
         <small
-          >Human replies exclude detected automatic replies and bounces. A reply
-          is not agreement to collaborate. SMTP acceptance does not guarantee
-          inbox delivery.</small
+          >Provider acceptance does not guarantee inbox delivery. Mailbox
+          monitoring and automatic bounce protection remain active on the server.</small
         >
       </p>
       <details>
@@ -337,8 +334,7 @@
           <code id="revision"></code>
         </p>
         <p>
-          Reply rate: recipients with a human reply among SMTP-accepted emails,
-          divided by SMTP-accepted emails. No email can be changed or sent from
+          This page shows delivery progress and saved drafts. No email can be changed or sent from
           this page. Discuss changes and approve sending in Codex.
         </p>
       </details>
@@ -393,7 +389,7 @@
           "guidance",
           data.state === "awaiting_approval"
             ? "Review the drafts, then tell Codex when you’re ready to send."
-            : "Follow delivery and real mailbox replies here. Your drafts stay unchanged.",
+            : "Follow delivery, bounces and retries here. Your drafts stay unchanged.",
         );
         const monitor = data.monitoring || { state: "not_configured" };
         text(
@@ -405,19 +401,22 @@
                 new Date(monitor.last_success).toLocaleString()
               : "") +
             (monitor.state !== "active"
-              ? " · reply counts may be incomplete."
+              ? " · delivery reports may be incomplete."
               : ""),
         );
+        const safety = data.sender_safety || {};
+        text("safety", safety.state === "paused"
+          ? "Sending paused: " + label(safety.reason) + ". Ask Codex to check before continuing."
+          : "");
         const s = data.stats;
         $("stats").replaceChildren();
         for (const [value, name] of [
           [data.recipients.length, "Recipients"],
-          [s.sent, "SMTP accepted"],
-          [s.replied ?? 0, "Human replies"],
-          [
-            s.reply_rate == null ? "—" : (100 * s.reply_rate).toFixed(1) + "%",
-            "Human reply rate",
-          ],
+          [s.sent, "Provider accepted"],
+          [s.failed ?? 0, "Failed"],
+          [s.unknown ?? 0, "Uncertain"],
+          [s.bounced ?? 0, "Bounced"],
+          [(s.retry_queued ?? 0) + (s.retry_sending ?? 0), "Retries waiting / sending"],
         ]) {
           const box = document.createElement("div"),
             v = document.createElement("strong"),
@@ -435,7 +434,8 @@
             (r) =>
               `${r.creator_id} ${r.message.to}`.toLowerCase().includes(q) &&
               (f === "all" ||
-                f === r.reply_state ||
+                (f === "bounced" && r.delivery_bounced) ||
+                (f === "retrying" && ["queued", "sending"].includes(r.bounce_retry?.state)) ||
                 (f === "issues" && ["failed", "unknown"].includes(r.state))),
           );
         const pages = Math.max(1, Math.ceil(rows.length / 20));
@@ -467,39 +467,20 @@
             note.textContent = r.code;
             sending.append(note);
           }
-          const response = document.createElement("td");
-          response.append(
-            badge(
-              label(r.reply_state || "no_reply"),
-              r.reply_state === "replied" ? "good" : "",
-            ),
-          );
-          if (r.replies?.length) {
-            const replies = document.createElement("button");
-            replies.textContent = `View replies (${r.replies.length})`;
-            replies.onclick = () => {
-              text("dialogLabel", "Recorded mailbox replies");
-              text("subject", "Replies from " + r.creator_id);
-              text("addresses", r.message.to);
-              text(
-                "body",
-                r.replies
-                  .map(
-                    (m) =>
-                      `${label(m.kind)} · recorded ${new Date(m.received_at).toLocaleString()}\nFrom: ${m.sender}\nSubject: ${m.subject}\n\n${m.body}`,
-                  )
-                  .join("\n\n────────────────\n\n"),
-              );
-              $("preview").showModal();
-            };
-            response.append(replies);
+          if (r.delivery_bounced) {
+            sending.append(badge("Bounced", "bad"));
+          }
+          if (r.bounce_retry) {
+            const retry = document.createElement("small");
+            retry.textContent = "Retry: " + label(r.bounce_retry.state);
+            sending.append(retry);
           }
           const action = document.createElement("td"),
             button = document.createElement("button");
           button.textContent = "Preview";
           button.onclick = () => openPreview(r);
           action.append(button);
-          tr.append(sending, response, action);
+          tr.append(sending, action);
           $("rows").append(tr);
         }
         text("page", `${page + 1} / ${pages} · ${rows.length} recipients`);
