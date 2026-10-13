@@ -31,7 +31,7 @@ fmg upgrade --tag fmg-vX.Y.Z [--skills]
 fmg update check [--refresh] [--skill-dir DIRECTORY]
 fmg --run-id RUN_ID usage
 Prefix other commands with --run-id RUN_ID to attribute requests.
-fmg email enrich --url URL --idempotency-key KEY [--name NAME] [--platform PLATFORM]
+fmg email enrich --url URL --idempotency-key KEY [--name NAME] [--platform PLATFORM] [--evidence FILE]
 fmg email job ID [--wait] [--timeout 5m]
 fmg email retry ID
 fmg email templates

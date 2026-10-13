@@ -142,3 +142,43 @@ func TestEmailRetryIsExplicitPost(t *testing.T) {
 		t.Fatalf("exit=%d %s", code, err.String())
 	}
 }
+
+func TestEmailEnrichEvidenceContract(t *testing.T) {
+	calls := 0
+	setup(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		evidence, ok := body["evidence"].([]any)
+		if !ok || len(evidence) != 1 || evidence[0].(map[string]any)["text"] != "Business: press@example.com" {
+			t.Error(body)
+		}
+		w.Write([]byte(`{"data":{"id":"evidence-job","state":"queued"},"meta":{}}`))
+	})
+	path := filepath.Join(t.TempDir(), "evidence.json")
+	os.WriteFile(path, []byte(`[{"source_url":"https://youtube.com/@creator","text":"Business: press@example.com","kind":"channel_description"}]`), 0600)
+	var out, diagnostics bytes.Buffer
+	code := Run([]string{"email", "enrich", "--url", "https://youtube.com/@creator", "--evidence", path, "--idempotency-key", "evidence-one"}, strings.NewReader(""), &out, &diagnostics)
+	if code != 0 || calls != 1 {
+		t.Fatalf("code=%d calls=%d %s", code, calls, diagnostics.String())
+	}
+}
+
+func TestEmailEnrichRejectsInvalidEvidenceBeforeNetwork(t *testing.T) {
+	for _, content := range []string{`{}`, `null`, `[] {}`, `[{"source_url":"https://example.com","text":123}]`, `[{"source_url":"https://example.com","text":"x","unknown":true}]`, `[{"source_url":"http://127.0.0.1/","text":"x"}]`, strings.Repeat("x", 256001)} {
+		t.Run(content[:min(20, len(content))], func(t *testing.T) {
+			calls := 0
+			setup(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				w.Write([]byte(`{"data":{"id":"bad","state":"queued"},"meta":{}}`))
+			})
+			path := filepath.Join(t.TempDir(), "bad.json")
+			os.WriteFile(path, []byte(content), 0600)
+			var out, diagnostics bytes.Buffer
+			code := Run([]string{"email", "enrich", "--url", "https://example.com", "--evidence", path, "--idempotency-key", "bad"}, strings.NewReader(""), &out, &diagnostics)
+			if code != 2 || calls != 0 {
+				t.Fatalf("code=%d calls=%d %s", code, calls, diagnostics.String())
+			}
+		})
+	}
+}

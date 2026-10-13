@@ -5,6 +5,7 @@ from ..auth import Principal, require_scope, authenticate
 from .templates import get_template, list_templates
 from .jobs import JobStore
 from .urls import public_url
+from .evidence import ContactEvidence
 from .sending import SendStore, email_address
 from typing import Literal
 from ..usage import Ledger
@@ -111,6 +112,14 @@ class EnrichRequest(BaseModel):
     url: str = Field(min_length=1, max_length=4096)
     name: str | None = Field(default=None, max_length=300)
     platform: str | None = Field(default=None, max_length=40)
+    evidence: list[ContactEvidence] | None = Field(default=None, max_length=10)
+
+    @field_validator("evidence")
+    @classmethod
+    def validate_evidence_size(cls, value):
+        if value is not None and sum(len(item.text) for item in value) > 32000:
+            raise ValueError("Evidence text exceeds 32000 characters.")
+        return value
 
     @field_validator("url")
     @classmethod
@@ -142,11 +151,12 @@ def enrich(
     principal: Principal = Depends(require_scope("email:enrich")),
 ):
     store = JobStore(request.app.state.sessions)
+    payload = body.model_dump()
+    if payload["evidence"] is None:
+        del payload["evidence"]
     return result(
         request,
-        store.create(
-            principal.id, idempotency_key, body.model_dump(), request.state.run_id
-        ),
+        store.create(principal.id, idempotency_key, payload, request.state.run_id),
     )
 
 

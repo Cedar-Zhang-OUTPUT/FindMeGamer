@@ -47,11 +47,19 @@ func runEmail(ctx context.Context, args []string, out, diagnostics io.Writer) in
 		target := flags.String("url", "", "public creator URL")
 		name := flags.String("name", "", "creator name")
 		platform := flags.String("platform", "", "platform")
+		evidence := flags.String("evidence", "", "JSON array of attributed public excerpts (max 256000 bytes)")
 		key := flags.String("idempotency-key", "", "stable key for this logical request")
 		if flags.Parse(args[1:]) != nil || flags.NArg() != 0 || *target == "" || strings.TrimSpace(*key) == "" {
 			return writeError(diagnostics, errors.New("enrich requires --url and --idempotency-key"))
 		}
 		body := map[string]any{"url": *target}
+		if *evidence != "" {
+			records, e := readContactEvidence(*evidence)
+			if e != nil {
+				return writeError(diagnostics, e)
+			}
+			body["evidence"] = records
+		}
 		if *name != "" {
 			body["name"] = *name
 		}
@@ -60,6 +68,9 @@ func runEmail(ctx context.Context, args []string, out, diagnostics io.Writer) in
 		}
 		response, e := client.requestWithKey(ctx, http.MethodPost, "/v1/email/enrich", body, *key)
 		if e != nil {
+			if *evidence != "" {
+				_, _ = io.WriteString(diagnostics, "Evidence was not resubmitted without sources. If the server does not support evidence, ask the administrator to upgrade it.\n")
+			}
 			return writeError(diagnostics, e)
 		}
 		return emitEmail(out, diagnostics, response)

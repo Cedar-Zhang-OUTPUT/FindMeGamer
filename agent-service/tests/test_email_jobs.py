@@ -57,6 +57,76 @@ def test_job_ownership_and_scope(gateway):
     assert submit(client, b).json()["data"]["id"] != job_id
 
 
+def test_evidence_is_stored_and_part_of_idempotent_input(gateway):
+    app, client, token, _, _ = gateway
+    body = {
+        "url": "https://www.youtube.com/@creator",
+        "evidence": [
+            {
+                "source_url": "https://www.youtube.com/@creator",
+                "text": "Gaming contact: team@example.com",
+                "kind": "channel_description",
+            }
+        ],
+    }
+    first = client.post("/v1/email/enrich", headers=headers(token), json=body)
+    assert first.status_code == 202
+    assert (
+        first.json()["data"]["input"]["evidence"][0]["text"]
+        == body["evidence"][0]["text"]
+    )
+    assert (
+        client.post("/v1/email/enrich", headers=headers(token), json=body).json()[
+            "data"
+        ]["id"]
+        == first.json()["data"]["id"]
+    )
+    body["evidence"][0]["text"] = "Different evidence"
+    assert (
+        client.post("/v1/email/enrich", headers=headers(token), json=body).status_code
+        == 409
+    )
+
+
+@pytest.mark.parametrize(
+    "records",
+    [
+        [{"source_url": "https://example.com/", "text": "x" * 8001}],
+        [{"source_url": "https://example.com/", "text": "x" * 8000}] * 5,
+        [{"source_url": "https://example.com/", "text": "x"}] * 11,
+        [{"source_url": "http://127.0.0.1/", "text": "contact"}],
+        [
+            {
+                "source_url": "https://example.com/",
+                "text": "contact",
+                "email": "guessed@example.com",
+            }
+        ],
+        [{"source_url": "https://example.com/", "text": 123}],
+    ],
+)
+def test_evidence_admission_limits(gateway, records):
+    _, client, token, _, _ = gateway
+    response = client.post(
+        "/v1/email/enrich",
+        headers=headers(token),
+        json={"url": "https://example.com/", "evidence": records},
+    )
+    assert response.status_code == 422
+
+
+def test_legacy_input_remains_idempotent_after_optional_evidence_added(gateway):
+    from fmg_agent.email.jobs import JobStore
+
+    app, client, token, _, _ = gateway
+    old = JobStore(app.state.sessions).create(
+        token.id,
+        "legacy",
+        {"url": "https://example.com/creator", "name": None, "platform": None},
+    )
+    assert submit(client, token, key="legacy").json()["data"]["id"] == old["id"]
+
+
 @pytest.mark.parametrize(
     "url",
     [
