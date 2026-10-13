@@ -175,14 +175,29 @@ def run_job(store, job_id, enricher):
         state = store.load(job_id)
         checkpoints = state["checkpoints"]
         public = checkpoints.get("public_pages")
-        if public is None or public.get("page_error"):
+        if (
+            public is None
+            or public.get("page_error")
+            or (
+                platform_url(state["input"]["url"])
+                and public.get("checkpoint_version") != CHECKPOINT_VERSION
+            )
+        ):
             public = enricher.public_contacts(state["input"])
             if not store.checkpoint(job_id, lease, "public_pages", public):
                 return
         emails = public["emails"]
         if not emails:
             enriched = checkpoints.get("enrichment")
-            if enriched is None:
+            legacy_empty = (
+                enriched is not None
+                and not enriched.get("emails")
+                and enriched.get("checkpoint_version") != CHECKPOINT_VERSION
+            )
+            if legacy_empty:
+                if not store.checkpoint(job_id, lease, "legacy_enrichment", enriched):
+                    return
+            if enriched is None or legacy_empty:
                 from ..usage import Ledger
 
                 ledger = Ledger(store.sessions)
@@ -211,11 +226,19 @@ def run_job(store, job_id, enricher):
                     model=getattr(enricher.gemini, "model", None),
                     resource_counts={"emails": len(enriched["emails"])},
                 )
+                enriched["checkpoint_version"] = CHECKPOINT_VERSION
                 if not store.checkpoint(job_id, lease, "enrichment", enriched):
                     return
             emails = enriched["emails"]
             if not emails and public.get("page_error"):
                 raise EnrichmentError("public_pages_incomplete", retryable=True)
+            if not emails:
+                coverage = enriched.get("coverage") or {}
+                if coverage.get("retrieval_failed") or (
+                    public.get("platform_page_skipped")
+                    and not coverage.get("search_completed")
+                ):
+                    raise EnrichmentError("enrichment_search_incomplete")
         store.complete(job_id, lease, emails)
     except EnrichmentError as error:
         store.fail(job_id, lease, error.code, retryable=error.retryable)

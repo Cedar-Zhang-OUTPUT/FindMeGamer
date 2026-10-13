@@ -351,3 +351,134 @@ def test_gemini_request_is_bounded_and_auth_redacted():
             gateway.find({"url": "https://example.com/creator", "name": "Creator"})
         assert error.value.code == "upstream_rate_limited"
         assert "test-key" not in str(error.value)
+
+
+def empty_grounded_payload():
+    return {
+        "candidates": [
+            {
+                "finishReason": "STOP",
+                "content": {"parts": [{"text": '{"email_info":[]}'}]},
+                "groundingMetadata": {
+                    "webSearchQueries": ["creator contact"],
+                    "groundingChunks": [
+                        {"web": {"uri": "https://example.org/creator"}}
+                    ],
+                },
+            }
+        ],
+        "usageMetadata": {"totalTokenCount": 25},
+    }
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "no_queries",
+        "no_sources",
+        "failed_url",
+        "missing_metadata",
+        "malformed_metadata",
+    ],
+)
+def test_empty_platform_fallback_requires_observable_search_coverage(gateway, fault):
+    from fmg_agent.email.gemini import parse_response
+    from fmg_agent.email.enrichment import Enricher, run_job
+    from fmg_agent.email.jobs import JobStore
+
+    app, client, token, _, _ = gateway
+    job_id = submit(client, token, url="https://youtube.com/@creator").json()["data"][
+        "id"
+    ]
+    payload = empty_grounded_payload()
+    candidate = payload["candidates"][0]
+    if fault == "no_queries":
+        candidate["groundingMetadata"]["webSearchQueries"] = []
+    if fault == "no_sources":
+        candidate["groundingMetadata"]["groundingChunks"] = []
+    if fault == "failed_url":
+        candidate["urlContextMetadata"] = {
+            "urlMetadata": [
+                {
+                    "retrievedUrl": "https://example.org/contact",
+                    "urlRetrievalStatus": "URL_RETRIEVAL_STATUS_ERROR",
+                }
+            ]
+        }
+    if fault == "missing_metadata":
+        candidate.pop("groundingMetadata")
+    if fault == "malformed_metadata":
+        candidate["groundingMetadata"] = {
+            "webSearchQueries": 1,
+            "groundingChunks": "bad",
+        }
+    calls = []
+
+    class Pages:
+        def fetch_page(self, url):
+            pytest.fail("platform page not required")
+
+    class Gemini:
+        def find(self, target):
+            calls.append(target)
+            return parse_response(payload)
+
+    store = JobStore(app.state.sessions)
+    run_job(store, job_id, Enricher(Pages(), Gemini()))
+    result = store.load(job_id)
+    assert result["state"] == ("completed" if fault is None else "failed")
+    if fault:
+        assert result["error"]["code"] == "enrichment_search_incomplete"
+        store.retry(job_id, token.id)
+        run_job(store, job_id, Enricher(Pages(), Gemini()))
+        assert len(calls) == 1, "retry must reuse the new-version unresolved checkpoint"
+
+
+def test_legacy_empty_checkpoint_gets_one_fresh_search_and_keeps_historical_usage(
+    gateway,
+):
+    from fmg_agent.email.gemini import parse_response
+    from fmg_agent.email.enrichment import Enricher, run_job
+    from fmg_agent.email.jobs import JobStore
+    from fmg_agent.usage import Ledger
+
+    app, client, token, _, _ = gateway
+    job_id = submit(client, token, url="https://youtube.com/@creator").json()["data"][
+        "id"
+    ]
+    store = JobStore(app.state.sessions)
+    lease = store.claim(job_id)
+    store.checkpoint(
+        job_id,
+        lease,
+        "public_pages",
+        {"emails": [], "page_error": "public_page_too_large"},
+    )
+    store.checkpoint(
+        job_id, lease, "enrichment", {"emails": [], "usage": {"totalTokenCount": 100}}
+    )
+    ledger = Ledger(app.state.sessions)
+    ledger.start("old-search", token.id, "unassigned", "gemini", "generateContent")
+    ledger.finish("old-search", "succeeded", usage={"totalTokenCount": 100})
+    store.fail(job_id, lease, "public_pages_incomplete", retryable=True)
+    store.retry(job_id, token.id)
+    calls = []
+
+    class Pages:
+        def fetch_page(self, url):
+            pytest.fail("legacy platform HTML should not repeat")
+
+    class Gemini:
+        def find(self, target):
+            calls.append(target)
+            return parse_response(empty_grounded_payload())
+
+    run_job(store, job_id, Enricher(Pages(), Gemini()))
+    result = store.load(job_id)
+    assert result["state"] == "completed"
+    assert len(calls) == 1
+    assert result["id"] == job_id
+    usage = ledger.summary(token.id, "unassigned")["providers"]["gemini"]
+    assert usage["request_count"] == 2
+    assert usage["usage"]["totalTokenCount"] == 125
