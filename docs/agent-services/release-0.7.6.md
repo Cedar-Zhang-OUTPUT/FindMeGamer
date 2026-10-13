@@ -45,3 +45,22 @@
 installed Skills and the email reference. Upgrading is not permission to replay
 completed jobs or send mail. Production deployment and bounded recovery evidence
 will be appended after actual verification, not inferred from local tests.
+
+## Production acceptance — 2026-10-13
+
+- API/worker deployed to `fmg-agent:enrich-156004b`, preserving the original sender,
+  five-second pacing, all frozen draft/task digests, safety state and migration
+  revision `0011_bounce_retry`. No migrations, template changes or send approvals
+  were performed. The former image `fmg-agent:invalid-5f71692` is retained.
+- Database custom-format backup was verified before the switch. Backup:
+  `/var/backups/find-me-gamer-agent/enrich-156004b-20261013/agent.dump`.
+- The built image passed API-evidence extraction without any network/model call.
+  Existing authenticated clients remain supported. Worker monitoring resumes
+  after the brief deployment/canary maintenance window.
+- A private recovery manifest froze the requested run's 536 failed jobs and
+  preserved its 111 completed jobs. One original failed job was retried as a
+  canary; the new pipeline correctly skipped YouTube HTML without a page-size
+  error. An upstream provider admission failure stopped recovery before any
+  bulk requeue; exact diagnostics are retained in the private operator record.
+  This release does not claim those failed jobs recovered. Provider availability
+  must be restored and recovery revalidated before continuing.

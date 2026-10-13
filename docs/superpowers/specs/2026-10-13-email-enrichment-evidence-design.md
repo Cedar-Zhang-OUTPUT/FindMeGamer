@@ -1,6 +1,8 @@
 # API-evidence-first email enrichment
 
-Status: approved by the user on 2026-10-13; implementation plan pending review.
+Status: design and implementation plan approved on 2026-10-13. Backend/CLI/Skill
+implementation tested and backend deployed; public release acceptance in progress.
+Failed-job recovery stopped at canary because the upstream provider rejected work.
 
 ## Intent and approved scope
 
