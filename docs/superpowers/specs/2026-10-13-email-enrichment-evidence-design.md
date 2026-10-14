@@ -4,6 +4,25 @@ Status: design and implementation plan approved on 2026-10-13. Backend/CLI/Skill
 implementation tested, backend deployed and public 0.7.6 release acceptance passed.
 Failed-job recovery stopped at canary because the upstream provider rejected work.
 
+## Approved outcome-rule amendment — 2026-10-14
+
+The user's confirmed rule supersedes the source/coverage completion gates and
+normal-empty checkpoint refresh requirements below. A normal valid Gemini result
+with valid emails completes as Found even without a source URL; an empty valid
+response completes as Not Found. Keep model-reported contacts delivery-unverified.
+Source/grounding and optional retrieval diagnostics remain for audit and cost,
+not completion. Real upstream/transport/invalid-output failures remain unresolved.
+Reuse saved valid results without another paid call; failed/interrupted attempt
+markers are not valid empty results. Keep the evidence-first stages, run attribution,
+concurrency, mail safety and explicit retry authorization unchanged.
+
+Release backend/CLI/both Skills as 0.7.7, test and deploy, reconcile the five cached
+source-only failures without paid calls, then resume exactly the 510 unattempted
+original manifest jobs. Preserve the original 111 completed records and the 21
+already-completed recovery records. Continue read-only monitoring to completion;
+genuine provider/systemic errors may stop recovery and must be investigated before
+reporting. This does not authorize any email-send attempt.
+
 ## Intent and approved scope
 
 Reduce the YouTube-page-size failures in creator email enrichment, reuse the

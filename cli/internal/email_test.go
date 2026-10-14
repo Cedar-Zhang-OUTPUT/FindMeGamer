@@ -130,6 +130,39 @@ func TestEmailFailedJobEmitsResultAndFailureExit(t *testing.T) {
 	}
 }
 
+func TestEmailCompletedOutcomeDoesNotDependOnSourceMetadata(t *testing.T) {
+	for _, tc := range []struct{ emails, want string }{
+		{`[]`, "not_found"},
+		{`[{"email":"creator@example.org","source_url":null,"verification_status":"model_reported_unverified"}]`, "found"},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			calls := 0
+			setup(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != "GET" {
+					t.Fatal("must not retry or resubmit")
+				}
+				w.Write([]byte(`{"data":{"id":"job1","state":"completed","emails":` + tc.emails + `,"checkpoints":{"enrichment":{"coverage":{"search_completed":false}}}},"meta":{}}`))
+			})
+			var out, diagnostics bytes.Buffer
+			if code := Run([]string{"email", "job", "job1", "--wait"}, strings.NewReader(""), &out, &diagnostics); code != 0 {
+				t.Fatalf("code=%d %s", code, diagnostics.String())
+			}
+			var result struct {
+				Data struct {
+					Outcome string `json:"outcome"`
+				} `json:"data"`
+			}
+			if json.Unmarshal(out.Bytes(), &result) != nil || result.Data.Outcome != tc.want {
+				t.Fatalf("unexpected result %s", out.String())
+			}
+			if calls != 1 {
+				t.Fatalf("requests=%d", calls)
+			}
+		})
+	}
+}
+
 func TestEmailRetryIsExplicitPost(t *testing.T) {
 	setup(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" || r.URL.Path != "/v1/email/jobs/job1/retry" {

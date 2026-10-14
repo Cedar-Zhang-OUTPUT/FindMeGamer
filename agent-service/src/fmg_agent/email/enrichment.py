@@ -9,6 +9,7 @@ from .urls import public_url
 
 CHECKPOINT_VERSION = 2
 SEARCH_RECORD_VERSION = 1
+OUTCOME_RULE_VERSION = 1
 
 EMAIL = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}", re.I)
 BUSINESS = re.compile(
@@ -200,32 +201,22 @@ def run_job(store, job_id, enricher):
         emails = public["emails"]
         if not emails:
             enriched = checkpoints.get("enrichment")
-            pre_trace_empty = (
-                enriched is not None
-                and not enriched.get("emails")
-                and enriched.get("checkpoint_version") == CHECKPOINT_VERSION
-                and not (enriched.get("coverage") or {}).get("search_completed")
-                and enriched.get("search_record_version") != SEARCH_RECORD_VERSION
-            )
+            # A parsed empty response is a reusable result, not a failed search.
+            # Only old failed/interrupted attempt markers need a bounded refresh.
             legacy_empty = (
                 enriched is not None
-                and not enriched.get("emails")
-                and (
-                    enriched.get("checkpoint_version") != CHECKPOINT_VERSION
-                    or pre_trace_empty
-                )
+                and enriched.get("legacy_refresh_attempt") in {"started", "failed"}
+                and enriched.get("outcome_rule_version") != OUTCOME_RULE_VERSION
             )
             if legacy_empty:
-                archive = (
-                    "previous_search_enrichment"
-                    if pre_trace_empty
-                    else "legacy_enrichment"
-                )
-                if not store.checkpoint(job_id, lease, archive, enriched):
+                if not store.checkpoint(
+                    job_id, lease, "previous_failed_enrichment", enriched
+                ):
                     return
                 refresh_marker = {
                     "checkpoint_version": CHECKPOINT_VERSION,
                     "search_record_version": SEARCH_RECORD_VERSION,
+                    "outcome_rule_version": OUTCOME_RULE_VERSION,
                     "emails": [],
                     "coverage": {"search_completed": False},
                     "legacy_refresh_attempt": "started",
@@ -276,6 +267,7 @@ def run_job(store, job_id, enricher):
                 )
                 enriched["checkpoint_version"] = CHECKPOINT_VERSION
                 enriched["search_record_version"] = SEARCH_RECORD_VERSION
+                enriched["outcome_rule_version"] = OUTCOME_RULE_VERSION
                 if not store.checkpoint(job_id, lease, "enrichment", enriched):
                     return
             emails = enriched["emails"]
@@ -283,16 +275,12 @@ def run_job(store, job_id, enricher):
                 "started",
                 "failed",
             }:
-                raise EnrichmentError("enrichment_search_incomplete")
-            if not emails and public.get("page_error"):
-                raise EnrichmentError("public_pages_incomplete", retryable=True)
-            if not emails:
-                coverage = enriched.get("coverage") or {}
-                if coverage.get("retrieval_failed") or (
-                    public.get("platform_page_skipped")
-                    and not coverage.get("search_completed")
-                ):
-                    raise EnrichmentError("enrichment_search_incomplete")
+                raise EnrichmentError(
+                    enriched.get("attempt_error") or "enrichment_attempt_incomplete"
+                )
+            # Coverage and public-page diagnostics remain available for audit and
+            # pricing, but a normally parsed model response completes the lookup:
+            # emails => found; [] => not_found. Neither guarantees delivery.
         store.complete(job_id, lease, emails)
     except EnrichmentError as error:
         store.fail(job_id, lease, error.code, retryable=error.retryable)

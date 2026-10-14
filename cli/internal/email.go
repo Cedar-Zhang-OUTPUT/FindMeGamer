@@ -109,6 +109,20 @@ func runEmail(ctx context.Context, args []string, out, diagnostics io.Writer) in
 			if json.Unmarshal(response.Data, &job) != nil || job.State == "" {
 				return writeError(diagnostics, &APIError{Code: "invalid_response", Message: "Missing job state.", Exit: 5})
 			}
+			// Derive the outcome for older gateways too. Coverage/source metadata
+			// never changes a completed lookup into an execution failure.
+			if job.State == "completed" {
+				var data map[string]json.RawMessage
+				var emails []json.RawMessage
+				if json.Unmarshal(response.Data, &data) == nil && json.Unmarshal(data["emails"], &emails) == nil && emails != nil {
+					outcome := "not_found"
+					if len(emails) > 0 {
+						outcome = "found"
+					}
+					data["outcome"], _ = json.Marshal(outcome)
+					response.Data, _ = json.Marshal(data)
+				}
+			}
 			if code := emitEmail(out, diagnostics, response); code != 0 {
 				return code
 			}

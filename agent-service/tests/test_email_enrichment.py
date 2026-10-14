@@ -328,7 +328,7 @@ def test_gemini_response_retains_usage_and_rejects_invalid_or_truncated_output()
     payload["candidates"][0]["finishReason"] = "STOP"
     payload["candidates"][0]["content"]["parts"][0][
         "text"
-    ] = '{"email_info":[{"email":"a@example.com","usage":"Business","source":"http://127.0.0.1"}]}'
+    ] = '{"email_info":[{"email":"invalid-address","usage":"Business","source":"https://example.org"}]}'
     with pytest.raises(EnrichmentError, match="model_output_invalid"):
         parse_response(payload)
 
@@ -382,7 +382,7 @@ def empty_grounded_payload():
         "malformed_metadata",
     ],
 )
-def test_empty_platform_fallback_requires_observable_search_coverage(gateway, fault):
+def test_empty_platform_fallback_completes_with_coverage_as_diagnostics(gateway, fault):
     from fmg_agent.email.gemini import parse_response
     from fmg_agent.email.enrichment import Enricher, run_job
     from fmg_agent.email.jobs import JobStore
@@ -427,15 +427,21 @@ def test_empty_platform_fallback_requires_observable_search_coverage(gateway, fa
     store = JobStore(app.state.sessions)
     run_job(store, job_id, Enricher(Pages(), Gemini()))
     result = store.load(job_id)
-    assert result["state"] == ("completed" if fault is None else "failed")
+    assert result["state"] == "completed"
+    assert result["outcome"] == "not_found"
     if fault:
-        assert result["error"]["code"] == "enrichment_search_incomplete"
+        assert (
+            result["checkpoints"]["enrichment"]["coverage"]["search_completed"] is False
+        )
+    from fmg_agent.errors import ApiError
+
+    with pytest.raises(ApiError) as error:
         store.retry(job_id, token.id)
-        run_job(store, job_id, Enricher(Pages(), Gemini()))
-        assert len(calls) == 1, "retry must reuse the new-version unresolved checkpoint"
+    assert error.value.code == "job_completed"
+    assert len(calls) == 1
 
 
-def test_legacy_empty_checkpoint_gets_one_fresh_search_and_keeps_historical_usage(
+def test_legacy_empty_checkpoint_is_reused_and_keeps_historical_usage(
     gateway,
 ):
     from fmg_agent.email.gemini import parse_response
@@ -477,11 +483,11 @@ def test_legacy_empty_checkpoint_gets_one_fresh_search_and_keeps_historical_usag
     run_job(store, job_id, Enricher(Pages(), Gemini()))
     result = store.load(job_id)
     assert result["state"] == "completed"
-    assert len(calls) == 1
+    assert len(calls) == 0
     assert result["id"] == job_id
     usage = ledger.summary(token.id, "unassigned")["providers"]["gemini"]
-    assert usage["request_count"] == 2
-    assert usage["usage"]["totalTokenCount"] == 125
+    assert usage["request_count"] == 1
+    assert usage["usage"]["totalTokenCount"] == 100
 
 
 def test_contact_redirect_to_platform_is_skipped_before_platform_transport():
@@ -526,7 +532,12 @@ def test_legacy_refresh_failure_cannot_repeat_model_spending(gateway, code):
         "public_pages",
         {"emails": [], "page_error": "public_page_too_large"},
     )
-    store.checkpoint(job_id, lease, "enrichment", {"emails": []})
+    store.checkpoint(
+        job_id,
+        lease,
+        "enrichment",
+        {"emails": [], "legacy_refresh_attempt": "failed", "attempt_error": code},
+    )
     store.fail(job_id, lease, "public_pages_incomplete", retryable=True)
     calls = []
 
@@ -601,7 +612,7 @@ def test_failed_legacy_refresh_is_not_empty_completion_on_ordinary_site(gateway)
     assert store.load(job_id)["state"] == "failed"
 
 
-def test_pre_trace_incomplete_checkpoint_refreshes_only_once_after_explicit_retry(
+def test_pre_trace_normal_empty_checkpoint_completes_without_refresh(
     gateway,
 ):
     from fmg_agent.email.enrichment import Enricher, run_job
@@ -632,13 +643,12 @@ def test_pre_trace_incomplete_checkpoint_refreshes_only_once_after_explicit_retr
             payload["candidates"][0].pop("groundingMetadata")
             return parse_response(payload)
 
-    for _ in range(2):
-        store.retry(job_id, token.id)
-        run_job(store, job_id, Enricher(None, Gemini()))
-        assert store.load(job_id)["state"] == "failed"
-    assert len(calls) == 1
+    store.retry(job_id, token.id)
+    run_job(store, job_id, Enricher(None, Gemini()))
+    assert store.load(job_id)["state"] == "completed"
+    assert len(calls) == 0
     result = store.load(job_id)
-    assert result["checkpoints"]["previous_search_enrichment"] == original
+    assert result["checkpoints"]["enrichment"] == original
     assert (
-        Ledger(app.state.sessions).summary(token.id, "unassigned")["request_count"] == 1
+        Ledger(app.state.sessions).summary(token.id, "unassigned")["request_count"] == 0
     )

@@ -75,6 +75,12 @@ def test_research_snapshot_preserves_briefs_and_reports_invalid(tmp_path):
         "address": "business@example.com", "purpose": "Business", "source": "Profile bio",
         "verification": "Publicly listed, delivery unverified"}]}
     assert module.completeness(complete) == []
+    complete['contacts']['emails'][0].update(source=None, verification='model_reported_unverified')
+    complete['contacts']['enrichment'] = {'status': 'completed', 'job_id': 'real-job', 'source': 'evidence/job.json'}
+    assert module.completeness(complete) == []
+    del complete['contacts']['enrichment']
+    assert 'contacts.email_details' in module.completeness(complete)
+    complete['contacts']['emails'][0].update(source='Profile bio', verification='Publicly listed, delivery unverified')
     del complete['contacts']['primary_email']
     assert 'contacts.primary_email' in module.completeness(complete)
     complete['contacts'] = {'status': 'not_found', 'emails': [], 'lookup_completed': True}

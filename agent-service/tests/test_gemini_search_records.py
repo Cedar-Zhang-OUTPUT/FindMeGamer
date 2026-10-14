@@ -62,8 +62,11 @@ def test_gateway_requests_tool_trace_and_cited_lookup_even_when_email_empty():
     def upstream(request):
         body = json.loads(request.content)
         assert body["toolConfig"]["includeServerSideToolInvocations"] is True
-        assert "responseJsonSchema" not in body["generationConfig"]
-        assert "responseMimeType" not in body["generationConfig"]
+        assert body["generationConfig"]["responseMimeType"] == "application/json"
+        item = body["generationConfig"]["responseJsonSchema"]["properties"][
+            "email_info"
+        ]["items"]
+        assert "source" not in item["required"]
         return httpx.Response(200, json=traced_response(source=True))
 
     with httpx.Client(transport=httpx.MockTransport(upstream)) as client:

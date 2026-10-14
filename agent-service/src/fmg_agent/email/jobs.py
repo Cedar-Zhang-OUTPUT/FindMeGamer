@@ -16,7 +16,7 @@ def utcnow():
 
 
 def snapshot(row):
-    return {
+    data = {
         key: getattr(row, key)
         for key in (
             "id",
@@ -31,6 +31,10 @@ def snapshot(row):
             "updated_at",
         )
     }
+    data["outcome"] = (
+        ("found" if row.emails else "not_found") if row.state == "completed" else None
+    )
+    return data
 
 
 class JobStore:

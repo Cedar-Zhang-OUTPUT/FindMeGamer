@@ -46,9 +46,17 @@ def completeness(item):
         for email in emails:
             if not isinstance(email, dict) or any(
                 not isinstance(email.get(k), str) or not email[k].strip()
-                for k in ("address", "purpose", "source", "verification")
+                for k in ("address", "purpose", "verification")
             ):
                 errors.append("contacts.email_details")
+                continue
+            if not isinstance(email.get('source'), str) or not email['source'].strip():
+                check = contacts.get('enrichment')
+                if (email['verification'] != 'model_reported_unverified'
+                        or not isinstance(check, dict) or check.get('status') != 'completed'
+                        or not isinstance(check.get('job_id'), str) or not check['job_id'].strip()
+                        or not isinstance(check.get('source'), str) or not check['source'].strip()):
+                    errors.append('contacts.email_details')
     elif status == "not_found":
         if not contacts.get("lookup_completed") or emails:
             errors.append("contacts.not_found_without_completed_empty_lookup")
