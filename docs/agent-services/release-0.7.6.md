@@ -116,3 +116,24 @@ will be appended after actual verification, not inferred from local tests.
 - Existing 0.7.6 CLI/Skill commands remain compatible. This is a backend adapter
   hotfix, not a new CLI command or a permission to send mail. Deployment and
   failed-job recovery are not implied by these local verification results.
+
+### Hotfix production acceptance
+
+- Source commit `b26cda4` pushed to `origin/cli`; both API and worker deployed to
+  `fmg-agent:search-b26cda4`. The previous `fmg-agent:enrich-156004b` image remains
+  available for rollback. Verified custom-format database backup:
+  `/var/backups/find-me-gamer-agent/search-b26cda4-20261014/agent.dump`.
+- Existing 0.7.6 CLI authentication succeeds. Deployment snapshots preserve
+  frozen task/draft digests, sender, safety state, five-second pacing, sends and
+  migration revision. Inbox monitoring resumed and reported a fresh success.
+- The original YouTube and Twitch canaries completed through the deployed worker.
+  One-shot recovery then began for the original 536-job manifest, checking
+  ownership/run/state/timestamp and preserving the original 111 completed jobs.
+  It does not submit duplicate jobs, send mail or remove incomplete-search gates.
+  Only two recovery jobs may be in flight; provider blockers or two consecutive
+  same-code failures stop the recovery. Started/queued work is not claimed complete.
+- Five explicitly authorized diagnostic/verification calls have a recorded
+  priced subtotal of USD 0.693227775, with incomplete pricing in two early calls;
+  this is not a full cost or actual debit. Batch recovery costs are recorded
+  separately in the original run ledger. Native temporary test services are
+  stopped; local Docker was not started.
