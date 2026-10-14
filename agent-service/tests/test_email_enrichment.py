@@ -599,3 +599,46 @@ def test_failed_legacy_refresh_is_not_empty_completion_on_ordinary_site(gateway)
     store.retry(job_id, token.id)
     run_job(store, job_id, Enricher(None, None))
     assert store.load(job_id)["state"] == "failed"
+
+
+def test_pre_trace_incomplete_checkpoint_refreshes_only_once_after_explicit_retry(
+    gateway,
+):
+    from fmg_agent.email.enrichment import Enricher, run_job
+    from fmg_agent.email.gemini import parse_response
+    from fmg_agent.email.jobs import JobStore
+    from fmg_agent.usage import Ledger
+
+    app, client, token, _, _ = gateway
+    job_id = submit(client, token, url="https://youtube.com/@creator").json()["data"][
+        "id"
+    ]
+    store = JobStore(app.state.sessions)
+    lease = store.claim(job_id)
+    original = {
+        "emails": [],
+        "checkpoint_version": 2,
+        "coverage": {"search_completed": False},
+        "usage": {"totalTokenCount": 42},
+    }
+    store.checkpoint(job_id, lease, "enrichment", original)
+    store.fail(job_id, lease, "enrichment_search_incomplete", retryable=False)
+    calls = []
+
+    class Gemini:
+        def find(self, target):
+            calls.append(target)
+            payload = empty_grounded_payload()
+            payload["candidates"][0].pop("groundingMetadata")
+            return parse_response(payload)
+
+    for _ in range(2):
+        store.retry(job_id, token.id)
+        run_job(store, job_id, Enricher(None, Gemini()))
+        assert store.load(job_id)["state"] == "failed"
+    assert len(calls) == 1
+    result = store.load(job_id)
+    assert result["checkpoints"]["previous_search_enrichment"] == original
+    assert (
+        Ledger(app.state.sessions).summary(token.id, "unassigned")["request_count"] == 1
+    )

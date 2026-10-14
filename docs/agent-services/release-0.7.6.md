@@ -94,3 +94,25 @@ will be appended after actual verification, not inferred from local tests.
 - The worker was gracefully drained for the bounded canary before restarting the
   new image; tradeoff: a short mailbox-monitor maintenance window, avoiding a
   dispatcher/manual-claim race. Monitoring was checked again after restart.
+
+## Search-record compatibility hotfix — 2026-10-14
+
+- Live JSON-only empty results omitted provider grounding metadata. Explicit
+  server-side tool records exposed searches but suggestion HTML did not establish
+  checked sources. A single sourced report followed by one strictly parsed final
+  JSON block restored real grounding sources in the bounded verification.
+- The adapter now retains bounded executed-search diagnostics and a research
+  summary. Model-reported URLs and search suggestions never substitute for
+  provider grounding sources. Missing/mixed incomplete tool records keep total
+  search pricing unknown and empty lookups unresolved.
+- Explicit retry can refresh an old incomplete search checkpoint once; the old
+  checkpoint and historical usage remain preserved. A durable search-version
+  marker prevents repeated paid refreshes on subsequent retries.
+- Final full native PostgreSQL/Redis suite: 349 passed, one Docker opt-in skip,
+  one existing Starlette warning. Two independent-review findings concerning
+  mixed incomplete tool records were reproduced and fixed with regression tests.
+  Changed files pass Black; the repository-wide check still reports eleven
+  pre-existing unrelated formatting differences, left untouched.
+- Existing 0.7.6 CLI/Skill commands remain compatible. This is a backend adapter
+  hotfix, not a new CLI command or a permission to send mail. Deployment and
+  failed-job recovery are not implied by these local verification results.

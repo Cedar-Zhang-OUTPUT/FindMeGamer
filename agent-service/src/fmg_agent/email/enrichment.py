@@ -8,6 +8,7 @@ from .evidence import platform_url
 from .urls import public_url
 
 CHECKPOINT_VERSION = 2
+SEARCH_RECORD_VERSION = 1
 
 EMAIL = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,63}", re.I)
 BUSINESS = re.compile(
@@ -199,16 +200,32 @@ def run_job(store, job_id, enricher):
         emails = public["emails"]
         if not emails:
             enriched = checkpoints.get("enrichment")
+            pre_trace_empty = (
+                enriched is not None
+                and not enriched.get("emails")
+                and enriched.get("checkpoint_version") == CHECKPOINT_VERSION
+                and not (enriched.get("coverage") or {}).get("search_completed")
+                and enriched.get("search_record_version") != SEARCH_RECORD_VERSION
+            )
             legacy_empty = (
                 enriched is not None
                 and not enriched.get("emails")
-                and enriched.get("checkpoint_version") != CHECKPOINT_VERSION
+                and (
+                    enriched.get("checkpoint_version") != CHECKPOINT_VERSION
+                    or pre_trace_empty
+                )
             )
             if legacy_empty:
-                if not store.checkpoint(job_id, lease, "legacy_enrichment", enriched):
+                archive = (
+                    "previous_search_enrichment"
+                    if pre_trace_empty
+                    else "legacy_enrichment"
+                )
+                if not store.checkpoint(job_id, lease, archive, enriched):
                     return
                 refresh_marker = {
                     "checkpoint_version": CHECKPOINT_VERSION,
+                    "search_record_version": SEARCH_RECORD_VERSION,
                     "emails": [],
                     "coverage": {"search_completed": False},
                     "legacy_refresh_attempt": "started",
@@ -258,6 +275,7 @@ def run_job(store, job_id, enricher):
                     resource_counts={"emails": len(enriched["emails"])},
                 )
                 enriched["checkpoint_version"] = CHECKPOINT_VERSION
+                enriched["search_record_version"] = SEARCH_RECORD_VERSION
                 if not store.checkpoint(job_id, lease, "enrichment", enriched):
                     return
             emails = enriched["emails"]
