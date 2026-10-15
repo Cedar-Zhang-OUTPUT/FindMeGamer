@@ -72,3 +72,33 @@ passed, email-retention target failed. The user subsequently explicitly accepted
 the 55% measured retention and requested release. This selected historical
 comparison does not isolate prompt budget from thinking level or search variation.
 The proposed additional experiment on nine missed cases has not been started.
+
+## Public release and deployment acceptance — 2026-10-15
+
+- The owner explicitly accepted the measured 55% historical-address retention
+  and authorized release. Source `c414929190d3732652a735e879fbc646c6101007` was
+  pushed to `origin/cli` and published as `fmg-v0.7.8` with all seven assets.
+- Both production API and worker now run `fmg-agent:economy-c414929`; API health
+  is healthy and worker is running. An offline, network-disabled image check
+  verified low thinking, actual query overage reporting, normal empty completion
+  without retry, and the exact adapter SHA256 used in the approved sample.
+- A verified custom-format database backup is retained at
+  `/var/backups/find-me-gamer-agent/economy-c414929-20261015/agent.dump`.
+  The previous `fmg-agent:outcome-cc34b8f` image remains available for rollback.
+- No sends, approved pending recipients, enrichment jobs or bounce retries were
+  in flight at the switch. Before/after checks preserved job/send/retry counts,
+  frozen task/draft digests, sender safety, migration `0011_bounce_retry` and
+  five-second send pacing. Mailbox monitoring resumed successfully at
+  `2026-10-15T07:33:14Z` without an error.
+- Local public-release downloads and independent anonymous server downloads
+  passed every asset SHA256 check. All four bundle/installer tests passed on the
+  downloaded public assets. The focused backend suite passed 42 tests; complete
+  Go tests and vet passed again before release. The earlier complete backend
+  result above applies to the unchanged implementation.
+- An isolated real 0.7.7 installation successfully upgraded using
+  `fmg upgrade --latest --skills`. CLI and both Skill markers report 0.7.8,
+  refreshed update status is current, existing authentication remains valid,
+  and both installed Skills plus email/completion references were re-read.
+- Deployment acceptance used no additional paid provider queries and sent no
+  mail. Bulk enrichment was not resumed; the paused recovery monitor remains
+  paused. Local Docker was not started.
