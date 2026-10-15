@@ -1,7 +1,8 @@
-# FMG 0.7.8 candidate — economy email enrichment
+# FMG 0.7.8 — economy email enrichment
 
-Unreleased and not deployed. Production is sending mail; deployment and batch
-recovery require a separate user decision after the sample report.
+The user accepted the measured cost/retention tradeoff on 2026-10-15 and authorized
+deployment and the coordinated CLI/Skill release. Batch recovery remains a
+separate decision. Deployment acceptance is recorded below when verified.
 
 - Gemini requests low thinking and a prompt-only search target: three initial
   query strings, up to three more only for a new concrete official contact lead.
@@ -33,7 +34,7 @@ old expensive policy. Targets: at least 18/20 original Found recovered and at le
 60% reduction in comparable search cost. Thirty selected cases provide an initial
 screen, not population-wide proof. Record actual results before release.
 
-## Actual acceptance — 2026-10-15: do not deploy this candidate
+## Sample results — 2026-10-15, before deployment authorization
 
 - Backend complete suite: **375 passed, 1 skipped** (Docker opt-in), one existing
   Starlette/AnyIO deprecation warning. Go complete suite and vet passed. Both Skill
@@ -66,8 +67,8 @@ screen, not population-wide proof. Record actual results before release.
   worker running. No mail configuration, sending task, worker/image or service
   was changed. Local test PostgreSQL/Redis were stopped; local Docker stayed off.
 
-Conclusion: savings target passed, email-retention target failed. Keep this
-candidate undeployed and bulk enrichment paused. This selected historical
+Initial recommendation was to keep the candidate undeployed: savings target
+passed, email-retention target failed. The user subsequently explicitly accepted
+the 55% measured retention and requested release. This selected historical
 comparison does not isolate prompt budget from thinking level or search variation.
-Next proposed experiment is to separate those changes on the nine missed cases;
-it is outside the completed 30-call authorization and has not been started.
+The proposed additional experiment on nine missed cases has not been started.
