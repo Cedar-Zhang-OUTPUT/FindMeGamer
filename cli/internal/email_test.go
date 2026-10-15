@@ -176,6 +176,41 @@ func TestEmailRetryIsExplicitPost(t *testing.T) {
 	}
 }
 
+func TestEmailSearchPolicyIsReportedWithoutInventingOldServerSupport(t *testing.T) {
+	for _, policy := range []string{`null`, `{"version":"economy-v1","enforcement":"prompt_only","observed_queries":8,"target_exceeded":true}`} {
+		t.Run(policy, func(t *testing.T) {
+			calls := 0
+			setup(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != "GET" {
+					t.Fatal("must not retry")
+				}
+				w.Write([]byte(`{"data":{"state":"completed","emails":[],"checkpoints":{"enrichment":{"search_policy":` + policy + `}}},"meta":{}}`))
+			})
+			var out, diagnostics bytes.Buffer
+			if code := Run([]string{"email", "job", "job1", "--wait"}, strings.NewReader(""), &out, &diagnostics); code != 0 {
+				t.Fatal(code, diagnostics.String())
+			}
+			var result struct {
+				Data map[string]json.RawMessage `json:"data"`
+			}
+			if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+				t.Fatal(err)
+			}
+			if policy == "null" {
+				if _, ok := result.Data["search_policy"]; ok {
+					t.Fatal("invented policy")
+				}
+			} else if string(result.Data["search_policy"]) != policy {
+				t.Fatal(out.String())
+			}
+			if string(result.Data["outcome"]) != `"not_found"` || calls != 1 {
+				t.Fatal(out.String(), calls)
+			}
+		})
+	}
+}
+
 func TestEmailEnrichEvidenceContract(t *testing.T) {
 	calls := 0
 	setup(t, func(w http.ResponseWriter, r *http.Request) {

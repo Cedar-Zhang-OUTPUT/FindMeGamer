@@ -21,6 +21,8 @@ Use `fmg pricing` for service pricing rules. Explicit insufficient-credit errors
 
 When the user asks to update, use `fmg upgrade --latest --skills` (Python 3.10+), then verify `fmg version`, `fmg auth check`, and reload/read both installed Skills. Use `--skill-dir` for a nonstandard existing Skill location. Authentication is retained; replaced Skills are backed up, not deleted. Customized Skills need review before replacement. Version 0.1.0 lacks these flags: follow the public [Agent setup/update guide](https://raw.githubusercontent.com/Cedar-Zhang-OUTPUT/FindMeGamer/cli/docs/agent-services/AGENT-INSTALL.md) to bootstrap the new installer; do not guess a GitHub desktop release.
 
+**Economy enrichment (0.7.8 client, upgraded server required):** read the returned `search_policy` before claiming low-thinking/search-budget support. `economy-v1` asks Gemini for 3 initial queries and at most 3 more only for a concrete new contact lead; this is `prompt_only`, not an enforced spending cap. A normal empty result stays Not Found even if the observed target was exceeded. Do not start another lookup to search harder, fill a citation, or enforce the budget after spending occurred. Older responses without this policy do not establish that the server has upgraded. See [search cost control](references/email.md#search-cost-control).
+
 Read only the reference relevant to the operation:
 
 - [Platforms](references/platforms.md): catalogs, YouTube/X/Twitch search, Steam identity/recommendations and bounded pagination.

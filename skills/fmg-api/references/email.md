@@ -2,6 +2,8 @@
 
 ## Fixed template rule
 
+Mail behavior is unchanged by enrichment cost controls described below.
+
 Use `liminal-outreach` for the confirmed target LIMINAL: Within, and `game-outreach` for other targets. Before drafting, read [full templates and variable guidance](email-template.md), then fetch `fmg email template SELECTED_ID`. Its version, schema and fixed copy are authoritative. LIMINAL v7 exposes only four creator variables; its game/URL/closing block is fixed verbatim. New draft requests must not submit legacy LIMINAL versions 1–6 or infer a version from examples. Keep existing frozen drafts unchanged; inspect their saved content, delivery state and current send readiness before acting on an existing approval. A replacement never inherits approval.
 
 Enrichment needs `email:enrich`; previews and sends need `email:send`. Enrichment searches public business contacts only and may spend company Gemini/search quota.
@@ -41,6 +43,14 @@ Reusing a submission key returns the original job; changed input, including evid
 - `queued`/`running`, or a real quota/credit, HTTP, connection, timeout, malformed/truncated-output failure: **pending/unresolved**, not Not Found. Preserve the actual error and apply the provider recovery policy.
 
 Source URLs, search/grounding coverage and retrieval diagnostics are best-effort audit information, not gates for a normal valid result. Missing cost information remains unknown, never zero. Multiple emails retain purpose/source/method/verification internally; choose one appropriate `primary_email` for display. None guarantee delivery or consent. Copy results before terminal jobs expire (default 30 days).
+
+### Search cost control
+
+The economy-v1 server requests low thinking, at most 3 initial distinct queries, and at most 3 additional queries only when there is a new concrete official contact/agency/account lead. No new lead means stop; one suitable email means stop. It asks for at most two external URL Context pages and no repeated unavailable-page fetches. These are prompt targets, not provider-enforced caps. One Gemini request can contain many billable search strings.
+
+CLI 0.7.8 exposes the saved `checkpoints.enrichment.search_policy` also as top-level `search_policy` on completed `email job` responses. Inspect `version`, `enforcement=prompt_only`, `observed_queries`, and `target_exceeded`. Missing observed usage is unknown, never zero. Missing policy means an old result/server or no Gemini fallback; a client upgrade alone cannot enable the backend policy. Do not replay old completed jobs merely to obtain the new fields.
+
+Reuse completed Found and Not Found responses and keep a creator-URL-to-job mapping in the research workspace. A normal empty result is final for the current research scope, not a reason to create new keys, rename a run, or repeat enrichment. The current server reuses the original job/checkpoints; it does not promise a global cross-job 30-day negative cache. A future deliberate fresh search requires new evidence or explicit user approval. Report soft-budget overages for administrator review without changing a valid result or automatically trying again. Truncation, HTTP/credit/rate-limit and transport errors remain unresolved.
 
 Retry only explicitly authorized failed work with `fmg email retry JOB_ID`, then poll that same ID. The server retains original run attribution and successful checkpoints. After the server upgrade, a saved normal valid Gemini result—including an old empty response rejected only for missing sources—is reused without another paid call and completes as Found/Not Found. A failed/interrupted attempt marker is not a valid empty response: it retains its real error and may receive one authorized fallback attempt under the new rule. Do not locally rewrite an old server's failed job into completed; request administrator reconciliation/upgrade. No force-refresh/checkpoint-clear flag exists. Do not resubmit completed jobs, loop paid retries, or interpret recovery authorization as sending permission. Include retry costs once in `fmg --run-id ORIGINAL_RUN_ID usage`.
 

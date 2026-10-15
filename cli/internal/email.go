@@ -120,6 +120,17 @@ func runEmail(ctx context.Context, args []string, out, diagnostics io.Writer) in
 						outcome = "found"
 					}
 					data["outcome"], _ = json.Marshal(outcome)
+					var checkpoints struct {
+						Enrichment struct {
+							SearchPolicy json.RawMessage `json:"search_policy"`
+						} `json:"enrichment"`
+					}
+					if json.Unmarshal(data["checkpoints"], &checkpoints) == nil {
+						policy := checkpoints.Enrichment.SearchPolicy
+						if len(policy) > 0 && string(policy) != "null" {
+							data["search_policy"] = policy
+						}
+					}
 					response.Data, _ = json.Marshal(data)
 				}
 			}
