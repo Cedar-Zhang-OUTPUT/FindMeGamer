@@ -133,3 +133,47 @@ Validation logs retained locally: `/tmp/fmg-task7-focused.log`,
 `/tmp/fmg-task7-full.log`, `/tmp/fmg-task7-skills.log`. The earlier focused resource
 file `/tmp/fmg-task7-resources.json` has a narrower process scope; use the final
 file/table above for the acceptance budget.
+
+## Task 8 release-readiness addendum
+
+Final Task 8 code was verified with the same native service URLs and CLI above:
+**494 passed, 1 skipped, 1 warning in 651.14s (10:51)** from a complete
+`.venv/bin/pytest` run, 495 collected. The only skip remains
+`test_local_release_image_and_restore`; Docker startup was not authorized. All
+required native PostgreSQL/Redis/concurrent-worker tests executed. The warning
+is the existing Starlette/AnyIO deprecation. The full command's terminal session
+was `73490`; no separate raw log was captured for this run.
+
+The final resource artifact records 20 baseline and 20 dual virtual sends, 20
+terminal enrichments, drained broker work and eight surviving worker children
+across 1,110 samples. Baseline/dual p95 was 190.539s/100.260s; peak RSS was
+837,697,536/1,018,494,976 bytes and peak DB connections 14/26 of 100. These remain
+native virtual-provider measurements, not production capacity claims.
+
+The final focused deployment/backfill/monitor/queue checks passed **56 tests**.
+Added acceptance covers held startup with no monitor/enrichment provider call,
+fresh per-role readiness from actual native consumer/dispatch/monitor processes,
+unknown-message migration refusal, real Kombu envelope publication, exact
+publish-before-ack recovery/repeat behavior, and native PostgreSQL 17.11
+custom-format backup/restore preserving authentication and frozen history.
+Docker warm-drain/incomplete-drain orchestration is tested through deterministic
+command fixtures only; this does not establish container orchestration success.
+
+Crash recovery now proves replacement consumer progress using a fresh approved
+marker task and waits for ready queues and the unacked ledger to drain. It no
+longer treats an eleven-second sleep as proof duplicate messages were consumed.
+The same original unknown send remains unreplayed.
+
+Go test/vet passed. Local `fmg-v0.8.0` release build produced four platform CLI
+archives, both Skills, installer and SHA256SUMS. Actual bundle/installer tests:
+**4 passed, zero skips**; repeated offline installation retained authentication
+bytes and permissions and both Skill versions matched `0.8.0`. Executable Skill
+examples passed, followed by **4 integration tests**. The read-only remote tag
+check returned no `fmg-v0.8.0` at check time; nothing was pushed or published.
+
+The [cutover runbook](multi-mailbox-deployment.md) and Task 8 report distinguish
+local readiness from provider connectivity. Production preflight, proxy changes,
+server deployment, release/resume, publication and second-mailbox enrollment
+were not performed. The second mailbox remains disabled/no credentials. The
+container backup/restore gate is **blocked**, and native Redis 8.10.1 does not
+replace production Redis 7 acceptance. These outstanding gates prevent rollout.

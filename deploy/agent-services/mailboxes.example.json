@@ -1,0 +1,22 @@
+{
+  "mailboxes": [
+    {
+      "id": "ontologyplay",
+      "enabled": true,
+      "display_name": "Ontology Play",
+      "smtp_from": "replace-with-exact-existing-sender@example.invalid",
+      "allowed_templates": ["liminal-outreach", "game-outreach"],
+      "email_send_interval_seconds": 5,
+      "smtp_host": "",
+      "smtp_username": "",
+      "smtp_password": ""
+    },
+    {
+      "id": "second",
+      "enabled": false,
+      "display_name": "",
+      "allowed_templates": [],
+      "email_send_interval_seconds": 5
+    }
+  ]
+}

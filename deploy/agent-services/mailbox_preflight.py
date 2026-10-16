@@ -3,6 +3,8 @@
 import argparse
 import json
 import sys
+import importlib.util
+from pathlib import Path
 
 from sqlalchemy import text
 
@@ -10,6 +12,12 @@ from fmg_agent.config import Settings
 from fmg_agent.db import database
 from fmg_agent.email.identity import backfill_mailboxes
 from fmg_agent.mailboxes import MailboxRegistry
+
+spec = importlib.util.spec_from_file_location(
+    "deployment_runtime", Path(__file__).with_name("mail_runtime.py")
+)
+runtime = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(runtime)
 
 
 def main(argv=None):
@@ -33,12 +41,15 @@ def main(argv=None):
         )
     engine = None
     try:
-        settings = Settings()
+        settings = runtime.admin_settings()
         registry = MailboxRegistry.load(settings)
         engine, sessions = database(settings)
         if engine.dialect.name != "postgresql":
             raise ValueError("Mailbox deployment preflight requires PostgreSQL")
-        with sessions.begin() as session:
+        context = (
+            runtime.cutover_lock(sessions, registry) if args.apply else sessions.begin()
+        )
+        with context as session:
             if args.apply:
                 session.execute(text("SET LOCAL lock_timeout = '5s'"))
                 session.execute(

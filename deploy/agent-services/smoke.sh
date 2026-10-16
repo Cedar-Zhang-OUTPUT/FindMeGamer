@@ -17,4 +17,5 @@ echo
 "${FMG_BIN:-fmg}" auth check
 "${FMG_BIN:-fmg}" steam describe store.search
 "${FMG_BIN:-fmg}" email templates
+"${FMG_BIN:-fmg}" email mailboxes
 echo 'Read-only configuration smoke passed. No paid provider operation or email was sent.'

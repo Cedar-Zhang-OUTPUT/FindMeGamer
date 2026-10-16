@@ -18,6 +18,7 @@ from .mailboxes import MailboxRegistry
 from .mail_runtime import check_readiness, runtime_gate
 from .outreach import pending
 from .worker import create_worker, queue_for_mailbox
+from . import role_health
 
 
 @contextmanager
@@ -90,14 +91,17 @@ def run_dispatch(settings, stop):
                             owner.execute(text("SELECT 1"))
                             owner.commit()
                             dispatch_once(settings, fenced, publish)
+                            role_health.record(settings, "dispatch")
                             if stop.wait(10):
                                 break
             except Exception:
+                role_health.clear(settings, "dispatch")
                 logging.getLogger(__name__).warning(
                     "Dispatch unavailable; durable pending work retained."
                 )
             stop.wait(10)
     finally:
+        role_health.clear(settings, "dispatch")
         publisher.close()
         engine.dispose()
 

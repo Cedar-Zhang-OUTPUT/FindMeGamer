@@ -113,9 +113,41 @@ def test_worker_loss_keeps_unknown_unreplayed(mailbox_runtime):
         r.publish("fmg_agent.outreach.send", task["recipients"][0]["id"], "alpha")
     result = r.send("a", task["recipients"][0]["preview_id"], "different-key")
     assert r.error(result) == "preview_already_sent"
-    # Allow at least one normal dispatcher round and duplicate consumption.
-    time.sleep(11)
-    assert len(r.provider_calls("alpha")) == 1
+    # Prove the replacement pool consumes work, then wait for all duplicate
+    # messages to leave both the ready queue and the broker's unacked ledger.
+    marker = r.create("a", "alpha")
+    r.start("a", marker)
+    r.completed("a", marker)
+    until(r.drained, 30)
+    assert len(r.provider_calls("alpha")) == 2
+    assert sum(c["id"] == call["id"] for c in r.provider_calls("alpha")) == 1
+
+
+def test_real_roles_emit_fresh_local_readiness(mailbox_runtime):
+    from fmg_agent.role_health import probe
+
+    r = mailbox_runtime
+    for role, mailbox in [
+        ("enrichment", None),
+        ("mail", "alpha"),
+        ("mail", "beta"),
+        ("dispatch", None),
+        ("monitor", "alpha"),
+        ("monitor", "beta"),
+    ]:
+        until(lambda: _ready(r.settings, role, mailbox), 30)
+        evidence = probe(r.settings, role, mailbox)
+        assert evidence["role"] == role
+        assert evidence["mailbox"] == mailbox
+
+
+def _ready(settings, role, mailbox):
+    from fmg_agent.role_health import probe
+
+    try:
+        return probe(settings, role, mailbox)
+    except (ValueError, OSError):
+        return False
 
 
 def test_old_expired_message_keeps_pending_recoverable(mailbox_runtime):

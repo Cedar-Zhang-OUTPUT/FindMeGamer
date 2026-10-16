@@ -13,6 +13,8 @@ from ..db import database
 from ..mailboxes import MailboxRegistry
 from .identity import register_identities
 from .inbox import sync_once
+from .. import role_health
+from ..mail_runtime import MailRuntime
 
 
 @contextmanager
@@ -92,15 +94,37 @@ def monitor_mailbox(settings: Settings, mailbox_id: str, stop: Event) -> None:
                             # Detect that before another IMAP scan, then reacquire.
                             owner.execute(text("SELECT 1"))
                             owner.commit()
-                            sync_once(fenced_sessions, config, mailbox_id=mailbox_id)
+                            with fenced_sessions() as session:
+                                runtime = session.get(MailRuntime, 1)
+                                held = runtime is None or not (
+                                    runtime.dispatch_enabled and runtime.send_enabled
+                                )
+                            outcome = (
+                                {"state": "held-local"}
+                                if held
+                                else sync_once(
+                                    fenced_sessions, config, mailbox_id=mailbox_id
+                                )
+                            )
+                            if outcome and outcome.get("state") == "error":
+                                role_health.clear(settings, "monitor", mailbox_id)
+                            else:
+                                role_health.record(
+                                    settings,
+                                    "monitor",
+                                    mailbox_id,
+                                    mode="held-local" if held else "local-ready",
+                                )
                             if stop.wait(config.imap_poll_seconds):
                                 break
             except Exception:
+                role_health.clear(settings, "monitor", mailbox_id)
                 logging.getLogger(__name__).warning(
                     "Mailbox monitor unavailable; cursor retained."
                 )
             stop.wait(config.imap_poll_seconds)
     finally:
+        role_health.clear(settings, "monitor", mailbox_id)
         engine.dispose()
 
 

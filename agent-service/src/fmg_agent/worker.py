@@ -13,7 +13,8 @@ from .email.gemini import GeminiGateway
 from .email.jobs import JobStore
 from .email.public_pages import PublicPageGateway
 from .mailboxes import MailboxRegistry
-from .mail_runtime import check_readiness
+from .mail_runtime import check_readiness, runtime_gate
+from .errors import ApiError
 
 
 def queue_for_mailbox(mailbox_id: str) -> str:
@@ -66,6 +67,41 @@ def create_worker(
         broker_connection_timeout=5,
         broker_connection_retry_on_startup=True,
     )
+    from celery.signals import worker_ready, heartbeat_sent, worker_shutdown
+    from . import role_health
+
+    consumer = None
+
+    @worker_ready.connect(weak=False)
+    def ready(sender=None, **kwargs):
+        nonlocal consumer
+        if sender.app is worker:
+            consumer = sender
+            heartbeat()
+
+    @heartbeat_sent.connect(weak=False)
+    def heartbeat(**kwargs):
+        if consumer is None:
+            return
+        if (
+            consumer.connection
+            and consumer.connection.connected
+            and consumer.pool.num_processes == (4 if role == "enrichment" else 2)
+            and set(
+                consumer.task_consumer.queues[i].name
+                for i in range(len(consumer.task_consumer.queues))
+            )
+            == {queue}
+        ):
+            role_health.record(settings, role, mailbox_id)
+        else:
+            role_health.clear(settings, role, mailbox_id)
+
+    @worker_shutdown.connect(weak=False)
+    def shutdown(sender=None, **kwargs):
+        if sender.app is worker:
+            role_health.clear(settings, role, mailbox_id)
+
     factory = enricher_factory or (
         lambda: Enricher(
             PublicPageGateway(),
@@ -81,7 +117,12 @@ def create_worker(
             return {"code": "worker_role_mismatch"}
         engine, sessions = database(settings)
         try:
-            run_job(JobStore(sessions), job_id, factory())
+            with runtime_gate(sessions):
+                run_job(JobStore(sessions), job_id, factory())
+        except ApiError as exc:
+            if exc.code != "mail_service_maintenance":
+                raise
+            return {"code": exc.code}
         finally:
             engine.dispose()
 
