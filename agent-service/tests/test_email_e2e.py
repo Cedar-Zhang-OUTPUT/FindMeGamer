@@ -288,6 +288,7 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
                 "1",
                 1,
                 delivery_report(original_send, "worker-retry"),
+                mailbox_id="ontologyplay",
             )
             == "bounce"
         )

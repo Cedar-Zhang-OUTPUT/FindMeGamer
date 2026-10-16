@@ -19,6 +19,7 @@ def mailbox(request):
     app, client, owner = fixture[:3]
     app.state.settings.email_send_interval_seconds = 0
     from fmg_agent.mailboxes import MailboxRegistry
+
     app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     return app, client, owner
 
@@ -28,7 +29,14 @@ def retried(app, client, owner, monkeypatch, key):
     from fmg_agent.email.retries import process_retry
 
     original = accepted(app, client, owner, key)
-    ingest(app.state.sessions, "junk", "1", 1, dsn(original, key + "-initial"))
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        1,
+        dsn(original, key + "-initial"),
+        mailbox_id="ontologyplay",
+    )
     advance(monkeypatch, retry_row(app, original).due_at)
     ids = []
     process_retry(
@@ -63,6 +71,7 @@ def test_three_nonexistent_retry_addresses_do_not_pause_sender(
                 status,
                 "The email account that you tried to reach does not exist.",
             ),
+            mailbox_id="ontologyplay",
         )
         assert retry_row(app, original).state == "failed"
     with app.state.sessions() as session:
@@ -91,6 +100,7 @@ def test_mixed_failures_count_only_deliverable_addresses(mailbox, monkeypatch):
                     else "550 Authentication or spam rejection"
                 ),
             ),
+            mailbox_id="ontologyplay",
         )
         if i == 1:
             # Historical 5.1.3 records were classified as delivery_failure.
@@ -118,13 +128,21 @@ def test_late_invalid_notice_cancels_queued_retry_without_transport(
 
     app, client, owner = mailbox
     original = accepted(app, client, owner, "late-invalid")
-    ingest(app.state.sessions, "junk", "1", 1, dsn(original, "initial-spam"))
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        1,
+        dsn(original, "initial-spam"),
+        mailbox_id="ontologyplay",
+    )
     ingest(
         app.state.sessions,
         "inbox",
         "1",
         2,
         dsn(original, "late-invalid", "5.1.1", "550 no mailbox"),
+        mailbox_id="ontologyplay",
     )
     advance(monkeypatch, retry_row(app, original).due_at)
     calls = []
@@ -155,6 +173,7 @@ def test_new_preview_for_known_invalid_address_is_skipped_idempotently(mailbox):
         "1",
         1,
         dsn(original, "invalid", "5.1.1", "550 no mailbox"),
+        mailbox_id="ontologyplay",
     )
     calls = []
     app.state.smtp_transport = lambda *args: calls.append(args[-1]) or {"state": "sent"}
@@ -217,6 +236,7 @@ def test_invalid_address_exclusion_does_not_block_other_batch_recipients(mailbox
         "1",
         1,
         dsn(original, "alice-invalid", "5.1.1", "550 no mailbox"),
+        mailbox_id="ontologyplay",
     )
     task = create(app, client, owner).json()["data"]
     assert start(client, owner, task).status_code == 200
@@ -248,9 +268,12 @@ def test_invalid_address_exclusion_is_sender_scoped(mailbox):
         "1",
         1,
         dsn(original, "bad-first", "5.1.1", "550 no mailbox"),
+        mailbox_id="ontologyplay",
     )
     configure_second_sender(app, "other-publisher@example.com")
-    assert accepted(app, client, owner, "other-sender", to="same@example.com", mailbox_id="second")
+    assert accepted(
+        app, client, owner, "other-sender", to="same@example.com", mailbox_id="second"
+    )
 
 
 def test_delay_notice_does_not_exclude_recipient(mailbox):
@@ -264,5 +287,6 @@ def test_delay_notice_does_not_exclude_recipient(mailbox):
         "1",
         1,
         dsn(original, "delay-only", "5.1.3", "Delivery delayed", "delayed"),
+        mailbox_id="ontologyplay",
     )
     assert accepted(app, client, owner, "delayed-second", to="slow@example.com")

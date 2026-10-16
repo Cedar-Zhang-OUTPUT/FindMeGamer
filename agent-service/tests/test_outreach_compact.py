@@ -149,7 +149,7 @@ def test_summary_tracks_retry_unknown_reply_and_sender_hold(sending, monkeypatch
     notice = dsn(sid, "summary-dsn").replace(
         f"fmg-{sid}@example.com".encode(), f"fmg-{sid}@hotmail.com".encode()
     )
-    ingest(app.state.sessions, "junk", "1", 1, notice)
+    ingest(app.state.sessions, "junk", "1", 1, notice, mailbox_id="ontologyplay")
     queued = client.get(path + "?summary=true", headers=headers(owner)).json()["data"]
     assert "recipients" not in queued
     assert queued["state"] == "sending"

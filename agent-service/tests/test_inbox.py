@@ -79,12 +79,52 @@ def test_real_replies_isolated_deduplicated_and_auto_excluded(sending):
     mail["In-Reply-To"] = original
     mail["Subject"] = "Re: Game"
     mail.set_content("Please send more information.")
-    assert ingest(app.state.sessions, "box", "1", 1, mail.as_bytes()) == "human"
-    assert ingest(app.state.sessions, "box", "1", 1, mail.as_bytes()) == "duplicate"
-    assert ingest(app.state.sessions, "box", "1", 2, mail.as_bytes()) == "duplicate"
+    assert (
+        ingest(
+            app.state.sessions,
+            "box",
+            "1",
+            1,
+            mail.as_bytes(),
+            mailbox_id="ontologyplay",
+        )
+        == "human"
+    )
+    assert (
+        ingest(
+            app.state.sessions,
+            "box",
+            "1",
+            1,
+            mail.as_bytes(),
+            mailbox_id="ontologyplay",
+        )
+        == "duplicate"
+    )
+    assert (
+        ingest(
+            app.state.sessions,
+            "box",
+            "1",
+            2,
+            mail.as_bytes(),
+            mailbox_id="ontologyplay",
+        )
+        == "duplicate"
+    )
     mail.replace_header("Message-ID", "<auto-1@example.com>")
     mail["Auto-Submitted"] = "auto-replied"
-    assert ingest(app.state.sessions, "box", "1", 3, mail.as_bytes()) == "automatic"
+    assert (
+        ingest(
+            app.state.sessions,
+            "box",
+            "1",
+            3,
+            mail.as_bytes(),
+            mailbox_id="ontologyplay",
+        )
+        == "automatic"
+    )
     result = client.get(
         "/v1/outreach/tasks/" + task["id"], headers=headers(owner)
     ).json()["data"]
@@ -116,7 +156,17 @@ def test_unrelated_or_wrong_sender_not_assigned(sending):
     mail["From"] = "stranger@example.com"
     mail["In-Reply-To"] = f'<fmg-{send.id}@{preview.message["from"].split("@")[1]}>'
     mail.set_content("Unrelated private message")
-    assert ingest(app.state.sessions, "box", "1", 1, mail.as_bytes()) == "unmatched"
+    assert (
+        ingest(
+            app.state.sessions,
+            "box",
+            "1",
+            1,
+            mail.as_bytes(),
+            mailbox_id="ontologyplay",
+        )
+        == "unmatched"
+    )
 
 
 def test_sync_cursor_read_only_and_recovery(sending):
@@ -186,18 +236,35 @@ def test_sync_cursor_read_only_and_recovery(sending):
             pass
 
     box = Mailbox()
-    assert sync_once(app.state.sessions, cfg, lambda *a, **k: box)["processed"] == 1
+    assert (
+        sync_once(
+            app.state.sessions, cfg, lambda *a, **k: box, mailbox_id="ontologyplay"
+        )["processed"]
+        == 1
+    )
     assert monitoring_status(app.state.sessions, cfg)["state"] == "active"
-    assert sync_once(app.state.sessions, cfg, lambda *a, **k: box)["processed"] == 0
+    assert (
+        sync_once(
+            app.state.sessions, cfg, lambda *a, **k: box, mailbox_id="ontologyplay"
+        )["processed"]
+        == 0
+    )
     box.fail = True
     assert (
-        sync_once(app.state.sessions, cfg, lambda *a, **k: box)["error"]
+        sync_once(
+            app.state.sessions, cfg, lambda *a, **k: box, mailbox_id="ontologyplay"
+        )["error"]
         == "imap_auth_or_protocol_error"
     )
     assert "private-secret" not in str(monitoring_status(app.state.sessions, cfg))
     box.fail = False
     box.validity = "2"
-    assert sync_once(app.state.sessions, cfg, lambda *a, **k: box)["processed"] == 1
+    assert (
+        sync_once(
+            app.state.sessions, cfg, lambda *a, **k: box, mailbox_id="ontologyplay"
+        )["processed"]
+        == 1
+    )
     result = client.get(
         "/v1/outreach/tasks/" + task["id"], headers=headers(owner)
     ).json()["data"]
@@ -250,7 +317,10 @@ def test_bounce_is_not_human_reply(sending):
         f"--dsn\r\nContent-Type: message/delivery-status\r\n\r\nAction: failed\r\n\r\n"
         f"--dsn\r\nContent-Type: text/rfc822-headers\r\n\r\nMessage-ID: <fmg-{send.id}@example.com>\r\n\r\n--dsn--\r\n"
     ).encode()
-    assert ingest(app.state.sessions, "box", "1", 1, raw) == "bounce"
+    assert (
+        ingest(app.state.sessions, "box", "1", 1, raw, mailbox_id="ontologyplay")
+        == "bounce"
+    )
     result = client.get(
         "/v1/outreach/tasks/" + task["id"], headers=headers(owner)
     ).json()["data"]

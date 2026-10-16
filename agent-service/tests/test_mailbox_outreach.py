@@ -205,6 +205,13 @@ def test_unbackfilled_historical_send_does_not_create_unbound_retry(sending):
         sent = session.get(EmailSend, send_id)
         session.get(EmailPreview, sent.preview_id).mailbox_id = None
         session.commit()
-    ingest(app.state.sessions, "junk", "1", 1, dsn(send_id, "unmapped-dsn"))
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        1,
+        dsn(send_id, "unmapped-dsn"),
+        mailbox_id="ontologyplay",
+    )
     with app.state.sessions() as session:
         assert session.get(EmailBounceRetry, send_id) is None

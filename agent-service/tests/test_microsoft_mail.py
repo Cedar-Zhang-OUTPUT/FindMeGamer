@@ -302,7 +302,9 @@ def test_imap_oauth_uses_read_only_and_preserves_polling(sending, tmp_path):
         def logout(self):
             pass
 
-    assert sync_once(app.state.sessions, settings, connect=Mailbox) == {
+    assert sync_once(
+        app.state.sessions, settings, connect=Mailbox, mailbox_id="ontologyplay"
+    ) == {
         "state": "active",
         "processed": 0,
         "folders": ["INBOX"],

@@ -84,11 +84,35 @@ def test_three_distinct_retry_bounces_pause_sender_and_keep_receipts(
     queued = pending(app.state.sessions)
     ids = [accepted(app, client, owner, str(i)) for i in range(3)]
     for i, sid in enumerate(ids[:2]):
-        assert ingest(app.state.sessions, "junk", "1", i, dsn(sid, str(i))) == "bounce"
+        assert (
+            ingest(
+                app.state.sessions,
+                "junk",
+                "1",
+                i,
+                dsn(sid, str(i)),
+                mailbox_id="ontologyplay",
+            )
+            == "bounce"
+        )
     # Duplicate notices for the same original send must not trip the threshold.
-    ingest(app.state.sessions, "junk", "1", 8, dsn(ids[0], "another-notice"))
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        8,
+        dsn(ids[0], "another-notice"),
+        mailbox_id="ontologyplay",
+    )
     assert len(pending(app.state.sessions)) == 4
-    ingest(app.state.sessions, "junk", "1", 9, dsn(ids[2], "third"))
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        9,
+        dsn(ids[2], "third"),
+        mailbox_id="ontologyplay",
+    )
     assert len(pending(app.state.sessions)) == 4
     retry_ids = []
     for i, sid in enumerate(ids):
@@ -100,7 +124,12 @@ def test_three_distinct_retry_bounces_pause_sender_and_keep_receipts(
             lambda cfg, msg, rid: retry_ids.append(rid) or {"state": "sent"},
         )
         ingest(
-            app.state.sessions, "junk", "1", i + 10, dsn(retry_ids[-1], f"retry-{i}")
+            app.state.sessions,
+            "junk",
+            "1",
+            i + 10,
+            dsn(retry_ids[-1], f"retry-{i}"),
+            mailbox_id="ontologyplay",
         )
     assert pending(app.state.sessions) == []
     for item, token in ((task, owner), (other_task, other)):
@@ -151,6 +180,7 @@ def test_non_spam_failures_and_delays_do_not_pause_and_have_diagnostics(sending)
                 "1",
                 i,
                 dsn(sid, str(i), "5.1.1", "550 mailbox does not exist"),
+                mailbox_id="ontologyplay",
             )
             == "bounce"
         )
@@ -161,6 +191,7 @@ def test_non_spam_failures_and_delays_do_not_pause_and_have_diagnostics(sending)
             "1",
             4,
             dsn(sid, "delay", "4.7.0", "delivery delayed", "delayed"),
+            mailbox_id="ontologyplay",
         )
         == "automatic"
     )
@@ -230,12 +261,20 @@ def test_sync_discovers_junk_with_independent_cursor_and_deduplicates(sending):
         def logout(self):
             pass
 
-    result = sync_once(app.state.sessions, cfg, lambda *a, **kw: Mailbox())
+    result = sync_once(
+        app.state.sessions, cfg, lambda *a, **kw: Mailbox(), mailbox_id="ontologyplay"
+    )
     assert result["processed"] == 2
     assert result["folders"] == ["INBOX", "Junk"]
     assert monitoring_status(app.state.sessions, cfg)["state"] == "active"
     assert (
-        sync_once(app.state.sessions, cfg, lambda *a, **kw: Mailbox())["processed"] == 0
+        sync_once(
+            app.state.sessions,
+            cfg,
+            lambda *a, **kw: Mailbox(),
+            mailbox_id="ontologyplay",
+        )["processed"]
+        == 0
     )
     with app.state.sessions() as session:
         rows = session.scalars(select(EmailReply)).all()
@@ -284,7 +323,9 @@ def test_old_retry_failures_do_not_trip_and_other_sender_remains_available(
 
     app, client, owner, _, _ = sending
     first = accepted(app, client, owner, "old")
-    ingest(app.state.sessions, "junk", "1", 1, dsn(first, "old"))
+    ingest(
+        app.state.sessions, "junk", "1", 1, dsn(first, "old"), mailbox_id="ontologyplay"
+    )
     advance(monkeypatch, retry_row(app, first).due_at)
     process_retry(
         app.state.sessions,
@@ -298,7 +339,14 @@ def test_old_retry_failures_do_not_trip_and_other_sender_remains_available(
         session.commit()
     for i in range(2):
         sid = accepted(app, client, owner, f"recent-{i}")
-        ingest(app.state.sessions, "junk", "1", i + 2, dsn(sid, f"recent-{i}"))
+        ingest(
+            app.state.sessions,
+            "junk",
+            "1",
+            i + 2,
+            dsn(sid, f"recent-{i}"),
+            mailbox_id="ontologyplay",
+        )
         advance(monkeypatch, retry_row(app, sid).due_at)
         process_retry(
             app.state.sessions,
@@ -310,7 +358,9 @@ def test_old_retry_failures_do_not_trip_and_other_sender_remains_available(
         assert status(session, "publisher@example.com")["state"] == "ready"
     # Only an additional third recent recipient crosses the threshold.
     sid = accepted(app, client, owner, "third")
-    ingest(app.state.sessions, "junk", "1", 4, dsn(sid, "third"))
+    ingest(
+        app.state.sessions, "junk", "1", 4, dsn(sid, "third"), mailbox_id="ontologyplay"
+    )
     advance(monkeypatch, retry_row(app, sid).due_at)
     process_retry(
         app.state.sessions,
@@ -333,7 +383,14 @@ def test_same_recipient_different_sends_does_not_inflate_spam_count(sending):
     for i in range(3):
         sid = accepted(app, client, owner, str(i), to="same@example.com")
         # The send key must differ even though the recipient is the same.
-        ingest(app.state.sessions, "junk", "1", i, dsn(sid, f"repeat-{i}"))
+        ingest(
+            app.state.sessions,
+            "junk",
+            "1",
+            i,
+            dsn(sid, f"repeat-{i}"),
+            mailbox_id="ontologyplay",
+        )
     with app.state.sessions() as session:
         assert status(session, "publisher@example.com")["state"] == "ready"
 
@@ -375,7 +432,12 @@ def test_junk_failure_is_not_reported_as_healthy(sending):
             pass
 
     assert (
-        sync_once(app.state.sessions, cfg, lambda *a, **kw: Mailbox())["state"]
+        sync_once(
+            app.state.sessions,
+            cfg,
+            lambda *a, **kw: Mailbox(),
+            mailbox_id="ontologyplay",
+        )["state"]
         == "error"
     )
     assert monitoring_status(app.state.sessions, cfg)["state"] == "error"
@@ -398,6 +460,16 @@ def test_human_reply_with_attached_old_dsn_does_not_pause(sending):
         reply.set_content("Yes, interested. Attached an old delivery report.")
         report = BytesParser(policy=policy.default).parsebytes(dsn(sid, str(i)))
         reply.add_attachment(report, filename="old-dsn.eml")
-        assert ingest(app.state.sessions, "inbox", "1", i, reply.as_bytes()) == "human"
+        assert (
+            ingest(
+                app.state.sessions,
+                "inbox",
+                "1",
+                i,
+                reply.as_bytes(),
+                mailbox_id="ontologyplay",
+            )
+            == "human"
+        )
     with app.state.sessions() as session:
         assert status(session, "publisher@example.com")["state"] == "ready"

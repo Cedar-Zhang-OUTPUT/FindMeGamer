@@ -78,7 +78,12 @@ def test_first_bounce_waits_30_seconds_and_resends_exact_snapshot_once(
     before = datetime.now(timezone.utc)
     assert (
         ingest(
-            app.state.sessions, "junk", "1", 1, dsn(sid, "one", dsn_status, diagnostic)
+            app.state.sessions,
+            "junk",
+            "1",
+            1,
+            dsn(sid, "one", dsn_status, diagnostic),
+            mailbox_id="ontologyplay",
         )
         == "bounce"
     )
@@ -120,8 +125,25 @@ def test_first_bounce_waits_30_seconds_and_resends_exact_snapshot_once(
     assert receipt["state"] == "sent"
     assert receipt["bounce_retry"]["send_id"] == delivered[0][1]
     assert receipt["bounce_retry"]["state"] == "sent"
-    assert ingest(app.state.sessions, "inbox", "1", 2, dsn(sid, "one")) == "duplicate"
-    ingest(app.state.sessions, "junk", "1", 3, dsn(sid, "another-original-notice"))
+    assert (
+        ingest(
+            app.state.sessions,
+            "inbox",
+            "1",
+            2,
+            dsn(sid, "one"),
+            mailbox_id="ontologyplay",
+        )
+        == "duplicate"
+    )
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        3,
+        dsn(sid, "another-original-notice"),
+        mailbox_id="ontologyplay",
+    )
     assert retry_row(app, sid).due_at == row.due_at
     assert pending_retries(app.state.sessions) == []
 
@@ -183,7 +205,14 @@ def test_only_three_distinct_retry_failures_pause_and_never_retry_the_retry(
         assert start(client, token, task).status_code == 200
     ids = [accepted(app, client, owner, f"initial-{i}") for i in range(3)]
     for i, sid in enumerate(ids):
-        ingest(app.state.sessions, "junk", "1", i, dsn(sid, f"initial-{i}"))
+        ingest(
+            app.state.sessions,
+            "junk",
+            "1",
+            i,
+            dsn(sid, f"initial-{i}"),
+            mailbox_id="ontologyplay",
+        )
     with app.state.sessions() as session:
         assert status(session, "publisher@example.com")["state"] == "ready"
     assert len(pending(app.state.sessions)) == 4
@@ -199,14 +228,24 @@ def test_only_three_distinct_retry_failures_pause_and_never_retry_the_retry(
         with app.state.sessions() as session:
             assert status(session, "publisher@example.com")["state"] == "ready"
         ingest(
-            app.state.sessions, "junk", "1", i + 10, dsn(retry_ids[-1], f"retry-{i}")
+            app.state.sessions,
+            "junk",
+            "1",
+            i + 10,
+            dsn(retry_ids[-1], f"retry-{i}"),
+            mailbox_id="ontologyplay",
         )
         if i < 2:
             with app.state.sessions() as session:
                 assert status(session, "publisher@example.com")["state"] == "ready"
         # Distinct notifications for one retried email do not increase the threshold.
         ingest(
-            app.state.sessions, "inbox", "1", i + 20, dsn(retry_ids[-1], f"copy-{i}")
+            app.state.sessions,
+            "inbox",
+            "1",
+            i + 20,
+            dsn(retry_ids[-1], f"copy-{i}"),
+            mailbox_id="ontologyplay",
         )
     with app.state.sessions() as session:
         assert (
@@ -243,7 +282,14 @@ def test_retry_outcomes_preserve_unknown_and_provider_limit(
     calls = []
     for i in range(3):
         sid = accepted(app, client, owner, f"outcome-{i}")
-        ingest(app.state.sessions, "junk", "1", i, dsn(sid, f"outcome-{i}"))
+        ingest(
+            app.state.sessions,
+            "junk",
+            "1",
+            i,
+            dsn(sid, f"outcome-{i}"),
+            mailbox_id="ontologyplay",
+        )
         advance(monkeypatch, retry_row(app, sid).due_at)
         process_retry(
             app.state.sessions,
@@ -285,6 +331,7 @@ def test_invalid_old_and_human_replies_do_not_resend(sending, monkeypatch):
         "1",
         1,
         dsn(invalid, "invalid", "5.1.1", "550 no mailbox"),
+        mailbox_id="ontologyplay",
     )
     assert retry_row(app, invalid) is None
     old = accepted(app, client, owner, "old")
@@ -294,16 +341,35 @@ def test_invalid_old_and_human_replies_do_not_resend(sending, monkeypatch):
             days=1
         )
         session.commit()
-    ingest(app.state.sessions, "junk", "1", 2, dsn(old, "old"))
+    ingest(
+        app.state.sessions, "junk", "1", 2, dsn(old, "old"), mailbox_id="ontologyplay"
+    )
     assert retry_row(app, old) is None
     sid = accepted(app, client, owner, "human")
-    ingest(app.state.sessions, "junk", "1", 3, dsn(sid, "human-bounce"))
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        3,
+        dsn(sid, "human-bounce"),
+        mailbox_id="ontologyplay",
+    )
     reply = EmailMessage()
     reply["From"] = "creator-human@example.com"
     reply["In-Reply-To"] = f"<fmg-{sid}@example.com>"
     reply["Message-ID"] = "<human@example.com>"
     reply.set_content("Received your invitation, thanks.")
-    assert ingest(app.state.sessions, "inbox", "1", 4, reply.as_bytes()) == "human"
+    assert (
+        ingest(
+            app.state.sessions,
+            "inbox",
+            "1",
+            4,
+            reply.as_bytes(),
+            mailbox_id="ontologyplay",
+        )
+        == "human"
+    )
     advance(monkeypatch, retry_row(app, sid).due_at)
     process_retry(
         app.state.sessions,
@@ -333,7 +399,14 @@ def test_approved_batch_retry_visible_but_blocked_batch_never_resends(
         app.state.settings,
         lambda cfg, msg, sid: ids.append(sid) or {"state": "sent"},
     )
-    ingest(app.state.sessions, "junk", "1", 1, dsn(ids[0], "batch"))
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        1,
+        dsn(ids[0], "batch"),
+        mailbox_id="ontologyplay",
+    )
     data = client.get(
         "/v1/outreach/tasks/" + task["id"], headers=headers(owner)
     ).json()["data"]
@@ -357,7 +430,14 @@ def test_approved_batch_retry_visible_but_blocked_batch_never_resends(
         app.state.settings,
         lambda cfg, msg, sid: ids.append(sid) or {"state": "sent"},
     )
-    ingest(app.state.sessions, "junk", "1", 2, dsn(ids[1], "batch-retry"))
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        2,
+        dsn(ids[1], "batch-retry"),
+        mailbox_id="ontologyplay",
+    )
     data = client.get(
         "/v1/outreach/tasks/" + task["id"], headers=headers(owner)
     ).json()["data"]
@@ -376,7 +456,9 @@ def test_retry_unknown_after_restart_never_sends_again(sending, monkeypatch):
 
     app, client, owner, _, _ = sending
     sid = accepted(app, client, owner, "crash")
-    ingest(app.state.sessions, "junk", "1", 1, dsn(sid, "crash"))
+    ingest(
+        app.state.sessions, "junk", "1", 1, dsn(sid, "crash"), mailbox_id="ontologyplay"
+    )
     row = retry_row(app, sid)
     with app.state.sessions() as session:
         session.add(
@@ -410,7 +492,14 @@ def test_revoked_authorization_cancels_retry_without_transport(sending, monkeypa
 
     app, client, owner, _, _ = sending
     sid = accepted(app, client, owner, "revoked")
-    ingest(app.state.sessions, "junk", "1", 1, dsn(sid, "revoked"))
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        1,
+        dsn(sid, "revoked"),
+        mailbox_id="ontologyplay",
+    )
     advance(monkeypatch, retry_row(app, sid).due_at)
     with app.state.sessions() as session:
         revoke_token(session, owner.id)
@@ -432,9 +521,17 @@ def test_retry_respects_global_cooldown_and_dsn_during_transport(sending, monkey
     app, client, owner, _, _ = sending
     app.state.settings.email_send_interval_seconds = 5
     from fmg_agent.mailboxes import MailboxRegistry
+
     app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     sid = accepted(app, client, owner, "pacing")
-    ingest(app.state.sessions, "junk", "1", 1, dsn(sid, "pacing"))
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        1,
+        dsn(sid, "pacing"),
+        mailbox_id="ontologyplay",
+    )
     advance(monkeypatch, retry_row(app, sid).due_at)
     with app.state.sessions() as session:
         session.get(EmailSendGate, "publisher@example.com").available_at = datetime.now(
@@ -455,7 +552,14 @@ def test_retry_respects_global_cooldown_and_dsn_during_transport(sending, monkey
         session.commit()
 
     def bounced_while_sending(config, message, retry_id):
-        ingest(app.state.sessions, "junk", "1", 2, dsn(retry_id, "inflight-dsn"))
+        ingest(
+            app.state.sessions,
+            "junk",
+            "1",
+            2,
+            dsn(retry_id, "inflight-dsn"),
+            mailbox_id="ontologyplay",
+        )
         return {"state": "sent"}
 
     process_retry(app.state.sessions, sid, app.state.settings, bounced_while_sending)

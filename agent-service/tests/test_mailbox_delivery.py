@@ -298,7 +298,9 @@ def test_wrong_retry_worker_preserves_queue_and_frozen_identity(sending, monkeyp
     app, client, owner, _, _ = sending
     setup_mailboxes(app)
     original = accepted(app, client, owner, "bounce", mailbox_id="alpha")
-    ingest(app.state.sessions, "junk", "1", 1, dsn(original, "bounce"))
+    ingest(
+        app.state.sessions, "junk", "1", 1, dsn(original, "bounce"), mailbox_id="alpha"
+    )
     retry = retry_row(app, original)
     advance(monkeypatch, retry.due_at)
     calls = []

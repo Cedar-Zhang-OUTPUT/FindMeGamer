@@ -127,23 +127,6 @@ def create_worker(settings=None, *, enricher_factory=None):
         if sender is not None and sender.app is worker:
             stop.clear()
             Thread(target=dispatch_loop, daemon=True, name="fmg-agent-dispatch").start()
-            Thread(target=inbox_loop, daemon=True, name="fmg-agent-inbox").start()
-
-    def inbox_loop():
-        from .email.inbox import sync_once
-
-        engine, sessions = database(settings)
-        try:
-            while not stop.is_set():
-                try:
-                    sync_once(sessions, settings)
-                except Exception:
-                    logging.getLogger(__name__).warning(
-                        "Inbox synchronization unavailable; cursor retained."
-                    )
-                stop.wait(settings.imap_poll_seconds)
-        finally:
-            engine.dispose()
 
     def shutdown(sender=None, **kwargs):
         if sender is not None and sender.app is worker:

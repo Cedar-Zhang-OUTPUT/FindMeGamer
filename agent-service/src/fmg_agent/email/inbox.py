@@ -151,7 +151,7 @@ def delivery_diagnostics(message):
     return None
 
 
-def matching_send(session, message):
+def matching_send(session, message, *, mailbox_id: str):
     sender = parseaddr(str(message.get("From", "")))[1].casefold()
     refs = re.findall(r"<[^<>\s]+>", str(message.get("In-Reply-To", "")))
     refs += list(
@@ -194,6 +194,12 @@ def matching_send(session, message):
         if row is None or row.state not in {"sent", "unknown", "sending"}:
             continue
         preview = session.get(EmailPreview, row.preview_id)
+        if (
+            preview is None
+            or not preview.mailbox_id
+            or preview.mailbox_id != mailbox_id
+        ):
+            continue
         expected = f'<fmg-{row.id}@{preview.message["from"].split("@", 1)[1]}>'
         if ref.casefold() != expected.casefold():
             continue
@@ -203,10 +209,10 @@ def matching_send(session, message):
     return None, kind, sender
 
 
-def ingest(sessions, mailbox, validity, uid, raw):
+def ingest(sessions, mailbox, validity, uid, raw, *, mailbox_id: str):
     message = BytesParser(policy=policy.default).parsebytes(raw)
     with sessions() as session:
-        send, kind, sender = matching_send(session, message)
+        send, kind, sender = matching_send(session, message, mailbox_id=mailbox_id)
         if send is None:
             return "unmatched"
         identity = str(message.get("Message-ID", "")) or sha256(raw).hexdigest()
@@ -344,7 +350,7 @@ def monitored_folders(client, settings):
     return list(dict.fromkeys(folders))
 
 
-def scan_folder(sessions, settings, client, folder):
+def scan_folder(sessions, settings, client, folder, *, mailbox_id: str):
     key = mailbox_key(settings, folder)
     with sessions() as session:
         if session.get(InboxCursor, key) is None:
@@ -379,9 +385,16 @@ def scan_folder(sessions, settings, client, folder):
             raise RuntimeError("fetch")
         message = BytesParser(policy=policy.default).parsebytes(header)
         with sessions() as session:
-            match, _, _ = matching_send(session, message)
+            match, _, _ = matching_send(session, message, mailbox_id=mailbox_id)
         if match is not None or message.get_content_type() == "multipart/report":
-            ingest(sessions, key, validity, uid, read_reply(client, uid, header))
+            ingest(
+                sessions,
+                key,
+                validity,
+                uid,
+                read_reply(client, uid, header),
+                mailbox_id=mailbox_id,
+            )
         with sessions() as session:
             cursor = session.get(InboxCursor, key)
             cursor.uidvalidity = validity
@@ -396,7 +409,7 @@ def scan_folder(sessions, settings, client, folder):
     return len(uids)
 
 
-def sync_once(sessions, settings, connect=None):
+def sync_once(sessions, settings, connect=None, *, mailbox_id: str):
     if not configured(settings):
         return {"state": "not_configured"}
     key = mailbox_key(settings)
@@ -428,7 +441,8 @@ def sync_once(sessions, settings, connect=None):
             )
         folders = monitored_folders(client, settings)
         processed = sum(
-            scan_folder(sessions, settings, client, folder) for folder in folders
+            scan_folder(sessions, settings, client, folder, mailbox_id=mailbox_id)
+            for folder in folders
         )
         with sessions() as session:
             cursor = session.get(InboxCursor, key)

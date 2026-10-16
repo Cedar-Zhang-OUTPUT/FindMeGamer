@@ -24,6 +24,7 @@ def test_concurrent_retry_bounces_persist_hold_and_block_queued_sends(
     app, client, owner = pg_sending
     app.state.settings.email_send_interval_seconds = 0
     from fmg_agent.mailboxes import MailboxRegistry
+
     app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     task = create(app, client, owner).json()["data"]
     assert start(client, owner, task).status_code == 200
@@ -31,7 +32,14 @@ def test_concurrent_retry_bounces_persist_hold_and_block_queued_sends(
     ids = [accepted(app, client, owner, str(i)) for i in range(3)]
     retry_ids = []
     for i, sid in enumerate(ids):
-        ingest(app.state.sessions, "junk", "1", i, dsn(sid, f"initial-{i}"))
+        ingest(
+            app.state.sessions,
+            "junk",
+            "1",
+            i,
+            dsn(sid, f"initial-{i}"),
+            mailbox_id="ontologyplay",
+        )
         advance(monkeypatch, retry_row(app, sid).due_at)
         process_retry(
             app.state.sessions,
@@ -43,7 +51,12 @@ def test_concurrent_retry_bounces_persist_hold_and_block_queued_sends(
         results = list(
             pool.map(
                 lambda i: ingest(
-                    app.state.sessions, "junk", "1", i + 10, dsn(retry_ids[i], str(i))
+                    app.state.sessions,
+                    "junk",
+                    "1",
+                    i + 10,
+                    dsn(retry_ids[i], str(i)),
+                    mailbox_id="ontologyplay",
                 ),
                 range(3),
             )
@@ -85,13 +98,19 @@ def test_concurrent_notice_and_retry_workers_make_one_child_and_one_send(
     app, client, owner = pg_sending
     app.state.settings.email_send_interval_seconds = 0
     from fmg_agent.mailboxes import MailboxRegistry
+
     app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     sid = accepted(app, client, owner, "concurrent")
     with ThreadPoolExecutor(max_workers=4) as pool:
         notices = list(
             pool.map(
                 lambda i: ingest(
-                    app.state.sessions, "junk", "1", i, dsn(sid, f"notice-{i}")
+                    app.state.sessions,
+                    "junk",
+                    "1",
+                    i,
+                    dsn(sid, f"notice-{i}"),
+                    mailbox_id="ontologyplay",
                 ),
                 range(4),
             )
