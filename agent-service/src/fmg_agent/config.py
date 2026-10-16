@@ -26,6 +26,7 @@ class Settings(BaseSettings):
         default=SecretStr("redis://127.0.0.1:6379/0"), repr=False
     )
     email_retention_days: int = Field(default=30, ge=1, le=30)
+    mailboxes_file: Path | None = Field(default=None, repr=False)
     email_transport: Literal["smtp", "microsoft_graph"] = "smtp"
     email_send_interval_seconds: int = Field(default=5, ge=0, le=3600)
     smtp_host: str = ""

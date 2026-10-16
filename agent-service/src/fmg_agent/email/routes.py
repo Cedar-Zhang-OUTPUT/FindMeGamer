@@ -13,6 +13,16 @@ from ..usage import Ledger
 router = APIRouter(prefix="/v1/email")
 
 
+@router.get("/mailboxes")
+def mailboxes(
+    request: Request, principal: Principal = Depends(require_scope("email:send"))
+):
+    return {
+        "data": request.app.state.mailboxes.public_entries(),
+        "meta": {"request_id": request.state.request_id, "mailboxes_version": 1},
+    }
+
+
 class PreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     template_id: str = Field(max_length=100)

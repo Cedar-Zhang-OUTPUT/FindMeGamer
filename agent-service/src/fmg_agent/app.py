@@ -10,6 +10,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from .auth import Principal, authenticate
 from .config import Settings
+from .mailboxes import MailboxRegistry
 from .db import database
 from .errors import ApiError, error_response
 from .email.routes import router as email_router
@@ -23,6 +24,7 @@ from .usage import router as usage_router, run_id
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
+    mailboxes = MailboxRegistry.load(settings)
     engine, sessions = database(settings)
 
     @asynccontextmanager
@@ -53,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.sessions = sessions
     app.state.settings = settings
+    app.state.mailboxes = mailboxes
     app.state.catalog = Catalog(settings.catalog_dir)
     app.state.provider_transport = None
     app.state.twitch_auth = TwitchAuth(settings)
