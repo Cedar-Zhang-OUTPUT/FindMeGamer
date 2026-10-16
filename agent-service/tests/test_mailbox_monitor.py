@@ -12,6 +12,172 @@ from test_inbox import sent_task
 from test_send_pacing_postgres import pg_sending
 
 
+@pytest.mark.postgres
+def test_startup_registration_failure_recovers(pg_sending, monkeypatch):
+    from fmg_agent.email import monitor
+    from fmg_agent.mailboxes import MailboxRegistry
+
+    app, *_ = pg_sending
+    stop, progressed = Event(), Event()
+    profile = MailboxRegistry.load(app.state.settings).profiles()[0].model_copy(
+        update={"imap_poll_seconds": 0.01}
+    )
+    registry = MailboxRegistry(app.state.settings, [profile], legacy=True)
+    monkeypatch.setattr(MailboxRegistry, "load", lambda settings: registry)
+    register = monitor.register_identities
+    attempts = []
+
+    def flaky_registration(session, registry):
+        attempts.append(True)
+        if len(attempts) == 1:
+            raise RuntimeError("temporary startup database outage")
+        register(session, registry)
+
+    def sync(*args, **kwargs):
+        progressed.set()
+        stop.set()
+
+    monkeypatch.setattr(monitor, "register_identities", flaky_registration)
+    monkeypatch.setattr(monitor, "sync_once", sync)
+    thread = Thread(
+        target=monitor.monitor_mailbox, args=(app.state.settings, "ontologyplay", stop)
+    )
+    thread.start()
+    try:
+        assert progressed.wait(2)
+    finally:
+        stop.set()
+        thread.join(5)
+    assert len(attempts) == 2
+    assert not thread.is_alive()
+
+
+@pytest.mark.postgres
+def test_lost_leader_cannot_commit_blocked_scan(pg_sending, monkeypatch):
+    from contextlib import contextmanager
+    from threading import current_thread
+    from sqlalchemy import text
+    from fmg_agent.email import monitor, inbox
+    from fmg_agent.email.models import EmailBounceRetry
+    from fmg_agent.mailboxes import MailboxRegistry
+    from test_bounce_safety import accepted, dsn
+
+    app, client, owner = pg_sending
+    sid = accepted(app, client, owner, "fenced")
+    old_stop, new_stop = Event(), Event()
+    blocked, release_old, progressed, release_new = Event(), Event(), Event(), Event()
+    profile = app.state.mailboxes.profiles()[0].model_copy(
+        update={
+            "imap_host": "imap.example.com",
+            "imap_username": "publisher@example.com",
+            "imap_password": app.state.settings.smtp_password,
+            "imap_poll_seconds": 0.01,
+        }
+    )
+    registry = MailboxRegistry(app.state.settings, [profile], legacy=False)
+    monkeypatch.setattr(MailboxRegistry, "load", lambda settings: registry)
+    pids = {}
+    real_leader = monitor.mailbox_leader
+
+    @contextmanager
+    def observed_leader(engine, identity):
+        with real_leader(engine, identity) as connection:
+            if connection:
+                pids[current_thread().name] = connection.scalar(
+                    text("SELECT pg_backend_pid()")
+                )
+                connection.commit()
+            yield connection
+
+    class Mailbox:
+        def __init__(self, role):
+            self.role = role
+
+        def login(self, *args):
+            pass
+
+        def list(self):
+            return "OK", []
+
+        def select(self, *args, **kwargs):
+            return "OK", []
+
+        def response(self, name):
+            return name, [b"1"]
+
+        def uid(self, action, *args):
+            if action == "search":
+                return "OK", [b"1" if self.role == "old" else b"99"]
+            return "OK", [(b"header", dsn(sid, self.role).split(b"\r\n\r\n", 1)[0])]
+
+        def logout(self):
+            pass
+
+    def read_reply(mailbox, uid, header):
+        if mailbox.role == "old":
+            blocked.set()
+            assert release_old.wait(10)
+        return dsn(sid, mailbox.role)
+
+    def sync(sessions, settings, *, mailbox_id):
+        role = current_thread().name
+        result = inbox.sync_once(
+            sessions,
+            settings,
+            connect=lambda *a, **k: Mailbox(role),
+            mailbox_id=mailbox_id,
+        )
+        if role == "new":
+            assert result["state"] == "active"
+            progressed.set()
+            assert release_new.wait(10)
+
+    monkeypatch.setattr(monitor, "mailbox_leader", observed_leader)
+    monkeypatch.setattr(monitor, "sync_once", sync)
+    monkeypatch.setattr(inbox, "read_reply", read_reply)
+    old = Thread(
+        name="old",
+        target=monitor.monitor_mailbox,
+        args=(app.state.settings, "ontologyplay", old_stop),
+    )
+    new = Thread(
+        name="new",
+        target=monitor.monitor_mailbox,
+        args=(app.state.settings, "ontologyplay", new_stop),
+    )
+    old.start()
+    try:
+        assert blocked.wait(5)
+        with app.state.engine.begin() as connection:
+            assert connection.scalar(
+                text("SELECT pg_terminate_backend(:pid)"), {"pid": pids["old"]}
+            )
+        new.start()
+        assert progressed.wait(5)
+        old_stop.set()
+        release_old.set()
+        old.join(5)
+        assert not old.is_alive()
+        with app.state.sessions() as session:
+            cursor = session.get(
+                inbox.InboxCursor,
+                inbox.mailbox_key(registry.settings_for("ontologyplay")),
+            )
+            assert cursor.last_uid == 99
+            assert cursor.error is None
+            assert len(session.scalars(select(inbox.EmailReply)).all()) == 1
+            assert session.get(EmailBounceRetry, sid) is not None
+    finally:
+        old_stop.set()
+        new_stop.set()
+        release_old.set()
+        release_new.set()
+        old.join(5)
+        if new.ident is not None:
+            new.join(5)
+    assert not old.is_alive() and not new.is_alive()
+
+
 def test_same_uid_across_mailboxes_is_independent(sending):
     from fmg_agent.email.inbox import ingest, EmailReply
     from fmg_agent.email.models import EmailPreview, EmailSend, MailboxIdentity

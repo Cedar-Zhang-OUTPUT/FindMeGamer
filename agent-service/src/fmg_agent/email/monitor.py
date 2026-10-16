@@ -5,7 +5,8 @@ from hashlib import sha256
 import logging
 from threading import Event, Thread
 
-from sqlalchemy import text
+from sqlalchemy import event, text
+from sqlalchemy.orm import sessionmaker
 
 from ..config import Settings
 from ..db import database
@@ -42,24 +43,56 @@ def mailbox_leader(engine, mailbox_id: str):
                     raise
 
 
+def leader_sessions(owner):
+    """Fence every scan transaction to the physical backend owning its lock.
+
+    A socket read may finish after leadership is lost. Its later ORM writes
+    must fail on the dead owner, never reconnect onto an unlocked backend.
+    """
+    physical = owner.connection.driver_connection
+    factory = sessionmaker(bind=owner, expire_on_commit=False)
+
+    def check(*args):
+        if (
+            owner.closed
+            or owner.invalidated
+            or owner.connection.driver_connection is not physical
+        ):
+            raise RuntimeError("Mailbox leadership connection was lost")
+
+    @contextmanager
+    def sessions():
+        check()
+        with factory() as session:
+            for name in ("after_begin", "before_flush", "before_commit"):
+                event.listen(session, name, check)
+            yield session
+
+    return sessions
+
+
 def monitor_mailbox(settings: Settings, mailbox_id: str, stop: Event) -> None:
     registry = MailboxRegistry.load(settings)
     config = registry.settings_for(mailbox_id)
     engine, sessions = database(config)
     try:
-        with sessions() as session:
-            register_identities(session, registry)
-            session.commit()
+        initialized = False
         while not stop.is_set():
             try:
+                if not initialized:
+                    with sessions() as session:
+                        register_identities(session, registry)
+                        session.commit()
+                    initialized = True
                 with mailbox_leader(engine, mailbox_id) as owner:
                     if owner:
+                        fenced_sessions = leader_sessions(owner)
                         while not stop.is_set():
                             # A dropped idle leader connection releases its lock.
                             # Detect that before another IMAP scan, then reacquire.
                             owner.execute(text("SELECT 1"))
                             owner.commit()
-                            sync_once(sessions, config, mailbox_id=mailbox_id)
+                            sync_once(fenced_sessions, config, mailbox_id=mailbox_id)
                             if stop.wait(config.imap_poll_seconds):
                                 break
             except Exception:
