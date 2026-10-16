@@ -18,7 +18,7 @@ def mailboxes(
     request: Request, principal: Principal = Depends(require_scope("email:send"))
 ):
     return {
-        "data": request.app.state.mailboxes.public_entries(),
+        "data": request.app.state.mailboxes.current().public_entries(),
         "meta": {"request_id": request.state.request_id, "mailboxes_version": 1},
     }
 
@@ -55,7 +55,7 @@ def create_preview(
             principal.id,
             body.model_dump(),
             request.app.state.settings,
-            registry=request.app.state.mailboxes,
+            registry=request.app.state.mailboxes.current(),
         ),
     )
 
@@ -72,7 +72,7 @@ def read_preview(
             preview_id,
             principal.id,
             request.app.state.settings,
-            registry=request.app.state.mailboxes,
+            registry=request.app.state.mailboxes.current(),
         ),
     )
 

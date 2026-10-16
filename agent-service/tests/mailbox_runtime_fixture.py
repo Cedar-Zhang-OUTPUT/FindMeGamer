@@ -70,6 +70,9 @@ class Runtime:
                 "smtp_host": "virtual.invalid",
                 "smtp_username": "virtual",
                 "smtp_password": "virtual",
+                "imap_host": "virtual.invalid",
+                "imap_username": name + "@example.com",
+                "imap_password": "virtual",
                 "allowed_templates": ["game-outreach"],
                 "email_send_interval_seconds": 5,
             }
@@ -455,6 +458,37 @@ def process_main():
         if role == "dispatch":
             from fmg_agent.dispatch import main
         elif role == "monitor":
+            # Exercise real sync/cursor/readiness code against an empty local
+            # IMAP protocol substitute; never open a provider connection.
+            from fmg_agent.email import inbox
+
+            class VirtualIMAP:
+                def __init__(self, host, port, **kwargs):
+                    assert host == "virtual.invalid" and port == 993
+
+                def login(self, username, password):
+                    assert username in {"alpha@example.com", "beta@example.com"}
+                    assert password == "virtual"
+
+                def list(self):
+                    return "OK", []
+
+                def select(self, folder, *, readonly):
+                    assert folder == '"INBOX"' and readonly
+                    return "OK", [b"0"]
+
+                def response(self, name):
+                    assert name == "UIDVALIDITY"
+                    return name, [b"1"]
+
+                def uid(self, action, *args):
+                    assert action == "search"
+                    return "OK", [b""]
+
+                def logout(self):
+                    return "BYE", []
+
+            inbox.imaplib.IMAP4_SSL = VirtualIMAP
             from fmg_agent.email.monitor import main
         else:
             raise ValueError(role)

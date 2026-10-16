@@ -127,15 +127,12 @@ def probe(settings, role, mailbox=None, *, challenge=None):
     max_age = 30
     if role == "monitor":
         from .mailboxes import MailboxRegistry
+        from .email.inbox import configured
 
-        max_age = max(
-            30,
-            MailboxRegistry.load(settings)
-            .select(mailbox, allow_legacy=False)
-            .imap_poll_seconds
-            * 2
-            + 10,
-        )
+        config = MailboxRegistry.load(settings).settings_for(mailbox)
+        if not configured(config):
+            raise ValueError("Mailbox monitor local configuration is incomplete")
+        max_age = max(30, config.imap_poll_seconds * 2 + 10)
     if (
         any(data.get(key) != value for key, value in expected.items())
         or not 0 <= time.time() - data["time"] <= max_age

@@ -254,7 +254,7 @@ class SendStore:
 
         with self.sessions() as session:
             frozen = session.get(EmailPreview, preview_id)
-            registry = registry or MailboxRegistry.load(config)
+            registry = registry.current() if registry else MailboxRegistry.load(config)
             profile = preview_mailbox(session, frozen, registry)
             check_mailbox_template(profile, frozen.template_id, status_code=409)
             config = registry.settings_for(profile.id)

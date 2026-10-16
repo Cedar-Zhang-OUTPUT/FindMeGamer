@@ -290,7 +290,7 @@ def create_task(
     principal: Principal = Depends(owner),
 ):
     sessions = request.app.state.sessions
-    registry = request.app.state.mailboxes
+    registry = request.app.state.mailboxes.current()
     legacy_payload = body.model_dump(exclude={"mailbox_id"})
     legacy_fingerprint = digest(json.dumps(legacy_payload, sort_keys=True))
 
@@ -481,8 +481,9 @@ def start_task(
         if task.state in {"awaiting_approval", "blocked"}:
             from .email.safety import check
             from .email.identity import preview_mailbox
+            from .email.templates import check_mailbox_template
 
-            registry = request.app.state.mailboxes
+            registry = request.app.state.mailboxes.current()
             if task.mailbox_id is None:
                 raise ApiError(
                     409,
@@ -506,7 +507,8 @@ def start_task(
                         "mailbox_identity_conflict",
                         "Task and preview mailbox identities differ.",
                     )
-                preview_mailbox(session, preview, registry)
+                profile = preview_mailbox(session, preview, registry)
+                check_mailbox_template(profile, preview.template_id, status_code=409)
                 if preview.message.get("format") not in {
                     "plain_text",
                     "signature_image",

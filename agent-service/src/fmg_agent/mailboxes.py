@@ -148,6 +148,14 @@ class MailboxRegistry:
         """All configured identities, including disabled historical senders."""
         return tuple(self._profiles.values())
 
+    def current(self) -> "MailboxRegistry":
+        """Revalidate the authoritative private file at operation boundaries.
+
+        Without a file, the process configuration is the authority. Retain
+        explicit in-memory registries used by embedded callers in that mode.
+        """
+        return self.load(self._settings) if self._settings.mailboxes_file else self
+
     def _ready(self, profile):
         if not profile.enabled:
             return False

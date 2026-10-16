@@ -12,7 +12,7 @@ from ..config import Settings
 from ..db import database
 from ..mailboxes import MailboxRegistry
 from .identity import register_identities
-from .inbox import sync_once
+from .inbox import configured, sync_once
 from .. import role_health
 from ..mail_runtime import runtime_gate
 from ..errors import ApiError
@@ -95,6 +95,8 @@ def monitor_mailbox(settings: Settings, mailbox_id: str, stop: Event) -> None:
                             # Detect that before another IMAP scan, then reacquire.
                             owner.execute(text("SELECT 1"))
                             owner.commit()
+                            registry = registry.current()
+                            config = registry.settings_for(mailbox_id)
                             held = False
                             try:
                                 # Separate owner: scan transactions may commit,
@@ -109,7 +111,11 @@ def monitor_mailbox(settings: Settings, mailbox_id: str, stop: Event) -> None:
                                     raise
                                 held = True
                                 outcome = {"state": "held-local"}
-                            if outcome and outcome.get("state") == "error":
+                            if (
+                                not configured(config)
+                                or not outcome
+                                or outcome.get("state") not in {"active", "held-local"}
+                            ):
                                 role_health.clear(settings, "monitor", mailbox_id)
                             else:
                                 role_health.record(

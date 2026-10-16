@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 from .models import EmailSend, EmailPreview
-from .microsoft import MailOAuthError, access_token, ready, xoauth2
+from .microsoft import MailOAuthError, access_token, ready, read_store, xoauth2
 
 
 class EmailReply(Base):
@@ -51,15 +51,33 @@ def mailbox_key(settings, folder=None):
 
 
 def configured(settings):
-    return bool(
-        settings.imap_host
-        and settings.imap_username
-        and (
-            ready(settings)
-            if settings.imap_auth == "microsoft_oauth"
-            else settings.imap_password.get_secret_value()
+    """Offline monitor preflight; never refresh a token or contact a provider."""
+    if not all(
+        value.strip()
+        for value in (
+            settings.imap_host,
+            settings.imap_username,
+            settings.imap_folder,
+            *settings.imap_extra_folders,
         )
-    )
+    ):
+        return False
+    if settings.imap_auth != "microsoft_oauth":
+        return bool(settings.imap_password.get_secret_value())
+    if (
+        not ready(settings)
+        or settings.imap_username.casefold() != settings.smtp_from.casefold()
+    ):
+        return False
+    try:
+        read_store(
+            settings.microsoft_token_store,
+            settings.microsoft_client_id,
+            settings.imap_username,
+        )
+    except MailOAuthError:
+        return False
+    return True
 
 
 def monitoring_status(sessions, settings):

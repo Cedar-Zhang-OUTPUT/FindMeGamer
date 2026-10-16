@@ -163,6 +163,9 @@ def test_held_monitor_is_locally_ready_without_upstream(
     from mailbox_runtime_fixture import until
 
     app, *_ = pg_sending
+    app.state.settings.imap_host = "imap.example.com"
+    app.state.settings.imap_username = "publisher@example.com"
+    app.state.settings.imap_password = "offline-secret"
     monkeypatch.setenv("FMG_AGENT_ROLE_HEALTH_DIR", str(tmp_path))
     set_runtime(app.state.sessions, dispatch_enabled=False, send_enabled=False)
     monkeypatch.setattr(
@@ -732,7 +735,12 @@ def test_release_validates_actual_targets_before_opening_gates(
     broker, _ = cutover_broker
     tool = deployment_tool("mail_runtime")
     settings = app.state.settings.model_copy(
-        update={"broker_url": SecretStr(os.environ["FMG_AGENT_TEST_REDIS_URL"])}
+        update={
+            "broker_url": SecretStr(os.environ["FMG_AGENT_TEST_REDIS_URL"]),
+            "imap_host": "imap.example.com",
+            "imap_username": "publisher@example.com",
+            "imap_password": SecretStr("offline-secret"),
+        }
     )
     monkeypatch.setattr(tool, "admin_settings", lambda: settings)
     monkeypatch.setenv("FMG_AGENT_ROLE_HEALTH_DIR", str(tmp_path))

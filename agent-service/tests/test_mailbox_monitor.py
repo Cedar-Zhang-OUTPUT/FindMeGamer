@@ -24,7 +24,12 @@ def test_hold_drains_active_monitor_scan_and_blocks_next(
     app, *_ = pg_sending
     monkeypatch.setenv("FMG_AGENT_ROLE_HEALTH_DIR", str(tmp_path))
     profile = app.state.mailboxes.profiles()[0].model_copy(
-        update={"imap_poll_seconds": 0.01}
+        update={
+            "imap_poll_seconds": 0.01,
+            "imap_host": "imap.example.com",
+            "imap_username": "publisher@example.com",
+            "imap_password": app.state.settings.smtp_password,
+        }
     )
     registry = MailboxRegistry(app.state.settings, [profile], legacy=True)
     monkeypatch.setattr(MailboxRegistry, "load", lambda settings: registry)
