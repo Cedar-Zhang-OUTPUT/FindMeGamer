@@ -84,6 +84,9 @@ def test_invalid_recipient_and_missing_configuration(sending):
     path = "/v1/outreach/tasks/" + task["id"]
     assert client.get(path, headers=headers(read)).status_code == 403
     app.state.settings.smtp_host = ""
+    from fmg_agent.mailboxes import MailboxRegistry
+
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     assert client.post(path + "/start", headers=headers(owner), json={"confirm": True, "revision": task["revision"]}).status_code == 503
     assert client.get(path, headers=headers(owner)).json()["data"]["state"] == "awaiting_approval"
     payload = {"name": "invalid", "template_id": "game-outreach", "template_version": "5",

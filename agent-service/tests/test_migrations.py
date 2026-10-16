@@ -118,10 +118,11 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 "email_send_gates",
                 "email_sender_safety",
                 "email_bounce_retries",
+                "mailbox_identities",
             }
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0011_bounce_retry"
+                == "0012_mailbox_identity"
             )
             legacy = conn.execute(
                 text(

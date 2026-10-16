@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 
 from test_email_sending import sending, headers, send
 from test_email_templates import variables
-from test_bounce_safety import accepted, dsn
+from test_bounce_safety import accepted, configure_second_sender, dsn
 from test_bounce_retry import advance, retry_row
 from test_send_pacing_postgres import pg_sending
 
@@ -247,8 +247,8 @@ def test_invalid_address_exclusion_is_sender_scoped(mailbox):
         1,
         dsn(original, "bad-first", "5.1.1", "550 no mailbox"),
     )
-    app.state.settings.smtp_from = "other-publisher@example.com"
-    assert accepted(app, client, owner, "other-sender", to="same@example.com")
+    configure_second_sender(app, "other-publisher@example.com")
+    assert accepted(app, client, owner, "other-sender", to="same@example.com", mailbox_id="second")
 
 
 def test_delay_notice_does_not_exclude_recipient(mailbox):

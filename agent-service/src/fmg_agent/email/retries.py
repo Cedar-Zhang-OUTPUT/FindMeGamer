@@ -63,9 +63,12 @@ def observe(session, send, diagnostic, now):
         return  # Never replay pre-rollout mail or backfill historical failures.
     if session.get(EmailBounceRetry, send.id) or human_reply(session, send.id):
         return
+    if preview.mailbox_id is None:
+        return  # Offline backfill must verify identity before creating new mail.
     child = EmailPreview(
         id=str(uuid4()),
         token_id=preview.token_id,
+        mailbox_id=preview.mailbox_id,
         template_id=preview.template_id,
         template_version=preview.template_version,
         message=deepcopy(preview.message),

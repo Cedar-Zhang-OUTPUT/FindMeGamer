@@ -73,15 +73,29 @@ class SendStore:
     def __init__(self, sessions):
         self.sessions = sessions
 
-    def preview(self, token_id, payload, config):
+    def preview(self, token_id, payload, config, *, registry=None):
+        from ..mailboxes import MailboxRegistry
+        from .identity import register_identities
+
+        registry = registry or MailboxRegistry.load(config)
+        profile = registry.select(payload.get("mailbox_id"), allow_legacy=True)
+        if payload["template_id"] not in profile.allowed_templates:
+            raise ApiError(
+                422,
+                "mailbox_template_not_allowed",
+                "This template is not allowed for the selected mailbox.",
+            )
         definition = get_template(payload["template_id"], payload["template_version"])
         message = render_template(definition, payload["variables"])
         message.update(
-            to=email_address(payload["to"]), **{"from": config.smtp_from or None}
+            to=email_address(payload["to"]),
+            **{"from": profile.smtp_from or None, "from_name": profile.display_name},
         )
         with self.sessions() as session:
+            register_identities(session, registry)
             row = EmailPreview(
                 token_id=token_id,
+                mailbox_id=profile.id,
                 template_id=definition["id"],
                 template_version=definition["version"],
                 message=message,
@@ -98,6 +112,8 @@ class SendStore:
                 raise ApiError(404, "preview_not_found", "Preview was not found.")
             return {
                 "id": row.id,
+                "mailbox_id": row.mailbox_id,
+                "display_name": row.message.get("from_name"),
                 "template_id": row.template_id,
                 "template_version": row.template_version,
                 "message": row.message,
@@ -212,6 +228,12 @@ class SendStore:
             existing = self._existing(session, token_id, preview_id, key)
             if existing is not None:
                 return existing
+            if not preview["mailbox_id"]:
+                raise ApiError(
+                    409,
+                    "mailbox_backfill_required",
+                    "Mailbox identity must be verified before sending.",
+                )
             safety.check(session, config.smtp_from)
             # Another request may have reserved this preview while we waited
             # for the sender lock. Do not wait on its unique key while holding

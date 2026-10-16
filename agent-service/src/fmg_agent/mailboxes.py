@@ -144,6 +144,10 @@ class MailboxRegistry:
             update={name: deepcopy(getattr(profile, name)) for name in MAIL_FIELDS}
         )
 
+    def profiles(self) -> tuple[MailboxProfile, ...]:
+        """All configured identities, including disabled historical senders."""
+        return tuple(self._profiles.values())
+
     def _ready(self, profile):
         if not profile.enabled:
             return False

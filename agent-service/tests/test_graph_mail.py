@@ -373,6 +373,9 @@ def test_graph_failed_send_receipt_is_durable_and_not_replayed(sending, tmp_path
     settings.microsoft_client_id = APP_ID
     settings.microsoft_graph_token_store = tmp_path / "graph.json"
     graph_seed(settings, time.time() + 3600)
+    from fmg_agent.mailboxes import MailboxRegistry
+
+    app.state.mailboxes = MailboxRegistry.load(settings)
     calls = []
 
     def respond(req):

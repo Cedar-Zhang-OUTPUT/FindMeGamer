@@ -34,7 +34,22 @@ def dsn(
     ).encode()
 
 
-def accepted(app, client, owner, key, to=None):
+def configure_second_sender(app, address):
+    from fmg_agent.mailboxes import MAIL_FIELDS, MailboxProfile, MailboxRegistry
+
+    app.state.settings.smtp_from = address
+    profile = MailboxProfile(
+        id="second",
+        display_name="Second publisher",
+        allowed_templates=["game-outreach"],
+        **{name: getattr(app.state.settings, name) for name in MAIL_FIELDS},
+    )
+    app.state.mailboxes = MailboxRegistry(
+        app.state.settings, [*app.state.mailboxes.profiles(), profile], legacy=False
+    )
+
+
+def accepted(app, client, owner, key, to=None, mailbox_id=None):
     from test_email_templates import variables
 
     app.state.smtp_transport = lambda *args: {"state": "sent", "code": None}
@@ -42,6 +57,7 @@ def accepted(app, client, owner, key, to=None):
         "/v1/email/previews",
         headers=headers(owner),
         json={
+            **({"mailbox_id": mailbox_id} if mailbox_id else {}),
             "template_id": "game-outreach",
             "template_version": "5",
             "variables": variables(),
@@ -302,8 +318,8 @@ def test_old_retry_failures_do_not_trip_and_other_sender_remains_available(
         app.state.settings,
         lambda *args: {"state": "failed", "code": "smtp_request_rejected"},
     )
-    app.state.settings.smtp_from = "different@example.com"
-    assert accepted(app, client, owner, "other-sender")
+    configure_second_sender(app, "different@example.com")
+    assert accepted(app, client, owner, "other-sender", mailbox_id="second")
     with app.state.sessions() as session:
         assert status(session, "PUBLISHER@example.com")["state"] == "paused"
         assert status(session, "different@example.com")["state"] == "ready"

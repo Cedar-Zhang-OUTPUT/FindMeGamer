@@ -25,6 +25,7 @@ def mailboxes(
 
 class PreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    mailbox_id: str | None = Field(default=None, max_length=40)
     template_id: str = Field(max_length=100)
     template_version: str = Field(max_length=40)
     variables: dict[str, str]
@@ -51,7 +52,10 @@ def create_preview(
     return result(
         request,
         SendStore(request.app.state.sessions).preview(
-            principal.id, body.model_dump(), request.app.state.settings
+            principal.id,
+            body.model_dump(),
+            request.app.state.settings,
+            registry=request.app.state.mailboxes,
         ),
     )
 

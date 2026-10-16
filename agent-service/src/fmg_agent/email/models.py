@@ -7,6 +7,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..db import Base
 
 
+class MailboxIdentity(Base):
+    __tablename__ = "mailbox_identities"
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)
+    sender: Mapped[str] = mapped_column(String(254), unique=True, nullable=False)
+
+
 class EmailJob(Base):
     __tablename__ = "email_jobs"
     __table_args__ = (UniqueConstraint("token_id", "idempotency_key"),)
@@ -46,6 +52,9 @@ class EmailPreview(Base):
     )
     token_id: Mapped[str] = mapped_column(
         ForeignKey("access_tokens.id"), nullable=False
+    )
+    mailbox_id: Mapped[str | None] = mapped_column(
+        ForeignKey("mailbox_identities.id"), nullable=True
     )
     template_id: Mapped[str] = mapped_column(String(100), nullable=False)
     template_version: Mapped[str] = mapped_column(String(40), nullable=False)

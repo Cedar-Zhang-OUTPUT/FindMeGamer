@@ -28,6 +28,9 @@ class OutreachTask(Base):
     __table_args__ = (UniqueConstraint("token_id", "idempotency_key"),)
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     token_id: Mapped[str] = mapped_column(ForeignKey("access_tokens.id"))
+    mailbox_id: Mapped[str | None] = mapped_column(
+        ForeignKey("mailbox_identities.id"), nullable=True
+    )
     idempotency_key: Mapped[str] = mapped_column(String(200))
     fingerprint: Mapped[str] = mapped_column(String(64))
     revision: Mapped[str] = mapped_column(String(64))
@@ -61,6 +64,7 @@ class RecipientInput(BaseModel):
 
 class TaskInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    mailbox_id: str | None = Field(default=None, max_length=40)
     name: str = Field(min_length=1, max_length=200)
     template_id: str = Field(max_length=100)
     template_version: str = Field(max_length=40)
@@ -253,6 +257,20 @@ def view(sessions, task_id, token_id, *, summary=False):
         sender = rows[0][3] if rows else None
         return {
             "id": task.id,
+            "mailbox_id": task.mailbox_id,
+            "sender": sender,
+            "display_name": (
+                session.scalar(
+                    select(EmailPreview.message["from_name"].as_string())
+                    .join(
+                        OutreachRecipient,
+                        OutreachRecipient.preview_id == EmailPreview.id,
+                    )
+                    .where(OutreachRecipient.task_id == task_id)
+                    .limit(1)
+                )
+            ),
+            "template_version": task.template.get("version"),
             "name": task.name,
             "revision": task.revision,
             "state": state,
@@ -271,8 +289,25 @@ def create_task(
     idempotency_key: str = Header(min_length=1, max_length=200),
     principal: Principal = Depends(owner),
 ):
-    settings, sessions = request.app.state.settings, request.app.state.sessions
-    fingerprint = digest(json.dumps(body.model_dump(), sort_keys=True))
+    sessions = request.app.state.sessions
+    registry = request.app.state.mailboxes
+    legacy_payload = body.model_dump(exclude={"mailbox_id"})
+    legacy_fingerprint = digest(json.dumps(legacy_payload, sort_keys=True))
+
+    def selected():
+        return registry.select(body.mailbox_id, allow_legacy=True)
+
+    def fingerprint_for(profile):
+        return digest(
+            json.dumps(
+                {
+                    **body.model_dump(),
+                    "mailbox_id": profile.id,
+                    "display_name": profile.display_name,
+                },
+                sort_keys=True,
+            )
+        )
 
     def existing(session):
         task = session.scalar(
@@ -281,7 +316,9 @@ def create_task(
                 OutreachTask.idempotency_key == idempotency_key,
             )
         )
-        if task and task.fingerprint != fingerprint:
+        if task and body.mailbox_id is None and task.fingerprint == legacy_fingerprint:
+            return task
+        if task and task.fingerprint != fingerprint_for(selected()):
             raise ApiError(
                 409,
                 "idempotency_conflict",
@@ -293,12 +330,23 @@ def create_task(
         old = existing(session)
         if old:
             return result(request, view(sessions, old.id, principal.id))
+        profile = selected()
+        if body.template_id not in profile.allowed_templates:
+            raise ApiError(
+                422,
+                "mailbox_template_not_allowed",
+                "This template is not allowed for the selected mailbox.",
+            )
+        from .email.identity import register_identities
+
+        register_identities(session, registry)
         definition = get_template(body.template_id, body.template_version)
         task = OutreachTask(
             id=str(uuid4()),
             token_id=principal.id,
             idempotency_key=idempotency_key,
-            fingerprint=fingerprint,
+            mailbox_id=profile.id,
+            fingerprint=fingerprint_for(profile),
             revision=secrets.token_hex(32),
             name=body.name,
             state="awaiting_approval",
@@ -331,10 +379,17 @@ def create_task(
                 )
             seen.add(identity)
             message = render_template(definition, validated.variables)
-            message.update({"to": validated.to, "from": settings.smtp_from or None})
+            message.update(
+                {
+                    "to": validated.to,
+                    "from": profile.smtp_from or None,
+                    "from_name": profile.display_name,
+                }
+            )
             preview = EmailPreview(
                 id=str(uuid4()),
                 token_id=principal.id,
+                mailbox_id=profile.id,
                 template_id=body.template_id,
                 template_version=body.template_version,
                 message=message,
@@ -365,7 +420,35 @@ def list_tasks(request: Request, principal: Principal = Depends(owner)):
         tasks = session.scalars(
             select(OutreachTask).where(OutreachTask.token_id == principal.id)
         ).all()
-        return result(request, [{"id": t.id, "name": t.name} for t in tasks])
+        from .email.safety import status as sender_status
+
+        entries = []
+        for task in tasks:
+            # Extract only approval metadata, never frozen image/body JSON.
+            metadata = session.execute(
+                select(
+                    EmailPreview.message["from"].as_string(),
+                    EmailPreview.message["from_name"].as_string(),
+                )
+                .join(
+                    OutreachRecipient, OutreachRecipient.preview_id == EmailPreview.id
+                )
+                .where(OutreachRecipient.task_id == task.id)
+                .limit(1)
+            ).first()
+            sender, display_name = metadata if metadata else (None, None)
+            entries.append(
+                {
+                    "id": task.id,
+                    "name": task.name,
+                    "mailbox_id": task.mailbox_id,
+                    "sender": sender,
+                    "display_name": display_name,
+                    "template_version": task.template.get("version"),
+                    "sender_safety": sender_status(session, sender) if sender else None,
+                }
+            )
+        return result(request, entries)
 
 
 @router.get("/v1/outreach/tasks/{task_id}")
@@ -400,7 +483,16 @@ def start_task(
             )
         if task.state in {"awaiting_approval", "blocked"}:
             from .email.safety import check
+            from .email.identity import preview_mailbox
 
+            registry = request.app.state.mailboxes
+            if task.mailbox_id is None:
+                raise ApiError(
+                    409,
+                    "mailbox_backfill_required",
+                    "Mailbox identity must be verified before approval.",
+                )
+            settings = registry.settings_for(task.mailbox_id)
             check(session, settings.smtp_from)
             if not smtp_ready(settings):
                 raise ApiError(
@@ -411,6 +503,13 @@ def start_task(
                 .join(OutreachRecipient)
                 .where(OutreachRecipient.task_id == task_id)
             ):
+                if preview.mailbox_id != task.mailbox_id:
+                    raise ApiError(
+                        409,
+                        "mailbox_identity_conflict",
+                        "Task and preview mailbox identities differ.",
+                    )
+                preview_mailbox(session, preview, registry)
                 if preview.message.get("format") not in {
                     "plain_text",
                     "signature_image",
