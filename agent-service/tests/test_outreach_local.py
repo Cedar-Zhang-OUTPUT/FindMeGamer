@@ -136,6 +136,7 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
     app = create_app(config)
     Base.metadata.create_all(app.state.engine)
     from fmg_agent.mail_runtime import set_runtime
+
     set_runtime(app.state.sessions, dispatch_enabled=True, send_enabled=True)
     with app.state.sessions() as session:
         token = issue_token(session, label="local-only", scopes=["email:send"])
@@ -180,6 +181,7 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
             json.dumps(
                 {
                     "name": "Local review",
+                    "mailbox_id": "ontologyplay",
                     "template_id": "game-outreach",
                     "template_version": "5",
                     "recipients": [
@@ -240,7 +242,14 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
             )
             ids = pending(app.state.sessions, mailbox_id="ontologyplay")
             for rid in ids + ids:
-                process_recipient(app.state.sessions, rid, config, deliver)
+                process_recipient(
+                    app.state.sessions,
+                    rid,
+                    config,
+                    deliver,
+                    registry=app.state.mailboxes,
+                    expected_mailbox_id="ontologyplay",
+                )
             assert len(smtp_server.messages) == 1
             actual = cli("outreach", "task", "get", task["id"])["data"]
             summary = cli("outreach", "task", "get", task["id"], "--summary")["data"]

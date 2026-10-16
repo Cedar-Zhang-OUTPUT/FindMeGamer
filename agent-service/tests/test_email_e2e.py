@@ -39,6 +39,8 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
     server = None
     thread = None
     worker_output = None
+    companion_processes = []
+    companion_outputs = []
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
     port = listener.getsockname()[1]
@@ -46,6 +48,8 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
         migrated = migrate(dsn, schema)
         assert migrated.returncode == 0, migrated.stderr
         settings = Settings(
+            twitch_client_id="",
+            broker_url=os.environ["FMG_AGENT_TEST_REDIS_URL"],
             database_url=engine.url.set(
                 query={"options": f"-c search_path={schema}"}
             ).render_as_string(hide_password=False),
@@ -59,6 +63,10 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
             email_send_interval_seconds=0,
         )
         app = create_app(settings)
+        from fmg_agent.mail_runtime import check_readiness, set_runtime
+
+        check_readiness(settings, app.state.sessions)
+        set_runtime(app.state.sessions, dispatch_enabled=True, send_enabled=True)
         with app.state.sessions() as session:
             token = issue_token(
                 session, label="e2e", scopes=["email:enrich", "email:send"]
@@ -113,12 +121,17 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
         assert created.returncode == 0, created.stderr
         job_id = json.loads(created.stdout)["data"]["id"]
 
-        def start_worker(phase):
+        def start_worker(phase, role="enrichment"):
             env = dict(
-                os.environ,
+                {
+                    key: value
+                    for key, value in os.environ.items()
+                    if not key.startswith("FMG_AGENT_")
+                },
                 FMG_AGENT_DATABASE_URL=settings.database_url,
-                FMG_AGENT_BROKER_URL="redis://127.0.0.1:55440/13",
+                FMG_AGENT_BROKER_URL=os.environ["FMG_AGENT_TEST_REDIS_URL"],
                 FMG_FIXTURE_PHASE=phase,
+                FMG_FIXTURE_PREFIX=schema + ":",
                 FMG_AGENT_SMTP_HOST="127.0.0.1",
                 FMG_AGENT_SMTP_PORT=str(smtp_server.server_address[1]),
                 FMG_AGENT_SMTP_ENCRYPTION="none",
@@ -126,11 +139,12 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
                 FMG_AGENT_SMTP_FROM="publisher@example.com",
                 FMG_AGENT_EMAIL_SEND_INTERVAL_SECONDS="0",
             )
-            output = (tmp_path / f"worker-{phase}.log").open("w")
+            output = (tmp_path / f"worker-{role}-{phase}.log").open("w")
             proc = subprocess.Popen(
                 [
                     sys.executable,
                     str(Path(__file__).with_name("email_worker_fixture.py")),
+                    role,
                 ],
                 env=env,
                 stdout=output,
@@ -151,6 +165,10 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
                 time.sleep(0.25)
             pytest.fail(f"Job did not reach {expected}")
 
+        for role in ("dispatch", "mail"):
+            proc, output = start_worker("fail", role)
+            companion_processes.append(proc)
+            companion_outputs.append(output)
         process, worker_output = start_worker("fail")
         failed = wait_state("failed")
         assert failed["error"]["code"] == "upstream_rate_limited"
@@ -169,6 +187,7 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
             json.dumps(
                 {
                     "template_id": "game-outreach",
+                    "mailbox_id": "ontologyplay",
                     "template_version": "5",
                     "to": "creator@example.com",
                     "variables": variables(),
@@ -222,6 +241,7 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
             json.dumps(
                 {
                     "name": "Worker batch",
+                    "mailbox_id": "ontologyplay",
                     "template_id": "game-outreach",
                     "template_version": "5",
                     "recipients": [
@@ -292,10 +312,11 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
             )
             == "bounce"
         )
-        process.terminate()
-        process.wait(timeout=15)
-        worker_output.close()
-        process, worker_output = start_worker("resume")
+        # Restart the mailbox consumer (enrichment is now a separate role).
+        companion_processes[1].terminate()
+        companion_processes[1].wait(timeout=15)
+        companion_outputs[1].close()
+        companion_processes[1], companion_outputs[1] = start_worker("resume", "mail")
         deadline = time.monotonic() + 50
         while time.monotonic() < deadline:
             current = json.loads(cli("outreach", "task", "get", batch["id"]).stdout)[
@@ -313,6 +334,11 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
         receipt = cli("email", "receipt", original_send)
         assert json.loads(receipt.stdout)["data"]["bounce_retry"]["state"] == "sent"
     finally:
+        for proc in companion_processes:
+            proc.terminate()
+            proc.wait(timeout=15)
+        for output in companion_outputs:
+            output.close()
         if process is not None and process.poll() is None:
             process.terminate()
             try:
@@ -327,6 +353,12 @@ def test_cli_email_worker_restart(tmp_path, smtp_server):
         if thread is not None:
             thread.join(timeout=10)
         listener.close()
+        import redis
+
+        broker = redis.Redis.from_url(os.environ["FMG_AGENT_TEST_REDIS_URL"])
+        keys = list(broker.scan_iter(match=schema + ":*"))
+        if keys:
+            broker.delete(*keys)
         with engine.begin() as conn:
             conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         engine.dispose()

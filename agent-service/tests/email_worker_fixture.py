@@ -5,7 +5,19 @@ import os
 from fmg_agent.config import Settings
 from fmg_agent.email.enrichment import Enricher, EnrichmentError
 from fmg_agent.email.public_pages import PublicPage
-from fmg_agent.worker import create_worker
+from fmg_agent import worker as workers
+
+
+def create_worker(*args, **kwargs):
+    worker = original_create_worker(*args, **kwargs)
+    worker.conf.broker_transport_options["global_keyprefix"] = os.environ[
+        "FMG_FIXTURE_PREFIX"
+    ]
+    return worker
+
+
+original_create_worker = workers.create_worker
+workers.create_worker = create_worker
 
 
 class Pages:
@@ -34,15 +46,32 @@ class Gemini:
 
 
 if __name__ == "__main__":
+    import sys
+    from fmg_agent.worker import worker_args
+    from fmg_agent.db import database
+    from fmg_agent.mail_runtime import check_readiness
+
+    settings = Settings()
+    engine, sessions = database(settings)
+    check_readiness(settings, sessions)
+    engine.dispose()
+    role = sys.argv[1]
+    if role == "dispatch":
+        from fmg_agent.dispatch import main
+
+        main()
+        raise SystemExit()
+    mailbox = "ontologyplay" if role == "mail" else None
     worker = create_worker(
-        Settings(), enricher_factory=lambda: Enricher(Pages(), Gemini())
+        settings,
+        role=role,
+        mailbox_id=mailbox,
+        enricher_factory=lambda: Enricher(Pages(), Gemini()),
     )
     worker.worker_main(
         [
-            "worker",
-            "--queues=fmg_agent",
+            *worker_args(role, mailbox),
             "--pool=solo",
-            "--concurrency=1",
             "--loglevel=WARNING",
             "--without-gossip",
             "--without-mingle",

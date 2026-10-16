@@ -27,6 +27,7 @@ def test_local_release_image_and_restore(tmp_path):
     suffix = uuid.uuid4().hex
     schema = "release_test_" + suffix
     api, worker = "fmg-release-api-" + suffix, "fmg-release-worker-" + suffix
+    dispatcher = "fmg-release-dispatch-" + suffix
     db_container = "fmg-agent-tests-postgres-1"
     image = "fmg-agent:predeploy"
 
@@ -40,6 +41,8 @@ def test_local_release_image_and_restore(tmp_path):
         f"PGOPTIONS=-c search_path={schema}",
         "-e",
         "FMG_AGENT_BROKER_URL=redis://redis:6379/14",
+        "-e",
+        "FMG_AGENT_SMTP_FROM=release-test@example.com",
     ]
     common = ["docker", "run", "--network", "fmg-agent-tests_default", *env]
     with engine.begin() as conn:
@@ -64,7 +67,40 @@ def test_local_release_image_and_restore(tmp_path):
             ).stdout
         )
         run(*common, "-d", "--name", api, "-p", "127.0.0.1::8000", image)
-        run(*common, "-d", "--name", worker, image, "python", "-m", "fmg_agent.worker")
+        run(
+            *common,
+            "--rm",
+            image,
+            "python",
+            "-c",
+            "from fmg_agent.config import Settings; from fmg_agent.db import database; "
+            "from fmg_agent.mail_runtime import check_readiness,set_runtime; "
+            "settings=Settings(); engine,sessions=database(settings); "
+            "check_readiness(settings,sessions); "
+            "set_runtime(sessions,dispatch_enabled=True,send_enabled=True); engine.dispose()",
+        )
+        run(
+            *common,
+            "-d",
+            "--name",
+            worker,
+            image,
+            "python",
+            "-m",
+            "fmg_agent.worker",
+            "--role",
+            "enrichment",
+        )
+        run(
+            *common,
+            "-d",
+            "--name",
+            dispatcher,
+            image,
+            "python",
+            "-m",
+            "fmg_agent.dispatch",
+        )
         port = (
             run("docker", "port", api, "8000/tcp")
             .stdout.decode()
@@ -113,7 +149,7 @@ def test_local_release_image_and_restore(tmp_path):
             run("docker", "inspect", "--format", "{{.Config.User}}", api).stdout.strip()
             == b"agent"
         )
-        run("docker", "stop", "-t", "5", api, worker)
+        run("docker", "stop", "-t", "5", api, worker, dispatcher)
         dump = run(
             "docker",
             "exec",
@@ -153,10 +189,10 @@ def test_local_release_image_and_restore(tmp_path):
             assert conn.scalar(text(f'SELECT count(*) FROM "{schema}".email_jobs')) == 1
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0007_inbox"
+                == "0013_mail_runtime"
             )
     finally:
-        for name in (api, worker):
+        for name in (api, worker, dispatcher):
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
         with engine.begin() as conn:
             conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
