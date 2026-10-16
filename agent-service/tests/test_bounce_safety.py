@@ -81,7 +81,7 @@ def test_three_distinct_retry_bounces_pause_sender_and_keep_receipts(
     other_task = create(app, client, other, "other").json()["data"]
     assert start(client, owner, task).status_code == 200
     assert start(client, other, other_task).status_code == 200
-    queued = pending(app.state.sessions)
+    queued = pending(app.state.sessions, mailbox_id="ontologyplay")
     ids = [accepted(app, client, owner, str(i)) for i in range(3)]
     for i, sid in enumerate(ids[:2]):
         assert (
@@ -104,7 +104,7 @@ def test_three_distinct_retry_bounces_pause_sender_and_keep_receipts(
         dsn(ids[0], "another-notice"),
         mailbox_id="ontologyplay",
     )
-    assert len(pending(app.state.sessions)) == 4
+    assert len(pending(app.state.sessions, mailbox_id="ontologyplay")) == 4
     ingest(
         app.state.sessions,
         "junk",
@@ -113,7 +113,7 @@ def test_three_distinct_retry_bounces_pause_sender_and_keep_receipts(
         dsn(ids[2], "third"),
         mailbox_id="ontologyplay",
     )
-    assert len(pending(app.state.sessions)) == 4
+    assert len(pending(app.state.sessions, mailbox_id="ontologyplay")) == 4
     retry_ids = []
     for i, sid in enumerate(ids):
         advance(monkeypatch, retry_row(app, sid).due_at)
@@ -131,7 +131,7 @@ def test_three_distinct_retry_bounces_pause_sender_and_keep_receipts(
             dsn(retry_ids[-1], f"retry-{i}"),
             mailbox_id="ontologyplay",
         )
-    assert pending(app.state.sessions) == []
+    assert pending(app.state.sessions, mailbox_id="ontologyplay") == []
     for item, token in ((task, owner), (other_task, other)):
         result = client.get(
             "/v1/outreach/tasks/" + item["id"], headers=headers(token)
@@ -287,7 +287,7 @@ def test_graph_message_limit_pauses_sender_without_retrying(sending):
     app, client, owner, _, _ = sending
     task = create(app, client, owner).json()["data"]
     start(client, owner, task)
-    queued = pending(app.state.sessions)
+    queued = pending(app.state.sessions, mailbox_id="ontologyplay")
     calls = []
 
     def rejected(*args):

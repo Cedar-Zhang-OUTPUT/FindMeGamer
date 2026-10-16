@@ -13,6 +13,7 @@ from .models import EmailPreview, EmailSend, EmailBounceRetry
 from .templates import get_template, render_template, check_mailbox_template
 from . import pacing
 from . import safety
+from ..mail_runtime import runtime_gate
 
 
 def email_address(value):
@@ -270,9 +271,12 @@ class SendStore:
                         getattr(exc, "code", "mail_oauth_authorization_required"),
                         "Mailbox authorization must be verified before sending.",
                     ) from None
-        with pacing.live_lock(
-            self.sessions, config.smtp_from, config.email_send_interval_seconds
-        ) as acquired:
+        with (
+            runtime_gate(self.sessions, sending=True) as check,
+            pacing.live_lock(
+                self.sessions, config.smtp_from, config.email_send_interval_seconds
+            ) as acquired,
+        ):
             if not acquired:
                 with self.sessions() as session:
                     existing = self._existing(session, token_id, preview_id, key)
@@ -286,10 +290,26 @@ class SendStore:
                     retry_after_seconds=config.email_send_interval_seconds,
                 )
             return self._send(
-                token_id, preview_id, key, config, transport, registry=registry
+                token_id,
+                preview_id,
+                key,
+                config,
+                transport,
+                registry=registry,
+                runtime_check=check,
             )
 
-    def _send(self, token_id, preview_id, key, config, transport, *, registry=None):
+    def _send(
+        self,
+        token_id,
+        preview_id,
+        key,
+        config,
+        transport,
+        *,
+        registry=None,
+        runtime_check,
+    ):
         preview = self.get_preview(preview_id, token_id, config, registry=registry)
         self.recover_interrupted()
         with self.sessions() as session:
@@ -414,6 +434,7 @@ class SendStore:
                 return existing
         # Durable reservation precedes the external side effect. No auto retry.
         try:
+            runtime_check()
             outcome = transport(config, preview["message"], send_id)
             if outcome.get("state") not in {"sent", "failed", "unknown"}:
                 raise ValueError()

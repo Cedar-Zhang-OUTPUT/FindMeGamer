@@ -179,7 +179,7 @@ def test_old_liminal_snapshot_keeps_single_image_new_task_has_banner(
         ]
         == saved
     )
-    assert pending(app.state.sessions) == []
+    assert pending(app.state.sessions, mailbox_id="ontologyplay") == []
 
 
 def test_generic_template_does_not_inherit_liminal_banner():

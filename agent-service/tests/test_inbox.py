@@ -28,7 +28,7 @@ def sent_task(sending):
     )
     from fmg_agent.outreach import pending, process_recipient
 
-    for rid in pending(app.state.sessions):
+    for rid in pending(app.state.sessions, mailbox_id="ontologyplay"):
         process_recipient(
             app.state.sessions,
             rid,

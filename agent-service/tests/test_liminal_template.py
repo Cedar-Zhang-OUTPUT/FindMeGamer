@@ -52,7 +52,7 @@ def test_signature_batch_can_start_and_delivers_only_once(sending):
         "name": "Signature batch", "template_id": "game-outreach", "template_version": "5",
         "recipients": [{"creator_id": "test", "to": "test@example.com", "variables": values()}],
     }).json()["data"]
-    assert pending(app.state.sessions) == []
+    assert pending(app.state.sessions, mailbox_id="ontologyplay") == []
     path = "/v1/outreach/tasks/" + task["id"]
     response = client.post(path + "/start", headers=headers(owner), json={"confirm": True, "revision": task["revision"]})
     assert response.status_code == 200
@@ -60,7 +60,7 @@ def test_signature_batch_can_start_and_delivers_only_once(sending):
     def transport(config, message, message_id):
         sent.append(message)
         return {"state": "sent", "code": None}
-    ids = pending(app.state.sessions)
+    ids = pending(app.state.sessions, mailbox_id="ontologyplay")
     assert len(ids) == 1
     for rid in ids + ids:
         process_recipient(app.state.sessions, rid, app.state.settings, transport)

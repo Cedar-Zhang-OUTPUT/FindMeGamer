@@ -109,7 +109,7 @@ def test_liminal_task_preview_does_not_send_or_rewrite_generic_draft(sending):
     task = task_response.json()["data"]
     assert task["state"] == "awaiting_approval"
     assert task["recipients"][0]["message"]["text"].endswith(FIXED_BLOCK)
-    assert pending(app.state.sessions) == []
+    assert pending(app.state.sessions, mailbox_id="ontologyplay") == []
     reread = client.get("/v1/email/previews/" + saved["id"], headers=headers(owner))
     assert reread.status_code == 200
     assert reread.json()["data"] == saved

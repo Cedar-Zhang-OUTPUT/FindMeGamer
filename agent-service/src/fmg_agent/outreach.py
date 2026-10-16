@@ -536,7 +536,7 @@ def start_task(
     return result(request, view(sessions, task_id, principal.id))
 
 
-def pending(sessions):
+def pending(sessions, *, mailbox_id: str):
     SendStore(sessions).recover_interrupted()
     with sessions() as session:
         return list(
@@ -546,7 +546,12 @@ def pending(sessions):
                 .outerjoin(
                     EmailSend, EmailSend.preview_id == OutreachRecipient.preview_id
                 )
-                .where(OutreachTask.state == "sending", EmailSend.id.is_(None))
+                .where(
+                    OutreachTask.state == "sending",
+                    EmailSend.id.is_(None),
+                    OutreachTask.mailbox_id == mailbox_id,
+                )
+                .order_by(OutreachRecipient.id)
                 .limit(20)
             )
         )
@@ -594,7 +599,7 @@ def process_recipient(
                 expected_mailbox_id=expected_mailbox_id,
             )
         except ApiError as exc:
-            if exc.code == "mailbox_queue_mismatch":
+            if exc.code in {"mailbox_queue_mismatch", "mail_service_maintenance"}:
                 return {"code": exc.code, "transport_attempted": False}
             if exc.code == "email_send_throttled":
                 # No send reservation or provider call occurred. Keep this approved

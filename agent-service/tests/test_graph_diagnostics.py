@@ -269,7 +269,7 @@ def test_batch_query_exposes_only_its_recipients_diagnostics(sending):
         headers=headers(owner),
         json={"confirm": True, "revision": task["revision"]},
     )
-    ids = pending(app.state.sessions)
+    ids = pending(app.state.sessions, mailbox_id="ontologyplay")
     process_recipient(
         app.state.sessions,
         ids[0],

@@ -21,8 +21,27 @@ services:
   worker:
     <<: *agent
     volumes: ["microsoft-oauth:/srv/microsoft-oauth"]
-    command: ["python", "-m", "fmg_agent.worker"]
+    command: ["python", "-m", "fmg_agent.worker", "--role", "enrichment"]
     stop_grace_period: 620s
+  mail-worker:
+    <<: *agent
+    volumes: ["microsoft-oauth:/srv/microsoft-oauth"]
+    command: ["python", "-m", "fmg_agent.worker", "--role", "mail", "--mailbox", "${FMG_AGENT_PRIMARY_MAILBOX:-ontologyplay}"]
+    stop_grace_period: 620s
+  mail-worker-second:
+    <<: *agent
+    profiles: [second-mailbox]
+    volumes: ["microsoft-oauth:/srv/microsoft-oauth"]
+    command: ["python", "-m", "fmg_agent.worker", "--role", "mail", "--mailbox", "${FMG_AGENT_SECOND_MAILBOX:-unconfigured}"]
+    stop_grace_period: 620s
+  dispatch:
+    <<: *agent
+    volumes: ["microsoft-oauth:/srv/microsoft-oauth"]
+    command: ["python", "-m", "fmg_agent.dispatch"]
+  monitor:
+    <<: *agent
+    volumes: ["microsoft-oauth:/srv/microsoft-oauth"]
+    command: ["python", "-m", "fmg_agent.email.monitor"]
   migrate:
     <<: *agent
     restart: "no"

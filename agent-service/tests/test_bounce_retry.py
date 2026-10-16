@@ -95,7 +95,7 @@ def test_first_bounce_waits_30_seconds_and_resends_exact_snapshot_once(
         <= due
         <= datetime.now(timezone.utc) + timedelta(seconds=30)
     )
-    assert pending_retries(app.state.sessions) == []
+    assert pending_retries(app.state.sessions, mailbox_id="ontologyplay") == []
     delivered = []
 
     def transport(config, message, send_id):
@@ -106,7 +106,7 @@ def test_first_bounce_waits_30_seconds_and_resends_exact_snapshot_once(
     process_retry(app.state.sessions, sid, app.state.settings, transport)
     assert delivered == []
     advance(monkeypatch, due)
-    assert pending_retries(app.state.sessions) == [sid]
+    assert pending_retries(app.state.sessions, mailbox_id="ontologyplay") == [sid]
     process_retry(app.state.sessions, sid, app.state.settings, transport)
     process_retry(app.state.sessions, sid, app.state.settings, transport)
     with app.state.sessions() as session:
@@ -117,7 +117,7 @@ def test_first_bounce_waits_30_seconds_and_resends_exact_snapshot_once(
         assert session.scalar(select(func.count()).select_from(EmailSend)) == 2
         assert status(session, "publisher@example.com")["state"] == "ready"
     assert retry_row(app, sid).state == "sent"
-    assert pending_retries(app.state.sessions) == []
+    assert pending_retries(app.state.sessions, mailbox_id="ontologyplay") == []
     # The first receipt remains immutable; retry details are additionally queryable.
     receipt = client.get("/v1/email/sends/" + sid, headers=headers(owner)).json()[
         "data"
@@ -145,7 +145,7 @@ def test_first_bounce_waits_30_seconds_and_resends_exact_snapshot_once(
         mailbox_id="ontologyplay",
     )
     assert retry_row(app, sid).due_at == row.due_at
-    assert pending_retries(app.state.sessions) == []
+    assert pending_retries(app.state.sessions, mailbox_id="ontologyplay") == []
 
 
 @pytest.mark.parametrize(
@@ -215,7 +215,7 @@ def test_only_three_distinct_retry_failures_pause_and_never_retry_the_retry(
         )
     with app.state.sessions() as session:
         assert status(session, "publisher@example.com")["state"] == "ready"
-    assert len(pending(app.state.sessions)) == 4
+    assert len(pending(app.state.sessions, mailbox_id="ontologyplay")) == 4
     retry_ids = []
     for i, sid in enumerate(ids):
         advance(monkeypatch, retry_row(app, sid).due_at)
@@ -254,8 +254,8 @@ def test_only_three_distinct_retry_failures_pause_and_never_retry_the_retry(
         )
         assert session.scalar(select(func.count()).select_from(EmailBounceRetry)) == 3
         assert session.scalar(select(func.count()).select_from(EmailSend)) == 6
-    assert pending_retries(app.state.sessions) == []
-    assert pending(app.state.sessions) == []
+    assert pending_retries(app.state.sessions, mailbox_id="ontologyplay") == []
+    assert pending(app.state.sessions, mailbox_id="ontologyplay") == []
     for task, token in zip(tasks, (owner, other)):
         data = client.get(
             "/v1/outreach/tasks/" + task["id"], headers=headers(token)
@@ -314,7 +314,7 @@ def test_retry_outcomes_preserve_unknown_and_provider_limit(
         assert state["reason"] == "provider_rate_limited" and len(calls) == 1
     else:
         assert state["reason"] == "outbound_spam_blocked" and len(calls) == 3
-    assert pending_retries(app.state.sessions) == []
+    assert pending_retries(app.state.sessions, mailbox_id="ontologyplay") == []
 
 
 def test_invalid_old_and_human_replies_do_not_resend(sending, monkeypatch):
@@ -378,7 +378,7 @@ def test_invalid_old_and_human_replies_do_not_resend(sending, monkeypatch):
         lambda *args: pytest.fail("must not resend after a human reply"),
     )
     assert retry_row(app, sid).state == "cancelled"
-    assert pending_retries(app.state.sessions) == []
+    assert pending_retries(app.state.sessions, mailbox_id="ontologyplay") == []
 
 
 def test_approved_batch_retry_visible_but_blocked_batch_never_resends(
@@ -476,7 +476,7 @@ def test_retry_unknown_after_restart_never_sends_again(sending, monkeypatch):
     assert retry_row(app, sid).state == "unknown"
     assert retry_row(app, sid).failed_at is None
     advance(monkeypatch, row.due_at + timedelta(days=1))
-    assert pending_retries(app.state.sessions) == []
+    assert pending_retries(app.state.sessions, mailbox_id="ontologyplay") == []
     process_retry(
         app.state.sessions,
         sid,

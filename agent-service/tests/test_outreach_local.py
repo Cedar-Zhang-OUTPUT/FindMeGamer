@@ -135,6 +135,8 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
     config = configuration(tmp_path, smtp_server)
     app = create_app(config)
     Base.metadata.create_all(app.state.engine)
+    from fmg_agent.mail_runtime import set_runtime
+    set_runtime(app.state.sessions, dispatch_enabled=True, send_enabled=True)
     with app.state.sessions() as session:
         token = issue_token(session, label="local-only", scopes=["email:send"])
     listener = socket.socket()
@@ -236,7 +238,7 @@ def test_local_cli_dashboard_and_smtp(tmp_path, smtp_server):
                 task["revision"],
                 "--confirm",
             )
-            ids = pending(app.state.sessions)
+            ids = pending(app.state.sessions, mailbox_id="ontologyplay")
             for rid in ids + ids:
                 process_recipient(app.state.sessions, rid, config, deliver)
             assert len(smtp_server.messages) == 1

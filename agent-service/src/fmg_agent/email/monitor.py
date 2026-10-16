@@ -105,7 +105,13 @@ def monitor_mailbox(settings: Settings, mailbox_id: str, stop: Event) -> None:
 
 
 def run_monitors(settings: Settings, stop: Event) -> None:
-    registry = MailboxRegistry.load(settings)
+    from ..mail_runtime import check_readiness
+
+    engine, sessions = database(settings)
+    try:
+        registry = check_readiness(settings, sessions)
+    finally:
+        engine.dispose()
     threads = [
         Thread(
             target=monitor_mailbox,

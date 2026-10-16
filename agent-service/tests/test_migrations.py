@@ -119,10 +119,11 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 "email_sender_safety",
                 "email_bounce_retries",
                 "mailbox_identities",
+                "mail_runtime",
             }
             assert (
                 conn.scalar(text(f'SELECT version_num FROM "{schema}".alembic_version'))
-                == "0012_mailbox_identity"
+                == "0013_mail_runtime"
             )
             legacy = conn.execute(
                 text(
@@ -232,6 +233,8 @@ def test_postgres_migration_repeat_and_auth_roundtrip():
                 send_config,
             )
             deliveries = []
+            from fmg_agent.mail_runtime import set_runtime
+            set_runtime(app.state.sessions, dispatch_enabled=True, send_enabled=True)
 
             def transport(config, message, message_id):
                 deliveries.append(message_id)

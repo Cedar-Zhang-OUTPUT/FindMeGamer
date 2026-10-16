@@ -27,6 +27,8 @@ def sending(tmp_path):
         )
     )
     Base.metadata.create_all(app.state.engine)
+    from fmg_agent.mail_runtime import set_runtime
+    set_runtime(app.state.sessions, dispatch_enabled=True, send_enabled=True)
     with app.state.sessions() as session:
         owner = issue_token(session, label="owner", scopes=["email:send"])
         other = issue_token(session, label="other", scopes=["email:send"])

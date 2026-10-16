@@ -24,7 +24,7 @@ def test_approval_delivery_and_recipient_isolation(sending):
     def transport(*args):
         delivered.append(args[1])
         return {"state": "sent", "code": None}
-    ids = pending(app.state.sessions)
+    ids = pending(app.state.sessions, mailbox_id="ontologyplay")
     assert len(ids) == 2
     for rid in ids + ids:
         process_recipient(app.state.sessions, rid, app.state.settings, transport)
@@ -40,7 +40,7 @@ def test_unconfirmed_and_unknown_never_resend(sending):
     app, client, owner, _, _ = sending
     task = create(app, client, owner).json()["data"]
     from fmg_agent.outreach import pending, process_recipient
-    assert pending(app.state.sessions) == []
+    assert pending(app.state.sessions, mailbox_id="ontologyplay") == []
     path = "/v1/outreach/tasks/" + task["id"]
     assert client.post(path + "/start", headers=headers(owner), json={"confirm": False, "revision": task["revision"]}).status_code == 422
     client.post(path + "/start", headers=headers(owner), json={"confirm": True, "revision": task["revision"]})
@@ -48,7 +48,7 @@ def test_unconfirmed_and_unknown_never_resend(sending):
     def transport(*args):
         delivered.append(1)
         return {"state": "unknown", "code": "smtp_confirmation_lost"}
-    for rid in pending(app.state.sessions):
+    for rid in pending(app.state.sessions, mailbox_id="ontologyplay"):
         process_recipient(app.state.sessions, rid, app.state.settings, transport)
         process_recipient(app.state.sessions, rid, app.state.settings, transport)
     assert len(delivered) == 2
@@ -72,7 +72,7 @@ def test_concurrent_create_and_worker_delivery_are_idempotent(sending):
     def transport(*args):
         count.append(1)
         return {"state": "sent", "code": None}
-    rid = pending(app.state.sessions)[0]
+    rid = pending(app.state.sessions, mailbox_id="ontologyplay")[0]
     with ThreadPoolExecutor(max_workers=3) as pool:
         list(pool.map(lambda _: process_recipient(app.state.sessions, rid, app.state.settings, transport), range(3)))
     assert len(count) == 1

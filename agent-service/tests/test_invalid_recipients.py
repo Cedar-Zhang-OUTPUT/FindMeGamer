@@ -155,7 +155,7 @@ def test_late_invalid_notice_cancels_queued_retry_without_transport(
     assert calls == []
     row = retry_row(app, original)
     assert row.state == "cancelled" and row.cancel_reason == "email_recipient_invalid"
-    assert pending_retries(app.state.sessions) == []
+    assert pending_retries(app.state.sessions, mailbox_id="ontologyplay") == []
     with app.state.sessions() as session:
         assert session.scalar(select(func.count()).select_from(EmailSend)) == 1
 
@@ -241,7 +241,7 @@ def test_invalid_address_exclusion_does_not_block_other_batch_recipients(mailbox
     task = create(app, client, owner).json()["data"]
     assert start(client, owner, task).status_code == 200
     calls = []
-    for rid in pending(app.state.sessions):
+    for rid in pending(app.state.sessions, mailbox_id="ontologyplay"):
         process_recipient(
             app.state.sessions,
             rid,

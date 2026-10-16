@@ -87,4 +87,4 @@ def test_saved_internal_test_preview_is_not_rewritten_or_approved_for_new_copy(
     assert fresh.json()["data"]["message"]["subject"].startswith(
         "Thought you might enjoy "
     )
-    assert pending(app.state.sessions) == []
+    assert pending(app.state.sessions, mailbox_id="ontologyplay") == []

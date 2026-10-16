@@ -103,12 +103,12 @@ def test_batches_share_single_send_gate_and_remain_pending(sending, monkeypatch)
         )
     single = preview(client, owner).json()["data"]["id"]
     assert send(client, owner, single).json()["data"]["state"] == "sent"
-    ids = pending(app.state.sessions)
+    ids = pending(app.state.sessions, mailbox_id="ontologyplay")
     assert len(ids) == 4
     for rid in ids:
         process_recipient(app.state.sessions, rid, app.state.settings, transport)
     assert len(deliveries) == 1
-    assert set(pending(app.state.sessions)) == set(ids)
+    assert set(pending(app.state.sessions, mailbox_id="ontologyplay")) == set(ids)
     for task in tasks:
         data = client.get(
             "/v1/outreach/tasks/" + task["id"], headers=headers(owner)
@@ -119,7 +119,7 @@ def test_batches_share_single_send_gate_and_remain_pending(sending, monkeypatch)
     clock[0] += timedelta(seconds=5)
     process_recipient(app.state.sessions, ids[0], app.state.settings, transport)
     assert len(deliveries) == 2
-    assert len(pending(app.state.sessions)) == 3
+    assert len(pending(app.state.sessions, mailbox_id="ontologyplay")) == 3
 
 
 def test_cooldown_runs_after_transport_and_unknown_is_not_retried(sending, monkeypatch):

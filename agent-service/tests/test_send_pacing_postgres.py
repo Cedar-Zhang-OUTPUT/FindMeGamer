@@ -45,6 +45,8 @@ def pg_sending():
             email_send_interval_seconds=5,
         )
         app = create_app(config)
+        from fmg_agent.mail_runtime import set_runtime
+        set_runtime(app.state.sessions, dispatch_enabled=True, send_enabled=True)
         with app.state.sessions() as session:
             owner = issue_token(
                 session, label="offline-pacing-test", scopes=["email:send"]

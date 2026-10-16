@@ -153,7 +153,7 @@ def details(retry, send):
     }
 
 
-def pending_retries(sessions):
+def pending_retries(sessions, *, mailbox_id: str):
     from ..outreach import OutreachRecipient, OutreachTask
 
     with sessions() as session:
@@ -172,6 +172,7 @@ def pending_retries(sessions):
                 )
                 .outerjoin(OutreachTask, OutreachTask.id == OutreachRecipient.task_id)
                 .where(
+                    EmailPreview.mailbox_id == mailbox_id,
                     EmailBounceRetry.state == "queued",
                     EmailBounceRetry.due_at <= utcnow(),
                     safety.SenderSafety.reason.is_(None),
@@ -233,7 +234,7 @@ def process_retry(
                 expected_mailbox_id=expected_mailbox_id,
             )
         except ApiError as exc:
-            if exc.code == "mailbox_queue_mismatch":
+            if exc.code in {"mailbox_queue_mismatch", "mail_service_maintenance"}:
                 return {"code": exc.code, "transport_attempted": False}
             if exc.code in {
                 "email_send_throttled",

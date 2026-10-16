@@ -28,7 +28,7 @@ def test_concurrent_retry_bounces_persist_hold_and_block_queued_sends(
     app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     task = create(app, client, owner).json()["data"]
     assert start(client, owner, task).status_code == 200
-    queued = pending(app.state.sessions)
+    queued = pending(app.state.sessions, mailbox_id="ontologyplay")
     ids = [accepted(app, client, owner, str(i)) for i in range(3)]
     retry_ids = []
     for i, sid in enumerate(ids):
@@ -65,7 +65,7 @@ def test_concurrent_retry_bounces_persist_hold_and_block_queued_sends(
     with app.state.sessions() as session:
         assert len(session.scalars(select(EmailReply)).all()) == 6
         assert status(session, "publisher@example.com")["state"] == "paused"
-    assert pending(app.state.sessions) == []
+    assert pending(app.state.sessions, mailbox_id="ontologyplay") == []
     for rid in queued:
         process_recipient(
             app.state.sessions,

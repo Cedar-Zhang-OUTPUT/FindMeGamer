@@ -140,7 +140,7 @@ def test_summary_tracks_retry_unknown_reply_and_sender_hold(sending, monkeypatch
     )
     process_recipient(
         app.state.sessions,
-        pending(app.state.sessions)[0],
+        pending(app.state.sessions, mailbox_id="ontologyplay")[0],
         app.state.settings,
         lambda *args: {"state": "sent"},
     )
@@ -342,7 +342,7 @@ def test_compact_task_query_keeps_paused_state_and_original_delivery_assets(send
     assert "footer_png_base64" not in queried["recipients"][0]["message"]
     assert queried["state"] == "blocked"
     assert queried["stats"]["pending"] == 1
-    assert pending(app.state.sessions) == []
+    assert pending(app.state.sessions, mailbox_id="ontologyplay") == []
 
     # Explicit test-only approval exercises the real reservation/send path.
     assert (
@@ -359,7 +359,7 @@ def test_compact_task_query_keeps_paused_state_and_original_delivery_assets(send
         delivered.append(message)
         return {"state": "sent", "code": None}
 
-    for recipient_id in pending(app.state.sessions):
+    for recipient_id in pending(app.state.sessions, mailbox_id="ontologyplay"):
         process_recipient(
             app.state.sessions, recipient_id, app.state.settings, transport
         )

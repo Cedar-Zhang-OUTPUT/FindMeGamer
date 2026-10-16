@@ -7,33 +7,41 @@ from test_email_jobs import gateway, submit
 
 
 def test_dispatch_recovers_pending_and_does_not_publish_failed_jobs(gateway):
-    from fmg_agent.worker import dispatch_once
+    from fmg_agent.dispatch import dispatch_once
+    from fmg_agent.mail_runtime import set_runtime
     from fmg_agent.email.jobs import JobStore
 
     app, client, token, _, _ = gateway
+    set_runtime(app.state.sessions, dispatch_enabled=True, send_enabled=True)
     store = JobStore(app.state.sessions)
     first = submit(client, token, key="first").json()["data"]["id"]
     second = submit(client, token, key="second").json()["data"]["id"]
     store.fail(second, store.claim(second), "model_output_invalid", retryable=True)
     published = []
-    dispatch_once(store, published.append, retention_days=30)
+    dispatch_once(
+        app.state.settings,
+        app.state.sessions,
+        lambda task, identifier, queue: published.append(identifier),
+    )
     assert published == [first]
 
     # Broker errors do not remove durable pending work.
-    def rejected(job_id):
+    def rejected(*args):
         raise ConnectionError("test broker outage")
 
     with pytest.raises(ConnectionError):
-        dispatch_once(store, rejected, retention_days=30)
+        dispatch_once(app.state.settings, app.state.sessions, rejected)
     assert store.pending() == [first]
 
 
 def test_cleanup_only_expires_terminal_new_jobs(gateway):
-    from fmg_agent.worker import dispatch_once
+    from fmg_agent.dispatch import dispatch_once
+    from fmg_agent.mail_runtime import set_runtime
     from fmg_agent.email.jobs import JobStore
     from fmg_agent.email.models import EmailJob
 
     app, client, token, _, _ = gateway
+    set_runtime(app.state.sessions, dispatch_enabled=True, send_enabled=True)
     store = JobStore(app.state.sessions)
     done = submit(client, token, key="done").json()["data"]["id"]
     queued = submit(client, token, key="queued").json()["data"]["id"]
@@ -46,7 +54,11 @@ def test_cleanup_only_expires_terminal_new_jobs(gateway):
         )
         session.commit()
     published = []
-    dispatch_once(store, published.append, retention_days=30)
+    dispatch_once(
+        app.state.settings,
+        app.state.sessions,
+        lambda task, identifier, queue: published.append(identifier),
+    )
     assert published == [queued]
     assert store.load(queued)["state"] == "queued"
     from fmg_agent.errors import ApiError
