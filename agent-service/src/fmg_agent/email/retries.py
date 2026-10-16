@@ -183,7 +183,15 @@ def pending_retries(sessions):
         )
 
 
-def process_retry(sessions, original_send_id, settings, transport):
+def process_retry(
+    sessions,
+    original_send_id,
+    settings,
+    transport,
+    *,
+    expected_mailbox_id: str | None = None,
+    registry=None,
+):
     from .sending import SendStore
     from ..outreach import OutreachRecipient, OutreachTask
 
@@ -192,6 +200,9 @@ def process_retry(sessions, original_send_id, settings, transport):
         if retry is None or retry.state != "queued" or aware(retry.due_at) > utcnow():
             return
         original = session.get(EmailSend, original_send_id)
+        frozen = session.get(EmailPreview, retry.preview_id)
+        if expected_mailbox_id is not None and frozen.mailbox_id != expected_mailbox_id:
+            return {"code": "mailbox_queue_mismatch", "transport_attempted": False}
         task = session.scalar(
             select(OutreachTask)
             .join(OutreachRecipient)
@@ -218,8 +229,12 @@ def process_retry(sessions, original_send_id, settings, transport):
                 "bounce-retry:" + original.id,
                 settings,
                 tracked,
+                registry=registry,
+                expected_mailbox_id=expected_mailbox_id,
             )
         except ApiError as exc:
+            if exc.code == "mailbox_queue_mismatch":
+                return {"code": exc.code, "transport_attempted": False}
             if exc.code in {
                 "email_send_throttled",
                 "email_sender_paused",

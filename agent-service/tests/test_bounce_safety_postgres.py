@@ -23,6 +23,8 @@ def test_concurrent_retry_bounces_persist_hold_and_block_queued_sends(
 
     app, client, owner = pg_sending
     app.state.settings.email_send_interval_seconds = 0
+    from fmg_agent.mailboxes import MailboxRegistry
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     task = create(app, client, owner).json()["data"]
     assert start(client, owner, task).status_code == 200
     queued = pending(app.state.sessions)
@@ -82,6 +84,8 @@ def test_concurrent_notice_and_retry_workers_make_one_child_and_one_send(
 
     app, client, owner = pg_sending
     app.state.settings.email_send_interval_seconds = 0
+    from fmg_agent.mailboxes import MailboxRegistry
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     sid = accepted(app, client, owner, "concurrent")
     with ThreadPoolExecutor(max_workers=4) as pool:
         notices = list(

@@ -18,6 +18,8 @@ def attempt(tmp_path, response):
     calls = []
 
     def respond(request):
+        if request.method == "GET":
+            return httpx.Response(200, json={"id":"account-one", "mail":MAILBOX})
         calls.append(request)
         return response
 

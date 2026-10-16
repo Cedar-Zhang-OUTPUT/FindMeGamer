@@ -2,7 +2,7 @@
 
 from base64 import b64decode
 from email.message import EmailMessage
-from email.utils import formatdate
+from email.utils import formatdate, formataddr
 
 from .sending import email_address
 
@@ -11,7 +11,10 @@ def build_message(message, message_id):
     sender = email_address(message["from"])
     recipient = email_address(message["to"])
     mail = EmailMessage()
-    mail["From"] = sender
+    name = message.get("from_name", "")
+    if not isinstance(name, str) or any(char in name for char in "\r\n"):
+        raise ValueError("Invalid sender display name.")
+    mail["From"] = formataddr((name, sender)) if name else sender
     mail["To"] = recipient
     mail["Subject"] = message["subject"]
     mail["Date"] = formatdate(localtime=False)

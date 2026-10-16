@@ -18,6 +18,8 @@ def mailbox(request):
     fixture = request.getfixturevalue(request.param)
     app, client, owner = fixture[:3]
     app.state.settings.email_send_interval_seconds = 0
+    from fmg_agent.mailboxes import MailboxRegistry
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     return app, client, owner
 
 

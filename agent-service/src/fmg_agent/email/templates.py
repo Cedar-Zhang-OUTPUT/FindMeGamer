@@ -15,6 +15,22 @@ TEMPLATE_FILES = {
 }
 
 
+def check_mailbox_template(profile, template_id, *, status_code=422):
+    """Fixed campaign signatures cannot be reassigned by a registry allowlist."""
+    if template_id not in profile.allowed_templates or (
+        template_id == "liminal-outreach"
+        and (
+            profile.id != "ontologyplay"
+            or profile.smtp_from.casefold() != "ontologyplay@hotmail.com"
+        )
+    ):
+        raise ApiError(
+            status_code,
+            "mailbox_template_not_allowed",
+            "This template is not allowed for the selected mailbox.",
+        )
+
+
 def get_template(template_id, version=None):
     filename = TEMPLATE_FILES.get(template_id)
     if filename is None:
@@ -82,7 +98,9 @@ def render_template(definition, variables):
             'style="width:335px;max-width:100%;height:auto">'
         )
         result["signature_png_base64"] = b64encode(
-            files("fmg_agent.email").joinpath("template_data", "ontology-play.png").read_bytes()
+            files("fmg_agent.email")
+            .joinpath("template_data", "ontology-play.png")
+            .read_bytes()
         ).decode("ascii")
         if definition.get("footer_image") == "liminal-within.png":
             result["html"] += (
@@ -90,7 +108,9 @@ def render_template(definition, variables):
                 'style="display:block;width:600px;max-width:100%;height:auto;margin-top:16px">'
             )
             result["footer_png_base64"] = b64encode(
-                files("fmg_agent.email").joinpath("template_data", "liminal-within.png").read_bytes()
+                files("fmg_agent.email")
+                .joinpath("template_data", "liminal-within.png")
+                .read_bytes()
             ).decode("ascii")
         result["html"] += "</body></html>"
     return result

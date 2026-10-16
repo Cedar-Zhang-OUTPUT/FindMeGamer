@@ -331,12 +331,9 @@ def create_task(
         if old:
             return result(request, view(sessions, old.id, principal.id))
         profile = selected()
-        if body.template_id not in profile.allowed_templates:
-            raise ApiError(
-                422,
-                "mailbox_template_not_allowed",
-                "This template is not allowed for the selected mailbox.",
-            )
+        from .email.templates import check_mailbox_template
+
+        check_mailbox_template(profile, body.template_id)
         from .email.identity import register_identities
 
         register_identities(session, registry)
@@ -555,12 +552,22 @@ def pending(sessions):
         )
 
 
-def process_recipient(sessions, recipient_id, settings, transport):
+def process_recipient(
+    sessions,
+    recipient_id,
+    settings,
+    transport,
+    *,
+    expected_mailbox_id: str | None = None,
+    registry=None,
+):
     with sessions() as session:
         recipient = session.get(OutreachRecipient, recipient_id)
         if recipient is None:
             return
         task = session.get(OutreachTask, recipient.task_id)
+        if expected_mailbox_id is not None and task.mailbox_id != expected_mailbox_id:
+            return {"code": "mailbox_queue_mismatch", "transport_attempted": False}
         if task.state != "sending":
             return
 
@@ -583,8 +590,12 @@ def process_recipient(sessions, recipient_id, settings, transport):
                 "outreach:" + recipient.id,
                 settings,
                 tracked,
+                registry=registry,
+                expected_mailbox_id=expected_mailbox_id,
             )
         except ApiError as exc:
+            if exc.code == "mailbox_queue_mismatch":
+                return {"code": exc.code, "transport_attempted": False}
             if exc.code == "email_send_throttled":
                 # No send reservation or provider call occurred. Keep this approved
                 # recipient pending for a later dispatcher tick, not failed/blocked.

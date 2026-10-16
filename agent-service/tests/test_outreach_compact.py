@@ -8,9 +8,17 @@ from test_send_pacing_postgres import pg_sending
 import pytest
 
 
+def configure_liminal(app):
+    from fmg_agent.mailboxes import MailboxRegistry
+
+    app.state.settings.smtp_from = "OntologyPlay@hotmail.com"
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
+
+
 @pytest.mark.postgres
 def test_postgres_summary_extracts_only_sender_and_keeps_counts(pg_sending):
     app, client, owner = pg_sending
+    configure_liminal(app)
     task = client.post(
         "/v1/outreach/tasks",
         headers=headers(owner, "pg-summary"),
@@ -43,6 +51,7 @@ def test_summary_excludes_drafts_and_reply_bodies_and_enforces_ownership(sending
     from fmg_agent.email.models import EmailSend
 
     app, client, owner, other, read = sending
+    configure_liminal(app)
     task = client.post(
         "/v1/outreach/tasks",
         headers=headers(owner, "summary-only"),
@@ -106,6 +115,7 @@ def test_summary_tracks_retry_unknown_reply_and_sender_hold(sending, monkeypatch
     from test_bounce_safety import dsn
 
     app, client, owner, _, _ = sending
+    configure_liminal(app)
     task = client.post(
         "/v1/outreach/tasks",
         headers=headers(owner, "summary-retry"),
@@ -136,7 +146,10 @@ def test_summary_tracks_retry_unknown_reply_and_sender_hold(sending, monkeypatch
     )
     with app.state.sessions() as session:
         sid = session.scalar(select(EmailSend.id))
-    ingest(app.state.sessions, "junk", "1", 1, dsn(sid, "summary-dsn"))
+    notice = dsn(sid, "summary-dsn").replace(
+        f"fmg-{sid}@example.com".encode(), f"fmg-{sid}@hotmail.com".encode()
+    )
+    ingest(app.state.sessions, "junk", "1", 1, notice)
     queued = client.get(path + "?summary=true", headers=headers(owner)).json()["data"]
     assert "recipients" not in queued
     assert queued["state"] == "sending"
@@ -164,7 +177,7 @@ def test_summary_tracks_retry_unknown_reply_and_sender_hold(sending, monkeypatch
                 diagnostics={},
             )
         )
-        trip(session, "publisher@example.com", "provider_rate_limited")
+        trip(session, "OntologyPlay@hotmail.com", "provider_rate_limited")
         session.commit()
     queries = []
     from sqlalchemy import event
@@ -193,6 +206,7 @@ def test_summary_tracks_retry_unknown_reply_and_sender_hold(sending, monkeypatch
 
 def test_legacy_task_reads_are_compressed_without_changing_drafts(sending):
     app, client, owner, _, _ = sending
+    configure_liminal(app)
     task = client.post(
         "/v1/outreach/tasks",
         headers=headers(owner, "gzip-legacy"),
@@ -222,6 +236,7 @@ def test_fifty_recipient_task_responses_stay_small_and_full_previews_are_owned(s
     from fmg_agent.outreach import OutreachRecipient
 
     app, client, owner, other, _ = sending
+    configure_liminal(app)
     payload = {
         "name": "Fifty saved image drafts",
         "template_id": "liminal-outreach",
@@ -300,6 +315,7 @@ def test_compact_task_query_keeps_paused_state_and_original_delivery_assets(send
     from fmg_agent.outreach import OutreachTask, pending, process_recipient
 
     app, client, owner, _, _ = sending
+    configure_liminal(app)
     task = client.post(
         "/v1/outreach/tasks",
         headers=headers(owner, "compact-snapshot"),

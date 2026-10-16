@@ -15,6 +15,8 @@ def paced(app, monkeypatch):
     app.state.settings = app.state.settings.model_copy(
         update={"email_send_interval_seconds": 5}
     )
+    from fmg_agent.mailboxes import MailboxRegistry
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     monkeypatch.setattr("fmg_agent.email.sending.utcnow", lambda: clock[0])
     return clock
 

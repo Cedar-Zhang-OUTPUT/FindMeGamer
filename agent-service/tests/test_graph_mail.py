@@ -154,6 +154,8 @@ def test_graph_mime_keeps_template_signature_and_message_id_without_retry(
     requests = []
 
     def respond(req):
+        if req.method == "GET":
+            return httpx.Response(200, json={"id":"account-one", "mail":MAILBOX})
         requests.append(req)
         return httpx.Response(
             status,
@@ -203,6 +205,8 @@ def test_graph_timeout_is_unknown_and_not_retried(tmp_path):
     calls = []
 
     def respond(req):
+        if req.method == "GET":
+            return httpx.Response(200, json={"id":"account-one", "mail":MAILBOX})
         calls.append(req)
         raise httpx.ReadTimeout("secret", request=req)
 
@@ -379,6 +383,8 @@ def test_graph_failed_send_receipt_is_durable_and_not_replayed(sending, tmp_path
     calls = []
 
     def respond(req):
+        if req.method == "GET":
+            return httpx.Response(200, json={"id":"account-one", "mail":MAILBOX})
         calls.append(req)
         return httpx.Response(403, json={"error": {"message": "private"}})
 

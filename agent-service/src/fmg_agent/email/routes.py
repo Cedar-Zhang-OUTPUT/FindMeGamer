@@ -69,7 +69,10 @@ def read_preview(
     return result(
         request,
         SendStore(request.app.state.sessions).get_preview(
-            preview_id, principal.id, request.app.state.settings
+            preview_id,
+            principal.id,
+            request.app.state.settings,
+            registry=request.app.state.mailboxes,
         ),
     )
 
@@ -105,6 +108,7 @@ def create_send(
             idempotency_key,
             request.app.state.settings,
             tracked,
+            registry=request.app.state.mailboxes,
         ),
     )
 

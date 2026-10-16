@@ -431,6 +431,8 @@ def test_retry_respects_global_cooldown_and_dsn_during_transport(sending, monkey
 
     app, client, owner, _, _ = sending
     app.state.settings.email_send_interval_seconds = 5
+    from fmg_agent.mailboxes import MailboxRegistry
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     sid = accepted(app, client, owner, "pacing")
     ingest(app.state.sessions, "junk", "1", 1, dsn(sid, "pacing"))
     advance(monkeypatch, retry_row(app, sid).due_at)

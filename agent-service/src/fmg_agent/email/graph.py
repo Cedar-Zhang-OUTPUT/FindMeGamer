@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import httpx
 
-from .microsoft import MailOAuthError, access_token
+from .microsoft import MailOAuthError, access_token, verify_graph_identity, read_store
 from .mime import build_message
 from .diagnostics import graph_response
 from ..providers.logging import protect_http_logs
@@ -18,13 +18,24 @@ def deliver(config, message, message_id, *, transport=None):
         if message["from"].casefold() != config.smtp_from.casefold():
             return {"state": "failed", "code": "sender_changed"}
         mime = build_message(message, message_id)
-        token = access_token(config, config.smtp_from, profile="graph")
+        token = access_token(
+            config, config.smtp_from, profile="graph", transport=transport
+        )
         body = b64encode(mime.as_bytes(policy=policy.SMTP))
         protect_http_logs()
         client_request_id = str(uuid4())
         with httpx.Client(
             timeout=30, transport=transport, trust_env=False, follow_redirects=False
         ) as client:
+            account = verify_graph_identity(client, token, config.smtp_from)
+            saved = read_store(
+                config.microsoft_graph_token_store,
+                config.microsoft_client_id,
+                config.smtp_from,
+                profile="graph",
+            )
+            if account != saved["account_id"]:
+                raise MailOAuthError("mail_oauth_mailbox_mismatch")
             attempting_send = True
             response = client.post(
                 "https://graph.microsoft.com/v1.0/me/sendMail",

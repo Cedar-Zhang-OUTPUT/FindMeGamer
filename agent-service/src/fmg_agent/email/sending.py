@@ -10,7 +10,7 @@ from ..errors import ApiError
 from .enrichment import EMAIL
 from .jobs import utcnow
 from .models import EmailPreview, EmailSend, EmailBounceRetry
-from .templates import get_template, render_template
+from .templates import get_template, render_template, check_mailbox_template
 from . import pacing
 from . import safety
 
@@ -50,7 +50,11 @@ def smtp_ready(config):
     if config.smtp_auth == "microsoft_oauth":
         from .microsoft import ready
 
-        return bool(config.smtp_username and ready(config))
+        return bool(
+            config.smtp_username
+            and config.smtp_username.casefold() == config.smtp_from.casefold()
+            and ready(config)
+        )
     return bool(config.smtp_username and config.smtp_password.get_secret_value())
 
 
@@ -79,12 +83,7 @@ class SendStore:
 
         registry = registry or MailboxRegistry.load(config)
         profile = registry.select(payload.get("mailbox_id"), allow_legacy=True)
-        if payload["template_id"] not in profile.allowed_templates:
-            raise ApiError(
-                422,
-                "mailbox_template_not_allowed",
-                "This template is not allowed for the selected mailbox.",
-            )
+        check_mailbox_template(profile, payload["template_id"])
         definition = get_template(payload["template_id"], payload["template_version"])
         message = render_template(definition, payload["variables"])
         message.update(
@@ -103,13 +102,23 @@ class SendStore:
             session.add(row)
             session.commit()
             preview_id = row.id
-        return self.get_preview(preview_id, token_id, config)
+        return self.get_preview(preview_id, token_id, config, registry=registry)
 
-    def get_preview(self, preview_id, token_id, config):
+    def get_preview(self, preview_id, token_id, config, *, registry=None):
         with self.sessions() as session:
             row = session.get(EmailPreview, preview_id)
             if row is None or row.token_id != token_id:
                 raise ApiError(404, "preview_not_found", "Preview was not found.")
+            from ..mailboxes import MailboxRegistry
+            from .identity import preview_mailbox
+
+            registry = registry or MailboxRegistry.load(config)
+            try:
+                profile = preview_mailbox(session, row, registry)
+                check_mailbox_template(profile, row.template_id, status_code=409)
+                send_ready = registry._ready(profile)
+            except ApiError:
+                send_ready = False
             return {
                 "id": row.id,
                 "mailbox_id": row.mailbox_id,
@@ -118,8 +127,7 @@ class SendStore:
                 "template_version": row.template_version,
                 "message": row.message,
                 "created_at": row.created_at,
-                "send_ready": smtp_ready(config)
-                and row.message["from"] == config.smtp_from,
+                "send_ready": send_ready,
             }
 
     def recover_interrupted(self):
@@ -196,14 +204,72 @@ class SendStore:
             )
         return None
 
-    def send(self, token_id, preview_id, key, config, transport):
+    def send(
+        self,
+        token_id,
+        preview_id,
+        key,
+        config,
+        transport,
+        *,
+        registry=None,
+        expected_mailbox_id: str | None = None,
+    ):
+        from ..mailboxes import MailboxRegistry
+        from .identity import preview_mailbox
+
         # Receipt replays remain available while another mail occupies the gate.
-        self.get_preview(preview_id, token_id, config)
+        self.get_preview(preview_id, token_id, config, registry=registry)
         self.recover_interrupted()
         with self.sessions() as session:
             existing = self._existing(session, token_id, preview_id, key)
             if existing is not None:
                 return existing
+            frozen = session.get(EmailPreview, preview_id)
+            if (
+                expected_mailbox_id is not None
+                and frozen.mailbox_id != expected_mailbox_id
+            ):
+                raise ApiError(
+                    409,
+                    "mailbox_queue_mismatch",
+                    "This preview belongs to another mailbox queue.",
+                )
+            registry = registry or MailboxRegistry.load(config)
+            profile = preview_mailbox(session, frozen, registry)
+            check_mailbox_template(profile, frozen.template_id, status_code=409)
+            config = registry.settings_for(profile.id)
+            if (
+                config.email_transport == "microsoft_graph"
+                or config.smtp_auth == "microsoft_oauth"
+            ):
+                from .microsoft import MailOAuthError, read_store, token_path, client_id
+
+                kind = (
+                    "graph"
+                    if config.email_transport == "microsoft_graph"
+                    else "outlook"
+                )
+                try:
+                    if (
+                        kind == "outlook"
+                        and config.smtp_username.casefold()
+                        != config.smtp_from.casefold()
+                    ):
+                        raise MailOAuthError("mail_oauth_mailbox_mismatch")
+                    app_id = client_id(config.microsoft_client_id)
+                    read_store(
+                        token_path(config, kind),
+                        app_id,
+                        config.smtp_from if kind == "graph" else config.smtp_username,
+                        profile=kind,
+                    )
+                except (MailOAuthError, AttributeError) as exc:
+                    raise ApiError(
+                        409,
+                        getattr(exc, "code", "mail_oauth_authorization_required"),
+                        "Mailbox authorization must be verified before sending.",
+                    ) from None
         with pacing.live_lock(
             self.sessions, config.smtp_from, config.email_send_interval_seconds
         ) as acquired:
@@ -219,10 +285,12 @@ class SendStore:
                     retryable=True,
                     retry_after_seconds=config.email_send_interval_seconds,
                 )
-            return self._send(token_id, preview_id, key, config, transport)
+            return self._send(
+                token_id, preview_id, key, config, transport, registry=registry
+            )
 
-    def _send(self, token_id, preview_id, key, config, transport):
-        preview = self.get_preview(preview_id, token_id, config)
+    def _send(self, token_id, preview_id, key, config, transport, *, registry=None):
+        preview = self.get_preview(preview_id, token_id, config, registry=registry)
         self.recover_interrupted()
         with self.sessions() as session:
             existing = self._existing(session, token_id, preview_id, key)

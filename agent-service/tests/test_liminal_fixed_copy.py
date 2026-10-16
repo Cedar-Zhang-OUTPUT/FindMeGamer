@@ -74,6 +74,9 @@ def test_liminal_task_preview_does_not_send_or_rewrite_generic_draft(sending):
     from fmg_agent.outreach import pending
 
     app, client, owner, _, _ = sending
+    from fmg_agent.mailboxes import MailboxRegistry
+    app.state.settings.smtp_from = "OntologyPlay@hotmail.com"
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     original = client.post(
         "/v1/email/previews",
         headers=headers(owner),

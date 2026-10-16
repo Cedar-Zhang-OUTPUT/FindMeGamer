@@ -181,7 +181,7 @@ def test_multi_mailbox_requires_selection(tmp_path):
         ("not json private-password", 0o600),
         ('{"mailboxes": []}', 0o600),
         ("{}", 0o600),
-        ('{"mailboxes": []}', 0o644),
+        (json.dumps({'mailboxes': [profile(smtp_password='private-password')]}), 0o644),
     ],
 )
 def test_invalid_registry_rejected_at_startup(tmp_path, contents, mode):

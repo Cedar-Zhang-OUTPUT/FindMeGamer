@@ -63,6 +63,8 @@ def send(client, token, preview_id, key="send-one", confirm=True):
 def test_preview_works_without_smtp_but_send_does_not(sending):
     app, client, owner, _, _ = sending
     app.state.settings.smtp_host = ""
+    from fmg_agent.mailboxes import MailboxRegistry
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     response = preview(client, owner)
     assert response.status_code == 201
     data = response.json()["data"]
@@ -187,4 +189,6 @@ def test_sender_changes_require_new_preview(sending):
     )
     data = preview(client, owner).json()["data"]
     app.state.settings.smtp_from = "different@example.com"
+    from fmg_agent.mailboxes import MailboxRegistry
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     assert send(client, owner, data["id"]).status_code == 409

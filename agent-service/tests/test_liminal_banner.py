@@ -92,6 +92,8 @@ def test_liminal_banner_is_in_graph_payload(tmp_path):
     received = []
 
     def respond(req):
+        if req.method == "GET":
+            return httpx.Response(200, json={"id":"account-one", "mail":settings.smtp_from})
         assert req.url == "https://graph.microsoft.com/v1.0/me/sendMail"
         received.append(
             BytesParser(policy=policy.default).parsebytes(
@@ -117,6 +119,9 @@ def test_old_liminal_snapshot_keeps_single_image_new_task_has_banner(
     from fmg_agent.outreach import pending
 
     app, client, owner, _, _ = sending
+    from fmg_agent.mailboxes import MailboxRegistry
+    app.state.settings.smtp_from = "OntologyPlay@hotmail.com"
+    app.state.mailboxes = MailboxRegistry.load(app.state.settings)
     old = dict(get_template("liminal-outreach"))
     old.pop("footer_image", None)
     old["version"] = "6"
