@@ -48,3 +48,13 @@ Read the implementation/new files and own diff, including all mechanical fixture
 - The old CLI/worker E2E fixture and opt-in container release test still assume the old embedded dispatcher/queue entrypoint; Task 7/8 must migrate those integration harnesses alongside real Redis and container validation. Their skips are not treated as deployment validation.
 - SQLite is only an offline functional-test substrate. Cross-process lock guarantees are PostgreSQL-only and were tested on the supplied isolated native PG database.
 - PostgreSQL guards cannot atomically roll back an external Redis/mail side effect on connection loss. Every publish is checked; durable pending state and send idempotency make duplicate publication safe. An uncertain transport remains protected by existing unknown/no-auto-retry handling.
+
+## Review fix round 1 (base 8e928ed)
+
+Important finding: configuration preflight preceded the runtime gate, so missing OAuth authorization during maintenance could block approved tasks or cancel queued retries. Fixed by limiting the ungated send entry to preview ownership, existing receipt replay and queue-mismatch checks. The runtime shared lock now wraps identity/template/profile/OAuth preflight as well as pacing and transport. Removed the initial `get_preview` call from send entry because it also evaluates configuration readiness; the public preview/read path remains unchanged.
+
+Added `test_hold_precedes_configuration_preflight` with invalid OAuth token storage, disabled mailbox, revoked template permission and changed sender identity. Every case verifies maintenance results from API/batch/retry, unchanged approved revision and pending retry, no new send attempts, receipt replay during maintenance, and preserved wrong-queue diagnostics.
+
+- RED: `.venv/bin/pytest tests/test_mail_runtime.py -k hold_precedes -q` -> **4 failed, 6 deselected**, each configuration error surfaced before the gate.
+- GREEN: `FMG_AGENT_TEST_DATABASE_URL=postgresql+psycopg://fmg_agent_test@127.0.0.1:55441/find_me_gamer_agent_test .venv/bin/pytest tests/test_mail_runtime.py tests/test_email_sending.py tests/test_mailbox_delivery.py tests/test_bounce_retry.py tests/test_send_pacing_postgres.py tests/test_graph_mail.py -q` -> **75 passed, 1 existing Starlette warning, 11.96s**.
+- Black formatted the two modified Python files. `git diff --check` passed. Read own implementation/test diff; ownership remains enforced ahead of receipt access, existing receipts bypass maintenance/configuration checks, and expected-mailbox rejection still precedes the gate. No new concerns. Scoped verification only for this fix round, per controller request; earlier full-suite results remain recorded above.

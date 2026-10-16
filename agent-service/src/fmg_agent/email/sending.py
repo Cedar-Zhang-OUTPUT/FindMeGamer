@@ -216,17 +216,15 @@ class SendStore:
         registry=None,
         expected_mailbox_id: str | None = None,
     ):
-        from ..mailboxes import MailboxRegistry
-        from .identity import preview_mailbox
-
         # Receipt replays remain available while another mail occupies the gate.
-        self.get_preview(preview_id, token_id, config, registry=registry)
-        self.recover_interrupted()
         with self.sessions() as session:
+            frozen = session.get(EmailPreview, preview_id)
+            if frozen is None or frozen.token_id != token_id:
+                raise ApiError(404, "preview_not_found", "Preview was not found.")
+            self.recover_interrupted()
             existing = self._existing(session, token_id, preview_id, key)
             if existing is not None:
                 return existing
-            frozen = session.get(EmailPreview, preview_id)
             if (
                 expected_mailbox_id is not None
                 and frozen.mailbox_id != expected_mailbox_id
@@ -236,6 +234,26 @@ class SendStore:
                     "mailbox_queue_mismatch",
                     "This preview belongs to another mailbox queue.",
                 )
+        with runtime_gate(self.sessions, sending=True) as check:
+            return self._send_guarded(
+                token_id,
+                preview_id,
+                key,
+                config,
+                transport,
+                registry=registry,
+                runtime_check=check,
+            )
+
+    def _send_guarded(
+        self, token_id, preview_id, key, config, transport, *, registry, runtime_check
+    ):
+        """Configuration may be in flux during hold; preflight only after the gate."""
+        from ..mailboxes import MailboxRegistry
+        from .identity import preview_mailbox
+
+        with self.sessions() as session:
+            frozen = session.get(EmailPreview, preview_id)
             registry = registry or MailboxRegistry.load(config)
             profile = preview_mailbox(session, frozen, registry)
             check_mailbox_template(profile, frozen.template_id, status_code=409)
@@ -271,12 +289,9 @@ class SendStore:
                         getattr(exc, "code", "mail_oauth_authorization_required"),
                         "Mailbox authorization must be verified before sending.",
                     ) from None
-        with (
-            runtime_gate(self.sessions, sending=True) as check,
-            pacing.live_lock(
-                self.sessions, config.smtp_from, config.email_send_interval_seconds
-            ) as acquired,
-        ):
+        with pacing.live_lock(
+            self.sessions, config.smtp_from, config.email_send_interval_seconds
+        ) as acquired:
             if not acquired:
                 with self.sessions() as session:
                     existing = self._existing(session, token_id, preview_id, key)
@@ -296,7 +311,7 @@ class SendStore:
                 config,
                 transport,
                 registry=registry,
-                runtime_check=check,
+                runtime_check=runtime_check,
             )
 
     def _send(

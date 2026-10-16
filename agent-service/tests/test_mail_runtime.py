@@ -99,6 +99,98 @@ def test_runtime_migration_starts_closed(tmp_path):
     engine.dispose()
 
 
+@pytest.mark.parametrize("change", ["oauth", "disabled", "template", "identity"])
+def test_hold_precedes_configuration_preflight(sending, monkeypatch, tmp_path, change):
+    from fmg_agent.mail_runtime import set_runtime
+    from fmg_agent.mailboxes import MailboxRegistry
+    from fmg_agent.outreach import process_recipient, OutreachTask, OutreachRecipient
+    from fmg_agent.email.sending import SendStore
+    from fmg_agent.email.retries import process_retry
+    from fmg_agent.email.inbox import ingest
+    from fmg_agent.errors import ApiError
+    from test_queue_isolation import seed_batches
+    from test_mailbox_delivery import draft
+    from test_bounce_safety import dsn
+    from test_bounce_retry import retry_row, advance
+
+    app, client, owner, _, _ = sending
+    seed_batches(app, client, owner)
+    app.state.smtp_transport = lambda *args: {"state": "sent"}
+    original = draft(client, owner, "alpha")
+    sid = send(client, owner, original, key="original").json()["data"]["id"]
+    ingest(
+        app.state.sessions,
+        "junk",
+        "1",
+        1,
+        dsn(sid, "hold-preflight"),
+        mailbox_id="alpha",
+    )
+    advance(monkeypatch, retry_row(app, sid).due_at)
+    changes = {
+        "oauth": {
+            "email_transport": "microsoft_graph",
+            "microsoft_client_id": "00000000-0000-0000-0000-000000000001",
+            "microsoft_graph_token_store": tmp_path / "missing.json",
+        },
+        "disabled": {"enabled": False},
+        "template": {"allowed_templates": []},
+        "identity": {"smtp_from": "changed@example.com"},
+    }
+    profiles = list(app.state.mailboxes.profiles())
+    profiles[0] = profiles[0].model_copy(update=changes[change])
+    registry = MailboxRegistry(app.state.settings, profiles, legacy=False)
+    app.state.mailboxes = registry
+    set_runtime(app.state.sessions, dispatch_enabled=False, send_enabled=False)
+    transport = lambda *args: pytest.fail("maintenance reached transport")
+    app.state.smtp_transport = transport
+    expected = {"code": "mail_service_maintenance", "transport_attempted": False}
+    assert (
+        process_recipient(
+            app.state.sessions,
+            "alpha-00",
+            app.state.settings,
+            transport,
+            registry=registry,
+            expected_mailbox_id="alpha",
+        )
+        == expected
+    )
+    assert (
+        process_retry(
+            app.state.sessions,
+            sid,
+            app.state.settings,
+            transport,
+            registry=registry,
+            expected_mailbox_id="alpha",
+        )
+        == expected
+    )
+    assert retry_row(app, sid).state == "queued"
+    with app.state.sessions() as session:
+        assert session.get(OutreachTask, "alpha").state == "sending"
+        assert session.get(OutreachTask, "alpha").revision == "r"
+        pid = session.get(OutreachRecipient, "alpha-00").preview_id
+        assert session.scalar(text("SELECT count(*) FROM email_sends")) == 1
+    assert (
+        send(client, owner, pid, key="held").json()["error"]["code"]
+        == "mail_service_maintenance"
+    )
+    assert send(client, owner, original, key="original").json()["data"]["id"] == sid
+    with pytest.raises(ApiError) as error:
+        SendStore(app.state.sessions).send(
+            owner.id,
+            pid,
+            "wrong-queue",
+            app.state.settings,
+            transport,
+            registry=registry,
+            expected_mailbox_id="beta",
+        )
+    assert error.value.code == "mailbox_queue_mismatch"
+
+
 @pytest.mark.postgres
 def test_readiness_rejects_missing_backfill(pg_sending):
     from fmg_agent.mail_runtime import check_readiness
