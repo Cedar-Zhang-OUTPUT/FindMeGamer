@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from hashlib import sha256
 import json
 import os
+import secrets
 from pathlib import Path
 import subprocess
 import sys
@@ -131,7 +132,41 @@ def legacy_drained(broker, *, prefix="fmg_agent:"):
         raise ValueError("Legacy migration or broker drain is incomplete")
 
 
-def verify_roles(file, registry):
+@contextmanager
+def deployment_challenge(session, broker, *, prefix="fmg_agent:"):
+    key = secrets.randbits(63)
+    if not session.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": key}):
+        raise ValueError("Challenge lock unavailable")
+    challenge = dict(
+        postgres_key=key,
+        postgres_pid=session.scalar(text("SELECT pg_backend_pid()")),
+        schema=session.scalar(text("SELECT current_schema()")),
+        redis_key=prefix + "readiness:" + secrets.token_hex(24),
+        nonce=secrets.token_hex(32),
+    )
+    if not broker.set(challenge["redis_key"], challenge["nonce"], nx=True, ex=300):
+        raise ValueError("Challenge unavailable")
+    try:
+        yield challenge
+    finally:
+        # Delete only our still-owned key. Missing/expired/replaced proof fails
+        # closed before the caller can enable gates or commit its transaction.
+        removed = broker.eval(
+            """
+            if redis.call('get', KEYS[1]) == ARGV[1] then
+                return redis.call('del', KEYS[1])
+            end
+            return 0
+        """,
+            1,
+            challenge["redis_key"],
+            challenge["nonce"],
+        )
+        if removed != 1:
+            raise ValueError("Challenge cleanup failed")
+
+
+def verify_roles(file, registry, challenge):
     profiles = [p for p in registry.profiles() if p.enabled]
     if len(profiles) > 2:
         raise ValueError("Compose supports at most two mailboxes")
@@ -150,7 +185,11 @@ def verify_roles(file, registry):
         "-c",
         "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=5)",
     )
-    probes = [("worker", "enrichment", None), ("dispatch", "dispatch", None)]
+    probes = [
+        ("api", "api", None),
+        ("worker", "enrichment", None),
+        ("dispatch", "dispatch", None),
+    ]
     for service, profile in zip(("mail-worker", "mail-worker-second"), profiles):
         probes.extend(
             [(service, "mail", profile.id), ("monitor", "monitor", profile.id)]
@@ -160,7 +199,25 @@ def verify_roles(file, registry):
         command = ["exec", "-T", service, "python", "-m", "fmg_agent.role_health", role]
         if mailbox:
             command += ["--mailbox", mailbox]
-        reports.append(json.loads(compose(file, *command)))
+        command += ["--challenge", json.dumps(challenge)]
+        report = json.loads(compose(file, *command))
+        expected = dict(role=role, target_proof=challenge["nonce"])
+        if role != "api":
+            from fmg_agent.worker import queue_for_mailbox
+
+            expected.update(
+                mailbox=mailbox,
+                schema="0013_mail_runtime",
+                queue=(
+                    queue_for_mailbox(mailbox)
+                    if role == "mail"
+                    else ("fmg_enrichment" if role == "enrichment" else None)
+                ),
+                concurrency={"mail": 2, "enrichment": 4}.get(role),
+            )
+        if any(report.get(k) != v for k, v in expected.items()):
+            raise ValueError("Role target or identity mismatch")
+        reports.append(report)
     return reports
 
 
@@ -209,13 +266,14 @@ def main(argv=None):
                         )
                 elif args.action in ("release", "readiness"):
                     ready(session, registry)
-                    verify_roles(args.compose_file, registry)
                     import redis
 
                     with redis.Redis.from_url(
                         settings.broker_url.get_secret_value(), socket_timeout=5
                     ) as broker:
                         legacy_drained(broker)
+                        with deployment_challenge(session, broker) as challenge:
+                            verify_roles(args.compose_file, registry, challenge)
                     if args.action == "release":
                         row = session.get(MailRuntime, 1)
                         row.dispatch_enabled = row.send_enabled = True

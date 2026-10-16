@@ -598,6 +598,214 @@ def test_role_probe_refuses_unconfigured_enabled_mailbox(tmp_path, monkeypatch):
 
 
 @pytest.mark.postgres
+@pytest.mark.parametrize(
+    "target", ["alias", "schema", "database", "redis_db", "expired"]
+)
+def test_role_target_challenge_proves_shared_services(
+    pg_sending, cutover_broker, tmp_path, monkeypatch, target
+):
+    from contextlib import nullcontext
+    from fmg_agent import role_health
+    from pydantic import SecretStr
+    from sqlalchemy.engine import make_url
+
+    app, *_ = pg_sending
+    broker, prefix = cutover_broker
+    tool = deployment_tool("mail_runtime")
+    monkeypatch.setenv("FMG_AGENT_ROLE_HEALTH_DIR", str(tmp_path))
+    settings = app.state.settings.model_copy(
+        update={"broker_url": SecretStr(os.environ["FMG_AGENT_TEST_REDIS_URL"])}
+    )
+    # Distinct URL spellings must succeed when both connections reach the same
+    # physical test services. No credentials or configured labels prove this.
+    settings = settings.model_copy(
+        update={
+            "database_url": settings.database_url.replace("127.0.0.1", "localhost"),
+            "broker_url": SecretStr(
+                settings.broker_url.get_secret_value().replace("127.0.0.1", "localhost")
+            ),
+        }
+    )
+    if target == "schema":
+        settings = settings.model_copy(
+            update={
+                "database_url": make_url(settings.database_url)
+                .set(query={"options": "-c search_path=public"})
+                .render_as_string(hide_password=False)
+            }
+        )
+    if target == "database":
+        # Read-only connection to the local server's postgres maintenance DB;
+        # no tables/schema/data are created there, and no production URL is used.
+        settings = settings.model_copy(
+            update={
+                "database_url": make_url(settings.database_url)
+                .set(database="postgres", query={})
+                .render_as_string(hide_password=False)
+            }
+        )
+    if target == "redis_db":
+        # The probe only GETs a random key from DB 15; all fixture writes stay
+        # in its owned UUID prefix in DB 14.
+        settings = settings.model_copy(
+            update={"broker_url": SecretStr("redis://127.0.0.1:55442/15")}
+        )
+    role_health.record(settings, "enrichment")
+    with (
+        app.state.sessions() as session,
+        (
+            pytest.raises(ValueError, match="cleanup")
+            if target == "expired"
+            else nullcontext()
+        ),
+    ):
+        with tool.deployment_challenge(session, broker, prefix=prefix) as challenge:
+            key = challenge["redis_key"]
+            assert broker.ttl(key) > 0
+            if target == "expired":
+                broker.delete(key)
+            if target == "alias":
+                assert (
+                    role_health.probe(settings, "enrichment", challenge=challenge)[
+                        "target_proof"
+                    ]
+                    == challenge["nonce"]
+                )
+            else:
+                with pytest.raises(ValueError):
+                    role_health.probe(settings, "enrichment", challenge=challenge)
+            cli = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "fmg_agent.role_health",
+                    "api",
+                    "--challenge",
+                    json.dumps(challenge),
+                ],
+                env=dict(
+                    os.environ,
+                    FMG_AGENT_DATABASE_URL=settings.database_url,
+                    FMG_AGENT_BROKER_URL=settings.broker_url.get_secret_value(),
+                ),
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            assert cli.returncode == (0 if target == "alias" else 1)
+            if target == "alias":
+                assert json.loads(cli.stdout)["target_proof"] == challenge["nonce"]
+        assert not broker.exists(key)
+
+
+def test_role_artifact_rejects_changed_broker(tmp_path, monkeypatch):
+    from fmg_agent import role_health
+    from fmg_agent.config import Settings
+    from pydantic import SecretStr
+
+    monkeypatch.setenv("FMG_AGENT_ROLE_HEALTH_DIR", str(tmp_path))
+    settings = Settings(
+        database_url="sqlite:///local-artifact", broker_url="redis://localhost/14"
+    )
+    role_health.record(settings, "enrichment")
+    changed = settings.model_copy(
+        update={"broker_url": SecretStr("redis://localhost/15")}
+    )
+    with pytest.raises(ValueError):
+        role_health.probe(changed, "enrichment")
+
+
+@pytest.mark.postgres
+@pytest.mark.parametrize(
+    "fault", [None, "database", "schema", "redis_db", "nonce", "role", "cleanup"]
+)
+def test_release_validates_actual_targets_before_opening_gates(
+    pg_sending, cutover_broker, tmp_path, monkeypatch, fault
+):
+    from fmg_agent import role_health
+    from fmg_agent.email.identity import _snapshot
+    from pydantic import SecretStr
+    from sqlalchemy.engine import make_url
+
+    app, client, owner = pg_sending
+    preview(client, owner)
+    broker, _ = cutover_broker
+    tool = deployment_tool("mail_runtime")
+    settings = app.state.settings.model_copy(
+        update={"broker_url": SecretStr(os.environ["FMG_AGENT_TEST_REDIS_URL"])}
+    )
+    monkeypatch.setattr(tool, "admin_settings", lambda: settings)
+    monkeypatch.setenv("FMG_AGENT_ROLE_HEALTH_DIR", str(tmp_path))
+    challenge_keys = []
+
+    def compose(file, *args):
+        if args[0] == "ps":
+            return "api worker mail-worker dispatch monitor"
+        if "-c" in args:
+            return ""  # HTTP health boundary only; target probes below are real.
+        role = args[args.index("fmg_agent.role_health") + 1]
+        mailbox = args[args.index("--mailbox") + 1] if "--mailbox" in args else None
+        challenge = json.loads(args[args.index("--challenge") + 1])
+        challenge_keys.append(challenge["redis_key"])
+        local = settings.model_copy(
+            update={
+                "database_url": settings.database_url.replace("127.0.0.1", "localhost"),
+                "broker_url": SecretStr(
+                    settings.broker_url.get_secret_value().replace(
+                        "127.0.0.1", "localhost"
+                    )
+                ),
+            }
+        )
+        if role == "enrichment":
+            if fault == "database":
+                local = local.model_copy(
+                    update={
+                        "database_url": make_url(local.database_url)
+                        .set(database="postgres", query={})
+                        .render_as_string(hide_password=False)
+                    }
+                )
+            if fault == "schema":
+                local = local.model_copy(
+                    update={
+                        "database_url": make_url(local.database_url)
+                        .set(query={"options": "-c search_path=public"})
+                        .render_as_string(hide_password=False)
+                    }
+                )
+            if fault == "redis_db":
+                local = local.model_copy(
+                    update={"broker_url": SecretStr("redis://127.0.0.1:55442/15")}
+                )
+        if role == "api":
+            report = {
+                "role": role,
+                "target_proof": role_health.target_proof(local, challenge),
+            }
+        else:
+            role_health.record(local, role, mailbox, mode="held-local")
+            report = role_health.probe(local, role, mailbox, challenge=challenge)
+        if role == "enrichment" and fault in ("nonce", "role"):
+            report["target_proof" if fault == "nonce" else "role"] = "mismatch"
+        if role == "monitor" and fault == "cleanup":
+            broker.delete(challenge["redis_key"])
+        return json.dumps(report)
+
+    monkeypatch.setattr(tool, "compose", compose)
+    assert tool.main(["hold"]) == 0
+    with app.state.sessions() as session:
+        before = _snapshot(session)
+    assert tool.main(["release"]) == (0 if fault is None else 1)
+    with app.state.sessions() as session:
+        assert session.execute(
+            text("SELECT dispatch_enabled,send_enabled FROM mail_runtime")
+        ).one() == (fault is None, fault is None)
+        assert _snapshot(session) == before
+    assert challenge_keys and not any(broker.exists(key) for key in challenge_keys)
+
+
+@pytest.mark.postgres
 def test_release_refuses_missing_roles(pg_sending, monkeypatch):
     app, client, owner = pg_sending
     preview(client, owner)

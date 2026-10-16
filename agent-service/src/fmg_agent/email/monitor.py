@@ -14,7 +14,8 @@ from ..mailboxes import MailboxRegistry
 from .identity import register_identities
 from .inbox import sync_once
 from .. import role_health
-from ..mail_runtime import MailRuntime
+from ..mail_runtime import runtime_gate
+from ..errors import ApiError
 
 
 @contextmanager
@@ -94,18 +95,20 @@ def monitor_mailbox(settings: Settings, mailbox_id: str, stop: Event) -> None:
                             # Detect that before another IMAP scan, then reacquire.
                             owner.execute(text("SELECT 1"))
                             owner.commit()
-                            with fenced_sessions() as session:
-                                runtime = session.get(MailRuntime, 1)
-                                held = runtime is None or not (
-                                    runtime.dispatch_enabled and runtime.send_enabled
-                                )
-                            outcome = (
-                                {"state": "held-local"}
-                                if held
-                                else sync_once(
-                                    fenced_sessions, config, mailbox_id=mailbox_id
-                                )
-                            )
+                            held = False
+                            try:
+                                # Separate owner: scan transactions may commit,
+                                # but must not release the maintenance drain lock.
+                                with runtime_gate(sessions, both=True) as check:
+                                    outcome = sync_once(
+                                        fenced_sessions, config, mailbox_id=mailbox_id
+                                    )
+                                    check()
+                            except ApiError as exc:
+                                if exc.code != "mail_service_maintenance":
+                                    raise
+                                held = True
+                                outcome = {"state": "held-local"}
                             if outcome and outcome.get("state") == "error":
                                 role_health.clear(settings, "monitor", mailbox_id)
                             else:

@@ -163,7 +163,9 @@ Production safety still requires operator evidence: proxy blocking is explicitly
 attested by `--proxy-writes-blocked`, not independently proven by the script.
 Stopped-service verification covers the supplied Compose project; independently
 inventory and stop ad-hoc/other-project producers/consumers. Host admin URLs and
-registry must target the same services/configuration as Compose. Native tests
+registry must target the same configuration as Compose. Database/schema and Redis
+target equality is now independently enforced by the round-1 live challenge
+described below, not left to operator attestation. Native tests
 replace only Docker execution boundaries; they do not claim actual Docker
 orchestration or Linux image readiness was exercised.
 
@@ -191,3 +193,66 @@ Modified: `deploy/agent-services/deploy.sh`, `compose.yaml`, `env.example`,
 `agent-service/src/fmg_agent/worker.py`, `dispatch.py`, `email/monitor.py`;
 `agent-service/tests/test_deploy_tools.py`, `test_queue_isolation_integration.py`;
 `cli/tests/test_release_bundle.py`; native acceptance addendum (after final run).
+
+## Review fix round 1 (base `5c09ba4`)
+
+Addressed both Important findings. Applied test-driven-development and
+verification-before-completion; evaluated review feedback against the actual
+lock/probe paths (receiving-code-review).
+
+1. Monitor now owns a shared runtime lock on a separate connection across the
+   enabled check and entire scan. The monitor's fenced scan sessions may commit
+   without releasing this drain lock. Both global flags must be open. Hold waits
+   for the active scan; later iterations remain local-only. SenderSafety is not
+   consulted by this gate, preserving monitoring during mailbox safety pauses.
+2. Readiness/release creates a fresh random transaction-owned PostgreSQL advisory
+   challenge and random Redis key/value (300-second TTL). Each service's probe
+   must observe the administrator's lock owner/key in `pg_locks`, filtered to its
+   own actual `current_database()` OID, plus the exact current schema, and read the
+   Redis nonce through its own broker connection. This accepts different host
+   spellings for the same targets, not merely matching configuration labels.
+   Every service is covered, including an API target probe alongside HTTP health.
+   Role artifacts additionally bind the broker URL hash to the live process's
+   configuration; raw URLs/credentials are never emitted in probe output.
+   Administrator validates returned role/mailbox/schema/queue/concurrency/nonce.
+   Redis cleanup uses atomic compare-delete of only the owned key in `finally`;
+   missing/expired/replaced proof or cleanup failure prevents gate opening and
+   rolls back the release transaction. PostgreSQL proof expires with that
+   transaction. No schema, new infrastructure, external provider call, or safety/
+   approval mutation was added.
+
+### Exact verification
+
+All pytest commands ran from `agent-service`, with the previously listed isolated
+`FMG_AGENT_TEST_DATABASE_URL` and `FMG_AGENT_TEST_REDIS_URL` environment variables.
+No raw log file was created; terminal tool results are the evidence.
+
+- RED: `.venv/bin/pytest tests/test_mailbox_monitor.py::test_hold_drains_active_monitor_scan_and_blocks_next tests/test_deploy_tools.py::test_role_target_challenge_proves_shared_services tests/test_deploy_tools.py::test_role_artifact_rejects_changed_broker -q`
+  — **7 failed, 1 warning in 3.24s** (terminal chunk `dfab70`). Hold returned during
+  blocked scan; challenge API absent in five variants; changed broker was accepted.
+- GREEN after implementation: `.venv/bin/pytest tests/test_deploy_tools.py tests/test_mailbox_monitor.py -q`
+  — **48 passed, 1 warning in 14.93s**.
+- Added release-level regression:
+  `.venv/bin/pytest tests/test_deploy_tools.py::test_release_validates_actual_targets_before_opening_gates -q`
+  — **7 passed, 1 warning in 3.78s**. Same-target aliases release successfully;
+  wrong database/schema/Redis DB, forged nonce/role and cleanup failure retain both
+  closed gates, preserve protected data digest, and leave no owned challenge key.
+- Final code-frozen focused run, also exercising the actual API probe CLI against
+  live native PG/Redis targets:
+  `.venv/bin/pytest tests/test_deploy_tools.py tests/test_mailbox_monitor.py tests/test_mail_runtime.py -q`
+  — **65 passed, 1 warning in 21.60s**, zero skips (session `89942`, final chunk
+  `087c87`). Includes held monitor/no-upstream, stopped-monitor refusal,
+  SenderSafety-paused/still-monitors, coordinated active scan/hold, existing send
+  drain, alias success and target/cleanup refusal. Warning is the existing
+  Starlette/AnyIO deprecation.
+- `.venv/bin/black --check src/fmg_agent/mail_runtime.py src/fmg_agent/email/monitor.py src/fmg_agent/role_health.py tests/test_mailbox_monitor.py tests/test_deploy_tools.py ../deploy/agent-services/mail_runtime.py`
+  — exit **0**, six files unchanged. `git diff --check` — exit **0**.
+
+Changed files: runtime gate, monitor, role-health module; deployment runtime tool;
+deploy-tools and mailbox-monitor tests; deployment guide; this report. Self-review
+checked connection ownership, current-database lock scoping, nonce lifetime and
+cleanup ordering before gate writes, role-result validation, and absence of
+safety/approval reset paths. Full 11-minute suite was not rerun for this scoped
+fix, per controller instruction; initial full-suite evidence remains above, not
+represented as a run of this patch. No container/production/release-publication
+gate has been passed or newly exercised. No Docker or external-provider actions.

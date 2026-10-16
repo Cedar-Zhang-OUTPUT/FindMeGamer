@@ -29,7 +29,7 @@ def maintenance():
 
 
 @contextmanager
-def runtime_gate(sessions, *, sending=False):
+def runtime_gate(sessions, *, sending=False, both=False):
     """Shared lock outlives the external side effect; missing schema fails closed.
 
     SQLite supports offline functional tests only; production concurrency relies
@@ -44,7 +44,11 @@ def runtime_gate(sessions, *, sending=False):
             )
         except SQLAlchemyError:
             raise maintenance() from None
-        if row is None or not (row.send_enabled if sending else row.dispatch_enabled):
+        if (
+            row is None
+            or not (row.send_enabled if sending else row.dispatch_enabled)
+            or (both and not (row.dispatch_enabled and row.send_enabled))
+        ):
             raise maintenance()
         # Pin the physical connection: a failed transaction must not reconnect
         # while assuming the old shared lock is still held.

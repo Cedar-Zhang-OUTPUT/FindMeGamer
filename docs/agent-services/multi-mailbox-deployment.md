@@ -132,6 +132,8 @@ with gates closed. Queued mail and enrichment cannot contact providers while
 held. A held monitor initializes its local DB/leadership loop without IMAP/OAuth
 network calls. Global maintenance differs from SenderSafety: per-mailbox safety
 pauses still allow monitoring when the global runtime is open.
+Each active scan holds the shared runtime lock through completion, so a hold
+waits for that scan and prevents another upstream scan after it commits.
 
 `mail_runtime.py readiness` and `release` verify schema/backfill, drained send
 state, the five-second interval, the exact running role set, API health and fresh
@@ -139,11 +141,20 @@ container-local evidence from each role. Worker evidence requires initialized
 broker connection, the exact queue and 4/2 pool size. Dispatch evidence is emitted
 after a successful iteration, monitor evidence after a held local check or
 successful scan. Missing/stale/wrong-role/dead-PID evidence fails closed. Artifacts
-bind role/mailbox/schema/database/queue/concurrency and PID start identity, and
+bind role/mailbox/schema/database/broker/queue/concurrency and PID start identity, and
 are removed on clean shutdown/error. They prove **local readiness**, not remote
 provider connectivity. Mail probes also verify local credential/token-store
 configuration without calling the provider. The old queue and unacked ledger
 must be empty before release.
+
+Before either readiness or release succeeds, every service also proves it reaches
+the administrator's actual database/schema and Redis DB: a fresh transaction-held
+PostgreSQL advisory challenge (scoped to the current database OID and schema) and
+a random Redis nonce with a five-minute TTL. Host/container URL aliases are allowed
+only when those live proofs match. Probe role/queue/concurrency and nonce output
+are validated by the administrator. Missing, mismatched or expired proof, or
+failed compare-and-delete cleanup of the owned Redis key, leaves the gates closed.
+This needs no new table and never contacts an external mail/provider service.
 
 ```sh
 "$FMG_AGENT_PYTHON" deploy/agent-services/mail_runtime.py readiness

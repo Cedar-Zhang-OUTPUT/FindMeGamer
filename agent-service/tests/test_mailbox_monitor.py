@@ -13,14 +13,86 @@ from test_send_pacing_postgres import pg_sending
 
 
 @pytest.mark.postgres
+def test_hold_drains_active_monitor_scan_and_blocks_next(
+    pg_sending, monkeypatch, tmp_path
+):
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError
+    from fmg_agent.email import monitor
+    from fmg_agent.mail_runtime import set_runtime
+    from fmg_agent.mailboxes import MailboxRegistry
+
+    app, *_ = pg_sending
+    monkeypatch.setenv("FMG_AGENT_ROLE_HEALTH_DIR", str(tmp_path))
+    profile = app.state.mailboxes.profiles()[0].model_copy(
+        update={"imap_poll_seconds": 0.01}
+    )
+    registry = MailboxRegistry(app.state.settings, [profile], legacy=True)
+    monkeypatch.setattr(MailboxRegistry, "load", lambda settings: registry)
+    entered, finish_scan, hold_started, held_iteration, stop = (
+        Event() for _ in range(5)
+    )
+    calls = []
+
+    def scan(*args, **kwargs):
+        calls.append(kwargs["mailbox_id"])
+        entered.set()
+        assert finish_scan.wait(10)
+        return {"state": "active"}
+
+    record = monitor.role_health.record
+
+    def observed_record(*args, **kwargs):
+        result = record(*args, **kwargs)
+        if kwargs.get("mode") == "held-local":
+            held_iteration.set()
+        return result
+
+    def hold():
+        hold_started.set()
+        return set_runtime(
+            app.state.sessions, dispatch_enabled=False, send_enabled=False
+        )
+
+    monkeypatch.setattr(monitor, "sync_once", scan)
+    monkeypatch.setattr(monitor.role_health, "record", observed_record)
+    thread = Thread(
+        target=monitor.monitor_mailbox, args=(app.state.settings, "ontologyplay", stop)
+    )
+    thread.start()
+    try:
+        assert entered.wait(5)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            pending_hold = pool.submit(hold)
+            assert hold_started.wait(5)
+            try:
+                with pytest.raises(TimeoutError):
+                    pending_hold.result(timeout=0.2)
+            finally:
+                finish_scan.set()
+            assert pending_hold.result(timeout=5) == {
+                "dispatch_enabled": False,
+                "send_enabled": False,
+            }
+            assert held_iteration.wait(5)
+            assert calls == ["ontologyplay"]
+    finally:
+        finish_scan.set()
+        stop.set()
+        thread.join(5)
+    assert not thread.is_alive()
+
+
+@pytest.mark.postgres
 def test_startup_registration_failure_recovers(pg_sending, monkeypatch):
     from fmg_agent.email import monitor
     from fmg_agent.mailboxes import MailboxRegistry
 
     app, *_ = pg_sending
     stop, progressed = Event(), Event()
-    profile = MailboxRegistry.load(app.state.settings).profiles()[0].model_copy(
-        update={"imap_poll_seconds": 0.01}
+    profile = (
+        MailboxRegistry.load(app.state.settings)
+        .profiles()[0]
+        .model_copy(update={"imap_poll_seconds": 0.01})
     )
     registry = MailboxRegistry(app.state.settings, [profile], legacy=True)
     monkeypatch.setattr(MailboxRegistry, "load", lambda settings: registry)
