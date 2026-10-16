@@ -8,6 +8,14 @@ Use `liminal-outreach` for the confirmed target LIMINAL: Within, and `game-outre
 
 Enrichment needs `email:enrich`; previews and sends need `email:send`. Enrichment searches public business contacts only and may spend company Gemini/search quota.
 
+Before individual preview creation, use `fmg email mailboxes` and [explicit mailbox/template selection](outreach.md#mailbox-and-template-selection). `message.json` must include string `mailbox_id`, `template_id`, `template_version`, `to` and declared `variables`; creation flags may fill the three selection fields, and conflicting flag/JSON values fail before POST:
+
+```sh
+fmg email preview --input message.json --mailbox ontologyplay --template liminal-outreach --template-version 7
+```
+
+Use the current server version, not an unverified example. `preview --id ID` only reads a frozen snapshot and accepts no selection flags. Review `mailbox_id`, `display_name`, `message.from`, `template_id`, `template_version`, rendered body and `send_ready`. `send --preview-id ID --confirm --idempotency-key KEY` has no mailbox override. Approval applies to that exact immutable preview; rate limits never authorize switching an old preview to another account. Creating a preview does not authorize sending.
+
 ## Public evidence-first enrichment
 
 If a suitable source-backed email already exists, record it without enrichment. Otherwise reuse the channel/account descriptions and work descriptions already saved during creator analysis. Write a small JSON **array** to `contact-evidence.json`, keeping literal source text and actual public source URLs, not AI summaries or invented contacts:

@@ -27,9 +27,26 @@ def delivery_view(envelope):
             }
         )
     return {
-        **envelope,
+        "meta": {"request_id": envelope.get("meta", {}).get("request_id")},
         "data": {
-            **data,
+            **{
+                key: data.get(key)
+                for key in (
+                    "id",
+                    "name",
+                    "state",
+                    "revision",
+                    "mailbox_id",
+                    "sender",
+                    "display_name",
+                    "template_version",
+                    "sender_safety",
+                    "monitoring",
+                )
+            },
+            "template": {
+                key: data.get("template", {}).get(key) for key in ("id", "version")
+            },
             "recipients": recipients,
             "stats": {
                 key: value

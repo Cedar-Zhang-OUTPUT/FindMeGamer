@@ -23,6 +23,7 @@ type APIError struct {
 	Retryable  bool   `json:"retryable"`
 	RetryAfter *int   `json:"retry_after_seconds,omitempty"`
 	Exit       int    `json:"-"`
+	HTTPStatus int    `json:"-"`
 }
 
 func (e *APIError) Error() string { return e.Message }
@@ -104,6 +105,7 @@ func (c *Client) requestWithKey(ctx context.Context, method, path string, body a
 		}
 		json.Unmarshal(data, &envelope)
 		e := envelope.Error
+		e.HTTPStatus = response.StatusCode
 		if e.Code == "" {
 			e.Code = "service_error"
 		}

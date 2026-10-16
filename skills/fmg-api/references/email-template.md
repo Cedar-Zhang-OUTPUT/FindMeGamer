@@ -9,6 +9,8 @@ Select by the user-confirmed **outreach target game**, not the creator's referen
 
 Fetch `fmg email template SELECTED_ID` before drafting. The server is authoritative; if this bundled copy differs, read the current schema and full text, and do not submit stale inputs. Legacy liminal-outreach versions 1–6 and game-outreach versions 3–4 remain retired for new drafts. Existing frozen previews/tasks are not rewritten or automatically resent. A replacement needs a new preview/task and fresh approval.
 
+Discover sending identities with `fmg email mailboxes` and apply [the explicit mailbox/template contract](outreach.md#mailbox-and-template-selection). LIMINAL is restricted to enabled mailbox `ontologyplay` with actual From `OntologyPlay@hotmail.com`; an allowlist entry alone cannot move its fixed signature to another mailbox. Generic outreach requires `game-outreach` in the selected mailbox's `allowed_templates`. Bind `mailbox_id`, `template_id` and string `template_version` explicitly when creating a draft. Preserve the approved text, logo and LIMINAL banner exactly; selecting an account never grants permission to rewrite fixed copy.
+
 ## LIMINAL: Within — full subject
 
 ```text

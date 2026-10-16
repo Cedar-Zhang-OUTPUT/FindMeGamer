@@ -31,7 +31,7 @@ func TestEmailPreviewInputAndExplicitSend(t *testing.T) {
 		}
 	})
 	path := filepath.Join(t.TempDir(), "message.json")
-	os.WriteFile(path, []byte(`{"template_id":"game-outreach","template_version":"1","to":"creator@example.com","variables":{}}`), 0600)
+	os.WriteFile(path, []byte(`{"mailbox_id":"ontologyplay","template_id":"game-outreach","template_version":"5","to":"creator@example.com","variables":{}}`), 0600)
 	var out, err bytes.Buffer
 	if code := Run([]string{"email", "preview", "--input", path}, strings.NewReader(""), &out, &err); code != 0 {
 		t.Fatalf("exit=%d %s", code, err.String())

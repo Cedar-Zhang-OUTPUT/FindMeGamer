@@ -35,11 +35,12 @@ fmg email enrich --url URL --idempotency-key KEY [--name NAME] [--platform PLATF
 fmg email job ID [--wait] [--timeout 5m]
 fmg email retry ID
 fmg email templates
+fmg email mailboxes
 fmg email template TEMPLATE_ID
-fmg email preview --input message.json | --id PREVIEW_ID
+fmg email preview --input message.json [--mailbox ID --template ID --template-version VERSION] | --id PREVIEW_ID
 fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key KEY
 fmg email receipt SEND_ID
-fmg outreach task create --input batch.json --idempotency-key KEY
+fmg outreach task create --input batch.json --idempotency-key KEY [--mailbox ID --template ID --template-version VERSION]
 fmg outreach task list
 fmg outreach task get TASK_ID [--summary]
 fmg outreach task start TASK_ID --revision REVISION --confirm

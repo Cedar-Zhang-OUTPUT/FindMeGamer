@@ -43,6 +43,7 @@ func runOutreach(ctx context.Context, args []string, out, diagnostics io.Writer)
 		flags.SetOutput(io.Discard)
 		input := flags.String("input", "", "batch JSON file")
 		idempotency := flags.String("idempotency-key", "", "stable task creation key")
+		selection := draftSelectionFlags(flags)
 		if flags.Parse(args[2:]) != nil || flags.NArg() != 0 || *input == "" || strings.TrimSpace(*idempotency) == "" {
 			return writeError(diagnostics, errors.New("create requires --input FILE --idempotency-key KEY"))
 		}
@@ -55,6 +56,9 @@ func runOutreach(ctx context.Context, args []string, out, diagnostics io.Writer)
 		var object map[string]any
 		if err != nil || len(raw) > 8*1024*1024 || json.Unmarshal(raw, &object) != nil || object == nil {
 			return writeError(diagnostics, errors.New("task input must be a JSON object up to 8 MiB"))
+		}
+		if err := selection.merge(flags, object); err != nil {
+			return writeError(diagnostics, err)
 		}
 		body, key, method = object, *idempotency, http.MethodPost
 	case "start":

@@ -101,10 +101,13 @@ Results include multiple `emails` with purpose, public source URL, discovery met
 
 ## Preview and confirmed sending
 
+Run `fmg email mailboxes` first and explicitly select an enabled mailbox with the user. Check its actual `from`, `display_name`, `ready` and `allowed_templates`. Discovery requires server `meta.mailboxes_version=1`; older servers require an administrator upgrade. See [mailbox API and selection contract](../docs/agent-services/mailboxes-api.md). LIMINAL requires `ontologyplay` with `OntologyPlay@hotmail.com`; generic outreach requires an explicitly permitted mailbox.
+
 Requires `email:send`. Company SMTP credentials stay on the server. Create a local `message.json` containing:
 
 ```json
 {
+  "mailbox_id": "ontologyplay",
   "template_id": "game-outreach",
   "template_version": "5",
   "to": "creator@example.com",
@@ -129,6 +132,10 @@ Inspect the current template first; this example is not approved outreach conten
 fmg email preview --input message.json
 fmg email preview --id PREVIEW_ID
 ```
+
+Creation also accepts `--mailbox ID --template ID --template-version VERSION` to fill absent JSON fields. All three selections are required nonempty strings; equal flag/JSON values are allowed, conflicts fail before POST. The same contract applies to `fmg outreach task create --input batch.json --idempotency-key STABLE_KEY`; batch JSON adds `name` and `recipients` in place of the individual `to`/`variables`. Keep a stable key for the same logical request. Two Agents must divide contacts before separate batches; cross-task/mailbox deduplication is not supplied.
+
+The dashboard displays the frozen mailbox ID, sender/display name and template/version. `preview --id`, `send` and `outreach task start` cannot switch mailbox. A new identity requires a new draft and fresh approval; rate limits never authorize account fallback. Creation alone does not authorize sending.
 
 After the user approves the exact recipients and rendered messages, send each approved preview:
 

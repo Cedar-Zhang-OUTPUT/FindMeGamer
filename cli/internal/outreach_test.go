@@ -28,7 +28,7 @@ func TestOutreachCreateThenExplicitApproval(t *testing.T) {
 		w.Write([]byte(`{"data":{"id":"task1","revision":"rev1"},"meta":{}}`))
 	})
 	input := filepath.Join(t.TempDir(), "batch.json")
-	os.WriteFile(input, []byte(`{"name":"Launch","recipients":[]}`), 0600)
+	os.WriteFile(input, []byte(`{"name":"Launch","mailbox_id":"ontologyplay","template_id":"game-outreach","template_version":"5","recipients":[]}`), 0600)
 	var out, diagnostics bytes.Buffer
 	if code := Run([]string{"outreach", "task", "create", "--input", input, "--idempotency-key", "batch-one"}, strings.NewReader(""), &out, &diagnostics); code != 0 {
 		t.Fatal(code, diagnostics.String())

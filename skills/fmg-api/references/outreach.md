@@ -6,6 +6,47 @@ Use `liminal-outreach` for the confirmed outreach target LIMINAL: Within, and `g
 
 Up to 1,000 recipients per task, one address each; duplicate addresses within a task are rejected. Choose among multiple contacts before creation. Creator ID is the saved platform-qualified identity, not an invented personal name.
 
+## Mailbox and template selection
+
+Run `fmg email mailboxes` before creating drafts. It returns `data` entries with `id`, actual `from`, `display_name`, `enabled`, `ready`, `allowed_templates` and `send_interval_seconds`; `meta.mailboxes_version` must be `1`. A missing endpoint/version requires an administrator service upgrade, not inferred support. Keep CLI and both Skills aligned using the existing `fmg upgrade --latest --skills` workflow; client installation alone cannot enable server capabilities. Mailbox credentials remain administrator-managed on the server.
+
+Select an enabled mailbox explicitly from the user's supplied choice; if absent, present the discovered compatible identities and ask which to use before creation. `ready=false` means sending setup is incomplete; it does not authorize selecting another mailbox. Inspect the current selected template with `fmg email template SELECTED_ID`. `allowed_templates` is necessary: LIMINAL additionally requires mailbox `ontologyplay` whose actual From is `OntologyPlay@hotmail.com` (case-insensitive). Its fixed signature and images remain unchanged. For another game, use `game-outreach` on a mailbox explicitly permitting it, after checking the frozen sender and fixed studio wording are appropriate.
+
+The three required creation fields are strings: `mailbox_id`, `template_id`, `template_version`. Use them in JSON or `--mailbox`, `--template`, `--template-version`. Flags fill absent JSON fields; identical values are allowed; conflicting values, null/empty fields and missing selections fail locally before POST. For example, after the user selects the verified LIMINAL identity:
+
+```sh
+fmg email mailboxes
+fmg email template liminal-outreach
+fmg --run-id liminal-agent-a outreach task create --input batch.json --mailbox ontologyplay --template liminal-outreach --template-version 7 --idempotency-key liminal-agent-a-batch-01
+```
+
+The complete input shape is below; replace recipient placeholders using saved evidence and include all selected recipients (30 for a requested 30-person batch):
+
+```json
+{
+  "name": "LIMINAL: Within outreach",
+  "mailbox_id": "ontologyplay",
+  "template_id": "liminal-outreach",
+  "template_version": "7",
+  "recipients": [{
+    "creator_id": "PLATFORM:ACTUAL_ID",
+    "to": "ACTUAL_PUBLIC_BUSINESS_EMAIL",
+    "variables": {
+      "creator_name": "SAVED_PUBLIC_NAME",
+      "channel_name": "SAVED_CHANNEL_NAME",
+      "reference_work": "EVIDENCED_WORK",
+      "specific_observation": "SAVED_EVIDENCE_BASED_CONNECTION"
+    }
+  }]
+}
+```
+
+Save the actual task ID/revision, original input, mailbox, template/version, run ID and stable creation key. Retries of the same logical creation reuse the same key and payload; changed input gets a new key and new unapproved task. In two-Agent work, divide contacts before creation and keep a shared assignment record keyed by platform creator ID and selected address. Same-task duplicates are rejected; separate tasks/mailboxes/Agents are not automatically deduplicated. Resolve overlap and sending responsibility before approval; idempotency is not cross-batch deduplication.
+
+Full task reads and the dashboard show frozen mailbox ID, sender/display name and template/version. Summary reads retain lightweight identity/version, safety and progress without drafts. Review the frozen identity as well as all recipients and content. Only explicit approval of this task revision permits `start`; drafting alone does not. `start` and individual `send` use the frozen ID and accept no mailbox switch. Existing approvals never transfer to another identity or replacement task. Rate limits or sender holds do not authorize moving old rows to another mailbox. Preserve `unknown` rows and investigate; never automatically resend them. Any separately authorized replacement contains only confirmed failed rows that cannot still be sent by the old task, excludes successful/uncertain rows, and requires fresh review/approval. No pause/cancel/migrate CLI command is provided here.
+
+Each enabled mailbox has its own two send execution slots shared with bounce retries; all slots share that mailbox's default five-second send interval and lock. Enrichment has a separate four-slot queue; monitoring does not consume sending/enrichment slots. Independent capacity does not authorize circumventing holds or automatic account fallback.
+
 ```sh
 fmg --run-id RUN_ID outreach task create --input batch.json --idempotency-key STABLE_KEY
 fmg outreach task list

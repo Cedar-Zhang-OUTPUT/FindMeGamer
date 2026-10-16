@@ -14,13 +14,31 @@ import (
 
 func runEmail(ctx context.Context, args []string, out, diagnostics io.Writer) int {
 	if len(args) == 0 {
-		return writeError(diagnostics, errors.New("choose enrich, job or retry"))
+		return writeError(diagnostics, errors.New("choose mailboxes, templates, template, preview, send, receipt, enrich, job or retry"))
 	}
 	config, err := loadConfig()
 	if err != nil {
 		return writeError(diagnostics, &APIError{Code: "login_required", Message: err.Error(), Exit: 3})
 	}
 	client := newClient(config)
+	if args[0] == "mailboxes" {
+		if len(args) != 1 {
+			return writeError(diagnostics, errors.New("mailboxes takes no arguments"))
+		}
+		response, err := client.request(ctx, http.MethodGet, "/v1/email/mailboxes", nil)
+		if err != nil {
+			var apiErr *APIError
+			if errors.As(err, &apiErr) && (apiErr.HTTPStatus == http.StatusNotFound || apiErr.HTTPStatus == http.StatusNotImplemented) {
+				return writeError(diagnostics, &APIError{Code: "mailboxes_upgrade_required", Message: "Mailbox discovery is unavailable; ask the administrator to upgrade the service before creating drafts.", Exit: 2})
+			}
+			return writeError(diagnostics, err)
+		}
+		var entries []map[string]any
+		if response.Meta["mailboxes_version"] != float64(1) || json.Unmarshal(response.Data, &entries) != nil || entries == nil {
+			return writeError(diagnostics, &APIError{Code: "mailboxes_upgrade_required", Message: "Mailbox discovery version 1 is required; ask the administrator to upgrade the service.", Exit: 2})
+		}
+		return emitEmail(out, diagnostics, response)
+	}
 	if args[0] == "preview" || args[0] == "send" || args[0] == "receipt" {
 		return runEmailSending(ctx, client, args, out, diagnostics)
 	}

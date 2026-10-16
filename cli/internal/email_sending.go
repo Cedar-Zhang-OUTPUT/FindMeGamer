@@ -6,12 +6,60 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 )
+
+// A new draft must explicitly bind all three identities. Flags may fill JSON
+// fields, but must never silently replace a saved choice.
+type draftSelection struct {
+	mailbox, template, version *string
+}
+
+func draftSelectionFlags(flags *flag.FlagSet) draftSelection {
+	return draftSelection{
+		flags.String("mailbox", "", "explicit sending mailbox ID"),
+		flags.String("template", "", "explicit template ID"),
+		flags.String("template-version", "", "reviewed template version"),
+	}
+}
+
+func (s draftSelection) merge(flags *flag.FlagSet, body map[string]any) error {
+	provided := map[string]bool{}
+	flags.Visit(func(f *flag.Flag) { provided[f.Name] = true })
+	for _, field := range []struct {
+		flag, json string
+		value      *string
+	}{
+		{"mailbox", "mailbox_id", s.mailbox},
+		{"template", "template_id", s.template},
+		{"template-version", "template_version", s.version},
+	} {
+		value, exists := body[field.json]
+		if exists {
+			text, ok := value.(string)
+			if !ok || strings.TrimSpace(text) == "" {
+				return fmt.Errorf("%s must be a nonempty string", field.json)
+			}
+		}
+		if provided[field.flag] {
+			if strings.TrimSpace(*field.value) == "" {
+				return fmt.Errorf("--%s must be nonempty", field.flag)
+			}
+			if exists && value != *field.value {
+				return fmt.Errorf("--%s conflicts with JSON %s", field.flag, field.json)
+			}
+			body[field.json] = *field.value
+		} else if !exists {
+			return fmt.Errorf("explicit %s is required in JSON or --%s", field.json, field.flag)
+		}
+	}
+	return nil
+}
 
 func runEmailSending(ctx context.Context, client *Client, args []string, out, diagnostics io.Writer) int {
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
@@ -20,6 +68,7 @@ func runEmailSending(ctx context.Context, client *Client, args []string, out, di
 	case "preview":
 		input := flags.String("input", "", "JSON file containing template, recipient and variables")
 		id := flags.String("id", "", "read an existing immutable preview")
+		selection := draftSelectionFlags(flags)
 		if flags.Parse(args[1:]) != nil || flags.NArg() != 0 || (*input == "") == (*id == "") {
 			return writeError(diagnostics, errors.New("preview requires exactly one of --input FILE or --id ID"))
 		}
@@ -41,7 +90,20 @@ func runEmailSending(ctx context.Context, client *Client, args []string, out, di
 			if decoder.Decode(&body) != nil || body == nil || decoder.Decode(&trailing) != io.EOF {
 				return writeError(diagnostics, errors.New("preview input must be one JSON object"))
 			}
+			if err := selection.merge(flags, body); err != nil {
+				return writeError(diagnostics, err)
+			}
 			method, path = http.MethodPost, "/v1/email/previews"
+		} else {
+			override := false
+			flags.Visit(func(f *flag.Flag) {
+				if f.Name != "id" {
+					override = true
+				}
+			})
+			if override {
+				return writeError(diagnostics, errors.New("existing preview identity is immutable; selection flags require --input"))
+			}
 		}
 		response, err := client.request(ctx, method, path, body)
 		if err != nil {

@@ -279,6 +279,8 @@
         <span id="status" class="badge" aria-live="polite"></span>
       </div>
       <p id="error" role="alert"></p>
+      <p id="identity" class="muted"></p>
+      <p id="template" class="muted"></p>
       <p id="monitoring" class="muted" role="status"></p>
       <p id="safety" class="muted" role="status"></p>
       <section id="stats" aria-label="Task summary"></section>
@@ -385,6 +387,8 @@
         text("status", label(data.state));
         text("task", data.id);
         text("revision", data.revision);
+        text("identity", `Frozen mailbox: ${data.mailbox_id || "Unresolved historical identity"} · ${data.display_name || "Unnamed sender"} · ${data.sender || "Not configured"}`);
+        text("template", `Frozen template: ${data.template?.id || "Unavailable"} · version ${data.template_version || data.template?.version || "Unavailable"}`);
         text(
           "guidance",
           data.state === "awaiting_approval"
