@@ -91,6 +91,19 @@ status confirmed the same receipt/task counts, zero send leases and schema 0013.
 The public read-only smoke passed again; only the existing primary mailbox is
 enabled. SenderSafety and approvals remain unchanged.
 
-Release candidate: `fmg-v0.8.0`, containing the CLI and both Skills. Its GitHub
-release status, asset checksums and clean downloaded installation must be verified
-after upload; this document does not substitute for that publication check.
+## Published CLI and Skills
+
+`fmg-v0.8.0` was published at 05:59:27 UTC on 2026-10-17 from immutable commit
+`45bb1c6f2acb6a711880eea7e2b9534f48a88de7`. The release is public, non-draft,
+prerelease and intentionally not the repository-wide latest macOS-app release.
+All seven uploaded assets were downloaded and their six payload checksums passed.
+A clean install of the downloaded bundle and a separate unauthenticated public
+online install both succeeded with CLI and both Skills at 0.8.0. The update
+checker identified 0.8.0 as the current CLI/Skill release.
+
+An initial publish edit used an abbreviated target SHA that GitHub rejected;
+publishing with the verified `cli` branch succeeded without moving the tag. A
+cached pre-publication asset 404 was ruled out by a fresh public request and the
+successful normal online installation. Public SHA256SUMS matched the local file.
+Post-release production check: all five roles running with zero restarts, no new
+send attempts, second mailbox disabled and about 6.1 GiB available host memory.
