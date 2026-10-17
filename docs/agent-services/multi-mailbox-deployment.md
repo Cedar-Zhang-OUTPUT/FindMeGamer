@@ -2,14 +2,17 @@
 
 Candidate: `fmg-v0.8.0`. This document is an operator runbook, not evidence that a
 production command was executed. The current authorization covers local code,
-tests and release artifacts only. Production deployment, proxy edits, gate
+tests, isolated Docker rehearsal and release artifacts only. Production deployment, proxy edits, gate
 release, GitHub publication, actual email, paid lookup and second-mailbox
-enrollment remain separate decisions. The prohibited container rehearsal is a
-blocking release gate; native PostgreSQL/Redis results do not replace it.
+enrollment remain separate decisions. See the
+[2026-10-17 Docker/Redis 7 acceptance](multi-mailbox-docker-acceptance-20261017.md)
+for the authorized rehearsal's actual results and remaining boundaries; native
+PostgreSQL/Redis results alone do not replace that gate.
 
 ## Review before a window
 
-Read [native acceptance](multi-mailbox-acceptance-20261016.md) and the Task 8
+Read [native acceptance](multi-mailbox-acceptance-20261016.md), its
+[Docker/Redis 7 follow-up](multi-mailbox-docker-acceptance-20261017.md), and the Task 8
 report. Require the complete backend regression with real isolated PostgreSQL
 and Redis, Go test/vet, executable Skill examples, browser acceptance, local
 installer/upgrade/checksum checks, and container backup/restore acceptance.

@@ -1,5 +1,10 @@
 # Native multi-mailbox acceptance — 2026-10-16
 
+Historical native-run record. The later authorized container and Redis 7 checks
+are recorded separately in the
+[2026-10-17 follow-up](multi-mailbox-docker-acceptance-20261017.md); references below
+to missing Docker authorization describe the earlier run, not current authority.
+
 This is pre-deployment acceptance on isolated native services, not a production
 throughput claim or container/deployment approval. No real email, Gemini request,
 production service, or Docker startup is involved.
