@@ -7,6 +7,7 @@ import subprocess
 import time
 import uuid
 import urllib.request
+import warnings
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -16,9 +17,10 @@ ROOT = Path(__file__).resolve().parents[2]
 
 @pytest.mark.postgres
 def test_local_release_image_and_restore(tmp_path):
-    if os.environ.get("FMG_AGENT_TEST_IMAGE") != "fmg-agent:predeploy":
+    image = os.environ.get("FMG_AGENT_TEST_IMAGE")
+    if not image:
         pytest.skip(
-            "Opt in with locally built FMG_AGENT_TEST_IMAGE=fmg-agent:predeploy"
+            "Opt in with FMG_AGENT_TEST_IMAGE naming a locally built test image"
         )
     url = os.environ["FMG_AGENT_TEST_DATABASE_URL"]
     engine = create_engine(url)
@@ -28,11 +30,22 @@ def test_local_release_image_and_restore(tmp_path):
     schema = "release_test_" + suffix
     api, worker = "fmg-release-api-" + suffix, "fmg-release-worker-" + suffix
     dispatcher = "fmg-release-dispatch-" + suffix
-    db_container = "fmg-agent-tests-postgres-1"
-    image = "fmg-agent:predeploy"
+    db_container = os.environ.get(
+        "FMG_AGENT_TEST_POSTGRES_CONTAINER", "fmg-agent-tests-postgres-1"
+    )
+    network = os.environ.get("FMG_AGENT_TEST_NETWORK", "fmg-agent-tests_default")
+    owned_containers = [api, worker, dispatcher]
 
     def run(*args, **kwargs):
-        return subprocess.run(args, check=True, capture_output=True, **kwargs)
+        # Name transient containers too, so a timed-out Docker client cannot
+        # leave an untracked migration/admin process behind.
+        if args[:2] == ("docker", "run") and "--rm" in args:
+            name = "fmg-release-task-" + uuid.uuid4().hex
+            owned_containers.append(name)
+            args = (*args[:2], "--name", name, *args[2:])
+        return subprocess.run(
+            args, check=True, capture_output=True, timeout=120, **kwargs
+        )
 
     env = [
         "-e",
@@ -44,10 +57,10 @@ def test_local_release_image_and_restore(tmp_path):
         "-e",
         "FMG_AGENT_SMTP_FROM=release-test@example.com",
     ]
-    common = ["docker", "run", "--network", "fmg-agent-tests_default", *env]
-    with engine.begin() as conn:
-        conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+    common = ["docker", "run", "--pull=never", "--network", network, *env]
     try:
+        with engine.begin() as conn:
+            conn.execute(text(f'CREATE SCHEMA "{schema}"'))
         for _ in range(2):
             run(*common, "--rm", image, "python", "-m", "alembic", "upgrade", "head")
         token = json.loads(
@@ -192,8 +205,18 @@ def test_local_release_image_and_restore(tmp_path):
                 == "0013_mail_runtime"
             )
     finally:
-        for name in (api, worker, dispatcher):
-            subprocess.run(["docker", "rm", "-f", name], capture_output=True)
-        with engine.begin() as conn:
-            conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
-        engine.dispose()
+        try:
+            for name in owned_containers:
+                try:
+                    subprocess.run(
+                        ["docker", "rm", "-f", name], capture_output=True, timeout=30
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    # Continue attempting cleanup of all resources we own.
+                    warnings.warn(f"Could not clean up owned container {name}: {exc}")
+        finally:
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
+            finally:
+                engine.dispose()
