@@ -1,10 +1,10 @@
 # Multi-mailbox release and safe cutover
 
 Candidate: `fmg-v0.8.0`. This document is an operator runbook, not evidence that a
-production command was executed. The current authorization covers local code,
-tests, isolated Docker rehearsal and release artifacts only. Production deployment, proxy edits, gate
-release, GitHub publication, actual email, paid lookup and second-mailbox
-enrollment remain separate decisions. See the
+production command was executed. The owner authorized production deployment and
+CLI/Skill publication on 2026-10-17, with a fresh no-active-send check before
+cutover and the second mailbox disabled. This does not authorize new test email,
+paid lookup or second-mailbox enrollment. See the
 [2026-10-17 Docker/Redis 7 acceptance](multi-mailbox-docker-acceptance-20261017.md)
 for the authorized rehearsal's actual results and remaining boundaries; native
 PostgreSQL/Redis results alone do not replace that gate.
@@ -51,6 +51,20 @@ inherit legacy environment credentials. Keep `second` disabled with no sender,
 credentials or token paths. Only the existing mailbox starts in this rollout.
 Keep the interval at five seconds, enrichment at four prefork slots and each
 mail consumer at two. Do not activate the `second-mailbox` Compose profile.
+
+For pre-existing retired senders, add a distinct disabled historical profile
+with only its immutable ID and exact frozen sender address (no credentials,
+OAuth paths or allowed templates). This is a history association, not a new
+active mailbox. Do not reuse `second` for retired identities. A null/missing
+sender preview is retained unbound only when it has no send, no outreach
+recipient and no existing mailbox identity. Preflight reports these separately
+as `preserved_unsendable_previews`; they remain rejected by the send API.
+Unknown nonempty senders, malformed addresses, associated missing senders and
+identity conflicts still fail closed. Never rewrite frozen messages to backfill.
+Identity-only dry runs and startup checks do not load frozen email bodies or
+claim a body digest (`snapshot_verified=false`). The locked apply computes
+complete before/after frozen-content digests with a one-row server-side cursor,
+including embedded images, so memory does not grow with total body volume.
 
 ## Maintenance and warm drain
 

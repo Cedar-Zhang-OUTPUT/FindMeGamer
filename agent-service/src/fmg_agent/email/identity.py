@@ -3,7 +3,7 @@
 from hashlib import sha256
 import json
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from ..errors import ApiError
@@ -97,12 +97,26 @@ def _snapshot(session):
     from ..outreach import OutreachTask
 
     tables = (OutreachTask.__table__, EmailPreview.__table__, EmailSend.__table__)
-    content = []
-    for table in tables:
+    digest = sha256()
+    encoder = json.JSONEncoder(sort_keys=True, default=str)
+    digest.update(b"[")
+    for index, table in enumerate(tables):
+        if index:
+            digest.update(b", ")
+        digest.update(b"[")
         columns = [column for column in table.columns if column.name != "mailbox_id"]
-        rows = session.execute(select(*columns).order_by(table.c.id)).all()
-        content.append([list(row) for row in rows])
-    return sha256(json.dumps(content, sort_keys=True, default=str).encode()).hexdigest()
+        # Server-side cursors keep large frozen image bodies out of aggregate RAM.
+        rows = session.execute(
+            select(*columns).order_by(table.c.id).execution_options(yield_per=1)
+        )
+        for number, row in enumerate(rows):
+            if number:
+                digest.update(b", ")
+            for chunk in encoder.iterencode(list(row)):
+                digest.update(chunk.encode())
+        digest.update(b"]")
+    digest.update(b"]")
+    return digest.hexdigest()
 
 
 def backfill_mailboxes(session, registry, *, apply: bool = False) -> dict:
@@ -110,12 +124,42 @@ def backfill_mailboxes(session, registry, *, apply: bool = False) -> dict:
 
     # Resolve every record and reject all ambiguity before making any writes.
     additions, by_sender = _registrations(session, registry)
-    before = _snapshot(session)
-    previews = session.scalars(select(EmailPreview)).all()
+    # Dry runs/readiness perform no frozen-data writes and need only identities.
+    # Full-body before/after integrity is verified once during the locked apply.
+    before = _snapshot(session) if apply else None
+    json_type = (
+        func.json_typeof
+        if session.get_bind().dialect.name == "postgresql"
+        else func.json_type
+    )
+    previews = session.execute(
+        select(
+            EmailPreview.id,
+            EmailPreview.mailbox_id,
+            EmailPreview.message["from"].as_string().label("sender"),
+            json_type(EmailPreview.message).label("message_type"),
+        )
+    ).all()
+    associated = set(session.scalars(select(EmailSend.preview_id))) | set(
+        session.scalars(select(OutreachRecipient.preview_id))
+    )
+    preserved_unsendable = set()
     mapped = {}
     for preview in previews:
+        if preview.message_type != "object":
+            raise ValueError(f"unmapped preview sender: {preview.id}")
+        # Early standalone previews could freeze a null/missing sender. Retain
+        # them verbatim and unbound: preview_mailbox still refuses any send.
+        # Never exempt a known identity, attempted send, or task association.
+        if (
+            preview.sender is None
+            and preview.mailbox_id is None
+            and preview.id not in associated
+        ):
+            preserved_unsendable.add(preview.id)
+            continue
         try:
-            identity = by_sender[normalized_sender(preview.message.get("from"))]
+            identity = by_sender[normalized_sender(preview.sender)]
         except (ValueError, KeyError):
             raise ValueError(f"unmapped preview sender: {preview.id}") from None
         if preview.mailbox_id is not None and preview.mailbox_id != identity:
@@ -137,12 +181,17 @@ def backfill_mailboxes(session, registry, *, apply: bool = False) -> dict:
             raise ValueError(f"conflicting task identity: {task.id}")
         task_map[task.id] = identity
     result = {
-        "previews": sum(row.mailbox_id is None for row in previews),
+        "previews": sum(
+            row.mailbox_id is None and row.id not in preserved_unsendable
+            for row in previews
+        ),
+        "preserved_unsendable_previews": len(preserved_unsendable),
         "tasks": sum(row.mailbox_id is None for row in tasks),
         "unmapped": 0,
         "before": before,
         "after": before,
         "unchanged": True,
+        "snapshot_verified": apply,
         "applied": apply,
     }
     if apply:
@@ -150,7 +199,12 @@ def backfill_mailboxes(session, registry, *, apply: bool = False) -> dict:
             session.add_all(additions)
             session.flush()
             for preview in previews:
-                preview.mailbox_id = mapped[preview.id]
+                if preview.id in mapped and preview.mailbox_id is None:
+                    session.execute(
+                        update(EmailPreview)
+                        .where(EmailPreview.id == preview.id)
+                        .values(mailbox_id=mapped[preview.id])
+                    )
             for task in tasks:
                 task.mailbox_id = task_map[task.id]
             session.flush()

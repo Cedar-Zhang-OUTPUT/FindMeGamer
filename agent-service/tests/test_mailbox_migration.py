@@ -15,6 +15,145 @@ from test_mailbox_outreach import payload
 from test_migrations import migrate
 
 
+@pytest.mark.parametrize("apply", [False, True])
+def test_large_frozen_previews_use_bounded_memory(sending, apply):
+    import gc
+    import tracemalloc
+    from fmg_agent.email.identity import backfill_mailboxes
+    from fmg_agent.email.models import EmailPreview
+
+    app, _, owner, _, _ = sending
+    with app.state.sessions() as session:
+        for number in range(40):
+            session.add(
+                EmailPreview(
+                    id=f"large-{number}",
+                    token_id=owner.id,
+                    template_id="game-outreach",
+                    template_version="5",
+                    message={
+                        "from": "publisher@example.com",
+                        "html": "x" * (256 * 1024),
+                    },
+                )
+            )
+        session.commit()
+    gc.collect()
+    tracemalloc.start()
+    try:
+        with app.state.sessions() as session:
+            result = backfill_mailboxes(session, app.state.mailboxes, apply=apply)
+            assert result["previews"] == 40 and result["unchanged"]
+            session.commit()
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 8 * 1024 * 1024, f"Frozen body materialization peaked at {peak} bytes"
+
+
+@pytest.mark.parametrize("missing", [None, "absent"])
+def test_orphan_missing_sender_is_preserved_but_never_sendable(sending, missing):
+    from fmg_agent.email.identity import backfill_mailboxes
+    from fmg_agent.email.models import EmailPreview, EmailSend
+    from test_email_sending import preview, send
+
+    app, client, owner, _, _ = sending
+    preview_id = preview(client, owner).json()["data"]["id"]
+    with app.state.sessions() as session:
+        row = session.get(EmailPreview, preview_id)
+        message = dict(row.message)
+        if missing is None:
+            message["from"] = None
+        else:
+            message.pop("from")
+        row.message, row.mailbox_id = message, None
+        session.commit()
+        before = deepcopy(row.message)
+        for apply in (False, True, True):
+            outcome = backfill_mailboxes(session, app.state.mailboxes, apply=apply)
+            assert outcome["preserved_unsendable_previews"] == 1
+            assert outcome["previews"] == 0
+            assert outcome["unchanged"]
+            session.commit()
+            assert row.message == before and row.mailbox_id is None
+    app.state.smtp_transport = lambda *args: pytest.fail("orphan reached transport")
+    response = send(client, owner, preview_id)
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "mailbox_backfill_required"
+    with app.state.sessions() as session:
+        assert session.scalar(select(EmailSend)) is None
+
+
+@pytest.mark.parametrize(
+    "association", ["task", "send", "identity", "unknown_sender", "malformed_message"]
+)
+def test_missing_sender_exemption_never_hides_associations(sending, association):
+    from fmg_agent.email.identity import backfill_mailboxes
+    from fmg_agent.email.models import EmailPreview, EmailSend
+    from test_email_sending import preview
+
+    app, client, owner, _, _ = sending
+    if association == "task":
+        client.post("/v1/outreach/tasks", headers=headers(owner), json=payload())
+    else:
+        preview(client, owner)
+    with app.state.sessions() as session:
+        row = session.scalar(select(EmailPreview))
+        row.message = {
+            **row.message,
+            "from": "unknown@example.com" if association == "unknown_sender" else None,
+        }
+        if association == "malformed_message":
+            row.message = []
+        if association != "identity":
+            row.mailbox_id = None
+        if association == "send":
+            session.add(
+                EmailSend(
+                    token_id=row.token_id,
+                    preview_id=row.id,
+                    idempotency_key="historical",
+                    state="unknown",
+                )
+            )
+        session.commit()
+        with pytest.raises(ValueError, match="unmapped"):
+            backfill_mailboxes(session, app.state.mailboxes, apply=True)
+
+
+def test_disabled_historical_sender_maps_without_enabling_delivery(sending):
+    from fmg_agent.email.identity import backfill_mailboxes, preview_mailbox
+    from fmg_agent.email.models import EmailPreview
+    from fmg_agent.errors import ApiError
+    from fmg_agent.mailboxes import MailboxRegistry, MailboxProfile
+    from test_email_sending import preview
+
+    app, client, owner, _, _ = sending
+    preview(client, owner)
+    registry = MailboxRegistry(
+        app.state.settings,
+        [
+            *app.state.mailboxes.profiles(),
+            MailboxProfile(
+                id="legacy-retired", enabled=False, smtp_from="retired@example.com"
+            ),
+            MailboxProfile(id="second", enabled=False),
+        ],
+        legacy=False,
+    )
+    with app.state.sessions() as session:
+        row = session.scalar(select(EmailPreview))
+        row.message = {**row.message, "from": "retired@example.com"}
+        row.mailbox_id = None
+        session.commit()
+        outcome = backfill_mailboxes(session, registry, apply=True)
+        session.commit()
+        assert outcome["unchanged"] and row.mailbox_id == "legacy-retired"
+        with pytest.raises(ApiError) as failure:
+            preview_mailbox(session, row, registry)
+        assert failure.value.code == "mailbox_disabled"
+
+
 def test_registry_profiles_include_disabled_without_discovery(sending):
     from fmg_agent.mailboxes import MailboxRegistry, MailboxProfile
 
