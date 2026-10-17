@@ -77,6 +77,8 @@ def test_local_release_image_and_restore(tmp_path):
                 "release-test",
                 "--scope",
                 "read",
+                "--scope",
+                "email:send",
             ).stdout
         )
         run(*common, "-d", "--name", api, "-p", "127.0.0.1::8000", image)
@@ -208,9 +210,17 @@ def test_local_release_image_and_restore(tmp_path):
         try:
             for name in owned_containers:
                 try:
-                    subprocess.run(
+                    cleanup = subprocess.run(
                         ["docker", "rm", "-f", name], capture_output=True, timeout=30
                     )
+                    if (
+                        cleanup.returncode
+                        and b"No such container" not in cleanup.stderr
+                    ):
+                        warnings.warn(
+                            f"Could not clean up owned container {name}: "
+                            f"{cleanup.stderr.decode(errors='replace')}"
+                        )
                 except (OSError, subprocess.TimeoutExpired) as exc:
                     # Continue attempting cleanup of all resources we own.
                     warnings.warn(f"Could not clean up owned container {name}: {exc}")
