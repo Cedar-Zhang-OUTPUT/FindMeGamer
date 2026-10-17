@@ -1,6 +1,7 @@
 """Opt-in local image, CLI, migration and backup/restore rehearsal. No upstream calls."""
 
 import json
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
@@ -10,7 +11,9 @@ import urllib.request
 import warnings
 
 import pytest
+import redis
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -26,15 +29,23 @@ def test_local_release_image_and_restore(tmp_path):
     engine = create_engine(url)
     assert engine.url.host == "127.0.0.1"
     assert engine.url.database == "find_me_gamer_agent_test"
+    broker_url = os.environ.get(
+        "FMG_AGENT_TEST_REDIS_URL", "redis://127.0.0.1:55440/14"
+    )
+    broker_options = redis.ConnectionPool.from_url(broker_url).connection_kwargs
+    assert broker_options["host"] == "127.0.0.1"
+    assert broker_options["db"] == 14
     suffix = uuid.uuid4().hex
     schema = "release_test_" + suffix
     api, worker = "fmg-release-api-" + suffix, "fmg-release-worker-" + suffix
     dispatcher = "fmg-release-dispatch-" + suffix
+    mail = "fmg-release-mail-" + suffix
+    monitor = "fmg-release-monitor-" + suffix
     db_container = os.environ.get(
         "FMG_AGENT_TEST_POSTGRES_CONTAINER", "fmg-agent-tests-postgres-1"
     )
     network = os.environ.get("FMG_AGENT_TEST_NETWORK", "fmg-agent-tests_default")
-    owned_containers = [api, worker, dispatcher]
+    owned_containers = [api, worker, dispatcher, mail, monitor]
 
     def run(*args, **kwargs):
         # Name transient containers too, so a timed-out Docker client cannot
@@ -44,7 +55,11 @@ def test_local_release_image_and_restore(tmp_path):
             owned_containers.append(name)
             args = (*args[:2], "--name", name, *args[2:])
         return subprocess.run(
-            args, check=True, capture_output=True, timeout=120, **kwargs
+            args,
+            check=True,
+            capture_output=True,
+            timeout=kwargs.pop("timeout", 120),
+            **kwargs,
         )
 
     env = [
@@ -57,6 +72,15 @@ def test_local_release_image_and_restore(tmp_path):
         "-e",
         "FMG_AGENT_SMTP_FROM=release-test@example.com",
     ]
+    for key, value in {
+        "SMTP_HOST": "smtp.virtual.invalid",
+        "SMTP_USERNAME": "offline-test",
+        "SMTP_PASSWORD": "offline-test-only",
+        "IMAP_HOST": "imap.virtual.invalid",
+        "IMAP_USERNAME": "offline-test",
+        "IMAP_PASSWORD": "offline-test-only",
+    }.items():
+        env.extend(["-e", f"FMG_AGENT_{key}={value}"])
     common = ["docker", "run", "--pull=never", "--network", network, *env]
     try:
         with engine.begin() as conn:
@@ -92,7 +116,7 @@ def test_local_release_image_and_restore(tmp_path):
             "from fmg_agent.mail_runtime import check_readiness,set_runtime; "
             "settings=Settings(); engine,sessions=database(settings); "
             "check_readiness(settings,sessions); "
-            "set_runtime(sessions,dispatch_enabled=True,send_enabled=True); engine.dispose()",
+            "set_runtime(sessions,dispatch_enabled=False,send_enabled=False); engine.dispose()",
         )
         run(
             *common,
@@ -115,6 +139,125 @@ def test_local_release_image_and_restore(tmp_path):
             "python",
             "-m",
             "fmg_agent.dispatch",
+        )
+        run(
+            *common,
+            "-d",
+            "--name",
+            mail,
+            image,
+            "python",
+            "-m",
+            "fmg_agent.worker",
+            "--role",
+            "mail",
+            "--mailbox",
+            "ontologyplay",
+        )
+        run(
+            *common,
+            "-d",
+            "--name",
+            monitor,
+            image,
+            "python",
+            "-m",
+            "fmg_agent.email.monitor",
+        )
+        spec = importlib.util.spec_from_file_location(
+            "release_deployment_tool", ROOT / "deploy/agent-services/mail_runtime.py"
+        )
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        roles = [
+            (api, "api", None, None, None),
+            (worker, "enrichment", None, "fmg_enrichment", 4),
+            (mail, "mail", "ontologyplay", "fmg_mail.ontologyplay", 2),
+            (dispatcher, "dispatch", None, None, None),
+            (monitor, "monitor", "ontologyplay", None, None),
+        ]
+        with (
+            engine.connect() as connection,
+            Session(bind=connection) as session,
+            redis.Redis.from_url(broker_url, socket_timeout=5) as broker,
+        ):
+            session.execute(text(f'SET search_path TO "{schema}"'))
+            with tool.deployment_challenge(session, broker) as challenge:
+                for container, role, mailbox, queue, concurrency in roles:
+                    deadline = time.monotonic() + 45
+                    command = [
+                        "docker",
+                        "exec",
+                        container,
+                        "python",
+                        "-m",
+                        "fmg_agent.role_health",
+                        role,
+                        "--challenge",
+                        json.dumps(challenge),
+                    ]
+                    if mailbox:
+                        command.extend(["--mailbox", mailbox])
+                    while True:
+                        try:
+                            evidence = json.loads(run(*command, timeout=15).stdout)
+                            break
+                        except subprocess.CalledProcessError:
+                            if time.monotonic() >= deadline:
+                                raise
+                            time.sleep(0.25)
+                    assert evidence["role"] == role
+                    assert evidence["target_proof"] == challenge["nonce"]
+                    if role != "api":
+                        assert evidence["schema"] == "0013_mail_runtime"
+                        assert evidence["mailbox"] == mailbox
+                        assert evidence["queue"] == queue
+                        assert evidence["concurrency"] == concurrency
+                        assert evidence["pid"] > 0
+                        assert evidence["process_start"].isdigit()
+                        assert evidence["mode"] == (
+                            "held-local" if role == "monitor" else "local-ready"
+                        )
+                assert session.execute(
+                    text("SELECT dispatch_enabled, send_enabled FROM mail_runtime")
+                ).one() == (False, False)
+            assert broker.get(challenge["redis_key"]) is None
+        # API has no role-ready file: separately prove its container PID is live
+        # and uses Linux /proc start-time evidence, alongside its target proof.
+        api_process = json.loads(
+            run(
+                "docker",
+                "exec",
+                api,
+                "python",
+                "-c",
+                "import json,os; from pathlib import Path; "
+                "from fmg_agent.role_health import process_start; "
+                "assert Path('/proc/1/stat').is_file(); os.kill(1,0); "
+                "print(json.dumps({'pid':1,'process_start':process_start(1)}))",
+            ).stdout
+        )
+        assert api_process["pid"] == 1
+        assert api_process["process_start"].isdigit()
+        # Close the two roles capable of mail I/O before opening either gate.
+        run("docker", "stop", "-t", "10", monitor, mail)
+        for container in (monitor, mail):
+            assert (
+                run(
+                    "docker", "inspect", "--format", "{{.State.ExitCode}}", container
+                ).stdout.strip()
+                == b"0"
+            )
+        run(
+            *common,
+            "--rm",
+            image,
+            "python",
+            "-c",
+            "from fmg_agent.config import Settings; from fmg_agent.db import database; "
+            "from fmg_agent.mail_runtime import set_runtime; "
+            "engine,sessions=database(Settings()); "
+            "set_runtime(sessions,dispatch_enabled=True,send_enabled=True); engine.dispose()",
         )
         port = (
             run("docker", "port", api, "8000/tcp")
