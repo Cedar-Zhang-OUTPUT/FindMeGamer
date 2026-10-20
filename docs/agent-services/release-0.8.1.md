@@ -38,3 +38,21 @@ archives, including checksums, repeated install, authentication preservation,
 Skill version markers and update status. Both Skill validators and whitespace
 checks passed. No production restart or provider operation was needed for
 packaging.
+
+## Published acceptance
+
+- Published `fmg-v0.8.1` at **2026-10-20 08:01:52 UTC**, source
+  `1dff83e276932a2042791fdb47eaa46ef8fc68d1`. Tag matches that commit. Seven assets,
+  non-draft internal prerelease, not the repository-wide macOS-app latest.
+- All uploaded assets were downloaded again. Six payload SHA256 checks passed
+  and the checksum list matched the local candidate. All four installer/bundle
+  tests passed again on those downloaded artifacts. Anonymous public checksum
+  download also matched the same file.
+- Public artifact URLs returned HTTP 200. The current local network's anonymous
+  GitHub API returned HTTP 403 with `x-ratelimit-remaining: 0`, so full online
+  installer acceptance on that route is **not claimed**. Offline installation
+  from the verified downloads passed. No installer code was changed to bypass
+  rate limits. Retry online upgrade after the network's GitHub quota recovers.
+- Existing unrelated backup and Gemini diagnostic working-tree edits were not
+  included in the release. No production restart, email or paid lookup occurred
+  during publication.
