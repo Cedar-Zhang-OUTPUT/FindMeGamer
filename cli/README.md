@@ -82,7 +82,7 @@ fmg email template game-outreach
 fmg email template liminal-outreach
 ```
 
-Template descriptions include a version, required variables, and text/HTML/subject bodies. For the confirmed target LIMINAL: Within, use `liminal-outreach` v7: only four creator-personalization variables are editable; the game description, Demo link and closing block are fixed. For other games, `game-outreach` v5 supplies game facts through variables. Fetch the selected current schema before drafting. Existing frozen previews and retired versions are not silently rewritten. See confirmed sending below for immutable previews.
+Template descriptions include a version, required variables, and text/HTML/subject bodies. For the confirmed target LIMINAL: Within, use `liminal-outreach` v7; for No Rest for Thieves, use `thieves-outreach` v1. Both allow only four creator-personalization variables; game descriptions, links and closing blocks are fixed. For remaining games, `game-outreach` v5 supplies game facts through variables. Fetch the selected current schema before drafting. Existing frozen previews and retired versions are not silently rewritten. See confirmed sending below for immutable previews.
 
 Requires an `email:enrich` token scope. These commands can consume company model/search quota:
 
@@ -102,6 +102,16 @@ Results include multiple `emails` with purpose, public source URL, discovery met
 ## Preview and confirmed sending
 
 Run `fmg email mailboxes` first and explicitly select an enabled mailbox with the user. Check its actual `from`, `display_name`, `ready` and `allowed_templates`. Discovery requires server `meta.mailboxes_version=1`; older servers require an administrator upgrade. See [mailbox API and selection contract](../docs/agent-services/mailboxes-api.md). LIMINAL requires `ontologyplay` with `OntologyPlay@hotmail.com`; generic outreach requires an explicitly permitted mailbox.
+
+No Rest for Thieves uses mailbox `second` (`norestforthieves@ontologyplay.com`)
+and template `thieves-outreach`, version `1`. Read
+`fmg email template thieves-outreach` before preparing a draft. Its only variables
+are `creator_name`, `channel_name`, `reference_work`, and `specific_observation`;
+the observation is one or two complete sentences, not a continuation of
+“I loved how you”. Subject, Steam link, game copy, and Michael/team signature are
+server-owned. Do not substitute `game-outreach` or reuse a LIMINAL draft. This
+catalog addition works with the existing multi-mailbox CLI; no new flag or
+binary update is required.
 
 Requires `email:send`. Company SMTP credentials stay on the server. Create a local `message.json` containing:
 

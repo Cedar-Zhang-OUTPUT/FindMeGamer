@@ -12,16 +12,27 @@ from .urls import public_url
 TEMPLATE_FILES = {
     "game-outreach": "game-outreach.json",
     "liminal-outreach": "liminal-outreach.json",
+    "thieves-outreach": "thieves-outreach.json",
 }
 
 
 def check_mailbox_template(profile, template_id, *, status_code=422):
     """Fixed campaign signatures cannot be reassigned by a registry allowlist."""
-    if template_id not in profile.allowed_templates or (
-        template_id == "liminal-outreach"
-        and (
-            profile.id != "ontologyplay"
-            or profile.smtp_from.casefold() != "ontologyplay@hotmail.com"
+    if (
+        template_id not in profile.allowed_templates
+        or (
+            template_id == "liminal-outreach"
+            and (
+                profile.id != "ontologyplay"
+                or profile.smtp_from.casefold() != "ontologyplay@hotmail.com"
+            )
+        )
+        or (
+            template_id == "thieves-outreach"
+            and (
+                profile.id != "second"
+                or profile.smtp_from.casefold() != "norestforthieves@ontologyplay.com"
+            )
         )
     ):
         raise ApiError(

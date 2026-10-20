@@ -5,11 +5,18 @@ Select by the user-confirmed **outreach target game**, not the creator's referen
 | Target | Server ID | Current bundled version | Editable variables |
 | --- | --- | --- | --- |
 | LIMINAL: Within | `liminal-outreach` | `7` | `creator_name`, `channel_name`, `reference_work`, `specific_observation` only |
+| No Rest for Thieves (熬夜神偷) | `thieves-outreach` | `1` | The same four creator variables only |
 | Other games | `game-outreach` | `5` | Four creator variables plus six target-game variables below |
 
 Fetch `fmg email template SELECTED_ID` before drafting. The server is authoritative; if this bundled copy differs, read the current schema and full text, and do not submit stale inputs. Legacy liminal-outreach versions 1–6 and game-outreach versions 3–4 remain retired for new drafts. Existing frozen previews/tasks are not rewritten or automatically resent. A replacement needs a new preview/task and fresh approval.
 
 Discover sending identities with `fmg email mailboxes` and apply [the explicit mailbox/template contract](outreach.md#mailbox-and-template-selection). LIMINAL is restricted to enabled mailbox `ontologyplay` with actual From `OntologyPlay@hotmail.com`; an allowlist entry alone cannot move its fixed signature to another mailbox. Generic outreach requires `game-outreach` in the selected mailbox's `allowed_templates`. Bind `mailbox_id`, `template_id` and string `template_version` explicitly when creating a draft. Preserve the approved text, logo and LIMINAL banner exactly; selecting an account never grants permission to rewrite fixed copy.
+
+## No Rest for Thieves
+
+Fetch `fmg email template thieves-outreach` and read the complete returned subject/body before drafting. Version 1 requires mailbox `second`, actual From `norestforthieves@ontologyplay.com` (case-insensitive), and `thieves-outreach` in its allowlist. Bind `--mailbox second --template thieves-outreach --template-version 1` on creation, after discovery confirms readiness.
+
+Fill only `creator_name`, `channel_name`, `reference_work`, and `specific_observation`. Observation is one or two complete evidence-based sentences with punctuation, not a clause completing “I loved how you”. All other copy is fixed, including subject `Demo Invitation: No rest for Thieves- A Loot-Splitting Party Game`, Steam URL `https://store.steampowered.com/app/5124600/No_Rest_for_Thieves/`, and signature Michael / No Rest for Thieves Team. This template is plain text without images; do not add the Ontology Play logo or LIMINAL banner. Do not substitute the generic Toki template.
 
 ## LIMINAL: Within — full subject
 
@@ -77,11 +84,11 @@ Game Producer, Ontology Play
 Email: OntologyPlay@hotmail.com
 ```
 
-The server appends the approved Ontology Play signature logo to both templates. LIMINAL v7 additionally embeds the approved LIMINAL: Within banner below that logo, at a maximum display width of 600px with its original aspect ratio. The generic template has only the logo. Images are server-owned and frozen with each draft; Agents do not supply image variables or remote image links. Plain-text fallback is unchanged. Do not add HTML/Markdown or Yes/No buttons.
+The server appends the approved Ontology Play signature logo to LIMINAL and generic templates. LIMINAL v7 additionally embeds the approved LIMINAL: Within banner below that logo, at a maximum display width of 600px with its original aspect ratio. The generic template has only the logo; Thieves has no images. Images are server-owned and frozen with each draft; Agents do not supply image variables or remote image links. Plain-text fallback is unchanged. Do not add HTML/Markdown or Yes/No buttons.
 
 ## Variable contract and tone
 
-The first four variables apply to both templates. The remaining six apply **only to game-outreach**; do not supply them to liminal-outreach.
+The first four variables apply to all three templates. The remaining six apply **only to game-outreach**; do not supply them to liminal-outreach or thieves-outreach.
 
 - `creator_name`: Published preferred/display name, falling back to the creator's actual username/channel name. A legal or personal name is not required. Never invent a name or insert an Unknown diagnostic; retain the name's source/type in the Match Brief.
 - `channel_name`: Actual channel name; preserve the approved fixed PR wording outside variables.
@@ -96,7 +103,7 @@ The first four variables apply to both templates. The remaining six apply **only
 
 Names, channel and reference_work are noun phrases without an added sentence-ending period; game_tagline is a short phrase. specific_observation, availability_statement, game_summary and gameplay_summary are complete sentences/paragraphs with their own punctuation. Do not add greetings, sign-offs or entire emails inside variables. Use English to match the fixed prose.
 
-Use the current user-confirmed Game Profile and task context for the target game; reference_work is the creator's actual covered work, not necessarily the target. Use the LIMINAL-specific template only for that outreach target; other games do not need their own template. In game-outreach, fill shared game variables consistently across the batch, with creator-specific evidence and connection per recipient. Never infer authorization to represent a studio from game identity; flag a known sender/ownership conflict for user clarification rather than inventing affiliation.
+Use the current user-confirmed Game Profile and task context for the target game; reference_work is the creator's actual covered work, not necessarily the target. LIMINAL and No Rest for Thieves each use their dedicated template; remaining games use the generic template. In game-outreach, fill shared game variables consistently across the batch, with creator-specific evidence and connection per recipient. Never infer authorization to represent a studio from game identity; flag a known sender/ownership conflict for user clarification rather than inventing affiliation.
 
 For specific_observation, naturally connect the referenced work to the target game using one meaningful, evidenced link: gameplay/game loop, narrative structure, style, themes or audience fit. Use one or two complete sentences with no fixed opening. Do not mechanically begin “I liked how you”, pad with generic praise or assert likely interest as fact. Distinguish supported facts from inferences; do not invent full viewing, gameplay experiences or reactions. Keep source evidence in local artifacts. If insufficient, ask or leave the draft incomplete.
 

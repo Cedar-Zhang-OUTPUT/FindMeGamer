@@ -1,0 +1,14 @@
+# Apply after base compose, existing worker-diagnostics, and second-mailbox overrides.
+# Enrichment intentionally retains its separately deployed diagnostics image.
+services:
+  api:
+    image: fmg-agent:thieves-template-20261020
+  dispatch:
+    image: fmg-agent:thieves-template-20261020
+  monitor:
+    image: fmg-agent:thieves-template-20261020
+  mail-worker:
+    image: fmg-agent:thieves-template-20261020
+  mail-worker-second:
+    image: fmg-agent:thieves-template-20261020
+    command: ["python", "-m", "fmg_agent.worker", "--role", "mail", "--mailbox", "second"]
