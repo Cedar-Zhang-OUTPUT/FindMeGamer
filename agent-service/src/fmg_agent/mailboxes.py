@@ -24,6 +24,8 @@ MAIL_FIELDS = (
     "smtp_auth",
     "smtp_from",
     "smtp_allowed_recipients",
+    "smtp_save_sent_copy",
+    "imap_sent_folder",
     "imap_host",
     "imap_port",
     "imap_username",

@@ -2,6 +2,7 @@
 
 import smtplib
 import ssl
+from email import policy
 
 from .sending import email_address, smtp_ready
 from .microsoft import MailOAuthError, access_token, authenticate_smtp
@@ -25,6 +26,11 @@ def deliver(config, message, message_id):
         sender = email_address(message["from"])
         recipient = email_address(message["to"])
         mail = build_message(message, message_id)
+        # Freeze MIME boundaries before SMTP so the stored copy is byte-for-byte
+        # identical to what was submitted (excluding SMTP dot stuffing).
+        sent_copy = (
+            mail.as_bytes(policy=policy.SMTP) if config.smtp_save_sent_copy else None
+        )
         if config.smtp_encryption == "tls":
             connection = smtplib.SMTP_SSL(
                 config.smtp_host,
@@ -48,7 +54,12 @@ def deliver(config, message, message_id):
         refusals = connection.send_message(mail, from_addr=sender, to_addrs=[recipient])
         if refusals:
             return {"state": "failed", "code": "smtp_recipient_rejected"}
-        return {"state": "sent", "code": None}
+        result = {"state": "sent", "code": None}
+        if sent_copy is not None:
+            # Internal only. SendStore never persists these bytes in diagnostics
+            # or returns them to the API caller.
+            result["_sent_copy_mime"] = sent_copy
+        return result
     except MailOAuthError as exc:
         return {"state": "failed", "code": exc.code}
     except smtplib.SMTPAuthenticationError:

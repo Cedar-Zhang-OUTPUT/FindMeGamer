@@ -1,0 +1,14 @@
+# Apply after thieves-footer overlay. Both derivatives retain their own base.
+services:
+  api:
+    image: fmg-agent:sent-copy-20261020
+  dispatch:
+    image: fmg-agent:sent-copy-20261020
+  monitor:
+    image: fmg-agent:sent-copy-20261020
+  mail-worker:
+    image: fmg-agent:sent-copy-20261020
+  mail-worker-second:
+    image: fmg-agent:sent-copy-20261020
+  worker:
+    image: fmg-agent:sent-copy-enrichment-20261020

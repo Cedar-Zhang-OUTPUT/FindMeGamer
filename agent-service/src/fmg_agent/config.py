@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     smtp_auth: Literal["password", "microsoft_oauth"] = "password"
     smtp_from: str = ""
     smtp_allowed_recipients: list[str] = Field(default_factory=list)
+    smtp_save_sent_copy: bool = False
+    imap_sent_folder: str = Field(
+        default="Sent", min_length=1, max_length=200, pattern=r"^[\x20-\x7e]+$"
+    )
     imap_host: str = ""
     imap_port: int = Field(default=993, ge=1, le=65535)
     imap_username: str = Field(default="", repr=False)

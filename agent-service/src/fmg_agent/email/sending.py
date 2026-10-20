@@ -1,6 +1,7 @@
 """Immutable previews and one transport attempt per preview; no automatic resend."""
 
 from datetime import timedelta, timezone
+from email.utils import format_datetime
 from uuid import uuid4
 
 from sqlalchemy import select, update
@@ -429,12 +430,14 @@ class SendStore:
                     retryable=True,
                     retry_after_seconds=retry_after,
                 )
+            sent_at = utcnow()
             row = EmailSend(
                 id=send_id,
                 token_id=token_id,
                 preview_id=preview_id,
                 idempotency_key=key,
                 state="sending",
+                created_at=sent_at,
             )
             session.add(row)
             if retry is not None:
@@ -450,11 +453,22 @@ class SendStore:
         # Durable reservation precedes the external side effect. No auto retry.
         try:
             runtime_check()
-            outcome = transport(config, preview["message"], send_id)
+            outbound = preview["message"]
+            if config.email_transport == "smtp" and config.smtp_save_sent_copy:
+                outbound = dict(outbound, _smtp_date=format_datetime(sent_at))
+            outcome = transport(config, outbound, send_id)
             if outcome.get("state") not in {"sent", "failed", "unknown"}:
                 raise ValueError()
         except Exception:
             outcome = {"state": "unknown", "code": "smtp_execution_uncertain"}
+        from .sent_copy import enabled, archive_sent_copy
+
+        archive = outcome["state"] == "sent" and enabled(config)
+        if archive:
+            outcome["diagnostics"] = {
+                **(outcome.get("diagnostics") or {}),
+                "sent_copy": {"state": "pending", "code": None},
+            }
         with self.sessions() as session:
             # Match reservation/inbox lock order: sender, then send/retry rows.
             # Taking this after UPDATE EmailSend can deadlock a concurrent replay.
@@ -482,4 +496,18 @@ class SendStore:
 
             finish(session, preview_id, outcome, utcnow())
             session.commit()
+        # Persist SMTP acceptance BEFORE IMAP. Archive errors must never turn
+        # an accepted message into failed/unknown or make it eligible to resend.
+        if archive:
+            try:
+                archive_sent_copy(
+                    self.sessions, send_id, config, raw=outcome.get("_sent_copy_mime")
+                )
+            except Exception:
+                # A failed DB write leaves durable "pending", not a send failure.
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Sent copy incomplete for send %s; SMTP receipt preserved", send_id
+                )
         return self.get_receipt(send_id, token_id)
