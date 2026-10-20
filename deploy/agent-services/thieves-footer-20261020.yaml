@@ -1,0 +1,13 @@
+# Last override after the existing thieves-template overlay.
+# Deliberately excludes enrichment and preserves all mailbox configurations.
+services:
+  api:
+    image: fmg-agent:thieves-footer-20261020
+  dispatch:
+    image: fmg-agent:thieves-footer-20261020
+  monitor:
+    image: fmg-agent:thieves-footer-20261020
+  mail-worker:
+    image: fmg-agent:thieves-footer-20261020
+  mail-worker-second:
+    image: fmg-agent:thieves-footer-20261020

@@ -22,6 +22,16 @@ def build_message(message, message_id):
     mail.set_content(message["text"])
     if message.get("format") == "signature_image":
         mail.add_alternative(message["html"], subtype="html")
+        if message.get("footer_jpeg_base64"):
+            mail.get_payload()[-1].add_related(
+                b64decode(message["footer_jpeg_base64"], validate=True),
+                maintype="image",
+                subtype="jpeg",
+                cid="<thieves-game-banner>",
+                disposition="inline",
+                filename="thieves-banner.jpg",
+            )
+            return mail
         mail.get_payload()[-1].add_related(
             b64decode(message["signature_png_base64"], validate=True),
             maintype="image",

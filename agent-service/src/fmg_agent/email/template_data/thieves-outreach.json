@@ -1,6 +1,6 @@
 {
   "id": "thieves-outreach",
-  "version": "1",
+  "version": "2",
   "name": "No Rest for Thieves Outreach",
   "variables": {
     "creator_name": {
@@ -26,5 +26,6 @@
   },
   "subject": "Demo Invitation: No rest for Thieves- A Loot-Splitting Party Game",
   "text": "Hi ${creator_name},\n\nI'm Michael from the team behind No Rest for Thieves, a four-player party game.\n\nI've been following ${channel_name}, and I especially enjoyed your video on ${reference_work}. ${specific_observation} I think our game could be a fun fit for your channel!\n\nI'd love to invite you to try our demo, which is now available on Steam:\n\nSteam: https://store.steampowered.com/app/5124600/No_Rest_for_Thieves/\n\nAbout the Game\n\nNo Rest for Thieves is a first-person party game for four players, inspired by the multiplayer trickery of Liar's Bar and the action mechanics of Party Animal.\n\nAfter a successful heist, split the loot—or steal your friends' shares! But beware: fall asleep, and you'll lose your money!\n\nUse crazy gadgets to stay awake and put your rivals to sleep. Whoever ends up with the most valuable loot wins!\n\nA Note from the Developers\n\nThis is an early demo focused on our core gameplay mechanics, we are currently looking for honest feedback, not sponsored coverage or a guaranteed video. We'd love to hear what you think!\n\nIf you decide to create any content, we'd love to know your planned release date and check out your video or stream once it's live.\n\nThanks for your time, and hope you enjoy the demo!\n\nBest regards,\n\nMichael\nNo Rest for Thieves Team",
-  "format": "plain_text"
+  "format": "signature_image",
+  "footer_image": "thieves-banner.jpg"
 }

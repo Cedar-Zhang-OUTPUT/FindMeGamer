@@ -99,6 +99,22 @@ def render_template(definition, variables):
             "Subject variables must not contain line breaks.",
         )
     result["format"] = "plain_text"
+    if definition.get("footer_image") == "thieves-banner.jpg":
+        # Standalone campaign footer, frozen into the draft like the legacy images.
+        result["format"] = "signature_image"
+        result["html"] = (
+            '<!doctype html><html><body><div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">'
+            + escape(result["text"]).replace("\n", "<br>\n")
+            + '</div><br><img src="cid:thieves-game-banner" alt="No Rest for Thieves" width="600" '
+            'style="display:block;width:600px;max-width:100%;height:auto;margin-top:16px">'
+            "</body></html>"
+        )
+        result["footer_jpeg_base64"] = b64encode(
+            files("fmg_agent.email")
+            .joinpath("template_data", "thieves-banner.jpg")
+            .read_bytes()
+        ).decode("ascii")
+        return result
     if definition.get("format") == "signature_image":
         # Server-owned asset is snapshotted with the draft, never remotely fetched.
         result["format"] = "signature_image"

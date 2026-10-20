@@ -196,7 +196,12 @@ def view(sessions, task_id, token_id, *, summary=False):
                         else {
                             key: value
                             for key, value in p.message.items()
-                            if key not in {"signature_png_base64", "footer_png_base64"}
+                            if key
+                            not in {
+                                "signature_png_base64",
+                                "footer_png_base64",
+                                "footer_jpeg_base64",
+                            }
                         }
                     ),
                     "state": current.state if current else "pending",
