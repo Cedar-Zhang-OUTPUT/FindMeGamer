@@ -463,9 +463,32 @@ def get_task(
     data = view(request.app.state.sessions, task_id, principal.id, summary=summary)
     from .email.inbox import monitoring_status
 
-    data["monitoring"] = monitoring_status(
-        request.app.state.sessions, request.app.state.settings
-    )
+    # A task keeps its original mailbox identity across sender migrations.
+    # Never substitute the process-global (legacy) sender's IMAP cursor.
+    mailbox_id = data["mailbox_id"]
+    if mailbox_id is None:
+        data["monitoring"] = {
+            "state": "unavailable",
+            "last_success": None,
+            "error": "mailbox_backfill_required",
+        }
+    else:
+        registry = request.app.state.mailboxes.current()
+        try:
+            settings = registry.settings_for(mailbox_id)
+        except ApiError as exc:
+            if exc.code not in {"mailbox_disabled", "mailbox_not_found"}:
+                raise
+            # Historical tasks remain readable after their mailbox is retired.
+            data["monitoring"] = {
+                "state": (
+                    "disabled" if exc.code == "mailbox_disabled" else "unavailable"
+                ),
+                "last_success": None,
+                "error": None if exc.code == "mailbox_disabled" else exc.code,
+            }
+        else:
+            data["monitoring"] = monitoring_status(request.app.state.sessions, settings)
     return result(request, data)
 
 
