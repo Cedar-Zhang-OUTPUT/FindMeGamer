@@ -80,6 +80,39 @@ recreates the second mail worker or enrichment worker. A brief API/status-query
 interruption is expected; No Rest's worker stays running. The CLI's bounded read
 recovery instructions remain applicable.
 
+## Production acceptance
+
+Cutover completed 2026-10-21 around 06:10 UTC using image
+`fmg-agent:liminal-private-20261021` (`2a38bd02595b`). The new image inherits the
+0.8.2 IMAP fix and replaces only the template catalog and new template JSON.
+
+The first apply paused after API shutdown because its clean SIGTERM exit was 143,
+not 0. Logs confirmed `Application shutdown complete`; the registry was still
+original and all other containers were unchanged. An independently reviewed,
+explicit continuation verified those exact baseline identities, exit state,
+no OOM and shutdown log before proceeding. There was no forced kill or automatic
+rollback. API was unavailable approximately 06:07:12–06:08:36 UTC; No Rest's worker
+remained continuously running. The remaining roles stopped with exit 0.
+
+Final verification confirmed initialized API/dispatcher/LIMINAL worker and both
+active monitors, absence of the retired monitor, unchanged second/enrichment
+container IDs/start times/images, unchanged second/legacy configurations, unchanged
+global gates, and historical preview fingerprint `4feb726dc4d657a05151ae587360a625`.
+No new send rows appeared; Hotmail retained 5,338 accepted, 82 failed and 2 unknown
+historical sends. No unknown attempt was replayed or reclassified.
+
+At 06:10:25 UTC, LIMINAL INBOX/Spam and No Rest INBOX/Spam had successful cursor
+updates and null errors. Hotmail remained disabled, UID 1063 and last success
+06:08:07 UTC unchanged across post-cutover observations. LIMINAL Sent archiving
+is enabled and the folder authenticated successfully, but no new real message was
+sent to exercise archiving or recipient delivery in this change.
+
+Source release commit: `b54b36d022a0b4c27fc832a7bca05e3e530bff15`. All seven
+uploaded assets were downloaded again; the checksum-list comparison and all four
+installer/bundle tests passed on downloaded artifacts. Unrelated Gemini/backup
+working-tree changes were excluded. Isolated local PostgreSQL/Redis test services
+were shut down after testing; unrelated services were not touched.
+
 Upgrade clients using `fmg upgrade --latest --skills`, then verify `fmg version`
 and `fmg auth check` and reload both installed Skills. Old drafts are history, not
 permission to send again from the new account.
