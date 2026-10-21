@@ -312,7 +312,10 @@ def read_reply(client, uid, header):
             for index in range(1, 65):
                 childpath = f"{path}.{index}" if path else str(index)
                 childheaders = fetch_part(client, uid, childpath + ".MIME", 16384)
-                if childheaders is None:
+                # PrivateEmail returns an empty literal for an absent section;
+                # other providers return NIL. Neither is another MIME child.
+                # Keep empty *body* literals valid in fetch_part.
+                if not childheaders:
                     break
                 child = read_part(childheaders, childpath, depth + 1)
                 if child is not None:

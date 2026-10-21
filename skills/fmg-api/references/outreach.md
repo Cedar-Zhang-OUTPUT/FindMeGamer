@@ -60,6 +60,8 @@ Create stores frozen template, rendered drafts, recipient addresses and revision
 
 ## Preview and monitor
 
+For a disconnected status read, apply [network recovery](usage.md#network-recovery): retry the same summary after 2, 5 and 10 seconds (3 retries maximum). Once recovered, use the current safety/monitor state and continue only within the original approval. A recovered read does not clear an explicit pause, a sender hold or an unhealthy monitor. Exhausted read retries pause advancement; they never authorize another send/start or task recreation.
+
 Use the bundled, read-only dashboard instead of generating a webpage:
 
 ```sh
@@ -76,7 +78,7 @@ Have the user review recipients and drafts, then explicitly approve the exact ta
 fmg outreach task start TASK_ID --revision REVIEWED_REVISION --confirm
 ```
 
-The worker sends independently of Codex. Repeating start is safe for the same revision; do not recreate a batch after a timeout. Query its ID with `--summary`. `sent` means the mail provider accepted the request (SMTP or Microsoft Graph), not confirmed delivery; `failed` means explicit failure, `unknown` means delivery may have occurred: never automatically resend unknown rows. A separately approved replacement for known failed rows must exclude successful/uncertain ones. Unconfigured mail transport blocks start, and a sender change requires newly generated/reviewed drafts.
+The worker sends independently of Codex. Start is idempotent for the same revision, but that technical guarantee is not authorization to automatically replay a write. After a timeout, query its ID with `--summary` under [network recovery](usage.md#network-recovery); do not recreate the batch. `sent` means the mail provider accepted the request (SMTP or Microsoft Graph), not confirmed delivery; `failed` means explicit failure, `unknown` means delivery may have occurred: never automatically resend unknown rows. A separately approved replacement for known failed rows must exclude successful/uncertain ones. Unconfigured mail transport blocks start, and a sender change requires newly generated/reviewed drafts.
 
 ## Actual email replies
 

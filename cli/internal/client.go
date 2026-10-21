@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -21,6 +22,7 @@ type APIError struct {
 	Code       string `json:"code"`
 	Message    string `json:"message"`
 	Retryable  bool   `json:"retryable"`
+	Recovery   string `json:"recovery,omitempty"`
 	RetryAfter *int   `json:"retry_after_seconds,omitempty"`
 	Exit       int    `json:"-"`
 	HTTPStatus int    `json:"-"`
@@ -42,8 +44,27 @@ func isRequestTimeout(err error) bool {
 	return errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &networkError) && networkError.Timeout())
 }
 
-func timeoutError() *APIError {
-	return &APIError{Code: "request_timeout", Message: "Service request timed out. Query the existing task/receipt before retrying a write; do not resend uncertain mail.", Retryable: true, Exit: 5}
+func transportError(code, message, method string) *APIError {
+	recovery := "reconcile_write"
+	hint := " Query the existing task/receipt before retrying a write; do not resend uncertain mail."
+	if method == http.MethodGet || method == http.MethodHead {
+		recovery = "retry_read"
+		hint = " Retry this read with bounded backoff within the authorized budget; do not resubmit or restart the underlying work."
+	}
+	return &APIError{Code: code, Message: message + hint, Retryable: true, Recovery: recovery, Exit: 5}
+}
+
+func httpErrorExit(status int) int {
+	switch status {
+	case 400, 404, 422:
+		return 2
+	case 401, 403:
+		return 3
+	case 402, 429:
+		return 4
+	default:
+		return 5
+	}
 }
 
 func (c *Client) request(ctx context.Context, method, path string, body any) (Response, error) {
@@ -81,9 +102,9 @@ func (c *Client) requestWithKey(ctx context.Context, method, path string, body a
 			return result, &APIError{Code: "cancelled", Message: "Cancelled; previously emitted pages are retained.", Exit: 130}
 		}
 		if isRequestTimeout(err) {
-			return result, timeoutError()
+			return result, transportError("request_timeout", "Service request timed out.", method)
 		}
-		return result, &APIError{Code: "connection_failed", Message: "Could not reach the service; check address, connection and proxy.", Retryable: true, Exit: 5}
+		return result, transportError("connection_failed", "Could not reach the service; check address, connection and proxy.", method)
 	}
 	defer response.Body.Close()
 	data, err = io.ReadAll(io.LimitReader(response.Body, 32*1024*1024+1))
@@ -91,10 +112,15 @@ func (c *Client) requestWithKey(ctx context.Context, method, path string, body a
 		if errors.Is(ctx.Err(), context.Canceled) {
 			return result, &APIError{Code: "cancelled", Message: "Cancelled; previously emitted pages are retained.", Exit: 130}
 		}
-		if isRequestTimeout(err) {
-			return result, timeoutError()
+		// Headers already establish rejection even when its JSON body is lost.
+		// Do not turn known quota/auth/provider failures into transport retries.
+		if response.StatusCode >= 300 {
+			return result, &APIError{Code: "http_error", Message: fmt.Sprintf("Service returned HTTP %d; its error response was interrupted. Follow the service/auth/quota recovery policy, not the connection retry loop.", response.StatusCode), HTTPStatus: response.StatusCode, Exit: httpErrorExit(response.StatusCode)}
 		}
-		return result, &APIError{Code: "response_incomplete", Message: "Service response was interrupted. Query the existing task/receipt before retrying a write; do not resend uncertain mail.", Retryable: true, Exit: 5}
+		if isRequestTimeout(err) {
+			return result, transportError("request_timeout", "Service request timed out.", method)
+		}
+		return result, transportError("response_incomplete", "Service response was interrupted.", method)
 	}
 	if len(data) > 32*1024*1024 {
 		return result, &APIError{Code: "response_too_large", Message: "Service response exceeds 32 MiB. Use a summary or bounded query.", Exit: 5}
@@ -113,15 +139,7 @@ func (c *Client) requestWithKey(ctx context.Context, method, path string, body a
 			e.Message = "Service rejected the request."
 		}
 		e.Message = strings.ReplaceAll(e.Message, c.config.Token, "[REDACTED]")
-		e.Exit = 5
-		switch response.StatusCode {
-		case 400, 404, 422:
-			e.Exit = 2
-		case 401, 403:
-			e.Exit = 3
-		case 402, 429:
-			e.Exit = 4
-		}
+		e.Exit = httpErrorExit(response.StatusCode)
 		return result, &e
 	}
 	if json.Unmarshal(data, &result) != nil || len(result.Data) == 0 {

@@ -1,6 +1,7 @@
 from email.message import EmailMessage
 from email import policy
 from email.parser import BytesParser
+import pytest
 from test_email_sending import sending, headers
 from test_email_templates import variables
 from test_smtp_delivery import smtp_server, configuration
@@ -274,7 +275,8 @@ def test_sync_cursor_read_only_and_recovery(sending):
         assert session.get(InboxCursor, mailbox_key(cfg)).uidvalidity == "2"
 
 
-def test_mime_fetch_excludes_attachment_payload_and_html_is_text():
+@pytest.mark.parametrize("missing", [None, b""])
+def test_mime_fetch_excludes_attachment_payload_and_html_is_text(missing):
     from fmg_agent.email.inbox import read_reply
 
     headers = b'From: a@example.com\r\nContent-Type: multipart/mixed; boundary="x"\r\n'
@@ -290,7 +292,9 @@ def test_mime_fetch_excludes_attachment_payload_and_html_is_text():
             section = query.split("[")[1].split("]")[0]
             calls.append(section)
             return "OK", (
-                [(b"part", sections[section])] if section in sections else [b"NIL"]
+                [(b"part", sections[section])]
+                if section in sections
+                else [(b"part", missing)] if missing is not None else [b"NIL"]
             )
 
     message = BytesParser(policy=policy.default).parsebytes(
@@ -298,6 +302,42 @@ def test_mime_fetch_excludes_attachment_payload_and_html_is_text():
     )
     assert message.get_body(("plain",)).get_content() == "Hello from creator"
     assert "2" not in calls and "TEXT" not in calls
+    assert calls == ["1.MIME", "1", "2.MIME", "3.MIME"]
+
+
+def test_nested_multipart_with_empty_missing_sections():
+    from fmg_agent.email.inbox import read_reply
+
+    sections = {
+        "1.MIME": b'Content-Type: multipart/alternative; boundary="inner"\r\n',
+        "1.1.MIME": b"Content-Type: text/plain\r\n",
+        "1.1": b"",
+        "1.2.MIME": b"Content-Type: text/html\r\n",
+        "1.2": b"<p>Hello</p>",
+    }
+    calls = []
+
+    class Mailbox:
+        def uid(self, command, uid, query):
+            section = query.split("[")[1].split("]")[0]
+            calls.append(section)
+            return "OK", [(b"part", sections.get(section, b"")), b")"]
+
+    raw = read_reply(
+        Mailbox(), 16, b'Content-Type: multipart/mixed; boundary="outer"\r\n'
+    )
+    message = BytesParser(policy=policy.default).parsebytes(raw)
+    assert message.get_body(("html",)).get_content() == "<p>Hello</p>"
+    assert message.get_body(("plain",)).get_content() == ""
+    assert calls == [
+        "1.MIME",
+        "1.1.MIME",
+        "1.1",
+        "1.2.MIME",
+        "1.2",
+        "1.3.MIME",
+        "2.MIME",
+    ]
 
 
 def test_bounce_is_not_human_reply(sending):
