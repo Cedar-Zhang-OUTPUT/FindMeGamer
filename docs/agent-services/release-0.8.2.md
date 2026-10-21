@@ -79,3 +79,22 @@ The PostgreSQL 17/Redis 7 container-backed run completed with 592 passing tests,
 sampler queried a container PostgreSQL PID using host `ps`. This is the documented
 mixed-namespace limitation in `multi-mailbox-docker-acceptance-20261017.md`, not a
 code assertion failure. The isolated native rerun of that one case follows below.
+
+The native resource/slow-enrichment case passed in 315.92 seconds on dedicated
+loopback PostgreSQL 17 and Redis services, resolving that environment-only failure.
+Combined coverage: 593 passed, 1 optional image rehearsal skipped. The existing
+Starlette/AnyIO deprecation warning remains. Temporary test services were shut down;
+the unrelated Supabase service and old FMG services were not touched.
+
+## Publication acceptance
+
+Source commit: `5d1e588e8f393f19de56241a9ca0b295d1433366` on `cli`. Unrelated
+working-tree Gemini and backup changes were excluded. All seven uploaded assets
+were downloaded again; six payload SHA-256 checks and the checksum-list comparison
+passed. All four installer/bundle tests passed again on the downloaded archives.
+Packaged Skill contents matched all 23 current source files. Published as the
+`fmg-v0.8.2` CLI/Skills prerelease, without replacing the desktop-app latest release.
+
+Clients should run `fmg upgrade --latest --skills`, verify `fmg version` and
+`fmg auth check`, then re-read both installed Skills and `references/usage.md`.
+The CLI reports recovery guidance; the Agent performs bounded read retries.
