@@ -4,17 +4,19 @@ These are agent-service endpoints, not upstream platform operations; they do not
 
 ## Discover
 
+As of 0.8.3, new LIMINAL drafts use `liminal` / `liminal-private-outreach` version `1`. The historical `ontologyplay` Hotmail identity is disabled for sending and monitoring; its old `liminal-outreach` template, immutable drafts, receipts and holds remain unchanged. No Rest stays `second` / `thieves-outreach`. Never transfer old approval or resend sent, unknown or in-flight attempts during migration.
+
 `GET /v1/email/mailboxes` / `fmg email mailboxes`:
 
 ```json
 {
   "data": [{
-    "id": "ontologyplay",
-    "from": "OntologyPlay@hotmail.com",
+    "id": "liminal",
+    "from": "liminal_within@ontologyplay.com",
     "display_name": "Ontology Play",
     "enabled": true,
     "ready": true,
-    "allowed_templates": ["liminal-outreach", "game-outreach"],
+    "allowed_templates": ["liminal-private-outreach"],
     "send_interval_seconds": 5
   }],
   "meta": {"request_id": "REQUEST_ID", "mailboxes_version": 1}
@@ -23,7 +25,7 @@ These are agent-service endpoints, not upstream platform operations; they do not
 
 `data` is an array, including disabled profiles. `id`, `from`, `display_name` are strings, `enabled`/`ready` booleans, `allowed_templates` an array of template IDs, and the send interval a number. `ready` reflects configured transport readiness, not a promise of provider acceptance or absence of a sender hold. A missing endpoint or unsupported/missing `mailboxes_version` makes the new CLI request an administrator upgrade; it never assumes capability from a client upgrade. Authentication/permission errors remain authentication/permission failures.
 
-The user selects an enabled identity explicitly before creation. An allowlist entry is necessary but not sufficient for LIMINAL: `liminal-outreach` requires mailbox ID `ontologyplay` and actual From `OntologyPlay@hotmail.com` (case-insensitive). `game-outreach` requires explicit permission in the chosen mailbox's list. Inspect `GET /v1/email/templates/{template_id}` (`fmg email template ID`) for the current string version and complete variable schema. Fixed text/images are server-owned.
+The user selects an enabled identity explicitly before creation. An allowlist entry is necessary but not sufficient for LIMINAL: `liminal-private-outreach` requires mailbox ID `liminal` and actual From `liminal_within@ontologyplay.com` (case-insensitive). `game-outreach` requires explicit permission in the chosen mailbox's list. Inspect `GET /v1/email/templates/{template_id}` (`fmg email template ID`) for the current string version and complete variable schema. Fixed text/images are server-owned.
 
 ## Create an immutable task or preview
 
@@ -32,9 +34,9 @@ The user selects an enabled identity explicitly before creation. An allowlist en
 ```json
 {
   "name": "Reviewed campaign",
-  "mailbox_id": "ontologyplay",
-  "template_id": "liminal-outreach",
-  "template_version": "7",
+  "mailbox_id": "liminal",
+  "template_id": "liminal-private-outreach",
+  "template_version": "1",
   "recipients": [{
     "creator_id": "youtube:ACTUAL_ID",
     "to": "creator@example.com",
@@ -55,8 +57,8 @@ One to 1,000 recipients, one plain address each; same-task duplicate addresses a
 New CLI draft creation requires all three identity fields explicitly as nonempty strings, supplied in JSON or flags:
 
 ```sh
-fmg outreach task create --input batch.json --idempotency-key STABLE_KEY --mailbox ontologyplay --template liminal-outreach --template-version 7
-fmg email preview --input message.json --mailbox ontologyplay --template liminal-outreach --template-version 7
+fmg outreach task create --input batch.json --idempotency-key STABLE_KEY --mailbox liminal --template liminal-private-outreach --template-version 1
+fmg email preview --input message.json --mailbox liminal --template liminal-private-outreach --template-version 1
 ```
 
 Flags fill absent fields; identical JSON values are allowed, differing values conflict before POST. Missing, null, empty or non-string fields fail locally. Older API clients may omit mailbox only under the server's narrow legacy compatibility path; this is not the new client contract. Disabled/unknown mailbox and prohibited template combinations fail server validation; the client never falls back to another account.

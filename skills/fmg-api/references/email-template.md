@@ -4,19 +4,19 @@ Select by the user-confirmed **outreach target game**, not the creator's referen
 
 | Target | Server ID | Current bundled version | Editable variables |
 | --- | --- | --- | --- |
-| LIMINAL: Within | `liminal-outreach` | `7` | `creator_name`, `channel_name`, `reference_work`, `specific_observation` only |
-| No Rest for Thieves (熬夜神偷) | `thieves-outreach` | `1` | The same four creator variables only |
+| LIMINAL: Within | `liminal-private-outreach` | `1` | `creator_name`, `channel_name`, `reference_work`, `specific_observation` only |
+| No Rest for Thieves (熬夜神偷) | `thieves-outreach` | `2` | The same four creator variables only |
 | Other games | `game-outreach` | `5` | Four creator variables plus six target-game variables below |
 
-Fetch `fmg email template SELECTED_ID` before drafting. The server is authoritative; if this bundled copy differs, read the current schema and full text, and do not submit stale inputs. Legacy liminal-outreach versions 1–6 and game-outreach versions 3–4 remain retired for new drafts. Existing frozen previews/tasks are not rewritten or automatically resent. A replacement needs a new preview/task and fresh approval.
+Fetch `fmg email template SELECTED_ID` before drafting. The server is authoritative; if this bundled copy differs, read the current schema and full text, and do not submit stale inputs. The old `liminal-outreach` v7 remains historical; new LIMINAL drafts use `liminal-private-outreach` v1. Generic versions 3–4 remain retired. Existing frozen previews/tasks are not rewritten or automatically resent. A replacement needs a new preview/task and fresh approval.
 
-Discover sending identities with `fmg email mailboxes` and apply [the explicit mailbox/template contract](outreach.md#mailbox-and-template-selection). LIMINAL is restricted to enabled mailbox `ontologyplay` with actual From `OntologyPlay@hotmail.com`; an allowlist entry alone cannot move its fixed signature to another mailbox. Generic outreach requires `game-outreach` in the selected mailbox's `allowed_templates`. Bind `mailbox_id`, `template_id` and string `template_version` explicitly when creating a draft. Preserve the approved text, logo and LIMINAL banner exactly; selecting an account never grants permission to rewrite fixed copy.
+Discover sending identities with `fmg email mailboxes` and apply [the explicit mailbox/template contract](outreach.md#mailbox-and-template-selection). LIMINAL is restricted to enabled mailbox `liminal` with actual From `liminal_within@ontologyplay.com`; an allowlist entry alone cannot move its fixed signature to another mailbox. Generic outreach requires `game-outreach` in the selected mailbox's `allowed_templates`. Bind `mailbox_id`, `template_id` and string `template_version` explicitly when creating a draft. Preserve the approved text, logo and LIMINAL banner exactly; selecting an account never grants permission to rewrite fixed copy.
 
 ## No Rest for Thieves
 
-Fetch `fmg email template thieves-outreach` and read the complete returned subject/body before drafting. Version 1 requires mailbox `second`, actual From `norestforthieves@ontologyplay.com` (case-insensitive), and `thieves-outreach` in its allowlist. Bind `--mailbox second --template thieves-outreach --template-version 1` on creation, after discovery confirms readiness.
+Fetch `fmg email template thieves-outreach` and read the complete returned subject/body before drafting. Version 2 requires mailbox `second`, actual From `norestforthieves@ontologyplay.com` (case-insensitive), and `thieves-outreach` in its allowlist. Bind `--mailbox second --template thieves-outreach --template-version 2` on creation, after discovery confirms readiness.
 
-Fill only `creator_name`, `channel_name`, `reference_work`, and `specific_observation`. Observation is one or two complete evidence-based sentences with punctuation, not a clause completing “I loved how you”. All other copy is fixed, including subject `Demo Invitation: No rest for Thieves- A Loot-Splitting Party Game`, Steam URL `https://store.steampowered.com/app/5124600/No_Rest_for_Thieves/`, and signature Michael / No Rest for Thieves Team. This template is plain text without images; do not add the Ontology Play logo or LIMINAL banner. Do not substitute the generic Toki template.
+Fill only `creator_name`, `channel_name`, `reference_work`, and `specific_observation`. Observation is one or two complete evidence-based sentences with punctuation, not a clause completing “I loved how you”. All other copy is fixed, including subject `Demo Invitation: No rest for Thieves- A Loot-Splitting Party Game`, Steam URL `https://store.steampowered.com/app/5124600/No_Rest_for_Thieves/`, and signature Michael / No Rest for Thieves Team. This template includes the server-owned No Rest for Thieves footer image; do not add the Ontology Play logo or LIMINAL banner. Do not substitute the generic Toki template.
 
 ## LIMINAL: Within — full subject
 
@@ -47,7 +47,7 @@ Kind regards,
 
 Toki Yuan
 Game Producer, Ontology Play
-Email: OntologyPlay@hotmail.com
+Email: liminal_within@ontologyplay.com
 ```
 
 For this template, the entire section from “I’m reaching out” through the email signature is approved **verbatim fixed copy**, not generated game variables. Do not shorten, translate, rewrite or change the Demo link, comparison games or access wording. Fill only the four declared creator variables. `specific_observation` is a complete evidence-based connection to LIMINAL: Within, not a clause completing “I liked how you”. If facts conflict with this fixed block, report the conflict for approval rather than silently changing it or switching to the generic template.
@@ -84,11 +84,11 @@ Game Producer, Ontology Play
 Email: OntologyPlay@hotmail.com
 ```
 
-The server appends the approved Ontology Play signature logo to LIMINAL and generic templates. LIMINAL v7 additionally embeds the approved LIMINAL: Within banner below that logo, at a maximum display width of 600px with its original aspect ratio. The generic template has only the logo; Thieves has no images. Images are server-owned and frozen with each draft; Agents do not supply image variables or remote image links. Plain-text fallback is unchanged. Do not add HTML/Markdown or Yes/No buttons.
+The server appends the approved Ontology Play signature logo to LIMINAL and generic templates. LIMINAL Private v1 additionally embeds the approved LIMINAL: Within banner below that logo, at a maximum display width of 600px with its original aspect ratio. The generic template has only the logo; Thieves embeds its own game footer. Images are server-owned and frozen with each draft; Agents do not supply image variables or remote image links. Plain-text fallback is unchanged. Do not add HTML/Markdown or Yes/No buttons.
 
 ## Variable contract and tone
 
-The first four variables apply to all three templates. The remaining six apply **only to game-outreach**; do not supply them to liminal-outreach or thieves-outreach.
+The first four variables apply to all three templates. The remaining six apply **only to game-outreach**; do not supply them to liminal-private-outreach or thieves-outreach.
 
 - `creator_name`: Published preferred/display name, falling back to the creator's actual username/channel name. A legal or personal name is not required. Never invent a name or insert an Unknown diagnostic; retain the name's source/type in the Match Brief.
 - `channel_name`: Actual channel name; preserve the approved fixed PR wording outside variables.

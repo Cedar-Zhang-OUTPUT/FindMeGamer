@@ -38,7 +38,7 @@ def test_legacy_template_cannot_silently_generate_different_copy():
         get_template("game-outreach", "3")
 
 
-@pytest.mark.parametrize("template_id", ["game-outreach", "liminal-outreach"])
+@pytest.mark.parametrize("template_id", ["game-outreach", "liminal-private-outreach"])
 def test_skill_full_copy_matches_server_template(template_id):
     root = Path(__file__).resolve().parents[2]
     template = get_template(template_id)
