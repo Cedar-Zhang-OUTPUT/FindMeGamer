@@ -2,11 +2,11 @@
 
 Requires `email:send`. `fmg email` remains available for individual/special sending; use tasks when a batch needs server execution and real mailbox reply monitoring. Never use individual sending to bypass a blocked batch.
 
-Use `liminal-private-outreach` for the confirmed outreach target LIMINAL: Within, `thieves-outreach` for No Rest for Thieves (熬夜神偷), and `game-outreach` for other games. Fetch `fmg email template SELECTED_ID` and read the [templates and variable contracts](email-template.md) before writing drafts. Batch JSON contains `name`, selected `template_id`, current `template_version`, and `recipients`: each item supplies `creator_id`, `to`, and all declared `variables`. A task has one selected template; separate different target games into separate reviewed tasks. LIMINAL Private v1 and Thieves v2 each have only four creator-personalization variables; their game description, links and closing blocks are fixed verbatim. The generic template retains game variables. Preserve fixed copy in all templates.
+Use `liminal-private-outreach` for the confirmed outreach target LIMINAL: Within, `thieves-outreach` for No Rest for Thieves (熬夜神偷), and `game-outreach` for other games. Fetch `fmg email template SELECTED_ID` and read the [templates and variable contracts](email-template.md) before writing drafts. Batch JSON contains `name`, selected `template_id`, current `template_version`, and `recipients`: each item supplies `creator_id`, `to`, and all declared `variables`. A task has one selected template; separate different target games into separate reviewed tasks. LIMINAL Private v2 and Thieves v3 each have only four creator-personalization variables; their game description, links and closing blocks are fixed verbatim. The generic template retains game variables. Preserve fixed copy in all templates.
 
 Up to 1,000 recipients per task, one address each; duplicate addresses within a task are rejected. Choose among multiple contacts before creation. Creator ID is the saved platform-qualified identity, not an invented personal name.
 
-**LIMINAL migration (CLI/Skills 0.8.3):** new drafts use mailbox `liminal`, From `liminal_within@ontologyplay.com`, template `liminal-private-outreach` (bundled version `1`; fetch current server version). Old mailbox `ontologyplay` / `OntologyPlay@hotmail.com` is disabled for sending and monitoring; historical records remain readable. Never reassign an old task/preview or transfer its approval. To prepare a replacement, reconcile old task/receipt records first: exclude sent/accepted and unknown/in-flight attempts, and only copy verified never-attempted recipients after confirming the old mailbox is disabled. Confirmed failures need separate resend approval. Create a fresh draft and obtain fresh send approval. Do not clear holds or switch accounts to bypass limits. No Rest remains `second` / `thieves-outreach`; do not change its configuration or tasks.
+**LIMINAL migration (CLI/Skills 0.8.3):** new drafts use mailbox `liminal`, From `liminal_within@ontologyplay.com`, template `liminal-private-outreach` (bundled version `2`; fetch current server version). Old mailbox `ontologyplay` / `OntologyPlay@hotmail.com` is disabled for sending and monitoring; historical records remain readable. Never reassign an old task/preview or transfer its approval. To prepare a replacement, reconcile old task/receipt records first: exclude sent/accepted and unknown/in-flight attempts, and only copy verified never-attempted recipients after confirming the old mailbox is disabled. Confirmed failures need separate resend approval. Create a fresh draft and obtain fresh send approval. Do not clear holds or switch accounts to bypass limits. No Rest remains `second` / `thieves-outreach`; do not change its configuration or tasks.
 
 ## Mailbox and template selection
 
@@ -19,7 +19,7 @@ The three required creation fields are strings: `mailbox_id`, `template_id`, `te
 ```sh
 fmg email mailboxes
 fmg email template liminal-private-outreach
-fmg --run-id liminal-agent-a outreach task create --input batch.json --mailbox liminal --template liminal-private-outreach --template-version 1 --idempotency-key liminal-agent-a-batch-01
+fmg --run-id liminal-agent-a outreach task create --input batch.json --mailbox liminal --template liminal-private-outreach --template-version 2 --idempotency-key liminal-agent-a-batch-01
 ```
 
 The complete input shape is below; replace recipient placeholders using saved evidence and include all selected recipients (30 for a requested 30-person batch):
@@ -29,7 +29,7 @@ The complete input shape is below; replace recipient placeholders using saved ev
   "name": "LIMINAL: Within outreach",
   "mailbox_id": "liminal",
   "template_id": "liminal-private-outreach",
-  "template_version": "1",
+  "template_version": "2",
   "recipients": [{
     "creator_id": "PLATFORM:ACTUAL_ID",
     "to": "ACTUAL_PUBLIC_BUSINESS_EMAIL",
@@ -47,7 +47,7 @@ Save the actual task ID/revision, original input, mailbox, template/version, run
 
 Full task reads and the dashboard show frozen mailbox ID, sender/display name and template/version. Summary reads retain lightweight identity/version, safety and progress without drafts. Review the frozen identity as well as all recipients and content. Only explicit approval of this task revision permits `start`; drafting alone does not. `start` and individual `send` use the frozen ID and accept no mailbox switch. Existing approvals never transfer to another identity or replacement task. Rate limits or sender holds do not authorize moving old rows to another mailbox. Preserve `unknown` rows and investigate; never automatically resend them. Any separately authorized resend replacement contains only confirmed failed rows that cannot still be sent by the old task (verified never-attempted migration rows follow the migration rule above), excludes successful/uncertain rows, and requires fresh review/approval. No pause/cancel/migrate CLI command is provided here.
 
-Each enabled mailbox has its own two send execution slots shared with bounce retries; all slots share that mailbox's default five-second send interval and lock. Enrichment has a separate four-slot queue; monitoring does not consume sending/enrichment slots. Independent capacity does not authorize circumventing holds or automatic account fallback.
+Each enabled mailbox has its own two send execution slots shared with bounce retries. All slots share one mailbox lock and a server-selected random 8, 9 or 10 second cooldown after each transport attempt; mailboxes are timed independently. Discovery reports `send_interval_seconds=8` as the minimum and `send_interval_choices_seconds=[8,9,10]` on updated servers. Honor the returned `retry_after_seconds` using the same approved preview/key; do not substitute a client-side five-second timer or create a new send. Dispatch/network delays can make the actual interval longer. Enrichment has a separate four-slot queue; monitoring does not consume sending/enrichment slots. Independent capacity and randomized spacing do not authorize circumventing provider blocks, releasing holds or automatic account fallback.
 
 ```sh
 fmg --run-id RUN_ID outreach task create --input batch.json --idempotency-key STABLE_KEY
@@ -85,7 +85,7 @@ The worker sends independently of Codex. Start is idempotent for the same revisi
 ## Actual email replies
 
 Yes/No links and callback endpoints are retired. Replace only declared variables;
-preserve server-rendered content including the approved signature image.
+preserve server-rendered content; current LIMINAL and Thieves versions are plain-text-only.
 Do not add custom HTML, Markdown formatting or response buttons.
 
 The server polls the configured corporate IMAP mailbox read-only. It correlates In-Reply-To/References to each sent Message-ID and checks the sender, so one recipient's reply cannot update another. No subject-only guessing. A new unrelated message or reply from a different address may not auto-link; report this limitation rather than asserting no reply exists.

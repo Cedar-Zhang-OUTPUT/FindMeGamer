@@ -13,19 +13,35 @@ from test_email_sending import headers, sending, send
 from test_liminal_fixed_copy import personalization
 
 
-def test_private_liminal_preserves_copy_and_images_except_signature_email():
+def test_private_liminal_preserves_copy_except_signature_email_without_images():
     old = render_template(get_template("liminal-outreach", "7"), personalization())
     new = render_template(
-        get_template("liminal-private-outreach", "1"), personalization()
+        get_template("liminal-private-outreach", "2"), personalization()
     )
     assert new == {
-        key: (
-            value.replace("OntologyPlay@hotmail.com", "liminal_within@ontologyplay.com")
-            if key in {"text", "html"}
-            else value
-        )
-        for key, value in old.items()
+        "subject": old["subject"],
+        "text": old["text"].replace(
+            "OntologyPlay@hotmail.com", "liminal_within@ontologyplay.com"
+        ),
+        "format": "plain_text",
     }
+    from fmg_agent.email.mime import build_message
+
+    mail = build_message(
+        dict(
+            new, **{"from": "liminal_within@ontologyplay.com", "to": "test@example.com"}
+        ),
+        "no-send",
+    )
+    assert mail.get_content_type() == "text/plain"
+    assert not mail.is_multipart()
+    assert mail.get_content().strip() == new["text"]
+
+
+def test_private_liminal_rejects_old_image_version_for_new_drafts():
+    with pytest.raises(ApiError) as error:
+        get_template("liminal-private-outreach", "1")
+    assert error.value.code == "template_version_changed"
 
 
 @pytest.mark.parametrize(
@@ -90,7 +106,7 @@ def test_migration_preserves_old_draft_and_requires_new_approval(sending):
             "name": "New LIMINAL review",
             "mailbox_id": "liminal",
             "template_id": "liminal-private-outreach",
-            "template_version": "1",
+            "template_version": "2",
             "recipients": [
                 {
                     "creator_id": "alex",

@@ -1,6 +1,3 @@
-from base64 import b64decode
-import hashlib
-
 import pytest
 
 from fmg_agent.email.templates import (
@@ -24,7 +21,7 @@ def personalization():
 
 
 def test_thieves_render_preserves_pitch_and_complete_observation():
-    rendered = render_template(get_template("thieves-outreach", "2"), personalization())
+    rendered = render_template(get_template("thieves-outreach", "3"), personalization())
     assert rendered["subject"] == (
         "Demo Invitation: No rest for Thieves- A Loot-Splitting Party Game"
     )
@@ -52,25 +49,14 @@ def test_thieves_render_preserves_pitch_and_complete_observation():
         "Thanks for your time, and hope you enjoy the demo!\n\n"
         "Best regards,\n\nMichael\nNo Rest for Thieves Team"
     )
-    assert rendered["format"] == "signature_image"
+    assert rendered["format"] == "plain_text"
 
 
-def test_thieves_footer_is_last_and_mime_embeds_original_jpeg():
-    # Missing/wrong image bytes, MIME type, CID or placement must break this test.
+def test_thieves_mime_is_only_plain_text_without_images():
     from fmg_agent.email.mime import build_message
 
     rendered = render_template(get_template("thieves-outreach"), personalization())
-    html = rendered["html"]
-    assert html.index("Michael") < html.index('src="cid:thieves-game-banner"')
-    assert html.count("<img ") == 1
-    assert 'width="600"' in html and "max-width:100%;height:auto" in html
-    assert html.endswith("</body></html>")
-    assert "ontology-play-signature" not in html
-    raw = b64decode(rendered["footer_jpeg_base64"], validate=True)
-    assert (
-        hashlib.sha256(raw).hexdigest()
-        == "bf98277e4e89529f67fead5c6e53abaa2c9a467fdda90b9cba5f5d5a4fad264f"
-    )
+    assert set(rendered) == {"subject", "text", "format"}
     mail = build_message(
         dict(
             rendered,
@@ -78,16 +64,9 @@ def test_thieves_footer_is_last_and_mime_embeds_original_jpeg():
         ),
         "test-no-send",
     )
-    images = [part for part in mail.walk() if part.get_content_maintype() == "image"]
-    assert len(images) == 1
-    assert images[0].get_content_type() == "image/jpeg"
-    assert images[0]["Content-ID"] == "<thieves-game-banner>"
-    assert images[0].get_content_disposition() == "inline"
-    assert images[0].get_payload(decode=True) == raw
-    assert (
-        mail.get_body(preferencelist=("plain",)).get_content().strip()
-        == rendered["text"]
-    )
+    assert mail.get_content_type() == "text/plain"
+    assert not mail.is_multipart()
+    assert mail.get_content().strip() == rendered["text"]
 
 
 def test_frozen_thieves_v1_plain_text_still_builds_without_image():
@@ -105,9 +84,10 @@ def test_frozen_thieves_v1_plain_text_still_builds_without_image():
     assert mail.get_content().strip() == frozen["text"]
 
 
-def test_thieves_old_version_requires_new_preview_not_silent_rewrite():
+@pytest.mark.parametrize("version", ["1", "2"])
+def test_thieves_old_version_requires_new_preview_not_silent_rewrite(version):
     with pytest.raises(ApiError) as error:
-        get_template("thieves-outreach", "1")
+        get_template("thieves-outreach", version)
     assert error.value.code == "template_version_changed"
 
 
@@ -116,14 +96,14 @@ def test_thieves_requires_each_personalization_field(field):
     values = personalization()
     del values[field]
     with pytest.raises(ApiError) as error:
-        render_template(get_template("thieves-outreach", "2"), values)
+        render_template(get_template("thieves-outreach", "3"), values)
     assert error.value.code == "template_variables_invalid"
 
 
 def test_thieves_fixed_copy_cannot_be_overridden_by_extra_variables():
     with pytest.raises(ApiError) as error:
         render_template(
-            get_template("thieves-outreach", "2"),
+            get_template("thieves-outreach", "3"),
             dict(personalization(), game_name="Unapproved Game"),
         )
     assert error.value.code == "template_variables_invalid"
@@ -155,7 +135,7 @@ def test_thieves_second_mailbox_binding_and_catalog_coexist():
     )
     check_mailbox_template(profile, "thieves-outreach")
     catalog = {row["id"]: row for row in list_templates()}
-    assert catalog["thieves-outreach"]["version"] == "2"
+    assert catalog["thieves-outreach"]["version"] == "3"
     assert catalog["liminal-outreach"]["version"] == "7"
     assert catalog["game-outreach"]["version"] == "5"
 
@@ -189,7 +169,7 @@ def test_thieves_api_discovers_and_freezes_second_sender_without_sending(sending
         json={
             "mailbox_id": "second",
             "template_id": "thieves-outreach",
-            "template_version": "2",
+            "template_version": "3",
             "to": "creator@example.com",
             "variables": personalization(),
         },
@@ -200,14 +180,15 @@ def test_thieves_api_discovers_and_freezes_second_sender_without_sending(sending
     assert frozen["message"]["from"] == "norestforthieves@ontologyplay.com"
     assert frozen["message"]["from_name"] == "No Rest for Thieves Team"
     assert frozen["message"]["text"].endswith("Michael\nNo Rest for Thieves Team")
-    assert frozen["message"]["footer_jpeg_base64"]
-    assert 'src="cid:thieves-game-banner"' in frozen["message"]["html"]
+    assert frozen["message"]["format"] == "plain_text"
+    assert "html" not in frozen["message"]
+    assert not any(key.endswith("_base64") for key in frozen["message"])
     with app.state.sessions() as session:
         assert session.scalar(select(func.count()).select_from(EmailSend)) == 0
 
 
-def test_thieves_batch_omits_repeated_jpeg_but_individual_preview_keeps_it(sending):
-    # Adding images must not grow a 50-recipient status response by ~13 MB.
+def test_thieves_batch_and_individual_preview_are_image_free(sending):
+    # Both full previews and batch status must remain image-free.
     from fmg_agent.mailboxes import MailboxRegistry
 
     app, client, owner, _, _ = sending
@@ -227,10 +208,10 @@ def test_thieves_batch_omits_repeated_jpeg_but_individual_preview_keeps_it(sendi
         "/v1/outreach/tasks",
         headers=headers(owner, "thieves-footer-compact"),
         json={
-            "name": "Fifty image drafts",
+            "name": "Fifty plain-text drafts",
             "mailbox_id": "second",
             "template_id": "thieves-outreach",
-            "template_version": "2",
+            "template_version": "3",
             "recipients": [
                 {
                     "creator_id": f"creator-{i}",
@@ -248,14 +229,14 @@ def test_thieves_batch_omits_repeated_jpeg_but_individual_preview_keeps_it(sendi
     assert queried.status_code == 200 and len(queried.content) < 1024 * 1024
     for recipient in queried.json()["data"]["recipients"]:
         assert "footer_jpeg_base64" not in recipient["message"]
-        assert "cid:thieves-game-banner" in recipient["message"]["html"]
+        assert "html" not in recipient["message"]
+        assert recipient["message"]["format"] == "plain_text"
     full = client.get(
         "/v1/email/previews/" + task["recipients"][0]["preview_id"],
         headers=headers(owner),
     )
     assert full.status_code == 200
-    raw = b64decode(full.json()["data"]["message"]["footer_jpeg_base64"])
-    assert (
-        hashlib.sha256(raw).hexdigest()
-        == "bf98277e4e89529f67fead5c6e53abaa2c9a467fdda90b9cba5f5d5a4fad264f"
-    )
+    message = full.json()["data"]["message"]
+    assert message["format"] == "plain_text"
+    assert "html" not in message
+    assert not any(key.endswith("_base64") for key in message)

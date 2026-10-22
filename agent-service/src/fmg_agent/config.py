@@ -28,7 +28,9 @@ class Settings(BaseSettings):
     email_retention_days: int = Field(default=30, ge=1, le=30)
     mailboxes_file: Path | None = Field(default=None, repr=False)
     email_transport: Literal["smtp", "microsoft_graph"] = "smtp"
-    email_send_interval_seconds: int = Field(default=5, ge=0, le=3600)
+    # Positive legacy values enable the shared random 8/9/10-second policy.
+    # Zero disables pacing only for isolated tests (deployment rejects it).
+    email_send_interval_seconds: int = Field(default=8, ge=0, le=3600)
     smtp_host: str = ""
     smtp_port: int = Field(default=465, ge=1, le=65535)
     smtp_encryption: Literal["tls", "starttls", "none"] = "tls"

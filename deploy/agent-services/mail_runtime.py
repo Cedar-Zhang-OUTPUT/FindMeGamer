@@ -115,8 +115,10 @@ def ready(session, registry):
     if result["previews"] or result["tasks"] or not result["unchanged"]:
         raise ValueError("Identity backfill required")
     profiles = [p for p in registry.profiles() if p.enabled]
-    if not profiles or any(p.email_send_interval_seconds != 5 for p in profiles):
-        raise ValueError("Enabled mailboxes require the approved five-second interval")
+    if not profiles or any(p.email_send_interval_seconds <= 0 for p in profiles):
+        raise ValueError(
+            "Enabled mailboxes require the approved random 8/9/10-second pacing"
+        )
 
 
 def legacy_drained(broker, *, prefix="fmg_agent:"):

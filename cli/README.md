@@ -79,10 +79,10 @@ To inspect server-owned templates (read-only; does not send or consume model quo
 ```sh
 fmg email templates
 fmg email template game-outreach
-fmg email template liminal-outreach
+fmg email template liminal-private-outreach
 ```
 
-Template descriptions include a version, required variables, and text/HTML/subject bodies. For the confirmed target LIMINAL: Within, use `liminal-outreach` v7; for No Rest for Thieves, use `thieves-outreach` v2. Both allow only four creator-personalization variables; game descriptions, links and closing blocks are fixed. For remaining games, `game-outreach` v5 supplies game facts through variables. Fetch the selected current schema before drafting. Existing frozen previews and retired versions are not silently rewritten. See confirmed sending below for immutable previews.
+Template descriptions include a version, required variables, and text/HTML/subject bodies. For the confirmed target LIMINAL: Within, use `liminal-private-outreach` v2; for No Rest for Thieves, use `thieves-outreach` v3. These two templates are plain-text-only with no images. Both allow only four creator-personalization variables; game descriptions, links and closing blocks are fixed. For remaining games, `game-outreach` v5 supplies game facts through variables. Fetch the selected current schema before drafting. Existing frozen previews and retired versions are not silently rewritten. See confirmed sending below for immutable previews.
 
 Requires an `email:enrich` token scope. These commands can consume company model/search quota:
 
@@ -101,17 +101,17 @@ Results include multiple `emails` with purpose, public source URL, discovery met
 
 ## Preview and confirmed sending
 
-Run `fmg email mailboxes` first and explicitly select an enabled mailbox with the user. Check its actual `from`, `display_name`, `ready` and `allowed_templates`. Discovery requires server `meta.mailboxes_version=1`; older servers require an administrator upgrade. See [mailbox API and selection contract](../docs/agent-services/mailboxes-api.md). LIMINAL requires `ontologyplay` with `OntologyPlay@hotmail.com`; generic outreach requires an explicitly permitted mailbox.
+Run `fmg email mailboxes` first and explicitly select an enabled mailbox with the user. Check its actual `from`, `display_name`, `ready` and `allowed_templates`. Discovery requires server `meta.mailboxes_version=1`; older servers require an administrator upgrade. See [mailbox API and selection contract](../docs/agent-services/mailboxes-api.md). New LIMINAL drafts require `liminal` with `liminal_within@ontologyplay.com`; generic outreach requires an explicitly permitted mailbox.
 
 No Rest for Thieves uses mailbox `second` (`norestforthieves@ontologyplay.com`)
-and template `thieves-outreach`, version `2`. Read
+and template `thieves-outreach`, version `3`. Read
 `fmg email template thieves-outreach` before preparing a draft. Its only variables
 are `creator_name`, `channel_name`, `reference_work`, and `specific_observation`;
 the observation is one or two complete sentences, not a continuation of
 “I loved how you”. Subject, Steam link, game copy, and Michael/team signature are
-server-owned. Version 2 embeds the approved No Rest for Thieves JPEG after the
-Michael/team signature (600px, responsive, original aspect ratio); plain text is
-unchanged. Existing v1 drafts remain unchanged; a replacement requires new approval.
+server-owned. Version 3 is plain-text-only: no images, HTML alternative or image
+attachments. Existing v1/v2 drafts remain unchanged; a text-only replacement
+requires a new draft and fresh approval.
 Do not substitute `game-outreach` or reuse a LIMINAL draft. This
 catalog addition works with the existing multi-mailbox CLI; no new flag or
 binary update is required.

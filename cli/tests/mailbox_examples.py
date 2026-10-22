@@ -42,7 +42,8 @@ def main():
                         "enabled": True,
                         "ready": True,
                         "allowed_templates": ["liminal-private-outreach"],
-                        "send_interval_seconds": 5,
+                        "send_interval_seconds": 8,
+                        "send_interval_choices_seconds": [8, 9, 10],
                     }
                 ],
                 {"mailboxes_version": 1},
@@ -53,7 +54,7 @@ def main():
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             assert body["mailbox_id"] == "liminal"
             assert body["template_id"] == "liminal-private-outreach"
-            assert body["template_version"] == "1"
+            assert body["template_version"] == "2"
             assert self.path in {"/v1/outreach/tasks", "/v1/email/previews"}, self.path
             if self.path == "/v1/outreach/tasks":
                 assert self.headers["Idempotency-Key"] == "liminal-agent-a-batch-01"
@@ -102,7 +103,7 @@ def main():
                 "--template",
                 "liminal-private-outreach",
                 "--template-version",
-                "1",
+                "2",
             ]
             batch = root / "batch.json"
             variables = {
@@ -151,7 +152,7 @@ def main():
                     {
                         "mailbox_id": "studio-two",
                         "template_id": "liminal-private-outreach",
-                        "template_version": "1",
+                        "template_version": "2",
                         "recipients": [],
                     }
                 )

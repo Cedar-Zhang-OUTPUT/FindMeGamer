@@ -144,8 +144,11 @@ def test_public_mailboxes_redacts_secrets(tmp_path, caplog):
         "ready",
         "allowed_templates",
         "send_interval_seconds",
+        "send_interval_choices_seconds",
     }
     assert response.json()["data"][0]["ready"] is True
+    assert response.json()["data"][0]["send_interval_seconds"] == 8
+    assert response.json()["data"][0]["send_interval_choices_seconds"] == [8, 9, 10]
     assert response.json()["data"][0]["from"] == "alpha@example.com"
     assert response.json()["data"][1]["enabled"] is False
     assert response.json()["data"][1]["ready"] is False

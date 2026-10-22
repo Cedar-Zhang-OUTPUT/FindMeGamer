@@ -190,6 +190,8 @@ class MailboxRegistry:
         return True
 
     def public_entries(self) -> list[dict]:
+        from .email.pacing import interval_choices, minimum_interval
+
         return [
             {
                 "id": profile.id,
@@ -198,7 +200,12 @@ class MailboxRegistry:
                 "enabled": profile.enabled,
                 "ready": self._ready(profile),
                 "allowed_templates": list(profile.allowed_templates),
-                "send_interval_seconds": profile.email_send_interval_seconds,
+                "send_interval_seconds": minimum_interval(
+                    profile.email_send_interval_seconds
+                ),
+                "send_interval_choices_seconds": list(
+                    interval_choices(profile.email_send_interval_seconds)
+                ),
             }
             for profile in self._profiles.values()
         ]

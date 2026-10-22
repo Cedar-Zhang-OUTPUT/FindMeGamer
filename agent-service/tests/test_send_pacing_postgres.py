@@ -116,7 +116,7 @@ def test_postgres_waits_full_interval_before_next_transport(pg_sending):
     assert blocked.status_code == 429
     sleep(blocked.json()["error"]["retry_after_seconds"])
     assert send(client, owner, second, key="second").json()["data"]["state"] == "sent"
-    assert starts[1] - starts[0] >= 5
+    assert starts[1] - starts[0] >= 8
 
 
 @pytest.mark.postgres
@@ -138,7 +138,7 @@ def test_postgres_cooldown_uses_shared_database_clock(pg_sending, monkeypatch):
     )
     blocked = send(client, owner, second, key="second")
     assert blocked.status_code == 429
-    assert 1 <= blocked.json()["error"]["retry_after_seconds"] <= 5
+    assert 1 <= blocked.json()["error"]["retry_after_seconds"] <= 10
     assert len(deliveries) == 1
 
 

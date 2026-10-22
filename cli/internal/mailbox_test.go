@@ -108,7 +108,7 @@ func TestMailboxDiscoveryOldServer(t *testing.T) {
 
 func TestMailboxDiscovery(t *testing.T) {
 	setup(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"data":[{"id":"studio-two","from":"sender@example.com","display_name":"Studio Two","enabled":true,"ready":true,"allowed_templates":["game-outreach"],"send_interval_seconds":5}],"meta":{"mailboxes_version":1}}`))
+		w.Write([]byte(`{"data":[{"id":"studio-two","from":"sender@example.com","display_name":"Studio Two","enabled":true,"ready":true,"allowed_templates":["game-outreach"],"send_interval_seconds":8,"send_interval_choices_seconds":[8,9,10]}],"meta":{"mailboxes_version":1}}`))
 	})
 	var out, diag bytes.Buffer
 	if code := Run([]string{"email", "mailboxes"}, strings.NewReader(""), &out, &diag); code != 0 || !strings.Contains(out.String(), "studio-two") {

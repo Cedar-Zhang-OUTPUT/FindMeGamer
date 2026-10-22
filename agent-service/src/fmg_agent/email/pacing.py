@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from datetime import timedelta, timezone
 from hashlib import sha256
 from math import ceil
+from random import choice
 
 from sqlalchemy import func, select, update
 
@@ -12,6 +13,16 @@ from .models import EmailSendGate
 # Longer than the worker's 600-second hard timeout. A killed process leaves a
 # conservative cooldown; live_lock protects still-running API transports too.
 SEND_LEASE_SECONDS = 630
+SEND_INTERVAL_CHOICES = (8, 9, 10)
+
+
+def interval_choices(interval):
+    """Legacy positive settings enable the common policy; zero is test-only."""
+    return SEND_INTERVAL_CHOICES if interval else (0,)
+
+
+def minimum_interval(interval):
+    return interval_choices(interval)[0]
 
 
 @contextmanager
@@ -74,18 +85,30 @@ def reserve(session, sender, send_id, now, interval):
     # live_lock proves the old PostgreSQL owner is no longer running. An expired
     # lease alone does not prove when it last contacted the provider: start a
     # fresh cooldown once, rather than immediately sending after an interruption.
-    session.execute(
-        update(EmailSendGate)
-        .where(
+    stale = session.scalar(
+        select(EmailSendGate.sender).where(
             EmailSendGate.sender == sender,
             EmailSendGate.available_at <= now,
             EmailSendGate.lease_id.is_not(None),
         )
-        .values(available_at=now + timedelta(seconds=interval), lease_id=None)
     )
+    if stale:
+        session.execute(
+            update(EmailSendGate)
+            .where(
+                EmailSendGate.sender == sender,
+                EmailSendGate.available_at <= now,
+                EmailSendGate.lease_id.is_not(None),
+            )
+            .values(
+                available_at=now
+                + timedelta(seconds=choice(interval_choices(interval))),
+                lease_id=None,
+            )
+        )
     gate = session.get(EmailSendGate, sender, populate_existing=True)
     if gate.lease_id:
-        return max(1, interval)
+        return minimum_interval(interval)
     available = gate.available_at
     if available.tzinfo is None:
         available = available.replace(tzinfo=timezone.utc)
@@ -101,5 +124,8 @@ def finish(session, sender, send_id, now, interval):
         .where(
             EmailSendGate.sender == sender.casefold(), EmailSendGate.lease_id == send_id
         )
-        .values(available_at=now + timedelta(seconds=interval), lease_id=None)
+        .values(
+            available_at=now + timedelta(seconds=choice(interval_choices(interval))),
+            lease_id=None,
+        )
     )

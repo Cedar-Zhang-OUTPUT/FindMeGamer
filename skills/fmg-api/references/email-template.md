@@ -4,19 +4,19 @@ Select by the user-confirmed **outreach target game**, not the creator's referen
 
 | Target | Server ID | Current bundled version | Editable variables |
 | --- | --- | --- | --- |
-| LIMINAL: Within | `liminal-private-outreach` | `1` | `creator_name`, `channel_name`, `reference_work`, `specific_observation` only |
-| No Rest for Thieves (熬夜神偷) | `thieves-outreach` | `2` | The same four creator variables only |
+| LIMINAL: Within | `liminal-private-outreach` | `2` | `creator_name`, `channel_name`, `reference_work`, `specific_observation` only |
+| No Rest for Thieves (熬夜神偷) | `thieves-outreach` | `3` | The same four creator variables only |
 | Other games | `game-outreach` | `5` | Four creator variables plus six target-game variables below |
 
-Fetch `fmg email template SELECTED_ID` before drafting. The server is authoritative; if this bundled copy differs, read the current schema and full text, and do not submit stale inputs. The old `liminal-outreach` v7 remains historical; new LIMINAL drafts use `liminal-private-outreach` v1. Generic versions 3–4 remain retired. Existing frozen previews/tasks are not rewritten or automatically resent. A replacement needs a new preview/task and fresh approval.
+Fetch `fmg email template SELECTED_ID` before drafting. The server is authoritative; if this bundled copy differs, read the current schema and full text, and do not submit stale inputs. The old `liminal-outreach` v7 remains historical; new LIMINAL drafts use `liminal-private-outreach` v2. Generic versions 3–4 remain retired. Existing frozen previews/tasks are not rewritten or automatically resent. A replacement needs a new preview/task and fresh approval.
 
-Discover sending identities with `fmg email mailboxes` and apply [the explicit mailbox/template contract](outreach.md#mailbox-and-template-selection). LIMINAL is restricted to enabled mailbox `liminal` with actual From `liminal_within@ontologyplay.com`; an allowlist entry alone cannot move its fixed signature to another mailbox. Generic outreach requires `game-outreach` in the selected mailbox's `allowed_templates`. Bind `mailbox_id`, `template_id` and string `template_version` explicitly when creating a draft. Preserve the approved text, logo and LIMINAL banner exactly; selecting an account never grants permission to rewrite fixed copy.
+Discover sending identities with `fmg email mailboxes` and apply [the explicit mailbox/template contract](outreach.md#mailbox-and-template-selection). LIMINAL is restricted to enabled mailbox `liminal` with actual From `liminal_within@ontologyplay.com`; an allowlist entry alone cannot move its fixed signature to another mailbox. Generic outreach requires `game-outreach` in the selected mailbox's `allowed_templates`. Bind `mailbox_id`, `template_id` and string `template_version` explicitly when creating a draft. Preserve the approved text exactly; LIMINAL Private v2 and Thieves v3 have no images; selecting an account never grants permission to rewrite fixed copy.
 
 ## No Rest for Thieves
 
-Fetch `fmg email template thieves-outreach` and read the complete returned subject/body before drafting. Version 2 requires mailbox `second`, actual From `norestforthieves@ontologyplay.com` (case-insensitive), and `thieves-outreach` in its allowlist. Bind `--mailbox second --template thieves-outreach --template-version 2` on creation, after discovery confirms readiness.
+Fetch `fmg email template thieves-outreach` and read the complete returned subject/body before drafting. Version 3 requires mailbox `second`, actual From `norestforthieves@ontologyplay.com` (case-insensitive), and `thieves-outreach` in its allowlist. Bind `--mailbox second --template thieves-outreach --template-version 3` on creation, after discovery confirms readiness.
 
-Fill only `creator_name`, `channel_name`, `reference_work`, and `specific_observation`. Observation is one or two complete evidence-based sentences with punctuation, not a clause completing “I loved how you”. All other copy is fixed, including subject `Demo Invitation: No rest for Thieves- A Loot-Splitting Party Game`, Steam URL `https://store.steampowered.com/app/5124600/No_Rest_for_Thieves/`, and signature Michael / No Rest for Thieves Team. This template includes the server-owned No Rest for Thieves footer image; do not add the Ontology Play logo or LIMINAL banner. Do not substitute the generic Toki template.
+Fill only `creator_name`, `channel_name`, `reference_work`, and `specific_observation`. Observation is one or two complete evidence-based sentences with punctuation, not a clause completing “I loved how you”. All other copy is fixed, including subject `Demo Invitation: No rest for Thieves- A Loot-Splitting Party Game`, Steam URL `https://store.steampowered.com/app/5124600/No_Rest_for_Thieves/`, and signature Michael / No Rest for Thieves Team. This template is plain text without any images or attachments; do not add a footer image, Ontology Play logo or LIMINAL banner. Do not substitute the generic Toki template.
 
 ## LIMINAL: Within — full subject
 
@@ -84,7 +84,7 @@ Game Producer, Ontology Play
 Email: OntologyPlay@hotmail.com
 ```
 
-The server appends the approved Ontology Play signature logo to LIMINAL and generic templates. LIMINAL Private v1 additionally embeds the approved LIMINAL: Within banner below that logo, at a maximum display width of 600px with its original aspect ratio. The generic template has only the logo; Thieves embeds its own game footer. Images are server-owned and frozen with each draft; Agents do not supply image variables or remote image links. Plain-text fallback is unchanged. Do not add HTML/Markdown or Yes/No buttons.
+LIMINAL Private v2 and Thieves v3 are plain-text-only: no logo, banner, HTML alternative or image attachments. Subject, body and the four personalization variables are unchanged. The generic game-outreach template still has its server-owned logo. Historical image drafts remain frozen; to remove their images, create a replacement draft with the current version and obtain fresh approval. Do not add images, HTML/Markdown or Yes/No buttons.
 
 ## Variable contract and tone
 

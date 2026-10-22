@@ -49,7 +49,7 @@ the primary placeholder with the exact existing frozen sender, display name,
 transport, credentials, monitor and OAuth settings. Registry fields do **not**
 inherit legacy environment credentials. Keep `second` disabled with no sender,
 credentials or token paths. Only the existing mailbox starts in this rollout.
-Keep the interval at five seconds, enrichment at four prefork slots and each
+Keep pacing enabled (positive legacy values now select random 8/9/10 seconds), enrichment at four prefork slots and each
 mail consumer at two. Do not activate the `second-mailbox` Compose profile.
 
 For pre-existing retired senders, add a distinct disabled historical profile
@@ -153,7 +153,7 @@ Each active scan holds the shared runtime lock through completion, so a hold
 waits for that scan and prevents another upstream scan after it commits.
 
 `mail_runtime.py readiness` and `release` verify schema/backfill, drained send
-state, the five-second interval, the exact running role set, API health and fresh
+state, enabled random 8/9/10-second pacing, the exact running role set, API health and fresh
 container-local evidence from each role. Worker evidence requires initialized
 broker connection, the exact queue and 4/2 pool size. Dispatch evidence is emitted
 after a successful iteration, monitor evidence after a held local check or

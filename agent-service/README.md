@@ -103,14 +103,19 @@ Each immutable preview fixes the recipient, rendered subject/text/HTML, template
 ### Shared sender pacing
 
 Apply migration `0008_send_pacing` before starting the API/worker with this code.
-`FMG_AGENT_EMAIL_SEND_INTERVAL_SECONDS` defaults to **5**. The normalized sender
+`FMG_AGENT_EMAIL_SEND_INTERVAL_SECONDS` defaults to **8**. All positive values,
+including the legacy value 5, enable the same random **8, 9 or 10 second** policy.
+Zero is reserved for isolated tests and is rejected by deployment readiness.
+The normalized sender
 address owns one database gate shared by all API processes, access tokens and
 outreach tasks, for both SMTP and Microsoft Graph. Only one transport call can run
-at a time; the next one waits until at least five seconds **after the previous call
-finishes**, so the maximum is 12 attempts/minute and actual throughput is lower.
+at a time; after each transport outcome, the server uniformly selects 8, 9 or 10
+seconds and persists that cooldown **after the previous call finishes**. Failed
+and unknown attempts also incur cooldown. Polling cannot redraw/shorten it.
+Each mailbox has its own gate; normal sends and bounce retries share it.
 The existing outreach dispatcher checks pending work every 10 seconds; this is
-spacing protection, not a promise to achieve 12/minute. Zero disables pacing and
-is reserved for offline test fixtures; keep production at five seconds or more.
+spacing protection, not an exact throughput promise. This does not override
+provider blocks or grant permission to resume a suspended mailbox.
 
 A single-send request arriving while the sender is busy/cooling down receives
 HTTP 429 `email_send_throttled` with `retryable=true` and `retry_after_seconds`.
@@ -122,7 +127,7 @@ not marked failed or blocked solely for pacing.
 
 Reservation and send receipt creation commit together. A killed sender leaves
 a conservative 630-second gate lease (longer than the worker's 600-second hard
-timeout); recovery of an expired interrupted lease starts a fresh five-second
+timeout); recovery of an expired interrupted lease starts a fresh random 8/9/10-second
 cooldown before another unsent recipient can proceed. A separate
 PostgreSQL transaction-level advisory lock remains held through the live transport
 and outcome commit, so a still-running API request cannot overlap another send

@@ -200,7 +200,7 @@ def test_same_mailbox_combines_api_batch_and_retry_pacing(mailbox_runtime):
     r.completed("a", batch)
     until(lambda: len(r.provider_calls("alpha")) == 4, 65)
     calls = sorted(r.provider_calls("alpha"), key=lambda c: c["start"])
-    assert all(b["start"] >= a["end"] + 5 for a, b in zip(calls, calls[1:]))
+    assert all(b["start"] >= a["end"] + 8 for a, b in zip(calls, calls[1:]))
     receipt = r.data(r.run_cli("a", ["email", "receipt", first["id"]]))
     retry_call = next(
         call for call in calls if call["id"] == receipt["bounce_retry"]["send_id"]
@@ -284,7 +284,8 @@ def test_resource_budget_baseline_and_slow_enrichment(mailbox_runtime):
         for agent, task in tasks:
             r.start(agent, task)
         for agent, task in tasks:
-            assert r.completed(agent, task, timeout=250)["stats"]["sent"] == (
+            # 20 recipients with up to 10s cooldown plus a 10s dispatcher tick.
+            assert r.completed(agent, task, timeout=450)["stats"]["sent"] == (
                 10 if dual else 20
             )
         calls = [c for name in before for c in r.provider_calls(name)[before[name] :]]

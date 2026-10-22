@@ -303,7 +303,9 @@ class SendStore:
                     "email_send_throttled",
                     "The sender is busy. No send attempt was created; retry this same confirmed preview and key after the delay.",
                     retryable=True,
-                    retry_after_seconds=config.email_send_interval_seconds,
+                    retry_after_seconds=pacing.minimum_interval(
+                        config.email_send_interval_seconds
+                    ),
                 )
             return self._send(
                 token_id,
