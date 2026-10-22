@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en" class="js"><head><meta charset="utf-8"><title>hero still — capture rig</title>
+<link rel="stylesheet" href="../css/site.css" />
+<style>body{background:#f7f3ea;margin:0}.stage{width:1400px;height:1050px}</style></head>
+<body><div class="stage is-live is-draggable" data-scene>
+<img class="stage__still" src="../assets/img/hero-still-700.webp" alt="">
+<canvas class="stage__canvas"></canvas>
+</div>
+<script type="module">
+import { init } from "../js/scene.js";
+init(document.querySelector("[data-scene]"), {}).catch(e => document.body.insertAdjacentHTML("beforeend","<pre style='color:red'>"+e.stack+"</pre>"));
+</script></body></html>

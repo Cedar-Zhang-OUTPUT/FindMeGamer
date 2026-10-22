@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "guideUrl": "https://cedar-zhang-output.github.io/FindMeGamer/install/README.md",
+  "releaseGate": {
+    "readyForPublicLaunch": true,
+    "reason": "Website-owned install/README.md updated for fmg-v0.8.4 on 2026-10-22. Anonymous HTTPS installer/checksum download and isolated macOS arm64 CLI + Skills installation verified. No authentication or business calls performed."
+  },
+  "locales": {
+    "zh-CN": {
+      "title": "给你的 Agent，多一项能力。",
+      "description": "复制下面的 Prompt，交给你的 Agent。它会读取安装指南，协助安装 CLI 和 Skill。",
+      "prompt": "请阅读 https://cedar-zhang-output.github.io/FindMeGamer/install/README.md ，按指南安装 FindMeGamer CLI 和配套 Skills；缺少授权时问我，不要执行付费检索或发送邮件。",
+      "copyLabel": "复制给 Agent",
+      "copiedLabel": "已复制，粘贴给你的 Agent",
+      "copyError": "未能自动复制，请选中上方 Prompt 手动复制。",
+      "guideLabel": "阅读安装指南",
+      "accessNote": "需要 FMG 访问令牌。安装不会自动开始研究或发信。",
+      "compatibilityNote": "当前指南面向 macOS / Linux 上具备终端和文件工具的 Codex；其他 Agent 需核对兼容性。",
+      "stepLabels": ["复制 Prompt", "让 Agent 安装", "授权后开始"]
+    },
+    "en": {
+      "title": "Give your Agent a new capability.",
+      "description": "Copy this prompt to your Agent. It reads the setup guide and helps install the CLI and Skills.",
+      "prompt": "Read https://cedar-zhang-output.github.io/FindMeGamer/install/README.md and install FindMeGamer CLI and its Skills. Ask me for any missing authorization. Do not run paid research or send email.",
+      "copyLabel": "Copy setup prompt",
+      "copiedLabel": "Copied. Paste it into your Agent.",
+      "copyError": "Could not copy automatically. Select the prompt above and copy it manually.",
+      "guideLabel": "Read the setup guide",
+      "accessNote": "An FMG access token is required. Setup does not start research or send email.",
+      "compatibilityNote": "The current guide targets Codex with terminal and file tools on macOS / Linux. Check compatibility for other Agent hosts.",
+      "stepLabels": ["Copy the prompt", "Let your Agent install", "Authorize and begin"]
+    }
+  }
+}

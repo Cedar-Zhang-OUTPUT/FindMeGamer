@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="zh-CN" class="no-js">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>FindMeGamer｜为游戏团队找到同频创作者</title>
+    <meta name="description" content="让 Agent 帮你研究游戏创作者、理解匹配理由、查找公开商务联系方式，并准备由你审核确认的外联邮件。">
+    <meta name="theme-color" content="#F7F3EA">
+    <meta name="color-scheme" content="light">
+
+    <link rel="canonical" href="https://cedar-zhang-output.github.io/FindMeGamer/zh/">
+    <link rel="alternate" hreflang="en" href="https://cedar-zhang-output.github.io/FindMeGamer/">
+    <link rel="alternate" hreflang="zh-CN" href="https://cedar-zhang-output.github.io/FindMeGamer/zh/">
+    <link rel="alternate" hreflang="x-default" href="https://cedar-zhang-output.github.io/FindMeGamer/">
+    <meta property="og:url" content="https://cedar-zhang-output.github.io/FindMeGamer/zh/">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="为你的游戏，找到真正同频的创作者。">
+    <meta property="og:description" content="把创作者研究，接入你的 Agent 工作流。">
+    <meta property="og:image" content="https://cedar-zhang-output.github.io/FindMeGamer/assets/img/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="为你的游戏，找到真正同频的创作者。">
+    <meta name="twitter:description" content="把创作者研究，接入你的 Agent 工作流。">
+    <meta name="twitter:image" content="https://cedar-zhang-output.github.io/FindMeGamer/assets/img/og-image.png">
+
+    <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="../assets/img/apple-touch-icon.png">
+    <link rel="preload" href="../js/main.js" as="script">
+    <link rel="stylesheet" href="../css/site.css">
+    <script>
+      document.documentElement.classList.remove("no-js");
+      document.documentElement.classList.add("js");
+    </script>
+  </head>
+
+  <body data-ui-copy="复制给 Agent" data-ui-copied="已复制" data-ui-copied-long="已复制，粘贴给你的 Agent。" data-ui-copy-error="未能自动复制，请选中上方 Prompt 手动复制。" data-ui-selected="已选中 Prompt，请按 Command + C 或 Ctrl + C 复制。" data-ui-copy-error-short="复制失败" data-ui-status-default="适用于具备终端和文件访问能力的 Agent。需要 FMG 访问令牌。">
+    <a class="skip-link" href="#main">跳到主要内容</a>
+
+    <!-- Installation instructions are maintained with this site's release. -->
+
+    <header class="nav" id="top">
+      <div class="wrap nav__inner">
+        <a class="brand" href="#top" aria-label="FindMeGamer，返回首页">
+          <svg class="brand__mark" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+            <ellipse cx="12" cy="12" rx="9.4" ry="4.2" transform="rotate(-24 12 12)" stroke="currentColor" stroke-width="1.4"></ellipse>
+            <circle cx="12" cy="12" r="3.1" stroke="currentColor" stroke-width="1.4"></circle>
+            <circle cx="19.35" cy="12" r="1.7" fill="currentColor"></circle>
+          </svg>
+          <span>FindMeGamer</span>
+        </a>
+
+        <nav class="nav__links" aria-label="主导航">
+          <a class="nav__link" href="#how">使用方式</a>
+          <a class="nav__link" href="#capabilities">产品能力</a>
+          <a class="nav__link" href="#agents">Agent 接入</a>
+          <a class="nav__link" href="#faq">常见问题</a>
+        </nav>
+
+        <div class="nav__actions">
+          <div class="lang" aria-label="语言">
+            <a href="../" hreflang="en">EN</a>
+            <span class="lang__sep" aria-hidden="true">/</span>
+            <a href="./" hreflang="zh-CN" lang="zh-CN" aria-current="true">中文</a>
+          </div>
+          <button class="btn btn--sm nav__cta" type="button" data-copy-prompt>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"></path></svg>
+            <span data-copy-label>复制给 Agent</span>
+          </button>
+          <button class="nav__toggle" type="button" aria-expanded="false" aria-controls="nav-panel" aria-label="打开菜单" data-nav-toggle>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true" focusable="false"><path d="M4 8.5h16M4 15.5h16"></path></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="nav__panel" id="nav-panel" hidden>
+        <div class="wrap">
+          <a class="nav__link" href="#how">使用方式</a>
+          <a class="nav__link" href="#capabilities">产品能力</a>
+          <a class="nav__link" href="#agents">Agent 接入</a>
+          <a class="nav__link" href="#faq">常见问题</a>
+          <div class="lang" aria-label="语言">
+            <a href="../" hreflang="en">EN</a>
+            <span class="lang__sep" aria-hidden="true">/</span>
+            <a href="./" hreflang="zh-CN" lang="zh-CN" aria-current="true">中文</a>
+          </div>
+          <button class="btn" type="button" data-copy-prompt>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"></path></svg>
+            <span data-copy-label>复制给 Agent</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- ============================================================ hero -->
+      <section class="hero">
+        <div class="wrap">
+          <div class="hero__grid">
+            <div class="hero__text">
+              <p class="eyebrow reveal">
+                <span class="eyebrow__index">FMG</span>
+                <span class="eyebrow__rule" aria-hidden="true"></span>
+                为 Agent 工作流打造的游戏创作者发现工具
+              </p>
+              <h1 class="hero__title reveal" style="--d: 70ms">为你的游戏，找到<span class="nb">真正<em>同频</em></span><span>的创作者。</span></h1>
+              <p class="hero__body reveal" style="--d: 140ms">
+                让 FindMeGamer 加入你的 Agent 工作流。发现相关游戏创作者、理解匹配理由、准备有针对性的邀约；最终联系谁、发送什么，由你决定。
+              </p>
+              <div class="hero__cta reveal" style="--d: 200ms">
+                <button class="btn" type="button" data-copy-prompt>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"></path></svg>
+                  <span data-copy-label>复制给 Agent</span>
+                </button>
+                <a class="link-arrow" href="https://cedar-zhang-output.github.io/FindMeGamer/install/README.md" target="_blank" rel="noopener noreferrer" data-guide>
+                  阅读安装指南
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 18 18 6M7 6h11v11"></path></svg>
+                </a>
+              </div>
+              <p class="hero__support reveal" style="--d: 240ms">
+                粘贴给你的 Agent，让它阅读指南并协助安装 CLI 和 Skill。
+              </p>
+              <p class="hero__access reveal" style="--d: 280ms">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 11.2v5"></path><circle cx="12" cy="8" r=".9" fill="currentColor" stroke="none"></circle></svg>
+                <span>需要 FMG 访问令牌。安装不会自动开始研究或发信。</span>
+              </p>
+            </div>
+
+            <div class="hero__stage-col">
+              <div class="stage" data-scene>
+                <!-- A still of the same scene, painted by the same code: the
+                     fallback when WebGL is unavailable or motion is reduced. -->
+                <img class="stage__still" src="../assets/img/hero-still-700.webp" srcset="../assets/img/hero-still-420.webp 420w, ../assets/img/hero-still-700.webp 700w, ../assets/img/hero-still-1400.webp 1400w" sizes="(min-width: 1000px) 46vw, 100vw" alt="" width="1400" height="1050" fetchpriority="high" decoding="async">
+                <canvas class="stage__canvas" aria-hidden="true"></canvas>
+                <p class="stage__caption" aria-hidden="true">
+                  <span>图 01 — 选择性轨道</span>
+                  <span class="stage__hint">· 拖动可旋转</span>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================================== setup console -->
+      <section class="console-section wrap" id="agents" aria-labelledby="agents-title">
+        <h2 class="sr-only" id="agents-title">Agent 安装提示词</h2>
+        <div class="console reveal" data-console>
+          <div class="console__head">
+            <span class="console__label">
+              <span class="console__dot" aria-hidden="true"></span>
+              Agent 安装提示词
+            </span>
+            <div class="console__head-actions">
+              <button class="console__select" type="button" data-select-prompt>
+                全选
+              </button>
+            </div>
+          </div>
+
+          <pre class="console__prompt" id="setup-prompt" tabindex="-1"><span>请阅读 </span><span class="u">https://cedar-zhang-output.github.io/FindMeGamer/install/README.md</span><span> ，按指南安装 FindMeGamer CLI 和配套 Skills；缺少授权时问我，不要执行付费检索或发送邮件。</span></pre>
+
+          <div class="console__foot">
+            <p class="console__status" data-copy-status role="status" aria-live="polite">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 11.2v5"></path><circle cx="12" cy="8" r=".9" fill="currentColor" stroke="none"></circle></svg>
+              <span data-copy-status-text>适用于具备终端和文件访问能力的 Agent。需要 FMG 访问令牌。</span>
+            </p>
+            <div class="console__actions">
+              <button class="btn" type="button" data-copy-prompt>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"></path></svg>
+                <span data-copy-label>复制给 Agent</span>
+              </button>
+              <a class="link-arrow" href="https://cedar-zhang-output.github.io/FindMeGamer/install/README.md" target="_blank" rel="noopener noreferrer" data-guide>
+                阅读安装指南
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 18 18 6M7 6h11v11"></path></svg>
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <p class="console__compat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 11.2v5"></path><circle cx="12" cy="8" r=".9" fill="currentColor" stroke="none"></circle></svg>
+          <span>当前指南面向 macOS / Linux 上具备终端和文件工具的 Codex；其他 Agent 需核对兼容性。</span>
+        </p>
+      </section>
+
+      <!-- ==================================================== positioning -->
+      <section class="section" id="positioning">
+        <div class="wrap">
+          <div class="positioning">
+            <div class="reveal">
+              <p class="eyebrow">
+                <span class="eyebrow__index">01</span>
+                <span class="eyebrow__rule" aria-hidden="true"></span>
+                问题
+              </p>
+              <h2 class="h2" style="margin-top: 26px">
+                名单很长，不代表真正合适。
+              </h2>
+              <p class="positioning__body">
+                粉丝量只是故事的一部分。先看创作者关注哪些游戏、如何呈现内容，以及他为什么可能适合你的作品。建立一份讲得清理由的候选名单，而不只是多一张表格。
+              </p>
+              <ul class="evidence">
+                <li class="evidence__item">
+                  <span class="evidence__num">01</span>
+                  <span class="evidence__text">关注哪些游戏</span>
+                </li>
+                <li class="evidence__item">
+                  <span class="evidence__num">02</span>
+                  <span class="evidence__text">如何呈现内容</span>
+                </li>
+                <li class="evidence__item">
+                  <span class="evidence__num">03</span>
+                  <span class="evidence__text">匹配背后的语境</span>
+                </li>
+              </ul>
+            </div>
+
+            <figure class="figure reveal" style="--d: 120ms">
+              <div class="figure__frame">
+                <img src="../assets/img/selective-connections-800.webp" srcset="../assets/img/selective-connections-560.webp 560w, ../assets/img/selective-connections-800.webp 800w, ../assets/img/selective-connections.webp 1400w" sizes="(min-width: 980px) 50vw, 100vw" alt="" width="1536" height="1024" loading="lazy" decoding="async">
+              </div>
+              <figcaption class="figure__caption">
+                示意 — 匹配是一次连接，不是一行记录。
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================================================== how it works -->
+      <section class="section section--ink" id="how">
+        <div class="field" data-field aria-hidden="true">
+          <canvas class="field__canvas"></canvas>
+        </div>
+        <svg class="orbit-lines" viewBox="0 0 1200 1200" fill="none" aria-hidden="true" focusable="false">
+          <g stroke="currentColor" stroke-width="1">
+            <ellipse cx="600" cy="600" rx="560" ry="230" transform="rotate(-18 600 600)"></ellipse>
+            <circle cx="600" cy="600" r="430"></circle>
+            <ellipse cx="600" cy="600" rx="300" ry="520" transform="rotate(28 600 600)"></ellipse>
+          </g>
+          <circle cx="600" cy="600" r="6" fill="currentColor"></circle>
+        </svg>
+        <div class="wrap">
+          <div class="section__head section__head--split">
+            <div class="reveal">
+              <p class="eyebrow">
+                <span class="eyebrow__index">02</span>
+                <span class="eyebrow__rule" aria-hidden="true"></span>
+                使用方式
+              </p>
+              <h2 class="h2" style="margin-top: 26px">
+                给你的 Agent，多一项能力。
+              </h2>
+            </div>
+            <p class="lede reveal" style="--d: 100ms">
+              无需为了开始使用而切换到新的操作后台。复制一段短 Prompt，让 Agent 读取安装指南，把 FindMeGamer 接入你熟悉的工作流。
+            </p>
+          </div>
+
+          <ol class="steps">
+            <li class="step reveal">
+              <span class="step__num" aria-hidden="true">01</span>
+              <h3 class="step__title">复制 Prompt。</h3>
+              <p class="step__body">
+                发给具备终端和文件访问能力的 Agent。
+              </p>
+            </li>
+            <li class="step reveal" style="--d: 90ms">
+              <span class="step__num" aria-hidden="true">02</span>
+              <h3 class="step__title">让 Agent 完成安装。</h3>
+              <p class="step__body">
+                按指南安装 CLI 和 Skill，并遵守当前环境的权限要求。
+              </p>
+            </li>
+            <li class="step reveal" style="--d: 180ms">
+              <span class="step__num" aria-hidden="true">03</span>
+              <h3 class="step__title">完成授权，再提出任务。</h3>
+              <p class="step__body">
+                私下配置 FMG 访问令牌；确认游戏、平台和研究范围后再开始。
+              </p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- ==================================================== capabilities -->
+      <section class="section" id="capabilities">
+        <div class="wrap">
+          <div class="section__head">
+            <p class="eyebrow reveal">
+              <span class="eyebrow__index">03</span>
+              <span class="eyebrow__rule" aria-hidden="true"></span>
+              产品能力
+            </p>
+            <h2 class="h2 reveal" style="margin-top: 22px; --d: 60ms">
+              从第一次匹配，到后续跟进。
+            </h2>
+          </div>
+
+          <ul class="caps">
+            <li class="cap reveal">
+              <span class="cap__icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M8 9h8a4 4 0 0 1 3.94 4.68l-.5 2.8a2.5 2.5 0 0 1-4.84.28L14 17h-4l-.6-.24a2.5 2.5 0 0 1-4.84-.28l-.5-2.8A4 4 0 0 1 8 9Z"></path><path d="M8.6 11.4v2.6M7.3 12.7h2.6"></path><circle cx="15.4" cy="12.2" r=".85" fill="currentColor" stroke="none"></circle><circle cx="17.1" cy="13.4" r=".85" fill="currentColor" stroke="none"></circle></svg>
+              </span>
+              <h3 class="cap__title">从游戏本身出发</h3>
+              <p class="cap__body">
+                提供 Steam 游戏链接或明确的游戏介绍，用题材、玩法、氛围和期望的内容形式，为研究设定方向。
+              </p>
+            </li>
+            <li class="cap reveal">
+              <span class="cap__icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"></circle><path d="m15.2 15.2 5.3 5.3M7 10.5h7m-3.5-3.5v7"></path></svg>
+              </span>
+              <h3 class="cap__title">发现相关创作者</h3>
+              <p class="cap__body">
+                研究 YouTube、Twitch 和 X 上的游戏创作者。关注相关内容和可解释的匹配，而不只看粉丝规模。
+              </p>
+            </li>
+            <li class="cap reveal">
+              <span class="cap__icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zm0 0v6h6M8 12h4m-4 4h3m3 0 2 2 4-5"></path></svg>
+              </span>
+              <h3 class="cap__title">看懂为什么匹配</h3>
+              <p class="cap__body">
+                把匹配理由与可供核对的证据放在一起。由团队判断，谁值得进入最终名单。
+              </p>
+            </li>
+            <li class="cap reveal">
+              <span class="cap__icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="16" rx="3"></rect><circle cx="8.5" cy="10" r="2"></circle><path d="M5.5 16c.5-3 5.5-3 6 0M15 9h3m-3 4h3"></path></svg>
+              </span>
+              <h3 class="cap__title">补充公开商务联系方式</h3>
+              <p class="cap__body">
+                为候选名单查找可获得的公开商务邮箱。找不到或无法独立核验时，保留真实的不确定性。
+              </p>
+            </li>
+            <li class="cap reveal">
+              <span class="cap__icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M21 12V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7M4 6l8 6 8-6m-6 13 2.5 2 4.5-6"></path></svg>
+              </span>
+              <h3 class="cap__title">准备有针对性的邀约</h3>
+              <p class="cap__body">
+                明确发件邮箱和模板，审核正文与收件人，再确认发送。安装工具不等于授权联系任何人。
+              </p>
+            </li>
+            <li class="cap reveal">
+              <span class="cap__icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 12h3.6l2.2-5.4 4 11 2.3-5.6H21"></path></svg>
+              </span>
+              <h3 class="cap__title">跟进发送情况</h3>
+              <p class="cap__body">
+                通过工作流查询任务进度、投递异常和邮箱监控情况。邮件服务器接受发送，不代表一定进入收件箱或获得回复。
+              </p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ========================================================= example -->
+      <section class="section" id="example">
+        <div class="wrap">
+          <div class="brief">
+            <div class="reveal">
+              <p class="eyebrow">
+                <span class="eyebrow__index">04</span>
+                <span class="eyebrow__rule" aria-hidden="true"></span>
+                任务示例
+              </p>
+              <h2 class="h2" style="margin-top: 26px">
+                从一段清楚的 brief 开始。
+              </h2>
+              <p class="positioning__body">
+                安装并授权之后，研究从游戏和你们确认的范围开始。一段 brief 可以就这么短。
+              </p>
+            </div>
+
+            <div class="brief__card reveal" style="--d: 120ms">
+              <p class="brief__top">任务示例</p>
+              <span class="brief__mark" aria-hidden="true">“</span>
+              <blockquote class="brief__quote">
+                为这款 Steam 游戏找 10 位适合的 YouTube 创作者：[Steam 链接]。优先寻找关注叙事类独立游戏的频道，列出匹配理由和可用证据。先不要补充邮箱，也不要发信。
+              </blockquote>
+              <p class="brief__note">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"></circle><path d="M12 11.2v5"></path><circle cx="12" cy="8" r=".9" fill="currentColor" stroke="none"></circle></svg>
+                <span>此为任务示例。实际研究可能消耗服务额度，执行前先确认范围。</span>
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ====================================================== guardrails -->
+      <section class="section" id="guardrails">
+        <div class="wrap">
+          <div class="section__head">
+            <p class="eyebrow reveal">
+              <span class="eyebrow__index">05</span>
+              <span class="eyebrow__rule" aria-hidden="true"></span>
+              使用边界
+            </p>
+            <h2 class="h2 reveal" style="margin-top: 22px; --d: 60ms">
+              Agent 做研究，决定权在你。
+            </h2>
+          </div>
+
+          <ul class="bounds">
+            <li class="bound reveal">
+              <span class="bound__index">01</span>
+              <h3 class="bound__title">发信前审核。</h3>
+              <p class="bound__body">
+                收件人和正文确认后，才进入发送流程。
+              </p>
+            </li>
+            <li class="bound reveal" style="--d: 90ms">
+              <span class="bound__index">02</span>
+              <h3 class="bound__title">凭证不进网页。</h3>
+              <p class="bound__body">
+                通过私密方式授权，不在官网粘贴访问令牌。
+              </p>
+            </li>
+            <li class="bound reveal" style="--d: 180ms">
+              <span class="bound__index">03</span>
+              <h3 class="bound__title">结果如实呈现。</h3>
+              <p class="bound__body">
+                联系方式缺失、结果未核验、上游服务错误，都不应被包装成「成功」。
+              </p>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ============================================================= faq -->
+      <section class="section" id="faq">
+        <div class="wrap">
+          <div class="faq">
+            <div class="faq__aside reveal">
+              <p class="eyebrow">
+                <span class="eyebrow__index">06</span>
+                <span class="eyebrow__rule" aria-hidden="true"></span>
+                常见问题
+              </p>
+              <h2 class="h2" style="margin-top: 22px">把问题讲清楚。</h2>
+              <p class="lede">
+                如果你缺少令牌或权限，请联系你的 FMG 管理员。
+              </p>
+            </div>
+
+            <div class="faq__list">
+              <details class="faq__item" name="faq" open>
+                <summary class="faq__q">
+                  这是下载安装，还是网页应用？
+                  <span class="faq__sign" aria-hidden="true"></span>
+                </summary>
+                <div class="faq__a">
+                  主要入口是一段发给 Agent 的 Prompt。Agent 读取指南后安装 FindMeGamer CLI 和配套 Skill。官网负责介绍和分发，不是执行研究任务的工作台。
+                </div>
+              </details>
+              <details class="faq__item" name="faq">
+                <summary class="faq__q">
+                  安装完就可以直接使用吗？
+                  <span class="faq__sign" aria-hidden="true"></span>
+                </summary>
+                <div class="faq__a">
+                  还需要 FMG 访问令牌及相应权限。没有令牌时，请联系你的 FMG 管理员；安装本身不会自动获得服务访问权。
+                </div>
+              </details>
+              <details class="faq__item" name="faq">
+                <summary class="faq__q">
+                  支持哪些平台？
+                  <span class="faq__sign" aria-hidden="true"></span>
+                </summary>
+                <div class="faq__a">
+                  当前工作流包含 YouTube、Twitch、X 创作者研究，以及 Steam 游戏背景信息。实际可用能力受服务权限和上游可用性影响；提及平台不代表官方合作或背书。
+                </div>
+              </details>
+              <details class="faq__item" name="faq">
+                <summary class="faq__q">
+                  每位创作者都能找到邮箱吗？
+                  <span class="faq__sign" aria-hidden="true"></span>
+                </summary>
+                <div class="faq__a">
+                  不能保证。公开商务联系方式补强是尽力查询，正常找不到也是合理结果。找到地址不代表已经验证身份、保证可投递，或获得联系许可。
+                </div>
+              </details>
+              <details class="faq__item" name="faq">
+                <summary class="faq__q">
+                  Agent 会自动发信吗？
+                  <span class="faq__sign" aria-hidden="true"></span>
+                </summary>
+                <div class="faq__a">
+                  安装过程不会发信。外联需要另行确认发件邮箱、收件人和邮件正文，并授权执行发送流程。
+                </div>
+              </details>
+              <details class="faq__item" name="faq">
+                <summary class="faq__q">
+                  「发送成功」意味着进入收件箱了吗？
+                  <span class="faq__sign" aria-hidden="true"></span>
+                </summary>
+                <div class="faq__a">
+                  不意味着。服务器接受、实际投递、进入收件箱、收到回复是不同结果。FindMeGamer 不保证回复或内容报道。
+                </div>
+              </details>
+              <details class="faq__item" name="faq">
+                <summary class="faq__q">
+                  所有 Agent 和操作系统都能用吗？
+                  <span class="faq__sign" aria-hidden="true"></span>
+                </summary>
+                <div class="faq__a">
+                  当前指南面向具备终端和文件工具的 Codex，支持 macOS 和 Linux。其他环境需核对兼容性，不应宣传为全平台即装即用。
+                </div>
+              </details>
+              <details class="faq__item" name="faq">
+                <summary class="faq__q">
+                  研究任务免费吗？
+                  <span class="faq__sign" aria-hidden="true"></span>
+                </summary>
+                <div class="faq__a">
+                  安装不授权付费调用。研究和邮箱补强可能消耗服务或上游额度，使用前请向管理员确认。当前不在官网文案中承诺价格或免费额度。
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================================================= final cta -->
+      <section class="final" id="start">
+        <div class="wrap">
+          <div class="final__grid">
+            <div class="reveal">
+              <p class="eyebrow">
+                <span class="eyebrow__index">07</span>
+                <span class="eyebrow__rule" aria-hidden="true"></span>
+                开始使用
+              </p>
+              <h2 class="final__title">从你的游戏出发，找到值得交流的人。</h2>
+              <p class="final__body">
+                把 FindMeGamer 接入 Agent 工作流，让下一份创作者名单，拥有更清楚的匹配理由。
+              </p>
+              <div class="final__actions">
+                <button class="btn btn--paper" type="button" data-copy-prompt>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"></path></svg>
+                  <span data-copy-label>复制给 Agent</span>
+                </button>
+                <a class="link-arrow" href="https://cedar-zhang-output.github.io/FindMeGamer/install/README.md" target="_blank" rel="noopener noreferrer" data-guide>
+                  阅读安装指南
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 18 18 6M7 6h11v11"></path></svg>
+                </a>
+              </div>
+            </div>
+
+            <svg class="final__art" viewBox="0 0 520 520" fill="none" aria-hidden="true" focusable="false">
+              <g stroke="currentColor" stroke-width="1.1">
+                <circle cx="260" cy="260" r="86" opacity=".9"></circle>
+                <ellipse cx="260" cy="260" rx="196" ry="84" transform="rotate(-22 260 260)" opacity=".8"></ellipse>
+                <ellipse cx="260" cy="260" rx="150" ry="220" transform="rotate(14 260 260)" opacity=".45"></ellipse>
+                <circle cx="260" cy="260" r="236" stroke-dasharray="2 8" opacity=".55"></circle>
+              </g>
+              <g class="final__nodes">
+                <circle cx="427" cy="244" r="8" fill="#D9EFDF"></circle>
+                <circle cx="118" cy="362" r="6" fill="#F7F3EA" opacity=".85"></circle>
+                <circle cx="168" cy="212" r="4.5" fill="#D9EFDF" opacity=".8"></circle>
+                <circle cx="260" cy="174" r="5" fill="#F7F3EA"></circle>
+              </g>
+              <path d="M260 246h28M260 260h14" stroke="currentColor" stroke-width="1.1" opacity=".7"></path>
+            </svg>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="wrap">
+        <div class="footer__top">
+          <div class="footer__brand">
+            <a class="brand" href="#top" aria-label="FindMeGamer，返回顶部">
+              <svg class="brand__mark" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+                <ellipse cx="12" cy="12" rx="9.4" ry="4.2" transform="rotate(-24 12 12)" stroke="currentColor" stroke-width="1.4"></ellipse>
+                <circle cx="12" cy="12" r="3.1" stroke="currentColor" stroke-width="1.4"></circle>
+                <circle cx="19.35" cy="12" r="1.7" fill="currentColor"></circle>
+              </svg>
+              <span>FindMeGamer</span>
+            </a>
+            <p class="footer__tag">
+              为游戏团队提供创作者研究与有针对性的外联工具。
+            </p>
+          </div>
+          <nav class="footer__links" aria-label="页脚">
+            <a class="footer__link" href="#agents">安装提示词</a>
+            <a class="footer__link" href="#faq">常见问题</a>
+            <a class="footer__link" href="https://cedar-zhang-output.github.io/FindMeGamer/install/README.md" target="_blank" rel="noopener noreferrer" data-guide>
+              安装指南
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M6 18 18 6M7 6h11v11"></path></svg>
+            </a>
+          </nav>
+        </div>
+        <div class="footer__bottom">
+          <span>© 2026 FindMeGamer</span>
+          <div class="lang" aria-label="语言">
+            <a href="../" hreflang="en">EN</a>
+            <span class="lang__sep" aria-hidden="true">/</span>
+            <a href="./" hreflang="zh-CN" lang="zh-CN" aria-current="true">中文</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+    <div class="grain" aria-hidden="true"></div>
+    <script src="../js/main.js" defer></script>
+  </body>
+</html>

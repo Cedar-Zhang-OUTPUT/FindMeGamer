@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>OG card</title>
+    <style>
+      @font-face {
+        font-family: "Instrument Serif";
+        src: url("../assets/fonts/instrument-serif-400.woff2") format("woff2");
+        font-weight: 400;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "Instrument Serif";
+        src: url("../assets/fonts/instrument-serif-400-italic.woff2") format("woff2");
+        font-weight: 400;
+        font-style: italic;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "Inter";
+        src: url("../assets/fonts/inter-var.woff2") format("woff2");
+        font-weight: 100 900;
+        font-display: block;
+      }
+      @font-face {
+        font-family: "IBM Plex Mono";
+        src: url("../assets/fonts/ibm-plex-mono-500.woff2") format("woff2");
+        font-weight: 500;
+        font-display: block;
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+      }
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+      body {
+        background: #f7f3ea;
+        color: #0b1020;
+        font-family: "Inter", sans-serif;
+        position: relative;
+      }
+      .glow {
+        position: absolute;
+        width: 700px;
+        height: 700px;
+        right: -180px;
+        top: -120px;
+        border-radius: 50%;
+        background: radial-gradient(
+          circle,
+          rgba(188, 224, 200, 0.55),
+          rgba(188, 224, 200, 0) 62%
+        );
+      }
+      .orbit {
+        position: absolute;
+        right: -90px;
+        top: 40px;
+        width: 640px;
+        height: 640px;
+        color: #1533e0;
+      }
+      .frame {
+        position: absolute;
+        inset: 0;
+        padding: 64px 72px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 28px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+      .brand svg {
+        width: 34px;
+        height: 34px;
+        color: #1533e0;
+      }
+      .eyebrow {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 15px;
+        font-weight: 500;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #565d72;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 22px;
+      }
+      .eyebrow span:first-child {
+        color: #1533e0;
+      }
+      .rule {
+        width: 46px;
+        height: 1px;
+        background: currentColor;
+        opacity: 0.35;
+      }
+      h1 {
+        font-family: "Instrument Serif", serif;
+        font-weight: 400;
+        font-size: 104px;
+        line-height: 0.96;
+        letter-spacing: -0.035em;
+        max-width: 780px;
+      }
+      h1 em {
+        font-style: italic;
+      }
+      .foot {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 32px;
+      }
+      .foot p {
+        font-size: 25px;
+        line-height: 1.45;
+        color: #333a50;
+        max-width: 520px;
+      }
+      .tag {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 14px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #565d72;
+        padding-bottom: 6px;
+        white-space: nowrap;
+      }
+      .hairline {
+        position: absolute;
+        left: 72px;
+        right: 72px;
+        bottom: 150px;
+        height: 1px;
+        background: rgba(11, 16, 32, 0.14);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow"></div>
+    <svg class="orbit" viewBox="0 0 640 640" fill="none" aria-hidden="true">
+      <g stroke="currentColor" stroke-width="1.2" opacity="0.5">
+        <ellipse cx="320" cy="320" rx="300" ry="128" transform="rotate(-22 320 320)" />
+        <circle cx="320" cy="320" r="196" opacity="0.7" />
+        <ellipse cx="320" cy="320" rx="210" ry="300" transform="rotate(18 320 320)" opacity="0.45" />
+      </g>
+      <g>
+        <circle cx="320" cy="320" r="112" stroke="currentColor" stroke-width="1.4" opacity="0.85" />
+        <circle cx="320" cy="320" r="112" stroke="currentColor" stroke-width="26" opacity="0.06" />
+        <circle cx="462" cy="196" r="13" fill="#1533e0" />
+        <circle cx="110" cy="425" r="9" fill="#bce0c8" />
+        <circle cx="470" cy="470" r="7" fill="#bce0c8" />
+      </g>
+    </svg>
+
+    <div class="frame">
+      <div class="brand">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <ellipse cx="12" cy="12" rx="9.4" ry="4.2" transform="rotate(-24 12 12)" stroke="currentColor" stroke-width="1.4" />
+          <circle cx="12" cy="12" r="3.1" stroke="currentColor" stroke-width="1.4" />
+          <circle cx="19.35" cy="12" r="1.7" fill="currentColor" />
+        </svg>
+        FindMeGamer
+      </div>
+
+      <div>
+        <div class="eyebrow">
+          <span>01</span>
+          <span class="rule"></span>
+          Creator discovery, built for agents
+        </div>
+        <h1>Find the creators who <em>get</em> your game.</h1>
+      </div>
+
+      <div class="foot">
+        <p>Creator research, built for your Agent’s workflow.</p>
+        <span class="tag">For game teams</span>
+      </div>
+    </div>
+    <div class="hairline"></div>
+  </body>
+</html>
