@@ -68,3 +68,37 @@ operations; configuration snapshots contain secrets and must remain private.
 After release, clients can run `fmg upgrade --latest --skills`, verify
 `fmg version` / `fmg auth check`, and reload both installed Skills. Existing tasks
 are not restarted by this upgrade.
+
+## Production acceptance, 2026-10-22
+
+The image-only cutover completed using image `55045d04de41` and source commit
+`298a1fea6536ea05d41940e60a8af872b7e7a25f`. Network-disabled image comparison
+confirmed exactly the six intended changed files and 49 unchanged package files.
+The server's legacy Docker builder required ordinary `COPY` with already-readable
+source modes rather than BuildKit-only `COPY --chmod`; offline image tests passed
+before the running services were touched. Build context excludes private backups.
+
+Preflight's full-body hash read was replaced with a compact fingerprint of every
+preview's ID, PostgreSQL row transaction version (`xmin`) and stored JSON size,
+avoiding repeatedly loading historical image bodies. This is a row-version/size
+fingerprint, not a cryptographic hash of each message body. No preview rows were
+rewritten. The scoped image diff and historical MIME regression complement that
+before/after evidence. Initial preflight failures did not change running services.
+
+All five switched roles stopped gracefully; API health returned before the
+worker/dispatcher initialization checks completed. The verifier waited for actual
+initialized role readiness rather than accepting running container status. Final
+acceptance confirmed both current monitors ready, retired Hotmail monitor absent,
+zero in-flight sends/leases/pending recipients/retries, unchanged send totals,
+preview fingerprints, task states, runtime gates and sender-safety records.
+Private configuration hashes are unchanged. The enrichment worker retained its
+container ID, start time and image. No new persistent pause was installed, no
+hold was released, and no mail was sent or retry/batch started.
+
+Go test/vet, 56 focused backend regressions and both Skill validators passed.
+All seven draft-release assets were downloaded again; their checksum list matches
+the local build, all four installer/bundle tests passed, and the downloaded CLI
+passed all six offline mailbox-selection/immutability checks. Local FMG credentials
+were unavailable, so live verification used production role probes, template/MIME
+rendering and registry discovery rather than claiming an authenticated local CLI
+check. Unrelated Gemini diagnostics and backup working-tree changes are excluded.
