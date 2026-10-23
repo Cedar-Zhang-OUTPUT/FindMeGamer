@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from .db import AccessToken
 from .errors import ApiError
 
-VALID_SCOPES = frozenset({"read", "email:enrich", "email:send"})
+VALID_SCOPES = frozenset({"read", "email:enrich", "email:send", "email:read"})
 bearer = HTTPBearer(auto_error=False)
 
 
@@ -32,7 +32,7 @@ def issue_token(session: Session, *, label: str, scopes: list[str]) -> IssuedTok
     if not label.strip() or len(label) > 200:
         raise ValueError("Label must have 1–200 characters")
     if not scopes or not set(scopes) <= VALID_SCOPES:
-        raise ValueError("Use read, email:enrich or email:send scopes")
+        raise ValueError("Use read, email:enrich, email:send or email:read scopes")
     raw = "fmg_" + secrets.token_urlsafe(32)
     record = AccessToken(
         digest=hashlib.sha256(raw.encode()).hexdigest(),

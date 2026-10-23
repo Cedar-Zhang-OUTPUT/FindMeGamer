@@ -49,6 +49,30 @@ Creation prints JSON containing `id` and the one-time `token` secret. Capture it
 
 ## Provider reads
 
+### Sent mailbox read permission
+
+`GET /v1/email/sent?mailbox_id=liminal&limit=20` lists the configured IMAP
+Sent folder. `cursor=NEXT_CURSOR` pages backward; `message_id=ID` reads a message.
+These require the new explicit `email:read` scope, **not** `read` or `email:send`.
+Issue it only to users authorized to read all enabled configured mailboxes,
+including other users' and manually saved outgoing mail:
+
+```sh
+.venv/bin/python -m fmg_agent.admin token create --label sent-reader --scope email:read
+```
+
+Do not modify existing tokens automatically. No database migration is needed.
+The endpoint uses the mailbox's IMAP app password, `imap_sent_folder`, TLS,
+read-only selection and BODY.PEEK; only password-authenticated IMAP is supported.
+It does not enqueue work, write mailbox state, or change monitoring cursors.
+List windows are bounded to 1–50 UIDs, so empty pages can have a next cursor.
+References bind mailbox/account/folder and UIDVALIDITY. Folder resets require a
+new listing. Headers are limited to 4 KiB and bodies to 128 KiB; oversized
+messages report body omission. Attachments are never exposed. Errors are
+sanitized; authentication/folder/config errors require operator investigation.
+
+### Platform APIs
+
 Server-only environment variables: `FMG_AGENT_YOUTUBE_API_KEY`, `FMG_AGENT_X_BEARER_TOKEN`, optional `FMG_AGENT_STEAM_API_KEY`. Keep them in a private environment file, not command arguments. `FMG_AGENT_CATALOG_DIR` can point to the packaged `api-catalog` directory when running outside the source tree.
 
 With a read-scoped access token, the gateway exposes:
