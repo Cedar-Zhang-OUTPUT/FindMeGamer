@@ -53,7 +53,39 @@ restore revoked tokens. Use a short-lived, revoked-after-verification read-only
 test token if an end-to-end smoke needs credentials; do not print mail bodies,
 addresses or credentials in deployment logs.
 
-Production acceptance and published release details will be recorded after
-verification. Clients upgrade at a safe boundary with
+Clients upgrade at a safe boundary with
 `fmg upgrade --latest --skills`, then verify version/scopes and re-read Skills;
 publication does not itself update a running Agent's binary or loaded guidance.
+
+## Production acceptance, 2026-10-23
+
+Source commit: `c91c9338cbc1b653721b594401d3bbd9be073154`.
+Production image: `0547d4ec0e5e` (`fmg-agent:sent-read-20261023`). Network-disabled
+image comparison confirmed exactly two replaced package files and one new file;
+the other 53 files are unchanged. The API-only Compose overlay was compared to
+the current configuration and runtime environment/mounts before cutover.
+
+Both real mailboxes passed list and single-message read checks on the temporary
+API before it received traffic. Caddy validated/reloaded to the replica, the
+canonical API drained gracefully and was replaced, then Caddy reloaded back and
+the replica drained gracefully. Caddy's original configuration hash was restored;
+its container was not restarted. Both mail workers, dispatcher, monitor and
+enrichment container IDs/start times/restart counts remained unchanged. Registry,
+credential files, runtime gates and sender-safety records were unchanged. No
+queue, task, send approval, hold or retry state was modified by deployment.
+
+The existing shared `cedar-cli` token now has `read`, `email:enrich`, `email:send`
+and `email:read`; its secret and ownership were not changed. No replacement user
+token was issued. Real read-only smoke tokens were revoked immediately afterward.
+
+All seven draft-release assets were downloaded again and their checksum list
+matched the build. The four installer/bundle acceptance tests passed against
+the downloaded assets. The downloaded Linux CLI reported **0.8.5** and passed
+authenticated list/detail queries for both `liminal` and `second` through the
+public HTTPS gateway. No mail contents/addresses were printed in the smoke log.
+An initial executable transfer was copied before completion and failed at the
+version command; after checking the completed binary's SHA-256 and recopying it,
+the full smoke passed. This did not send mail or affect production processes.
+
+Release: [FMG CLI & Skills 0.8.5](https://github.com/Cedar-Zhang-OUTPUT/FindMeGamer/releases/tag/fmg-v0.8.5),
+on the existing FMG prerelease distribution channel.
