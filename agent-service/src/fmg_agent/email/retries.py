@@ -45,6 +45,17 @@ def observe(session, send, diagnostic, now):
     preview = session.get(EmailPreview, send.preview_id)
     guard = safety.locked(session, preview.message["from"])
     retry = by_preview(session, preview.id)
+    if diagnostic.get("blocklisted") and diagnostic.get("action") == "failed":
+        # Listing is a sender-reputation problem, not a transient per-recipient
+        # failure. Do not send a probe/retry or wait for three failed retries.
+        safety.trip(session, preview.message["from"], "outbound_spam_blocked", now)
+        if retry is not None:
+            fail(session, retry, now)
+        queued = session.get(EmailBounceRetry, send.id)
+        if queued and queued.state == "queued":
+            queued.state = "cancelled"
+            queued.cancel_reason = "sender_blocklisted"
+        return
     if retry is not None:
         # An explicit failed DSN resolves even an uncertain retry as failed.
         fail(session, retry, now)

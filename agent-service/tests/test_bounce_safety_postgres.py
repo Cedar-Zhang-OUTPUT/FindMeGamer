@@ -12,6 +12,40 @@ from test_outreach import create
 
 
 @pytest.mark.postgres
+def test_blocklist_holds_on_first_report_with_materialized_pending_query(pg_sending):
+    from fmg_agent.email.inbox import ingest
+    from fmg_agent.email.safety import status
+    from fmg_agent.email.models import EmailBounceRetry
+    from fmg_agent.outreach import pending
+    from test_blocklist_safety import RBL
+
+    app, client, owner = pg_sending
+    task = create(app, client, owner).json()["data"]
+    assert start(client, owner, task).status_code == 200
+    sid = accepted(app, client, owner, "listed")
+    assert (
+        ingest(
+            app.state.sessions,
+            "inbox",
+            "1",
+            1,
+            dsn(sid, "rbl", "5.0.0", RBL),
+            mailbox_id="ontologyplay",
+        )
+        == "bounce"
+    )
+    with app.state.sessions() as session:
+        assert status(session, "publisher@example.com")["state"] == "paused"
+        assert session.scalar(select(EmailBounceRetry)) is None
+    assert pending(app.state.sessions, mailbox_id="ontologyplay") == []
+    result = client.get(
+        "/v1/outreach/tasks/" + task["id"], headers=headers(owner)
+    ).json()["data"]
+    assert result["state"] == "blocked"
+    assert result["stats"]["pending"] == 2
+
+
+@pytest.mark.postgres
 def test_concurrent_retry_bounces_persist_hold_and_block_queued_sends(
     pg_sending, monkeypatch
 ):

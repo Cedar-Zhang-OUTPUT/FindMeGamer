@@ -62,12 +62,15 @@ def trip(session, sender, reason, now=None):
         row.reason = reason
         row.paused_at = now or datetime.now(timezone.utc)
     # Do not rewrite completed historical batches that retain a stored 'sending' state.
-    active = (
-        select(OutreachRecipient.task_id)
-        .join(EmailPreview, EmailPreview.id == OutreachRecipient.preview_id)
-        .outerjoin(EmailSend, EmailSend.preview_id == EmailPreview.id)
+    # Filter pending work before reading frozen message JSON. Historical previews
+    # can contain large inline images; scanning them under the sender lock stalls
+    # both the circuit breaker and send reservations on PostgreSQL.
+    candidates = (
+        select(OutreachRecipient.task_id, OutreachRecipient.preview_id)
+        .join(OutreachTask, OutreachTask.id == OutreachRecipient.task_id)
+        .outerjoin(EmailSend, EmailSend.preview_id == OutreachRecipient.preview_id)
         .where(
-            func.lower(EmailPreview.message["from"].as_string()) == sender.casefold(),
+            OutreachTask.state == "sending",
             (EmailSend.id.is_(None))
             | (EmailSend.state == "sending")
             | EmailSend.id.in_(
@@ -75,6 +78,15 @@ def trip(session, sender, reason, now=None):
                     EmailBounceRetry.state.in_(["queued", "sending"])
                 )
             ),
+        )
+        .cte("pending_sender_tasks")
+        .prefix_with("MATERIALIZED", dialect="postgresql")
+    )
+    active = (
+        select(candidates.c.task_id)
+        .join(EmailPreview, EmailPreview.id == candidates.c.preview_id)
+        .where(
+            func.lower(EmailPreview.message["from"].as_string()) == sender.casefold()
         )
     )
     session.execute(

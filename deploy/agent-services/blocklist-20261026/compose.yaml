@@ -1,0 +1,3 @@
+services:
+  monitor:
+    image: fmg-agent:blocklist-20261026

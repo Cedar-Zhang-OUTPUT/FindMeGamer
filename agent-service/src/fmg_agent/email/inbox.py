@@ -139,9 +139,24 @@ def delivery_diagnostics(message):
                 continue
             status = str(block.get("Status", ""))
             diagnostic = str(block.get("Diagnostic-Code", ""))
+            # Some MTAs wrap permanent RBL rejections in generic Status: 5.0.0.
+            # Require an actual failed DSN and an explicit listing signature,
+            # not a bare mention of "spam" or a URL in ordinary mail.
+            blocklisted = action == "failed" and bool(
+                re.search(
+                    r"\bfound on one or more RBLs\b|"
+                    r"\b(?:abusixdblblack|abusixip)\b|"
+                    r"\b(?:listed|blocked|blacklisted)\s+(?:on|by|in)\s+"
+                    r"(?:the\s+)?(?:Spamhaus|SpamCop|Abusix|RBL|DNSBL)\b",
+                    diagnostic,
+                    re.I,
+                )
+            )
             category = "delivery_failure"
             if action != "failed":
                 category = "delivery_notice"
+            elif blocklisted:
+                category = "spam_blocked"
             elif (
                 status.startswith("5.7.")
                 and re.search(r"\bspam\b|AS\(4810\)", diagnostic, re.I)
@@ -165,6 +180,7 @@ def delivery_diagnostics(message):
                 "status": status[:20],
                 "category": category,
                 "diagnostic": diagnostic[:1000],
+                **({"blocklisted": True} if blocklisted else {}),
             }
     return None
 
