@@ -48,6 +48,7 @@ class _ProfileIdentity(BaseModel):
     enabled: bool = True
     display_name: str = ""
     allowed_templates: list[str] = Field(default_factory=list)
+    allowed_reply_templates: list[str] = Field(default_factory=list)
 
 
 def _mail_field(name):
@@ -200,6 +201,7 @@ class MailboxRegistry:
                 "enabled": profile.enabled,
                 "ready": self._ready(profile),
                 "allowed_templates": list(profile.allowed_templates),
+                "allowed_reply_templates": list(profile.allowed_reply_templates),
                 "send_interval_seconds": minimum_interval(
                     profile.email_send_interval_seconds
                 ),

@@ -143,6 +143,7 @@ def test_public_mailboxes_redacts_secrets(tmp_path, caplog):
         "enabled",
         "ready",
         "allowed_templates",
+        "allowed_reply_templates",
         "send_interval_seconds",
         "send_interval_choices_seconds",
     }

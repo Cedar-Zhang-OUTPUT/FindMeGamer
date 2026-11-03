@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Header, Request, Query
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..auth import Principal, require_scope, authenticate
 from .templates import get_template, list_templates
@@ -64,6 +64,125 @@ class PreviewRequest(BaseModel):
     @classmethod
     def validate_to(cls, value):
         return email_address(value)
+
+
+class ReplyPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reply_id: str = Field(min_length=1, max_length=36)
+    mailbox_id: str = Field(min_length=1, max_length=40)
+    template_id: str | None = Field(default=None, max_length=100)
+    template_version: str | None = Field(default=None, max_length=40)
+    variables: dict[str, str] = Field(default_factory=dict)
+    text: str | None = Field(default=None, min_length=1, max_length=50000)
+    text_confirmed: Literal[True] | None = None
+    recipient_mode: Literal["sender", "reply_to"] = "sender"
+
+    @model_validator(mode="after")
+    def content_choice(self):
+        if self.template_id:
+            if (
+                self.template_id == "custom-reply"
+                or not self.template_version
+                or self.text is not None
+                or self.text_confirmed is not None
+            ):
+                raise ValueError(
+                    "Choose a versioned reply template or confirmed custom text, not both."
+                )
+        elif (
+            not self.text
+            or not self.text.strip()
+            or self.text_confirmed is not True
+            or self.template_version
+            or self.variables
+        ):
+            raise ValueError(
+                "Custom text requires text_confirmed=true and no template variables."
+            )
+        if any(len(v) > 300 or "\r" in v or "\n" in v for v in self.variables.values()):
+            raise ValueError(
+                "Reply template variables must be single-line text up to 300 characters."
+            )
+        return self
+
+
+@router.post("/reply-previews", status_code=201)
+def create_reply_preview(
+    request: Request,
+    body: ReplyPreviewRequest,
+    principal: Principal = Depends(require_scope("email:send")),
+):
+    from .replies import create_reply_preview as prepare
+
+    return result(
+        request,
+        prepare(
+            request.app.state.sessions,
+            principal.id,
+            body.model_dump(),
+            request.app.state.settings,
+            request.app.state.mailboxes.current(),
+        ),
+    )
+
+
+@router.get("/reply-history")
+def read_reply_history(
+    request: Request,
+    task_id: str = Query(min_length=1, max_length=36),
+    creator_id: str | None = Query(default=None, max_length=200),
+    limit: int = Query(default=10, ge=1, le=20),
+    cursor: str | None = Query(default=None, max_length=36),
+    principal: Principal = Depends(require_scope("email:send")),
+):
+    from .replies import reply_history
+
+    return result(
+        request,
+        reply_history(
+            request.app.state.sessions,
+            principal.id,
+            task_id,
+            creator_id=creator_id,
+            limit=limit,
+            cursor=cursor,
+        ),
+    )
+
+
+@router.get("/replies/{reply_id}")
+def read_reply(
+    request: Request,
+    reply_id: str,
+    principal: Principal = Depends(require_scope("email:send")),
+):
+    from .replies import owned_reply, source_context
+
+    with request.app.state.sessions() as session:
+        reply, send, preview = owned_reply(session, reply_id, principal.id)
+        return result(
+            request,
+            {
+                **source_context(session, reply, send, preview),
+                "mailbox_id": preview.mailbox_id,
+                "kind": reply.kind,
+                "thread_headers": (reply.diagnostics or {}).get("thread_headers"),
+            },
+        )
+
+
+@router.get("/receipts")
+def read_receipt_by_key(
+    request: Request,
+    idempotency_key: str = Query(min_length=1, max_length=200),
+    principal: Principal = Depends(require_scope("email:send")),
+):
+    return result(
+        request,
+        SendStore(request.app.state.sessions).get_receipt_by_key(
+            idempotency_key, principal.id
+        ),
+    )
 
 
 class SendRequest(BaseModel):
@@ -185,9 +304,12 @@ def templates(request: Request, principal: Principal = Depends(authenticate)):
 
 @router.get("/templates/{template_id}")
 def template(
-    request: Request, template_id: str, principal: Principal = Depends(authenticate)
+    request: Request,
+    template_id: str,
+    version: str | None = Query(default=None, max_length=40),
+    principal: Principal = Depends(authenticate),
 ):
-    return result(request, get_template(template_id))
+    return result(request, get_template(template_id, version))
 
 
 @router.post("/enrich", status_code=202)

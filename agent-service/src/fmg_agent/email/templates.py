@@ -15,12 +15,17 @@ TEMPLATE_FILES = {
     "liminal-private-outreach": "liminal-private-outreach.json",
     "thieves-outreach": "thieves-outreach.json",
 }
+REPLY_TEMPLATE_FILES = {
+    "thieves-demo-access-reply": {"1": "thieves-demo-access-reply-v1.json"},
+}
 
 
 def check_mailbox_template(profile, template_id, *, status_code=422):
     """Fixed campaign signatures cannot be reassigned by a registry allowlist."""
     if (
-        template_id not in profile.allowed_templates
+        template_id in REPLY_TEMPLATE_FILES
+        or template_id == "custom-reply"
+        or template_id not in profile.allowed_templates
         or (
             template_id == "liminal-private-outreach"
             and (
@@ -51,6 +56,18 @@ def check_mailbox_template(profile, template_id, *, status_code=422):
 
 
 def get_template(template_id, version=None):
+    if template_id in REPLY_TEMPLATE_FILES:
+        versions = REPLY_TEMPLATE_FILES[template_id]
+        filename = versions.get(version or next(reversed(versions)))
+        if filename is None:
+            raise ApiError(
+                409,
+                "template_version_changed",
+                "Read an available reply template version.",
+            )
+        return json.loads(
+            files("fmg_agent.email").joinpath("template_data", filename).read_text()
+        )
     filename = TEMPLATE_FILES.get(template_id)
     if filename is None:
         raise ApiError(404, "template_not_found", "Template was not found.")
@@ -69,7 +86,10 @@ def get_template(template_id, version=None):
 def list_templates():
     return [
         {key: definition[key] for key in ("id", "version", "name")}
-        for definition in (get_template(template_id) for template_id in TEMPLATE_FILES)
+        for definition in (
+            get_template(template_id)
+            for template_id in [*TEMPLATE_FILES, *REPLY_TEMPLATE_FILES]
+        )
     ]
 
 

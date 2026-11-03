@@ -274,6 +274,10 @@ def ingest(sessions, mailbox, validity, uid, raw, *, mailbox_id: str):
                 content = "".join(parser.parts)
         now = datetime.now(timezone.utc)
         diagnostic = delivery_diagnostics(message)
+        if kind == "human":
+            from .threading import read_thread_headers
+
+            diagnostic = {"thread_headers": read_thread_headers(message)}
         session.add(
             EmailReply(
                 send_id=send.id,

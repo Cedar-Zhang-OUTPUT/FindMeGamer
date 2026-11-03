@@ -37,10 +37,13 @@ fmg email retry ID
 fmg email templates
 fmg email mailboxes
 fmg email sent --mailbox ID [--limit 20] [--cursor CURSOR | --id MESSAGE_ID]
-fmg email template TEMPLATE_ID
+fmg email template TEMPLATE_ID [--version VERSION]
 fmg email preview --input message.json [--mailbox ID --template ID --template-version VERSION] | --id PREVIEW_ID
 fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key KEY
-fmg email receipt SEND_ID
+fmg email reply SERVER_REPLY_ID
+fmg email reply-preview --reply-id ID --mailbox ID --template ID --template-version VERSION --input reply.json
+fmg email reply-history --task-id ID [--creator-id ID --limit 10 --cursor CURSOR]
+fmg email receipt SEND_ID | --idempotency-key KEY
 fmg outreach task create --input batch.json --idempotency-key KEY [--mailbox ID --template ID --template-version VERSION]
 fmg outreach task list
 fmg outreach task get TASK_ID [--summary]

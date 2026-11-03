@@ -259,6 +259,8 @@ def view(sessions, task_id, token_id, *, summary=False):
             )
         from .email.safety import status as sender_status
 
+        from .email.replies import history_summary
+
         sender = rows[0][3] if rows else None
         return {
             "id": task.id,
@@ -281,6 +283,7 @@ def view(sessions, task_id, token_id, *, summary=False):
             "state": state,
             "stats": stats,
             "sender_safety": sender_status(session, sender) if sender else None,
+            **history_summary(session, token_id, task_id),
             **(
                 {} if summary else {"template": task.template, "recipients": recipients}
             ),

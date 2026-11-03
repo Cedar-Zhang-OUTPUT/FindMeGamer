@@ -1,0 +1,19 @@
+{
+  "id": "thieves-demo-access-reply",
+  "version": "1",
+  "name": "No Rest for Thieves — Demo Update & Access Available Upon Request",
+  "purpose": "reply",
+  "source": {
+    "url": "https://k1mai98sti.feishu.cn/wiki/CxtvwHnghi9bLbkoUytc3eydnBb",
+    "document_id": "DjdIdpybMoP4HPxq7q0cNKQencg",
+    "revision_id": 115
+  },
+  "variables": {
+    "creator_name": {
+      "type": "string",
+      "required": true
+    }
+  },
+  "subject": "",
+  "text": "Hi ${creator_name}\n\nThank you for your interest in No Rest for Thieves!\n\nOver the past few weeks, we've received valuable feedback from the community during Steam Next Fest. This has helped us better understand players' experiences and identify areas where the game needs improvement.\n\nWith Steam Next Fest now over, we've temporarily closed public access to the demo so our team can focus on further development and gameplay improvements.\n\nHowever, if you're still interested in trying the Steam Next Fest version of the demo, we'd be happy to provide a Steam key upon request! Just let us know, and we'll send four so you can try with your friends.\n\nTo request your keys, simply reply to this email with the following message:\n\n\"I'd like to request four Steam keys for the No Rest for Thieves Steam Next Fest demo.\"\n\nWe'll be happy to send them your way!\n\nWe'd also love to hear your thoughts and feedback after you've played. Thanks again for your interest and support!\n\nPlease note that the demo keys provide access to the original Steam Next Fest build, so the issues mentioned above may still occur.\n\nThanks again for your interest and support! If you'd still like to try the demo, just reply to this email.\n\nBest regards,\nThe No Rest for Thieves Development Team"
+}

@@ -68,6 +68,8 @@ def observe(session, send, diagnostic, now):
             queued.state = "cancelled"
             queued.cancel_reason = "email_recipient_invalid"
         return
+    if preview.message.get("reply_context") and send.state != "sent":
+        return  # Uncertain replies never authorize an automatic new send.
     if diagnostic["category"] != "spam_blocked":
         return
     if aware(send.created_at) < aware(guard.retry_enabled_at):

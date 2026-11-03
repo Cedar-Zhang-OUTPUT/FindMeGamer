@@ -180,7 +180,7 @@ fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key unique-approv
 fmg email receipt SEND_ID
 ```
 
-`--confirm` is mandatory, but an Agent must obtain the user's approval before using it. For a batch, use `fmg outreach task create` and review the server-saved task before starting its exact revision; do not loop individual sends. This version accepts one plain email address per preview; CC, BCC, attachments and arbitrary message-body fields are not supported.
+`--confirm` is mandatory, but an Agent must obtain the user's approval before using it. For a batch, use `fmg outreach task create` and review the server-saved task before starting its exact revision; do not loop individual sends. This version accepts one plain email address per preview; CC, BCC and user attachments are not supported. Custom body text is only accepted by the dedicated reply-preview flow with explicit text confirmation.
 
 The bundled outreach dashboard is delivery-only: draft previews, sending, bounces, retries, uncertain delivery and monitoring/sender safety. Reply columns, filters, counts/rates and reply bodies are not shown. Server-side reply monitoring/records and automatic bounce pauses remain enabled; full task JSON retains reply fields for compatibility and requested investigations. After upgrading CLI and Skills, restart only the local dashboard with its existing task ID to load the new UI.
 
@@ -201,3 +201,21 @@ The ledger records platform attempts, SMTP attempts, and each Gemini enrichment 
 `fmg upgrade --latest --skills` updates this CLI and matching Skills with the verified installer (Python 3.10+), keeping authentication and numbered backups of replaced Skills. Use `--skill-dir DIRECTORY` for an existing custom Skill directory, or `--tag fmg-v0.2.0` to pin a version. Without `--skills`, only the binary changes. Reload Skill instructions after updating. CLI 0.1.0 can bootstrap using the new release installer with `--skills`; follow the public Agent guide rather than choosing a legacy macOS DMG as GitHub latest.
 
 Command results: JSON stdout (NDJSON for pages or job polling). Help is human-readable text. Errors: structured JSON stderr. Exit 0 successful request (inspect receipt state), 2 parameters, 3 authentication/permission, 4 quota/rate limit, 5 network/upstream/output/wait timeout, 6 failed email job or delivery, 7 unknown send outcome, 130 user cancellation. The actual error code distinguishes company configuration, provider permission and quota failures.
+
+
+## Reply to an incoming message
+
+Read `fmg email reply SERVER_REPLY_ID`, discover `fmg email mailboxes`, and read the separate reply template. No Rest's `thieves-demo-access-reply` v1 accepts only `creator_name` and is bound to `second / norestforthieves@ontologyplay.com`. It does not modify the invitation template.
+
+```sh
+# reply.json: {"variables":{"creator_name":"Alice"}}
+fmg email reply-preview --reply-id SERVER_REPLY_ID --mailbox second --template thieves-demo-access-reply --template-version 1 --input reply.json
+# After review and explicit send approval:
+fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key STABLE_KEY
+fmg email receipt --idempotency-key STABLE_KEY
+fmg email reply-history --task-id TASK_ID --creator-id CREATOR_ID --limit 10
+```
+
+Preview defaults to the actual From address of the incoming message and displays differing Reply-To. Select `--recipient-mode reply_to` only after explicit review. For a user-approved custom body omit template flags and provide `{"text":"approved text","text_confirmed":true}`. Headers, subject, mailbox and source linkage are server-owned. Historical missing headers require verified read-only recovery; unavailable headers block preview.
+
+A disconnected send must be reconciled using its original key, never a replacement preview/key. `unknown` is not retry permission; 404 may precede an in-flight request's reservation. Sent copy results are reported separately from transport acceptance. For full contracts and administrator rollout instructions see [reply API](../docs/agent-services/email-replies.md) and [Skill mechanics](../skills/fmg-api/references/replies.md).

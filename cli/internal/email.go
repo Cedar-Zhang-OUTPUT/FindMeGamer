@@ -42,6 +42,9 @@ func runEmail(ctx context.Context, args []string, out, diagnostics io.Writer) in
 		}
 		return emitEmail(out, diagnostics, response)
 	}
+	if args[0] == "reply-preview" || args[0] == "reply-history" || args[0] == "reply" {
+		return runEmailReply(ctx, client, args, out, diagnostics)
+	}
 	if args[0] == "preview" || args[0] == "send" || args[0] == "receipt" {
 		return runEmailSending(ctx, client, args, out, diagnostics)
 	}
@@ -51,10 +54,19 @@ func runEmail(ctx context.Context, args []string, out, diagnostics io.Writer) in
 			return writeError(diagnostics, errors.New("templates takes no arguments"))
 		}
 		if args[0] == "template" {
-			if len(args) != 2 || args[1] == "" || strings.ContainsAny(args[1], "/?#") {
-				return writeError(diagnostics, errors.New("template requires one template ID"))
+			if len(args) < 2 || args[1] == "" || strings.ContainsAny(args[1], "/?#") {
+				return writeError(diagnostics, errors.New("template requires TEMPLATE_ID [--version VERSION]"))
+			}
+			flags := flag.NewFlagSet("template", flag.ContinueOnError)
+			flags.SetOutput(io.Discard)
+			version := flags.String("version", "", "specific registered template version")
+			if flags.Parse(args[2:]) != nil || flags.NArg() != 0 {
+				return writeError(diagnostics, errors.New("template requires TEMPLATE_ID [--version VERSION]"))
 			}
 			path += "/" + url.PathEscape(args[1])
+			if *version != "" {
+				path += "?" + url.Values{"version": {*version}}.Encode()
+			}
 		}
 		response, e := client.request(ctx, http.MethodGet, path, nil)
 		if e != nil {

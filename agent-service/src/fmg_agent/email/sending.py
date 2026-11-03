@@ -60,8 +60,8 @@ def smtp_ready(config):
     return bool(config.smtp_username and config.smtp_password.get_secret_value())
 
 
-def receipt(row):
-    return {
+def receipt(row, preview=None):
+    data = {
         key: getattr(row, key)
         for key in (
             "id",
@@ -73,6 +73,36 @@ def receipt(row):
             "updated_at",
         )
     }
+    data["idempotency_key"] = row.idempotency_key
+    data["sent_at"] = (row.diagnostics or {}).get("accepted_at")
+    if preview is not None:
+        message = preview if isinstance(preview, dict) else preview.message
+        sender = message.get("from") or ""
+        data["message_id"] = (
+            f'<fmg-{row.id}@{sender.split("@", 1)[1]}>' if "@" in sender else None
+        )
+        data["reply_id"] = (message.get("reply_context") or {}).get("reply_id")
+        data["recipient"] = message.get("to")
+    data["sent_copy"] = (row.diagnostics or {}).get(
+        "sent_copy", {"state": "not_requested", "code": None}
+    )
+    return data
+
+
+def receipt_context(session, preview_id):
+    # Receipts must not load legacy inline images or full message bodies.
+    row = session.execute(
+        select(
+            EmailPreview.message["from"].as_string(),
+            EmailPreview.message["to"].as_string(),
+            EmailPreview.message["reply_context"]["reply_id"].as_string(),
+        ).where(EmailPreview.id == preview_id)
+    ).first()
+    return (
+        {"from": row[0], "to": row[1], "reply_context": {"reply_id": row[2]}}
+        if row
+        else None
+    )
 
 
 class SendStore:
@@ -117,8 +147,31 @@ class SendStore:
             registry = registry or MailboxRegistry.load(config)
             try:
                 profile = preview_mailbox(session, row, registry)
-                check_mailbox_template(profile, row.template_id, status_code=409)
+                from .replies import check_frozen_template
+
+                check_frozen_template(profile, row)
                 send_ready = registry._ready(profile)
+                from ..mail_runtime import MailRuntime
+
+                runtime = session.get(MailRuntime, 1)
+                send_ready = bool(
+                    send_ready
+                    and runtime
+                    and runtime.send_enabled
+                    and not safety.status(session, profile.smtp_from)["reason"]
+                    and not safety.recipient_invalid(
+                        session, profile.smtp_from, row.message["to"]
+                    )
+                )
+                created = row.created_at.replace(tzinfo=timezone.utc)
+                send_ready = send_ready and created >= utcnow() - timedelta(days=30)
+                send_ready = (
+                    send_ready
+                    and session.scalar(
+                        select(EmailSend.id).where(EmailSend.preview_id == row.id)
+                    )
+                    is None
+                )
             except ApiError:
                 send_ready = False
             return {
@@ -164,7 +217,7 @@ class SendStore:
             row = session.get(EmailSend, send_id)
             if row is None or row.token_id != token_id:
                 raise ApiError(404, "send_not_found", "Send receipt was not found.")
-            data = receipt(row)
+            data = receipt(row, receipt_context(session, row.preview_id))
             from .retries import details
 
             retry = session.get(EmailBounceRetry, row.id)
@@ -177,6 +230,21 @@ class SendStore:
             )
             data["bounce_retry"] = details(retry, attempt)
             return data
+
+    def get_receipt_by_key(self, key, token_id):
+        with self.sessions() as session:
+            send_id = session.scalar(
+                select(EmailSend.id).where(
+                    EmailSend.token_id == token_id, EmailSend.idempotency_key == key
+                )
+            )
+        if send_id is None:
+            raise ApiError(
+                404,
+                "send_not_found",
+                "No receipt is currently recorded for this key. This is not proof that an interrupted request cannot still create one; reconcile using the same preview and key.",
+            )
+        return self.get_receipt(send_id, token_id)
 
     def _existing(self, session, token_id, preview_id, key):
         row = session.scalar(
@@ -191,14 +259,14 @@ class SendStore:
                     "idempotency_conflict",
                     "This send key belongs to another preview.",
                 )
-            return receipt(row)
+            return receipt(row, receipt_context(session, row.preview_id))
         row = session.scalar(
             select(EmailSend).where(EmailSend.preview_id == preview_id)
         )
         if row is not None:
             # Another request may commit between the two SELECTs under READ COMMITTED.
             if row.token_id == token_id and row.idempotency_key == key:
-                return receipt(row)
+                return receipt(row, receipt_context(session, row.preview_id))
             raise ApiError(
                 409,
                 "preview_already_sent",
@@ -257,7 +325,9 @@ class SendStore:
             frozen = session.get(EmailPreview, preview_id)
             registry = registry.current() if registry else MailboxRegistry.load(config)
             profile = preview_mailbox(session, frozen, registry)
-            check_mailbox_template(profile, frozen.template_id, status_code=409)
+            from .replies import check_frozen_template
+
+            check_frozen_template(profile, frozen)
             config = registry.settings_for(profile.id)
             if (
                 config.email_transport == "microsoft_graph"
@@ -465,6 +535,11 @@ class SendStore:
             outcome = {"state": "unknown", "code": "smtp_execution_uncertain"}
         from .sent_copy import enabled, archive_sent_copy
 
+        if outcome["state"] == "sent" and preview["message"].get("reply_context"):
+            outcome["diagnostics"] = {
+                **(outcome.get("diagnostics") or {}),
+                "accepted_at": utcnow().isoformat(),
+            }
         archive = outcome["state"] == "sent" and enabled(config)
         if archive:
             outcome["diagnostics"] = {

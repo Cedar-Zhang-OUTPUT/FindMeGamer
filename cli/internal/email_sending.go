@@ -123,10 +123,20 @@ func runEmailSending(ctx context.Context, client *Client, args []string, out, di
 		}
 		return emitReceipt(out, diagnostics, response)
 	case "receipt":
-		if len(args) != 2 || args[1] == "" || strings.ContainsAny(args[1], "/?#") {
-			return writeError(diagnostics, errors.New("receipt requires one send ID"))
+		key := flags.String("idempotency-key", "", "lookup a send by its original stable key")
+		if flags.Parse(args[1:]) != nil || (*key == "" && flags.NArg() != 1) || (*key != "" && flags.NArg() != 0) {
+			return writeError(diagnostics, errors.New("receipt requires SEND_ID or --idempotency-key KEY"))
 		}
-		response, err := client.request(ctx, http.MethodGet, "/v1/email/sends/"+url.PathEscape(args[1]), nil)
+		path := "/v1/email/receipts?" + url.Values{"idempotency_key": {*key}}.Encode()
+		if *key == "" {
+			if flags.Arg(0) == "" || strings.ContainsAny(flags.Arg(0), "/?#") {
+				return writeError(diagnostics, errors.New("receipt requires one send ID"))
+			}
+			path = "/v1/email/sends/" + url.PathEscape(flags.Arg(0))
+		} else if strings.TrimSpace(*key) == "" {
+			return writeError(diagnostics, errors.New("idempotency key must not be blank"))
+		}
+		response, err := client.request(ctx, http.MethodGet, path, nil)
 		if err != nil {
 			return writeError(diagnostics, err)
 		}

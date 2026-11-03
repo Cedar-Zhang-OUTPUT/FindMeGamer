@@ -20,6 +20,20 @@ def build_message(message, message_id):
     mail["Subject"] = message["subject"]
     mail["Date"] = message.get("_smtp_date") or formatdate(localtime=False)
     mail["Message-ID"] = f'<fmg-{message_id}@{sender.split("@", 1)[1]}>'
+    if message.get("reply_context"):
+        from .threading import valid_message_id
+
+        parent, references = message.get("in_reply_to"), message.get("references")
+        if (
+            not valid_message_id(parent)
+            or not isinstance(references, list)
+            or not references
+        ):
+            raise ValueError("Invalid reply headers.")
+        if any(not valid_message_id(ref) for ref in references):
+            raise ValueError("Invalid reply reference.")
+        mail["In-Reply-To"] = parent
+        mail["References"] = " ".join(references)
     mail.set_content(message["text"])
     if message.get("format") == "signature_image":
         mail.add_alternative(message["html"], subtype="html")
