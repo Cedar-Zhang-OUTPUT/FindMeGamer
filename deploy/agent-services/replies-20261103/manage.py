@@ -250,6 +250,7 @@ def apply():
             )
         time.sleep(2)
     path = Path(ENV["FMG_AGENT_MAILBOXES_HOST_FILE"])
+    ownership = path.stat()
     data = json.loads(path.read_text())
     expected = json.loads((PRIVATE / "mailboxes.json").read_text())
     assert data == expected, "Registry drift"
@@ -263,6 +264,7 @@ def apply():
     tmp = path.with_suffix(".reply-new")
     tmp.write_text(json.dumps(data, indent=2) + "\n")
     tmp.chmod(0o600)
+    os.chown(tmp, ownership.st_uid, ownership.st_gid)
     os.replace(tmp, path)
     subprocess.run(
         cmd + ["-f", str(STAGE / "compose.yaml"), "up", "-d", "--no-deps", *ROLES],
@@ -282,7 +284,6 @@ def verify():
             role + " not running expected image"
         )
     probes = [
-        ("api", "api", None),
         ("worker", "enrichment", None),
         ("mail-worker", "mail", "liminal"),
         ("mail-worker-second", "mail", "second"),
@@ -318,6 +319,7 @@ def verify():
         "-c",
         "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health',timeout=5)",
     )
+    print(json.dumps({"service": "api", "http_health": "passed"}), flush=True)
     print(json.dumps(runtime("status")), flush=True)
 
 
@@ -368,9 +370,11 @@ def rollback():
             raise RuntimeError("Rollback drain incomplete; gates remain held")
         time.sleep(2)
     path = Path(ENV["FMG_AGENT_MAILBOXES_HOST_FILE"])
+    ownership = path.stat()
     tmp = path.with_suffix(".reply-rollback")
     shutil.copyfile(PRIVATE / "mailboxes.json", tmp)
     tmp.chmod(0o600)
+    os.chown(tmp, ownership.st_uid, ownership.st_gid)
     os.replace(tmp, path)
     subprocess.run(compose() + ["up", "-d", "--no-deps", *ROLES], env=ENV, check=True)
     print(

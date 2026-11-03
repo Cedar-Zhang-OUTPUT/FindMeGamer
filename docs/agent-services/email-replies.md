@@ -1,6 +1,6 @@
 # Threaded reply API and rollout
 
-Implemented locally on 2026-11-03. No production deployment or live email is implied by this document.
+Implemented and deployed on 2026-11-03; matching CLI/Skills release: `fmg-v0.8.6`. Release acceptance sent no live email.
 
 ## API contract
 
@@ -39,6 +39,17 @@ Transport threading headers are emitted by the shared MIME builder used by SMTP 
 - Full isolated PostgreSQL17 / Redis7 run: 661 passed, 1 skipped; two reported failures were investigated. One was the new legacy-header test's invalid SQLite test setting, corrected and passed in the focused rerun. The other is the existing native-process resource sampler: it attempts host `ps` on a PostgreSQL PID inside Docker, which is a different PID namespace. No resource-capacity result is claimed for that test.
 - Go `go test ./...`: passed, including versioned-template lookup, reply-preview validation, custom-body confirmation and read-only key reconciliation.
 - Both Skills pass skill-creator validation. Local four-platform CLI/Skills candidate bundle and installer/upgrade checks: 4 passed, with authentication preserved in isolated test directories.
-- Only local simulated SMTP/IMAP and provider stubs were used. No production change or real mail/Gemini call occurred.
+- Development tests used simulated SMTP/IMAP and provider stubs; no real email or Gemini call occurred. Production acceptance below used a read-only IMAP header recovery for an unsent preview.
 
-The source body retained in reply history is the existing monitor-stored text, subject to its existing size limits. Reply previews are not send approval. Deployment still requires the coordinated API/monitor/send-worker upgrade and reply-template allowlist addition described above.
+The source body retained in reply history is the existing monitor-stored text, subject to its existing size limits. Reply previews are not send approval. The coordinated deployment and second-mailbox reply-template allowlist addition are complete.
+
+
+## Production acceptance — 2026-11-03
+
+- Source feature commit: `5ec6cfd`. All six roles use `fmg-agent:replies-086-{role}-20261103`. Per-role image checks verified selected files and preserved all unrelated package files, including production enrichment/provider code. No database migration.
+- Before switching: no active sends, running enrichment, send leases or pending recipients in sending tasks. A database backup and original configuration/images were retained privately for rollback.
+- A configuration ownership error during atomic registry replacement initially prevented startup. Ownership was corrected to the service user while keeping mode0600; the deployment and rollback script now preserve ownership. Startup identity checks then completed and all worker/dispatcher/monitor readiness probes passed.
+- API local and public HTTPS health passed. Both mailbox monitors were active with no error at 03:56:44 UTC. Prior runtime flags were restored; sender protection records remained unchanged.
+- Before/after transport counts remained sent30354, unknown3, failed145; task counts awaiting_approval157, stored sending732, blocked4. No paused task was resumed and no unknown send was retried.
+- A real second-mailbox incoming reply produced an unsent preview with verified original Message-ID, References, sender binding and maintenance gating. The temporary preview was deleted after verifying it had no send attempt. Temporary acceptance token was revoked.
+- Downloaded GitHub assets: all seven files exactly matched local candidates. Bundle/installer checks: 4 passed. Downloaded Linux CLI0.8.6 successfully read mailboxes and reply-template v1 against production; receipt-key lookup and ownership boundary checks passed.
