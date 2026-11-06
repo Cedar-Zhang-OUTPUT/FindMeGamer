@@ -49,10 +49,24 @@ def test_queried_unavailable_is_distinct_from_failed():
         assert check(item)
 
 
-def test_unknown_requires_reason_and_timestamp():
+def test_unknown_requires_reason_and_valid_timestamp_if_supplied():
     item = record(value=None)
     item['metrics']['followers']['status'] = 'unavailable'
     assert module().followers_errors(item)
     item['metrics']['followers']['reason'] = 'not_exposed'
     item['metrics']['followers']['checked_at'] = 'yesterday'
     assert module().followers_errors(item)
+
+
+def test_found_and_unavailable_counts_do_not_require_update_timestamp():
+    check = module().followers_errors
+    for status, value in [('found', 0), ('found', 123), ('unavailable', None)]:
+        item = record(value=value)
+        metric = item['metrics']['followers']
+        metric.update(status=status, reason='not_exposed' if status == 'unavailable' else None)
+        del metric['checked_at']
+        assert check(item) == []
+        metric['checked_at'] = None
+        assert check(item) == []
+        del metric['source']
+        assert 'metrics.followers.source' in check(item)

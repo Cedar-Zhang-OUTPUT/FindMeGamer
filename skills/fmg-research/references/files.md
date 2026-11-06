@@ -92,9 +92,11 @@ Each Match Brief is a JSON object (not Markdown), with these required slots:
 
 Resolve paths relative to the Match Brief. Use actual hashes, dates, IDs and observations, not example strings. Filter outcome is pass/fail/unknown; decision suitable/needs_verification/rejected. Evidence levels distinguish metadata, public text, transcript excerpt, inspected visual and user-supplied notes. Contacts status: pending/found/not_found/failed/not_requested; each email includes address/purpose/source/verification. `not_requested` requires an explicit user opt-out recorded as `contacts.reason`; unresolved work keeps its job ID and reason. Only a completed empty lookup is not_found. Explaining a result reads these files before calling APIs again.
 
+Creator Profiles / Match Briefs also store `creator.active_platforms`, `metrics.followers` and `metrics.recent_content_views` per [the metric collection contract](completion.md#creator-profile-metrics). The last value is the sum of the latest up to 10 items, with the actual sample count and source records; no metric update timestamp is required. These saved facts feed the three Feishu CRM columns through the Agent. They do not change the local browser/Excel column layout below or imply automatic server-to-Feishu synchronization.
+
 ## Result completeness
 
-Every Match Brief must include the `presentation` object above, a canonical `creator.profile_url`, `contacts`, and structured checkpoints in [completion](completion.md). These are shared by browser and Excel. Store readable non-empty strings with supporting facts or genuine Unknown + reason; do not fabricate missing facts. A placeholder alone is not proof of a completed lookup. Followers include metric/date, audience inference must be labeled. `why_match` requires all five sections. Before final delivery run:
+Every Match Brief must include the `presentation` object above, a canonical `creator.profile_url`, `contacts`, and structured checkpoints in [completion](completion.md). These are shared by browser and Excel. Store readable non-empty strings with supporting facts or genuine Unknown + reason; do not fabricate missing facts. A placeholder alone is not proof of a completed lookup. Followers identify the platform metric; an update date is optional. Audience inference must be labeled. `why_match` requires all five sections. Before final delivery run:
 
 ```sh
 python3 PATH_TO_SKILL/scripts/research_dashboard.py --root WORKSPACE --run-id RUN_ID --validate
@@ -112,7 +114,7 @@ The browser table and any Excel export must use these nine columns **in this ord
 4. 为什么 Match？ — detailed, readable rationale with the five sections below, not a generic one-sentence endorsement.
 5. 相关的内容方向 — supported genres, formats and themes.
 6. 频道的链接 — canonical creator profile URL.
-7. 粉丝数 — mandatory lookup, numeric count when available, noting platform metric and retrieval date (e.g. subscribers vs followers). Unknown is not zero. Store `metrics.followers` per [completion](completion.md); an unqueried or blocked count does not pass completion validation.
+7. 粉丝数 — mandatory lookup, numeric count when available, noting platform metric (e.g. subscribers vs followers); no update date is required. Unknown is not zero. Store `metrics.followers` per [completion](completion.md); an unqueried or blocked count does not pass completion validation.
 8. 内容的语言 — evidence-backed content language(s), not an assumption from country.
 9. 面向的受众地区 — audience geography with evidence or clearly labeled inference/unknown; creator location does not establish audience location.
 

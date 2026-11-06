@@ -6,7 +6,8 @@ Apply to every suitable creator delivered by a research task, including batches.
 
 - Resolve canonical platform identity, homepage and public greeting name. Use a published display/preferred name, falling back to a real username/channel name (never guess a legal name).
 - Inspect relevant works and describe content direction, all five Match rationale sections and evidence limitations. Search keywords alone do not prove a creator played a game.
-- Query follower/subscriber counts even when there is no count filter. Existing saved responses may be reused if their age is disclosed and suitable for the user's task.
+- Query follower/subscriber counts even when there is no count filter. Reuse suitable saved responses; preserve known freshness limitations without requiring a new update timestamp.
+- Collect the verified platform list and latest-up-to-10 cumulative view total using the rules below. Source evidence is required; a metric update timestamp is not.
 - Assess content language and creator location from evidence independently. Audience geography is a separate fact; do not substitute creator location or infer nationality from language. Genuine missing evidence is allowed; describe what was checked.
 - Inspect profile/about/bio and saved evidence for email. If absent, run `fmg email enrich`, save its job ID and poll the bounded job to completion. Enrichment is part of creator analysis, not an optional follow-up offer. Only a completed empty enrichment can become `not_found`; failed/limited/queued work stays unresolved. Never invent an address.
 
@@ -25,10 +26,33 @@ Do not use video/stream viewers, views, following count, search-result counts or
 Every Match Brief stores `metrics.followers`:
 
 ```json
-{"status":"found","value":1234,"metric":"followers","source":"../evidence/followers-response.json","checked_at":"2026-09-22T01:00:00Z"}
+{"status":"found","value":1234,"metric":"followers","source":"../evidence/followers-response.json"}
 ```
 
-Use actual values and timestamps. `status=unavailable` requires `value=null`, source, timestamp and `reason` explaining a successful check (e.g. platform hides the count). `pending`/`blocked`/`failed` remain incomplete. The display string includes metric/date or unavailable reason. Do not create proof records without actually reading the source response.
+Use actual values and source evidence. `status=unavailable` requires `value=null`, source and `reason` explaining a successful check (e.g. platform hides the count). `pending`/`blocked`/`failed` remain incomplete. `checked_at` is optional: preserve a valid existing value when useful, but do not require or invent one. The display string identifies the platform metric or unavailable reason; no update date is required.
+
+## Creator Profile metrics
+
+During creator discovery/evaluation, collect these facts in the saved Creator Profile / JSON Match Brief so an Agent can later fill Feishu without repeating the research. A metrics-only request does not trigger email enrichment or a fresh discovery campaign.
+
+- **Platforms:** retain `creator.platform` as the source/main account platform and its stable account ID and homepage. Save `creator.active_platforms` as the platforms actually verified for this creator; use the source platform as the initial known platform. Add another platform only with a confirmed account link/identity, not a matching display name. This list may represent verified source platforms; it does not assert a measured recent activity window. Do not search every possible platform solely to populate a multi-select.
+- **Followers:** reuse `metrics.followers` for the main account's followers/subscribers. Keep additional platforms' counts separately with their account identity; never add them together. A single numeric CRM value uses the main account platform recorded with the profile/row source.
+- **Recent content views:** select the latest **up to 10 unique public content items**, ordered by publication time, for that same account. Sum each selected item's cumulative view count. This is not an average, median, best-performing sample, last-10-days value, or channel lifetime total. For example, five items with 100, 200, 300, 400 and 500 views produce **1,500**, not 300. If more than 10 are available, include only the latest 10.
+- A complete list of only five available items is a valid five-item sample; do not pad with zeroes, require 10, extrapolate to 10, or block on sample size. A page containing five items with more recent items still unexamined is not proof the account only has five: page within the agreed budget until the latest 10 or the end of the available list is established. Deduplicate by content ID before counting.
+- Use YouTube's channel uploads to select recent videos and `videos.list` to read their view counts; a relevant-game search or popularity sort does not establish the latest 10. For Twitch, use the account's recent public videos/VODs by publication time; keep Clips as a separately labelled sample when requested, rather than silently pooling them with VODs. Live concurrent viewers are not cumulative views. For other platforms, use only a view counter actually exposed by the authorized API; likes/reposts cannot stand in for views.
+- Missing/hidden view counts are unknown, not zero. If any selected item lacks a numeric count, keep the total unavailable/partial with `value: null` and explain the gap; retain the known records without presenting their subtotal as the complete total. An API failure stays blocked/failed. An explicitly confirmed empty available-content list may use total 0 and sample count 0, without claiming the creator never published anything.
+- First inspect saved profiles and raw API responses. Reuse them if they establish this account, the latest selected items and their counts; an old average/median alone is insufficient. Query only missing or deliberately refreshed facts within the authorized budget. Do not use Gemini to estimate the numbers or rerun an email lookup to fill these metrics.
+- **No update-time requirement:** do not add or require metric update/collection timestamps in the profile or Feishu. Existing timestamps in source artifacts may remain. Content publication dates are still needed to select the most recent items; they are not metric update timestamps.
+
+Minimal saved view summary (example of a complete five-item sample):
+
+```json
+{"status":"found","platform":"youtube","value":1500,"sample_count":5,"source":"../evidence/recent-content.json"}
+```
+
+Store that summary as `metrics.recent_content_views`. Its source records retain selected content IDs/URLs, publication order/dates, individual numeric view counts and whether the available list ended before 10. Verify the sum against those records. No new timestamp property is required. For unavailable/partial/blocked/failed results use `value: null` and a concrete reason rather than a fabricated completed total.
+
+For authorized CRM maintenance, map this saved total to `近10个内容的浏览量`, not `average_views` or `median_views`. Follow the installed fmg-api CRM guide for the actual field types, same-row updates and readback. Upgrading the Skill alone does not authorize a bulk historical backfill.
 
 ## Email evidence and final check
 

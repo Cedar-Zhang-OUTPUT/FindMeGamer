@@ -18,7 +18,9 @@ YouTube video search yields `snippet.channelId`; inspect `channels.list` and upl
 
 Default exactly one upstream page. `--max-pages N` deliberately requests up to N pages, emitting one JSON envelope per line. `--max-items N` stops at a completed page and can exceed N; pair with a small provider page size. Set a finite request budget before paging. Never assume a page count is a monetary limit. Save cursors, canonical account IDs and response request IDs. Repeated cursors stop. No automatic data-request retries. Instagram is not supplied; do not pretend it was searched.
 
-Creator research requires count lookup even with no follower filter: YouTube `channels.list` with `part=statistics` → `statistics.subscriberCount` (check `hiddenSubscriberCount`); X account lookup with `user.fields=public_metrics` → `public_metrics.followers_count`. Save source response and timestamp. Unqueried, blocked and genuinely hidden/unavailable are distinct; missing values are never zero. Batch reads where supported and reuse suitable saved responses.
+Creator research requires count lookup even with no follower filter: YouTube `channels.list` with `part=statistics` → `statistics.subscriberCount` (check `hiddenSubscriberCount`); X account lookup with `user.fields=public_metrics` → `public_metrics.followers_count`. Save the source response; a metric update timestamp is optional. Unqueried, blocked and genuinely hidden/unavailable are distinct; missing values are never zero. Batch reads where supported and reuse suitable saved responses.
+
+For the CRM's `近10个内容的浏览量`, read the installed fmg-research completion guide: sum the latest up to 10 unique items' cumulative views, and accept a complete shorter list as-is. YouTube uses uploads/`playlistItems.list` to select items and `videos.list(part=statistics)` for `viewCount`; Twitch uses the user's recent `getVideos` results with `sort=time` and each video's `view_count`. Do not use popularity-sorted results, a channel lifetime total, live viewers, average/median, or a mixture of platform accounts. Preserve the sampled IDs and counts, without requiring an update-time field.
 
 ## Twitch (Helix)
 

@@ -14,12 +14,13 @@ def followers_errors(item):
         errors.append('metrics.followers.metric')
     if not isinstance(record.get('source'), str) or not record['source'].strip():
         errors.append('metrics.followers.source')
-    try:
-        timestamp = datetime.fromisoformat(record['checked_at'].replace('Z', '+00:00'))
-        if timestamp.tzinfo is None:
-            raise ValueError('Timezone required')
-    except (KeyError, TypeError, AttributeError, ValueError):
-        errors.append('metrics.followers.checked_at')
+    if record.get('checked_at') is not None:
+        try:
+            timestamp = datetime.fromisoformat(record['checked_at'].replace('Z', '+00:00'))
+            if timestamp.tzinfo is None:
+                raise ValueError('Timezone required')
+        except (TypeError, AttributeError, ValueError):
+            errors.append('metrics.followers.checked_at')
     value, status = record.get('value'), record.get('status')
     if status == 'found':
         if type(value) is not int or value < 0:

@@ -5,6 +5,8 @@ description: Use when calling the company fmg CLI for YouTube, X, Twitch, Steam,
 
 # FMG API
 
+**Creator metrics (0.8.8):** the CRM fields `活跃平台`, `粉丝数` and `近10个内容的浏览量` reuse creator research evidence. The view field is the **sum for the latest up to 10 items**, including a complete shorter sample; it is never an average or median. Metric update timestamps are not required. Read [the CRM mapping](references/crm.md#creator-profile-metrics) and the installed fmg-research completion guide before collecting or filling these fields.
+
 **Feishu CRM — people view, Agents maintain (0.8.7):** people review progress and give business decisions; Agents read the source mail, update the business fields through Feishu CLI, and verify the result. Do not routinely ask people to edit rows. Read [the one-row maintenance guide](references/crm.md) before maintaining the current invitation/reply table: one creator × game per row, with the two Agents dividing ownership by game. This is a collaboration rule, not an enforced read-only permission or a live server integration; changing the table never sends mail. Do not rebuild or keep writing the retired contact/send/event tables.
 
 **Threaded replies:** use `email reply SERVER_REPLY_ID`, then `email reply-preview`, review the full frozen recipient/content, and use the existing confirmed send flow. No Rest uses the separate `thieves-demo-access-reply` v1 on `second`; invitation templates stay unchanged. Read [reply mechanics and reconciliation](references/replies.md) before replying. Lost send ID: `email receipt --idempotency-key ORIGINAL_KEY`; `unknown` never permits automatic resending. Export our sent replies via `email reply-history --task-id ID`.
