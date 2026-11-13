@@ -13,6 +13,31 @@ from ..usage import Ledger
 router = APIRouter(prefix="/v1/email")
 
 
+@router.get("/inbox")
+def inbox_messages(
+    request: Request,
+    mailbox_id: str = Query(min_length=1, max_length=40),
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: str | None = Query(default=None, max_length=80),
+    message_id: str | None = Query(default=None, max_length=80),
+    principal: Principal = Depends(require_scope("email:read")),
+):
+    from .folders import read_inbox
+    from ..errors import ApiError
+
+    if cursor and message_id:
+        raise ApiError(
+            422, "inbox_reference_invalid", "Use cursor or message_id, not both."
+        )
+    config = request.app.state.mailboxes.current().settings_for(mailbox_id)
+    return result(
+        request,
+        read_inbox(
+            config, mailbox_id, limit=limit, cursor=cursor, message_id=message_id
+        ),
+    )
+
+
 @router.get("/sent")
 def sent_messages(
     request: Request,

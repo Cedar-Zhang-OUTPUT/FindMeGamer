@@ -36,6 +36,7 @@ fmg email job ID [--wait] [--timeout 5m]
 fmg email retry ID
 fmg email templates
 fmg email mailboxes
+fmg email inbox --mailbox ID [--limit 20] [--cursor CURSOR | --id MESSAGE_ID]
 fmg email sent --mailbox ID [--limit 20] [--cursor CURSOR | --id MESSAGE_ID]
 fmg email template TEMPLATE_ID [--version VERSION]
 fmg email preview --input message.json [--mailbox ID --template ID --template-version VERSION] | --id PREVIEW_ID

@@ -1,5 +1,7 @@
 # Reply to an existing incoming email
 
+To browse all Inbox mail, including unassociated messages, use `fmg email inbox --mailbox ID` and read the [Inbox contract](email.md#inbox-folder-access). Its folder message IDs cannot be passed to reply commands; only an existing FMG server reply ID is accepted here. Reading a new thread does not register or authorize a reply.
+
 Requires the reply-capable backend and CLI. Use `fmg --help` to check commands. Requires `email:send` and the same token that owns the original send/task; another Agent's token cannot read or answer its replies. Mailbox-wide `email:read` does not grant this ownership. Never reconstruct a new invitation to simulate a reply.
 
 ## Read, preview, confirm

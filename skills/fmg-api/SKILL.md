@@ -1,9 +1,11 @@
 ---
 name: fmg-api
-description: Use when calling the company fmg CLI for YouTube, X, Twitch, Steam, business email enrichment, individual emails, batch outreach tasks, Sent folders, mailbox replies, API usage, or maintaining the FMG invitation and reply CRM in Feishu.
+description: Use when calling the company fmg CLI for YouTube, X, Twitch, Steam, business email enrichment, individual emails, batch outreach tasks, Inbox or Sent folders, mailbox replies, API usage, or maintaining the FMG invitation and reply CRM in Feishu.
 ---
 
 # FMG API
+
+**Inbox access (0.8.9):** `fmg email inbox --mailbox liminal` (or `second`) lists the actual configured Inbox, including mail not associated with FMG tasks; `--id MESSAGE_ID` reads its body. Uses the existing mailbox-wide `email:read` scope, read-only IMAP and bounded pagination. It never marks mail read or changes reply/bounce monitoring. Read [Inbox access](references/email.md#inbox-folder-access) before collecting mail or maintaining the CRM; an Inbox message ID is not a `server reply ID` and cannot be passed to `reply-preview`.
 
 **Creator metrics (0.8.8):** the CRM fields `活跃平台`, `粉丝数` and `近10个内容的浏览量` reuse creator research evidence. The view field is the **sum for the latest up to 10 items**, including a complete shorter sample; it is never an average or median. Metric update timestamps are not required. Read [the CRM mapping](references/crm.md#creator-profile-metrics) and the installed fmg-research completion guide before collecting or filling these fields.
 

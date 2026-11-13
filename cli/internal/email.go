@@ -14,15 +14,15 @@ import (
 
 func runEmail(ctx context.Context, args []string, out, diagnostics io.Writer) int {
 	if len(args) == 0 {
-		return writeError(diagnostics, errors.New("choose sent, mailboxes, templates, template, preview, send, receipt, enrich, job or retry"))
+		return writeError(diagnostics, errors.New("choose inbox, sent, mailboxes, templates, template, preview, send, receipt, enrich, job or retry"))
 	}
 	config, err := loadConfig()
 	if err != nil {
 		return writeError(diagnostics, &APIError{Code: "login_required", Message: err.Error(), Exit: 3})
 	}
 	client := newClient(config)
-	if args[0] == "sent" {
-		return runEmailSent(ctx, client, args[1:], out, diagnostics)
+	if args[0] == "sent" || args[0] == "inbox" {
+		return runEmailFolder(ctx, client, args[0], args[1:], out, diagnostics)
 	}
 	if args[0] == "mailboxes" {
 		if len(args) != 1 {
