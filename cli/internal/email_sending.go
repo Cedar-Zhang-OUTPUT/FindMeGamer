@@ -29,6 +29,10 @@ func draftSelectionFlags(flags *flag.FlagSet) draftSelection {
 }
 
 func (s draftSelection) merge(flags *flag.FlagSet, body map[string]any) error {
+	return s.mergeMode(flags, body, false)
+}
+
+func (s draftSelection) mergeMode(flags *flag.FlagSet, body map[string]any, custom bool) error {
 	provided := map[string]bool{}
 	flags.Visit(func(f *flag.Flag) { provided[f.Name] = true })
 	for _, field := range []struct {
@@ -39,6 +43,12 @@ func (s draftSelection) merge(flags *flag.FlagSet, body map[string]any) error {
 		{"template", "template_id", s.template},
 		{"template-version", "template_version", s.version},
 	} {
+		if custom && field.json != "mailbox_id" {
+			if _, exists := body[field.json]; exists || provided[field.flag] {
+				return errors.New("custom subject/text cannot be combined with template selection")
+			}
+			continue
+		}
 		value, exists := body[field.json]
 		if exists {
 			text, ok := value.(string)
@@ -66,7 +76,7 @@ func runEmailSending(ctx context.Context, client *Client, args []string, out, di
 	flags.SetOutput(io.Discard)
 	switch args[0] {
 	case "preview":
-		input := flags.String("input", "", "JSON file containing template, recipient and variables")
+		input := flags.String("input", "", "JSON file containing recipient and template variables or custom subject/text")
 		id := flags.String("id", "", "read an existing immutable preview")
 		selection := draftSelectionFlags(flags)
 		if flags.Parse(args[1:]) != nil || flags.NArg() != 0 || (*input == "") == (*id == "") {
@@ -90,7 +100,18 @@ func runEmailSending(ctx context.Context, client *Client, args []string, out, di
 			if decoder.Decode(&body) != nil || body == nil || decoder.Decode(&trailing) != io.EOF {
 				return writeError(diagnostics, errors.New("preview input must be one JSON object"))
 			}
-			if err := selection.merge(flags, body); err != nil {
+			_, hasSubject := body["subject"]
+			_, hasText := body["text"]
+			custom := hasSubject || hasText
+			if custom {
+				for _, field := range []string{"subject", "text"} {
+					value, ok := body[field].(string)
+					if !ok || strings.TrimSpace(value) == "" {
+						return writeError(diagnostics, fmt.Errorf("custom mail requires nonempty %s", field))
+					}
+				}
+			}
+			if err := selection.mergeMode(flags, body, custom); err != nil {
 				return writeError(diagnostics, err)
 			}
 			method, path = http.MethodPost, "/v1/email/previews"

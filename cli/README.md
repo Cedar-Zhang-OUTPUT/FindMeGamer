@@ -239,3 +239,26 @@ Review the frozen `message.html` and `message.text` before confirming. Both
 versions are sent as MIME alternatives. Formatting is supported for campaign/reply templates, including legacy image templates. A new
 preview is required to change formatting. Mail clients can vary in highlight
 rendering, and plain-text clients receive the readable text alternative.
+
+## Custom email to a specified recipient
+
+Use `fmg email preview --input custom-mail.json` for a new email with user-approved custom content. The input must specify one enabled `mailbox_id`, one plain `to` address, `subject`, and `text`. Omit `template_id`, `template_version` and template variables. Optional `body_format: "markdown"` supports bold/highlight/strikethrough; otherwise text remains literal.
+
+```json
+{
+  "mailbox_id": "second",
+  "to": "creator@example.com",
+  "subject": "Your demo access",
+  "text": "Hi Alex,\n\n**Thank you** for your interest. ==Your demo is ready.==",
+  "body_format": "markdown"
+}
+```
+
+Review the returned full sender, recipient, subject, text/HTML and `send_ready`. After explicit approval, send the frozen preview:
+
+```sh
+fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key UNIQUE_KEY
+fmg email receipt --idempotency-key UNIQUE_KEY
+```
+
+A preview is not permission to send. On a connection failure, reconcile with the original idempotency key; never create a replacement to retry an uncertain send. `unknown` requires investigation. Mailbox holds, invalid-recipient protection, pacing and Sent-copy reporting still apply. Custom mail starts a new conversation; to reply in an existing conversation use `reply-preview --reply-id` instead. This input is for individual previews, not outreach tasks. Do not replace approved campaign template wording with custom content without user instruction.

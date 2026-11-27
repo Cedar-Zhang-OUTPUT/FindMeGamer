@@ -114,3 +114,26 @@ fmg email receipt SEND_ID
 ```
 
 Do not use `--confirm` merely because the user requested drafting. Each preview permits one SMTP attempt. After an uncertain HTTP response, query the existing receipt/task first under [network recovery](usage.md#network-recovery). Same-key write recovery requires explicit authorization; do not automatically replay sends or create a new preview/key to bypass unknown delivery. Exit 7/`unknown` requires investigation. Explicit failure requires a new approved preview before another attempt. `sent` is SMTP acceptance, not inbox/read/interest. Follow the server-rendered template. LIMINAL Private v2 and Thieves v3 are plain-text-only and contain no image attachments or HTML alternative. Only the generic template retains its server-owned logo and minimal HTML alternative. Do not add custom HTML, Markdown formatting or Yes/No links. Do not append tracking links. Incoming monitoring remains on the server; the delivery dashboard intentionally hides reply status. Use reply-history for our outgoing responses. One plain To address, no CC/BCC/user-supplied attachments; only templates explicitly declaring server-owned images include them; current LIMINAL and Thieves templates do not. Missing SMTP allows preview but blocks send; configuring/changing the sender requires a new preview. Previews older than 30 days cannot be sent.
+
+## Custom email to a specified recipient
+
+Use `fmg email preview --input custom-mail.json` for a new email with user-approved custom content. The input must specify one enabled `mailbox_id`, one plain `to` address, `subject`, and `text`. Omit `template_id`, `template_version` and template variables. Optional `body_format: "markdown"` supports bold/highlight/strikethrough; otherwise text remains literal.
+
+```json
+{
+  "mailbox_id": "second",
+  "to": "creator@example.com",
+  "subject": "Your demo access",
+  "text": "Hi Alex,\n\n**Thank you** for your interest. ==Your demo is ready.==",
+  "body_format": "markdown"
+}
+```
+
+Review the returned full sender, recipient, subject, text/HTML and `send_ready`. After explicit approval, send the frozen preview:
+
+```sh
+fmg email send --preview-id PREVIEW_ID --confirm --idempotency-key UNIQUE_KEY
+fmg email receipt --idempotency-key UNIQUE_KEY
+```
+
+A preview is not permission to send. On a connection failure, reconcile with the original idempotency key; never create a replacement to retry an uncertain send. `unknown` requires investigation. Mailbox holds, invalid-recipient protection, pacing and Sent-copy reporting still apply. Custom mail starts a new conversation; to reply in an existing conversation use `reply-preview --reply-id` instead. This input is for individual previews, not outreach tasks. Do not replace approved campaign template wording with custom content without user instruction.

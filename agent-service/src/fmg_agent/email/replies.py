@@ -28,6 +28,13 @@ def check_reply_template(profile, template_id, *, status_code=422):
 def check_frozen_template(profile, preview, *, status_code=409):
     from .templates import check_mailbox_template
 
+    if (
+        preview.template_id == "custom-message"
+        and preview.template_version == "1"
+        and preview.message.get("custom_message") is True
+        and not preview.message.get("reply_context")
+    ):
+        return
     if preview.message.get("reply_context"):
         check_reply_template(profile, preview.template_id, status_code=status_code)
     else:

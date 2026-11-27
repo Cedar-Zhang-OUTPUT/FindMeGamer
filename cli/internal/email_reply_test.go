@@ -129,3 +129,41 @@ func TestReplyTemplateVersionRead(t *testing.T) {
 		t.Fatalf("exit=%d %s", code, err.String())
 	}
 }
+
+func TestCustomNewMailPreview(t *testing.T) {
+	setup(t, func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if r.Method != "POST" || r.URL.Path != "/v1/email/previews" || body["mailbox_id"] != "second" || body["to"] != "creator@example.com" || body["subject"] != "Demo access" || body["text"] != "**Hi**" || body["body_format"] != "markdown" || body["template_id"] != nil {
+			t.Error(body, r.URL)
+		}
+		w.Write([]byte(`{"data":{"id":"draft"},"meta":{}}`))
+	})
+	path := filepath.Join(t.TempDir(), "mail.json")
+	os.WriteFile(path, []byte(`{"to":"creator@example.com","subject":"Demo access","text":"**Hi**","body_format":"markdown"}`), 0600)
+	var out, err bytes.Buffer
+	if code := Run([]string{"email", "preview", "--mailbox", "second", "--input", path}, strings.NewReader(""), &out, &err); code != 0 {
+		t.Fatalf("exit=%d %s", code, err.String())
+	}
+}
+
+func TestCustomNewMailRejectsMixedOrIncompleteContent(t *testing.T) {
+	calls := 0
+	setup(t, func(w http.ResponseWriter, r *http.Request) { calls++; w.Write([]byte(`{"data":{},"meta":{}}`)) })
+	for _, data := range []string{
+		`{"mailbox_id":"second","subject":"Hi"}`,
+		`{"mailbox_id":"second","subject":"Hi","text":" "}`,
+		`{"mailbox_id":"second","subject":"Hi","text":"Hello","template_id":"thieves-outreach"}`,
+		`{"subject":"Hi","text":"Hello"}`,
+	} {
+		path := filepath.Join(t.TempDir(), "mail.json")
+		os.WriteFile(path, []byte(data), 0600)
+		var out, err bytes.Buffer
+		if code := Run([]string{"email", "preview", "--input", path}, strings.NewReader(""), &out, &err); code != 2 {
+			t.Fatalf("exit=%d %s", code, err.String())
+		}
+	}
+	if calls != 0 {
+		t.Fatal("Invalid custom mail reached service")
+	}
+}

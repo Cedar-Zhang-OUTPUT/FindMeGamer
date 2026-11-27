@@ -80,9 +80,11 @@ def mailboxes(request: Request, principal: Principal = Depends(authenticate)):
 class PreviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mailbox_id: str | None = Field(default=None, max_length=40)
-    template_id: str = Field(max_length=100)
-    template_version: str = Field(max_length=40)
-    variables: dict[str, str]
+    template_id: str | None = Field(default=None, max_length=100)
+    template_version: str | None = Field(default=None, max_length=40)
+    variables: dict[str, str] = Field(default_factory=dict)
+    subject: str | None = Field(default=None, min_length=1, max_length=998)
+    text: str | None = Field(default=None, min_length=1, max_length=50000)
     body_format: Literal["plain_text", "markdown"] = "plain_text"
     to: str = Field(max_length=254)
 
@@ -90,6 +92,38 @@ class PreviewRequest(BaseModel):
     @classmethod
     def validate_to(cls, value):
         return email_address(value)
+
+    @model_validator(mode="after")
+    def content_choice(self):
+        if self.template_id is not None:
+            if (
+                not self.template_version
+                or self.subject is not None
+                or self.text is not None
+            ):
+                raise ValueError(
+                    "Choose a versioned template or custom subject and text, not both."
+                )
+        elif (
+            not self.mailbox_id
+            or not self.mailbox_id.strip()
+            or not self.subject
+            or not self.subject.strip()
+            or not self.text
+            or not self.text.strip()
+            or self.template_version is not None
+            or self.variables
+        ):
+            raise ValueError(
+                "Custom mail requires mailbox_id, subject and text, with no template variables."
+            )
+        if self.subject is not None and any(
+            ord(c) < 32 or ord(c) == 127 for c in self.subject
+        ):
+            raise ValueError(
+                "Subject must be a single line without control characters."
+            )
+        return self
 
 
 class ReplyPreviewRequest(BaseModel):

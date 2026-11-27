@@ -3,6 +3,9 @@ name: fmg-research
 description: Use when finding or evaluating gaming creators for a Steam game, continuing a previous creator search, explaining matches, locating business contacts or preparing creator outreach with fmg.
 ---
 
+**Custom email:** for a user-requested new email to a specified recipient, use `email preview --input FILE` with explicit `mailbox_id`, `to`, `subject`, `text`, and optional `body_format: "markdown"`. Omit template fields/variables. Review the frozen sender, recipient and full content, then obtain approval and use `email send --preview-id ... --confirm --idempotency-key ...`. Existing mailbox protections and pacing still apply. Query the original key after disconnects; never automatically resend `unknown`. Use `reply-preview` for an existing conversation. Custom content does not authorize rewriting fixed campaign templates. Requires the custom-message backend update.
+
+
 **Formatted email (0.8.10):** set top-level `body_format: "markdown"` in preview/reply-preview/outreach task input when formatted text is requested. Supported inline markers are `**bold**`, `==yellow highlight==`, and `~~strikethrough~~`, including nesting. Default plain text preserves literal markers. Review both frozen `message.html` and `message.text`; obtain send approval for the resulting preview/task. Raw HTML is escaped. Existing approved previews require a fresh draft to change formatting. Formatting does not authorize changes to fixed campaign wording.
 
 

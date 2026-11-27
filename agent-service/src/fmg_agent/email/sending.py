@@ -115,11 +115,23 @@ class SendStore:
 
         registry = registry or MailboxRegistry.load(config)
         profile = registry.select(payload.get("mailbox_id"), allow_legacy=True)
-        check_mailbox_template(profile, payload["template_id"])
-        definition = get_template(payload["template_id"], payload["template_version"])
         from .formatting import format_body
 
-        message = format_body(render_template(definition, payload["variables"]), payload.get("body_format", "plain_text"))
+        if payload.get("template_id") is None:
+            definition = {"id": "custom-message", "version": "1"}
+            rendered = {
+                "subject": payload["subject"],
+                "text": payload["text"],
+                "format": "plain_text",
+                "custom_message": True,
+            }
+        else:
+            check_mailbox_template(profile, payload["template_id"])
+            definition = get_template(
+                payload["template_id"], payload["template_version"]
+            )
+            rendered = render_template(definition, payload["variables"])
+        message = format_body(rendered, payload.get("body_format", "plain_text"))
         message.update(
             to=email_address(payload["to"]),
             **{"from": profile.smtp_from or None, "from_name": profile.display_name},
