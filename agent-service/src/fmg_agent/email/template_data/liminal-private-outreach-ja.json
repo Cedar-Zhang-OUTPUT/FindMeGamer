@@ -1,0 +1,25 @@
+{
+  "id": "liminal-private-outreach-ja",
+  "version": "1",
+  "name": "LIMINAL: Within — Japanese / English invitation",
+  "variables": {
+    "creator_name": {
+      "type": "string",
+      "required": true,
+      "description": "Actual creator display name without 様; used in both greetings."
+    },
+    "personalization_ja": {
+      "type": "string",
+      "required": true,
+      "description": "Japanese paragraph grounded in the creator’s work."
+    },
+    "personalization_en": {
+      "type": "string",
+      "required": true,
+      "description": "English equivalent of the Japanese personalization."
+    }
+  },
+  "subject": "『LIMINAL: Within』――インタラクティブ・フィルムとピクセルRPGが融合した作品。きっと気に入っていただけるはずです。",
+  "text": "${creator_name} 様\nはじめまして。『LIMINAL: Within』のパブリッシングを担当しております、Yuyue Sun（Michael）と申します。\n私は日本語が話せないため、このメールの日本語版には機械翻訳を使用しています。一部不自然な表現がありましたら、どうかご容赦ください。英語の原文は日本語版の後に掲載しております。\n${personalization_ja}\nこのたび、ぜひ『LIMINAL: Within』を遊んでいただければと思い、ご連絡いたしました。現在、Steamで体験版を公開しております。以下のリンクからダウンロードしていただけます。\nDemo: https://store.steampowered.com/app/4952700/_/\nゲーム紹介\n『LIMINAL: Within』は、インタラクティブアニメとレトロなドット絵のRPGアドベンチャーを融合させた作品です。『Dispatch』の映画さながらのアクションと、『パラノマサイト FILE23 本所七不思議』の謎と緊張感を掛け合わせたようなゲームです。プレイヤーは複数の登場人物の視点から、一連の殺人事件を追います。それぞれの物語が交差するにつれ、事件の真相が少しずつ浮かび上がります。\nゲームの見どころ\n映画のような物語体験　舞台はバブル崩壊後の1990年代の日本。映画さながらの演出で、当時の日本を体験できます。\n起こりえない事件　現実世界では、物語の展開を左右する選択を重ね、とっさの操作が求められる場面をくぐり抜けながら、事件を捜査します。ところが、調べれば調べるほど、この犯行はどう考えても不可能だったことが見えてきます。\n不可能な犯行は、なぜ可能だったのか？　ドット絵で描かれたRPGの世界を探索し、ターン制バトルを繰り広げながら、その謎に迫ります。\nすべての世界を揺るがす真実　世界と世界のはざまに眠る秘密を解き明かし、手がかりをつなぎ合わせていくと、その先には、誰も予想しなかった、すべての世界を揺るがす真実が待っています。\nもし実際に遊んでみて気に入っていただき、視聴者の皆さまにも楽しんでいただけそうでしたら、動画や配信、あるいは一言触れていただくだけでも、ご自身のチャンネルに合った形でご紹介いただけるとうれしいです。もちろん、ご紹介は任意です。まずは遊んでいただけるだけでうれしく思います。もしご感想などございましたら、ひと言でもお聞かせいただけると大変励みになります。体験版をダウンロードできない場合は、お気軽にご連絡ください。\n\nお忙しいところ、最後までお読みいただき、ありがとうございます。\nどうぞよろしくお願いいたします。\nMichael\n\n\n\nThought you might enjoy LIMINAL: Within — interactive film meets pixel RPG\n\nHi, ${creator_name},\nIt’s a pleasure to meet you. I’m Yuyue Sun (Michael), the publishing lead for LIMINAL: Within.\nI’ve used machine translation to provide a Japanese version of my message. Please excuse any awkward phrasing. If you prefer to read the original English, you’ll find it directly after the Japanese version.\n${personalization_en}\nI’m reaching out because I’d love to invite you to try our game, LIMINAL: Within. The demo is now available on Steam, and you can download it here:\nDemo: https://store.steampowered.com/app/4952700/_/\nAbout The Game\nLIMINAL: Within is a unique blend of interactive anime and retro pixel-art RPG adventure. Think of it as a mashup of the cinematic action of Dispatch and the mystery and suspense of PARANORMASIGHT: The Seven Mysteries of Honjo. The investigation into a series of murders unfolds through the perspectives of multiple characters. As their storylines intertwine, you gradually piece together the truth.\nKey Features\nCinematic storytelling: Step back into 1990s Japan in the aftermath of the bubble economy's collapse.\nAn impossible crime: In the real world, make choices that shape the story, react to quick-time events, and investigate—only to find that the crime is impossible.\nHow could it be possible? Explore the pixel-art RPG world and engage in turn-based combat to discover how an impossible crime became possible.\nA truth that will shake every world: Uncover the secrets buried between worlds and piece together a truth no one will see coming—one that will shake every world.\nIf you enjoy the game and think it's a good fit for your audience, we'd love you to share it on your channel in whatever format feels natural—video, livestream, or a brief mention. There's no obligation to cover it; we'd just be happy for you to try it, and any feedback would mean a lot. If you have trouble accessing the demo, just let me know.\n\nThanks for your time\nKind regards,\nMichael",
+  "format": "plain_text"
+}

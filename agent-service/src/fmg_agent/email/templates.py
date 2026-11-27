@@ -13,6 +13,7 @@ TEMPLATE_FILES = {
     "game-outreach": "game-outreach.json",
     "liminal-outreach": "liminal-outreach.json",
     "liminal-private-outreach": "liminal-private-outreach.json",
+    "liminal-private-outreach-ja": "liminal-private-outreach-ja.json",
     "thieves-outreach": "thieves-outreach.json",
 }
 REPLY_TEMPLATE_FILES = {
@@ -27,7 +28,7 @@ def check_mailbox_template(profile, template_id, *, status_code=422):
         or template_id == "custom-reply"
         or template_id not in profile.allowed_templates
         or (
-            template_id == "liminal-private-outreach"
+            template_id in {"liminal-private-outreach", "liminal-private-outreach-ja"}
             and (
                 profile.id != "liminal"
                 or profile.smtp_from.casefold() != "liminal_within@ontologyplay.com"

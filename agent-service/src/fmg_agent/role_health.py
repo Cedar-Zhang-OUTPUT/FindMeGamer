@@ -28,7 +28,7 @@ def identity(settings, role, mailbox):
         mailbox=mailbox,
         schema=SCHEMA,
         queue=queue,
-        concurrency={"mail": 2, "enrichment": 4}.get(role),
+        concurrency={"mail": 2, "enrichment": 10}.get(role),
         database=sha256(settings.database_url.encode()).hexdigest(),
         broker=sha256(settings.broker_url.get_secret_value().encode()).hexdigest(),
     )

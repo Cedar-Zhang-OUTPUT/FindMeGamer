@@ -27,7 +27,7 @@ def queue_for_mailbox(mailbox_id: str) -> str:
 
 def worker_args(role: str, mailbox_id: str | None) -> list[str]:
     if role == "enrichment" and mailbox_id is None:
-        queue, concurrency = "fmg_enrichment", 4
+        queue, concurrency = "fmg_enrichment", 10
     elif role == "mail":
         queue, concurrency = queue_for_mailbox(mailbox_id), 2
     else:
@@ -86,7 +86,7 @@ def create_worker(
         if (
             consumer.connection
             and consumer.connection.connected
-            and consumer.pool.num_processes == (4 if role == "enrichment" else 2)
+            and consumer.pool.num_processes == (10 if role == "enrichment" else 2)
             and set(
                 consumer.task_consumer.queues[i].name
                 for i in range(len(consumer.task_consumer.queues))
