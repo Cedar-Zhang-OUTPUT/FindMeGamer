@@ -300,7 +300,10 @@ def create_task(
 ):
     sessions = request.app.state.sessions
     registry = request.app.state.mailboxes.current()
-    legacy_payload = body.model_dump(exclude={"mailbox_id"})
+    payload = body.model_dump()
+    if body.body_format == "plain_text":
+        payload.pop("body_format")
+    legacy_payload = {key: value for key, value in payload.items() if key != "mailbox_id"}
     legacy_fingerprint = digest(json.dumps(legacy_payload, sort_keys=True))
 
     def selected():
@@ -310,7 +313,7 @@ def create_task(
         return digest(
             json.dumps(
                 {
-                    **body.model_dump(),
+                    **payload,
                     "mailbox_id": profile.id,
                     "display_name": profile.display_name,
                 },
