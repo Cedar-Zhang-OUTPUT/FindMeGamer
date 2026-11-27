@@ -3,6 +3,9 @@ name: fmg-research
 description: Use when finding or evaluating gaming creators for a Steam game, continuing a previous creator search, explaining matches, locating business contacts or preparing creator outreach with fmg.
 ---
 
+**Formatted email (0.8.10):** set top-level `body_format: "markdown"` in preview/reply-preview/outreach task input when formatted text is requested. Supported inline markers are `**bold**`, `==yellow highlight==`, and `~~strikethrough~~`, including nesting. Default plain text preserves literal markers. Review both frozen `message.html` and `message.text`; obtain send approval for the resulting preview/task. Raw HTML is escaped. Existing approved previews require a fresh draft to change formatting. Formatting does not authorize changes to fixed campaign wording.
+
+
 # FMG creator research
 
 **Mailbox review (0.8.9):** use fmg-api's Inbox/Sent read commands for authorized mail review and CRM maintenance. Inbox includes messages outside existing FMG tasks. Read the installed `fmg-api/references/email.md` before pagination or reading bodies; distinguish raw folder message IDs from server reply IDs, and exclude automatic mail/bounces from human reply counts. Mailbox review does not require email enrichment or a new sending task.

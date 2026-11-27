@@ -80,13 +80,13 @@ func TestReplyCustomBodyRequiresReviewAndNoTemplate(t *testing.T) {
 	setup(t, func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]any
 		json.NewDecoder(r.Body).Decode(&body)
-		if body["text"] != "Approved body" || body["text_confirmed"] != true || body["recipient_mode"] != "reply_to" {
+		if body["body_format"] != "markdown" || body["text"] != "Approved body" || body["text_confirmed"] != true || body["recipient_mode"] != "reply_to" {
 			t.Error(body)
 		}
 		w.Write([]byte(`{"data":{"id":"draft"},"meta":{}}`))
 	})
 	path := filepath.Join(t.TempDir(), "reply.json")
-	os.WriteFile(path, []byte(`{"text":"Approved body","text_confirmed":true}`), 0600)
+	os.WriteFile(path, []byte(`{"text":"Approved body","text_confirmed":true,"body_format":"markdown"}`), 0600)
 	var out, err bytes.Buffer
 	if code := Run([]string{"email", "reply-preview", "--reply-id", "source", "--mailbox", "second", "--recipient-mode", "reply_to", "--input", path}, strings.NewReader(""), &out, &err); code != 0 {
 		t.Fatalf("exit=%d %s", code, err.String())

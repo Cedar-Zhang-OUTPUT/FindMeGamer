@@ -68,6 +68,7 @@ class TaskInput(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     template_id: str = Field(max_length=100)
     template_version: str = Field(max_length=40)
+    body_format: Literal["plain_text", "markdown"] = "plain_text"
     recipients: list[RecipientInput] = Field(min_length=1, max_length=1000)
 
 
@@ -383,7 +384,9 @@ def create_task(
                     "Use each recipient email only once per task.",
                 )
             seen.add(identity)
-            message = render_template(definition, validated.variables)
+            from .email.formatting import format_body
+
+            message = format_body(render_template(definition, validated.variables), body.body_format)
             message.update(
                 {
                     "to": validated.to,
@@ -542,6 +545,7 @@ def start_task(
                 check_mailbox_template(profile, preview.template_id, status_code=409)
                 if preview.message.get("format") not in {
                     "plain_text",
+                    "rich_text",
                     "signature_image",
                 }:
                     raise ApiError(

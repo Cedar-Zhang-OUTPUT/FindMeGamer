@@ -117,7 +117,9 @@ class SendStore:
         profile = registry.select(payload.get("mailbox_id"), allow_legacy=True)
         check_mailbox_template(profile, payload["template_id"])
         definition = get_template(payload["template_id"], payload["template_version"])
-        message = render_template(definition, payload["variables"])
+        from .formatting import format_body
+
+        message = format_body(render_template(definition, payload["variables"]), payload.get("body_format", "plain_text"))
         message.update(
             to=email_address(payload["to"]),
             **{"from": profile.smtp_from or None, "from_name": profile.display_name},
@@ -437,6 +439,7 @@ class SendStore:
                 )
             if preview["message"].get("format") not in {
                 "plain_text",
+                "rich_text",
                 "signature_image",
             }:
                 raise ApiError(

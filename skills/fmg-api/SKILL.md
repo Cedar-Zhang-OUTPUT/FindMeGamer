@@ -3,6 +3,9 @@ name: fmg-api
 description: Use when calling the company fmg CLI for YouTube, X, Twitch, Steam, business email enrichment, individual emails, batch outreach tasks, Inbox or Sent folders, mailbox replies, API usage, or maintaining the FMG invitation and reply CRM in Feishu.
 ---
 
+**Formatted email (0.8.10):** set top-level `body_format: "markdown"` in preview/reply-preview/outreach task input when formatted text is requested. Supported inline markers are `**bold**`, `==yellow highlight==`, and `~~strikethrough~~`, including nesting. Default plain text preserves literal markers. Review both frozen `message.html` and `message.text`; obtain send approval for the resulting preview/task. Raw HTML is escaped. Existing approved previews require a fresh draft to change formatting. Formatting does not authorize changes to fixed campaign wording.
+
+
 # FMG API
 
 **Inbox access (0.8.9):** `fmg email inbox --mailbox liminal` (or `second`) lists the actual configured Inbox, including mail not associated with FMG tasks; `--id MESSAGE_ID` reads its body. Uses the existing mailbox-wide `email:read` scope, read-only IMAP and bounded pagination. It never marks mail read or changes reply/bounce monitoring. Read [Inbox access](references/email.md#inbox-folder-access) before collecting mail or maintaining the CRM; an Inbox message ID is not a `server reply ID` and cannot be passed to `reply-preview`.

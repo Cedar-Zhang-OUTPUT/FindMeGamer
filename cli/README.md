@@ -219,3 +219,23 @@ fmg email reply-history --task-id TASK_ID --creator-id CREATOR_ID --limit 10
 Preview defaults to the actual From address of the incoming message and displays differing Reply-To. Select `--recipient-mode reply_to` only after explicit review. For a user-approved custom body omit template flags and provide `{"text":"approved text","text_confirmed":true}`. Headers, subject, mailbox and source linkage are server-owned. Historical missing headers require verified read-only recovery; unavailable headers block preview.
 
 A disconnected send must be reconciled using its original key, never a replacement preview/key. `unknown` is not retry permission; 404 may precede an in-flight request's reservation. Sent copy results are reported separately from transport acceptance. For full contracts and administrator rollout instructions see [reply API](../docs/agent-services/email-replies.md) and [Skill mechanics](../skills/fmg-api/references/replies.md).
+
+### Formatted email bodies
+
+Set `"body_format": "markdown"` at the top level of the JSON input for
+`email preview`, `email reply-preview`, or `outreach task create` to enable
+inline formatting. Supported markers are `**bold**`, `==yellow highlight==`,
+and `~~strikethrough~~`, including nested bold inside highlights. Line breaks
+are preserved. This is a restricted inline syntax; raw HTML is escaped.
+The default is `plain_text`, which preserves literal markers.
+
+For an approved custom reply, an input can contain:
+
+```json
+{"text":"Thank you! **Demo access**\n==Your access code==", "text_confirmed":true, "body_format":"markdown"}
+```
+
+Review the frozen `message.html` and `message.text` before confirming. Both
+versions are sent as MIME alternatives. Formatting is supported for campaign/reply templates, including legacy image templates. A new
+preview is required to change formatting. Mail clients can vary in highlight
+rendering, and plain-text clients receive the readable text alternative.

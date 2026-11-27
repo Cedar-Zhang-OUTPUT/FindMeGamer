@@ -83,6 +83,7 @@ class PreviewRequest(BaseModel):
     template_id: str = Field(max_length=100)
     template_version: str = Field(max_length=40)
     variables: dict[str, str]
+    body_format: Literal["plain_text", "markdown"] = "plain_text"
     to: str = Field(max_length=254)
 
     @field_validator("to")
@@ -99,6 +100,7 @@ class ReplyPreviewRequest(BaseModel):
     template_version: str | None = Field(default=None, max_length=40)
     variables: dict[str, str] = Field(default_factory=dict)
     text: str | None = Field(default=None, min_length=1, max_length=50000)
+    body_format: Literal["plain_text", "markdown"] = "plain_text"
     text_confirmed: Literal[True] | None = None
     recipient_mode: Literal["sender", "reply_to"] = "sender"
 

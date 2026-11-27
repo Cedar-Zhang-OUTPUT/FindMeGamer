@@ -35,6 +35,8 @@ def build_message(message, message_id):
         mail["In-Reply-To"] = parent
         mail["References"] = " ".join(references)
     mail.set_content(message["text"])
+    if message.get("format") == "rich_text":
+        mail.add_alternative(message["html"], subtype="html")
     if message.get("format") == "signature_image":
         mail.add_alternative(message["html"], subtype="html")
         if message.get("footer_jpeg_base64"):

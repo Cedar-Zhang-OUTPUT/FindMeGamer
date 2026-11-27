@@ -120,6 +120,9 @@ def create_reply_preview(
                 )
             message = render_template(definition, payload.get("variables", {}))
             version = definition["version"]
+        from .formatting import format_body
+
+        message = format_body(message, payload.get("body_format", "plain_text"))
         stored = (reply.diagnostics or {}).get("thread_headers")
         context = source_context(session, reply, source_send, source_preview)
         original_id = (
